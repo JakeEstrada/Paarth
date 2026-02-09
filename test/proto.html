@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>San Clemente Woodworking CRM - Prototype</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+        }
+
+        /* Navigation */
+        .navbar {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .navbar-menu {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .navbar-menu li {
+            cursor: pointer;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .navbar-menu li:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .navbar-menu li.active {
+            background: rgba(255,255,255,0.2);
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Page Header */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .page-title {
+            font-size: 2rem;
+            color: #2c3e50;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #229954;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .btn-small {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.875rem;
+        }
+
+        /* Pipeline Board */
+        .pipeline-board {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .pipeline-row {
+            display: flex;
+            gap: 1rem;
+            overflow-x: auto;
+            padding-bottom: 1rem;
+        }
+
+        .pipeline-column {
+            background: #ecf0f1;
+            border-radius: 8px;
+            min-width: 300px;
+            flex-shrink: 0;
+        }
+
+        .column-header {
+            padding: 1rem;
+            background: #34495e;
+            color: white;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .column-title {
+            font-weight: 600;
+        }
+
+        .column-count {
+            background: rgba(255,255,255,0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.875rem;
+        }
+
+        .column-body {
+            padding: 1rem;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        /* Job Card */
+        .job-card {
+            background: white;
+            border-radius: 6px;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            cursor: move;
+            transition: all 0.2s;
+        }
+
+        .job-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+
+        .job-card.dragging {
+            opacity: 0.5;
+        }
+
+        .job-customer {
+            font-size: 0.875rem;
+            color: #7f8c8d;
+            margin-bottom: 0.25rem;
+        }
+
+        .job-title {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .job-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.875rem;
+            color: #7f8c8d;
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #ecf0f1;
+        }
+
+        .job-value {
+            font-weight: 600;
+            color: #27ae60;
+        }
+
+        .job-date {
+            font-size: 0.8rem;
+        }
+
+        .job-assigned {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #3498db;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* Customer List */
+        .customer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .customer-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .customer-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+
+        .customer-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .customer-contact {
+            color: #7f8c8d;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .customer-jobs {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #ecf0f1;
+            font-size: 0.875rem;
+            color: #7f8c8d;
+        }
+
+        /* Job Detail Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+
+        .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #ecf0f1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #7f8c8d;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            border-bottom: 2px solid #ecf0f1;
+            margin-bottom: 1.5rem;
+        }
+
+        .tab {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+            color: #7f8c8d;
+        }
+
+        .tab.active {
+            border-bottom-color: #3498db;
+            color: #3498db;
+            font-weight: 600;
+        }
+
+        .detail-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .detail-value {
+            color: #7f8c8d;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        /* Activity Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 8px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #ecf0f1;
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        .timeline-dot {
+            position: absolute;
+            left: -1.6rem;
+            top: 0;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #3498db;
+            border: 3px solid white;
+            box-shadow: 0 0 0 2px #ecf0f1;
+        }
+
+        .timeline-content {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 6px;
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .timeline-title {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .timeline-time {
+            font-size: 0.875rem;
+            color: #7f8c8d;
+        }
+
+        .timeline-description {
+            color: #7f8c8d;
+            font-size: 0.875rem;
+        }
+
+        /* Form */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        /* Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .stat-label {
+            color: #7f8c8d;
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .stat-value.success {
+            color: #27ae60;
+        }
+
+        .search-bar {
+            width: 100%;
+            max-width: 400px;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .badge-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #7f8c8d;
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        // Mock Data
+        const MOCK_CUSTOMERS = [
+            { id: 1, name: 'Johnson Family', phone: '(949) 555-0123', email: 'johnson@email.com', address: '123 Oak St, San Clemente, CA' },
+            { id: 2, name: 'Martinez Construction', phone: '(949) 555-0456', email: 'martinez@email.com', address: '456 Pine Ave, Dana Point, CA' },
+            { id: 3, name: 'Sarah Williams', phone: '(949) 555-0789', email: 'sarah.w@email.com', address: '789 Beach Blvd, San Clemente, CA' },
+            { id: 4, name: 'Chen Residence', phone: '(949) 555-0321', email: 'chen@email.com', address: '321 Coast Hwy, Laguna Beach, CA' },
+        ];
+
+        const FIRST_STACK_STAGES = [
+            'Appointments',
+            'Estimates',
+            'Potential',
+            'Contracts'
+        ];
+
+        const SECOND_STACK_STAGES = [
+            'Schedule',
+            'Takeoff',
+            'Final Payment',
+            'Notes'
+        ];
+
+        const INITIAL_JOBS = [
+            {
+                id: 1,
+                customerId: 1,
+                customerName: 'Johnson Family',
+                title: 'Master Bedroom Staircase Remodel',
+                stage: 'Appointments',
+                value: 15000,
+                appointmentDate: '2026-01-25',
+                assignedTo: 'Mike',
+                createdAt: '2026-01-18'
+            },
+            {
+                id: 2,
+                customerId: 2,
+                customerName: 'Martinez Construction',
+                title: 'Commercial Building Main Stairs',
+                stage: 'Estimates',
+                value: 45000,
+                estimateSent: '2026-01-15',
+                assignedTo: 'Sarah',
+                createdAt: '2026-01-10'
+            },
+            {
+                id: 3,
+                customerId: 3,
+                customerName: 'Sarah Williams',
+                title: 'Custom Oak Spiral Staircase',
+                stage: 'Potential',
+                value: 28000,
+                probability: 75,
+                assignedTo: 'Mike',
+                createdAt: '2026-01-05'
+            },
+            {
+                id: 4,
+                customerId: 4,
+                customerName: 'Chen Residence',
+                title: 'Exterior Deck Stairs',
+                stage: 'Contracts',
+                value: 12000,
+                contractSigned: '2026-01-20',
+                depositReceived: 4000,
+                assignedTo: 'Tom',
+                createdAt: '2025-12-28'
+            },
+            {
+                id: 5,
+                customerId: 1,
+                customerName: 'Johnson Family',
+                title: 'Front Entrance Steps',
+                stage: 'Schedule',
+                value: 8500,
+                startDate: '2026-02-01',
+                endDate: '2026-02-05',
+                assignedTo: 'Tom',
+                createdAt: '2025-12-15'
+            },
+        ];
+
+        const MOCK_ACTIVITIES = [
+            {
+                id: 1,
+                type: 'stage_change',
+                title: 'Moved to Contracts',
+                description: 'Contract signed, deposit received',
+                timestamp: '2026-01-20 10:30 AM',
+                user: 'Sarah'
+            },
+            {
+                id: 2,
+                type: 'note',
+                title: 'Customer Call',
+                description: 'Discussed timeline and material options. Customer prefers oak with dark stain.',
+                timestamp: '2026-01-18 2:15 PM',
+                user: 'Mike'
+            },
+            {
+                id: 3,
+                type: 'stage_change',
+                title: 'Moved to Potential Customers',
+                description: 'Estimate approved, waiting on final decision',
+                timestamp: '2026-01-15 9:00 AM',
+                user: 'Sarah'
+            },
+            {
+                id: 4,
+                type: 'file_upload',
+                title: 'Estimate PDF Uploaded',
+                description: 'estimate_johnson_v2.pdf',
+                timestamp: '2026-01-14 3:45 PM',
+                user: 'Mike'
+            },
+        ];
+
+        // Main App Component
+        function App() {
+            const [currentPage, setCurrentPage] = useState('pipeline');
+            const [jobs, setJobs] = useState(INITIAL_JOBS);
+            const [selectedJob, setSelectedJob] = useState(null);
+            const [draggedJob, setDraggedJob] = useState(null);
+
+            const handleDragStart = (job) => {
+                setDraggedJob(job);
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+            };
+
+            const handleDrop = (stage) => {
+                if (draggedJob && draggedJob.stage !== stage) {
+                    setJobs(jobs.map(job => 
+                        job.id === draggedJob.id 
+                            ? { ...job, stage } 
+                            : job
+                    ));
+                    
+                    // Show notification
+                    alert(`Moved "${draggedJob.title}" to ${stage}\n\nIn the real app, this would:\n1. Update the database\n2. Create an activity log entry\n3. Trigger any stage-specific validations`);
+                }
+                setDraggedJob(null);
+            };
+
+            const getJobsByStage = (stage) => {
+                return jobs.filter(job => job.stage === stage);
+            };
+
+            const getTotalValue = (stage) => {
+                return getJobsByStage(stage).reduce((sum, job) => sum + job.value, 0);
+            };
+
+            return (
+                <>
+                    <div className="navbar">
+                        <div className="navbar-brand">🪜 San Clemente Woodworking</div>
+                        <ul className="navbar-menu">
+                            <li 
+                                className={currentPage === 'dashboard' ? 'active' : ''}
+                                onClick={() => setCurrentPage('dashboard')}
+                            >
+                                Dashboard
+                            </li>
+                            <li 
+                                className={currentPage === 'pipeline' ? 'active' : ''}
+                                onClick={() => setCurrentPage('pipeline')}
+                            >
+                                Pipeline
+                            </li>
+                            <li 
+                                className={currentPage === 'customers' ? 'active' : ''}
+                                onClick={() => setCurrentPage('customers')}
+                            >
+                                Customers
+                            </li>
+                            <li 
+                                className={currentPage === 'calendar' ? 'active' : ''}
+                                onClick={() => setCurrentPage('calendar')}
+                            >
+                                Calendar
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div className="container">
+                        {currentPage === 'dashboard' && <DashboardPage jobs={jobs} />}
+                        {currentPage === 'pipeline' && (
+                            <PipelinePage 
+                                jobs={jobs}
+                                onJobClick={setSelectedJob}
+                                onDragStart={handleDragStart}
+                                onDragOver={handleDragOver}
+                                onDrop={handleDrop}
+                                draggedJob={draggedJob}
+                            />
+                        )}
+                        {currentPage === 'customers' && <CustomersPage customers={MOCK_CUSTOMERS} />}
+                        {currentPage === 'calendar' && <CalendarPage jobs={jobs} />}
+                    </div>
+
+                    {selectedJob && (
+                        <JobDetailModal 
+                            job={selectedJob} 
+                            onClose={() => setSelectedJob(null)}
+                            activities={MOCK_ACTIVITIES}
+                        />
+                    )}
+                </>
+            );
+        }
+
+        // Dashboard Page
+        function DashboardPage({ jobs }) {
+            const totalValue = jobs.reduce((sum, job) => sum + job.value, 0);
+            const activeJobs = jobs.length;
+            const contractedValue = jobs
+                .filter(j => ['Contracts', 'Schedule', 'Takeoff', 'Final Payment'].includes(j.stage))
+                .reduce((sum, job) => sum + job.value, 0);
+            const potentialValue = jobs
+                .filter(j => ['Appointments', 'Estimates', 'Potential'].includes(j.stage))
+                .reduce((sum, job) => sum + job.value, 0);
+
+            return (
+                <>
+                    <div className="page-header">
+                        <h1 className="page-title">Dashboard</h1>
+                    </div>
+
+                    <div className="stats-grid">
+                        <div className="stat-card">
+                            <div className="stat-label">Active Jobs</div>
+                            <div className="stat-value">{activeJobs}</div>
+                        </div>
+                        <div className="stat-card">
+                            <div className="stat-label">Total Pipeline Value</div>
+                            <div className="stat-value success">${totalValue.toLocaleString()}</div>
+                        </div>
+                        <div className="stat-card">
+                            <div className="stat-label">Contracted Revenue</div>
+                            <div className="stat-value success">${contractedValue.toLocaleString()}</div>
+                        </div>
+                        <div className="stat-card">
+                            <div className="stat-label">Potential Revenue</div>
+                            <div className="stat-value">${potentialValue.toLocaleString()}</div>
+                        </div>
+                    </div>
+
+                    <div className="detail-section">
+                        <h2 style={{marginBottom: '1rem'}}>Recent Activity</h2>
+                        <div className="timeline">
+                            {MOCK_ACTIVITIES.map(activity => (
+                                <div key={activity.id} className="timeline-item">
+                                    <div className="timeline-dot"></div>
+                                    <div className="timeline-content">
+                                        <div className="timeline-header">
+                                            <div className="timeline-title">{activity.title}</div>
+                                            <div className="timeline-time">{activity.timestamp}</div>
+                                        </div>
+                                        <div className="timeline-description">{activity.description}</div>
+                                        <div className="timeline-description" style={{marginTop: '0.25rem'}}>
+                                            by {activity.user}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </>
+            );
+        }
+
+        // Pipeline Page
+        function PipelinePage({ jobs, onJobClick, onDragStart, onDragOver, onDrop, draggedJob }) {
+            const renderStageColumn = (stage) => {
+                const stageJobs = jobs.filter(j => j.stage === stage);
+                const stageValue = stageJobs.reduce((sum, j) => sum + j.value, 0);
+                
+                return (
+                    <div 
+                        key={stage} 
+                        className="pipeline-column"
+                        onDragOver={onDragOver}
+                        onDrop={() => onDrop(stage)}
+                    >
+                        <div className="column-header">
+                            <div>
+                                <div className="column-title">{stage}</div>
+                                <div style={{fontSize: '0.75rem', marginTop: '0.25rem', opacity: 0.8}}>
+                                    ${stageValue.toLocaleString()}
+                                </div>
+                            </div>
+                            <div className="column-count">{stageJobs.length}</div>
+                        </div>
+                        <div className="column-body">
+                            {stageJobs.length === 0 ? (
+                                <div style={{textAlign: 'center', color: '#95a5a6', padding: '2rem 0'}}>
+                                    No jobs
+                                </div>
+                            ) : (
+                                stageJobs.map(job => (
+                                    <JobCard 
+                                        key={job.id} 
+                                        job={job} 
+                                        onClick={() => onJobClick(job)}
+                                        onDragStart={() => onDragStart(job)}
+                                        isDragging={draggedJob?.id === job.id}
+                                    />
+                                ))
+                            )}
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <>
+                    <div className="page-header">
+                        <h1 className="page-title">Sales Pipeline</h1>
+                        <button className="btn btn-primary">+ New Job</button>
+                    </div>
+
+                    <div className="pipeline-board">
+                        <div className="pipeline-row">
+                            {FIRST_STACK_STAGES.map(renderStageColumn)}
+                        </div>
+                        <div className="pipeline-row">
+                            {SECOND_STACK_STAGES.map(renderStageColumn)}
+                        </div>
+                    </div>
+
+                    <div style={{marginTop: '2rem', padding: '1rem', background: '#fff3cd', borderRadius: '8px'}}>
+                        <strong>💡 Try it:</strong> Drag and drop job cards between columns to move them through your pipeline!
+                    </div>
+                </>
+            );
+        }
+
+        // Job Card Component
+        function JobCard({ job, onClick, onDragStart, isDragging }) {
+            return (
+                <div 
+                    className={`job-card ${isDragging ? 'dragging' : ''}`}
+                    onClick={onClick}
+                    draggable
+                    onDragStart={onDragStart}
+                >
+                    <div className="job-customer">{job.customerName}</div>
+                    <div className="job-title">{job.title}</div>
+                    
+                    {job.appointmentDate && (
+                        <div className="job-date">📅 {job.appointmentDate}</div>
+                    )}
+                    {job.estimateSent && (
+                        <div className="job-date">📧 Sent {job.estimateSent}</div>
+                    )}
+                    {job.probability && (
+                        <span className="badge badge-warning">{job.probability}% likely</span>
+                    )}
+                    {job.contractSigned && (
+                        <span className="badge badge-success">Contract signed</span>
+                    )}
+                    {job.startDate && (
+                        <div className="job-date">🔨 Start: {job.startDate}</div>
+                    )}
+                    
+                    <div className="job-meta">
+                        <div className="job-value">${job.value.toLocaleString()}</div>
+                        {job.assignedTo && (
+                            <div className="job-assigned">
+                                <div className="avatar">{job.assignedTo[0]}</div>
+                                <span>{job.assignedTo}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Customers Page
+        function CustomersPage({ customers }) {
+            const [search, setSearch] = useState('');
+
+            const filteredCustomers = customers.filter(c => 
+                c.name.toLowerCase().includes(search.toLowerCase()) ||
+                c.email.toLowerCase().includes(search.toLowerCase())
+            );
+
+            return (
+                <>
+                    <div className="page-header">
+                        <h1 className="page-title">Customers</h1>
+                        <button className="btn btn-primary">+ Add Customer</button>
+                    </div>
+
+                    <div style={{marginBottom: '2rem'}}>
+                        <input 
+                            type="text" 
+                            className="search-bar" 
+                            placeholder="Search customers..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="customer-grid">
+                        {filteredCustomers.map(customer => (
+                            <div key={customer.id} className="customer-card">
+                                <div className="customer-name">{customer.name}</div>
+                                <div className="customer-contact">📞 {customer.phone}</div>
+                                <div className="customer-contact">✉️ {customer.email}</div>
+                                <div className="customer-contact">📍 {customer.address}</div>
+                                <div className="customer-jobs">
+                                    <strong>Active Jobs:</strong> 2 • Total Value: $23,500
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            );
+        }
+
+        // Calendar Page
+        function CalendarPage({ jobs }) {
+            const scheduledJobs = jobs.filter(j => 
+                ['Schedule', 'Takeoff', 'Final Payment'].includes(j.stage)
+            );
+
+            return (
+                <>
+                    <div className="page-header">
+                        <h1 className="page-title">Calendar & Schedule</h1>
+                    </div>
+
+                    <div className="stats-grid">
+                        <div className="stat-card">
+                            <div className="stat-label">Scheduled Jobs</div>
+                            <div className="stat-value">{scheduledJobs.length}</div>
+                        </div>
+                        <div className="stat-card">
+                            <div className="stat-label">This Week</div>
+                            <div className="stat-value">3</div>
+                        </div>
+                        <div className="stat-card">
+                            <div className="stat-label">Next Week</div>
+                            <div className="stat-value">2</div>
+                        </div>
+                    </div>
+
+                    <div style={{background: 'white', padding: '2rem', borderRadius: '8px', marginTop: '2rem'}}>
+                        <h3 style={{marginBottom: '1rem'}}>Upcoming Jobs</h3>
+                        {scheduledJobs.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-state-icon">📅</div>
+                                <div>No scheduled jobs yet</div>
+                            </div>
+                        ) : (
+                            <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                                {scheduledJobs.map(job => (
+                                    <div key={job.id} style={{
+                                        padding: '1rem',
+                                        background: '#f8f9fa',
+                                        borderRadius: '6px',
+                                        borderLeft: '4px solid #3498db'
+                                    }}>
+                                        <div style={{fontWeight: 600, marginBottom: '0.5rem'}}>
+                                            {job.title}
+                                        </div>
+                                        <div style={{color: '#7f8c8d', fontSize: '0.875rem'}}>
+                                            {job.customerName} • {job.startDate} to {job.endDate}
+                                        </div>
+                                        <div style={{marginTop: '0.5rem'}}>
+                                            <span className="badge badge-info">{job.stage}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div style={{marginTop: '2rem', padding: '1rem', background: '#d1ecf1', borderRadius: '8px'}}>
+                        <strong>🔗 Google Calendar Integration:</strong> In the real app, these jobs would automatically sync to your Google Calendar when moved to "Calendar Updated" stage.
+                    </div>
+                </>
+            );
+        }
+
+        // Job Detail Modal
+        function JobDetailModal({ job, onClose, activities }) {
+            const [activeTab, setActiveTab] = useState('overview');
+
+            return (
+                <div className="modal-overlay" onClick={onClose}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div>
+                                <div className="modal-title">{job.title}</div>
+                                <div style={{color: '#7f8c8d', marginTop: '0.25rem'}}>
+                                    {job.customerName}
+                                </div>
+                            </div>
+                            <button className="modal-close" onClick={onClose}>×</button>
+                        </div>
+
+                        <div className="modal-body">
+                            <div className="tabs">
+                                <div 
+                                    className={`tab ${activeTab === 'overview' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('overview')}
+                                >
+                                    Overview
+                                </div>
+                                <div 
+                                    className={`tab ${activeTab === 'timeline' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('timeline')}
+                                >
+                                    Timeline
+                                </div>
+                                <div 
+                                    className={`tab ${activeTab === 'files' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('files')}
+                                >
+                                    Files
+                                </div>
+                                <div 
+                                    className={`tab ${activeTab === 'payments' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('payments')}
+                                >
+                                    Payments
+                                </div>
+                            </div>
+
+                            {activeTab === 'overview' && (
+                                <div>
+                                    <div className="detail-grid">
+                                        <div className="detail-section">
+                                            <div className="detail-label">Current Stage</div>
+                                            <div className="detail-value">
+                                                <span className="badge badge-info">{job.stage}</span>
+                                            </div>
+                                        </div>
+                                        <div className="detail-section">
+                                            <div className="detail-label">Project Value</div>
+                                            <div className="detail-value" style={{color: '#27ae60', fontWeight: 600}}>
+                                                ${job.value.toLocaleString()}
+                                            </div>
+                                        </div>
+                                        <div className="detail-section">
+                                            <div className="detail-label">Assigned To</div>
+                                            <div className="detail-value">{job.assignedTo || 'Unassigned'}</div>
+                                        </div>
+                                        <div className="detail-section">
+                                            <div className="detail-label">Created</div>
+                                            <div className="detail-value">{job.createdAt}</div>
+                                        </div>
+                                    </div>
+
+                                    {job.appointmentDate && (
+                                        <div className="detail-section" style={{marginTop: '1.5rem'}}>
+                                            <div className="detail-label">Appointment Details</div>
+                                            <div className="detail-value">
+                                                📅 {job.appointmentDate} at 10:00 AM<br/>
+                                                📍 Customer's residence
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {job.estimateSent && (
+                                        <div className="detail-section" style={{marginTop: '1.5rem'}}>
+                                            <div className="detail-label">Estimate Status</div>
+                                            <div className="detail-value">
+                                                Sent on {job.estimateSent}<br/>
+                                                Amount: ${job.value.toLocaleString()}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {job.contractSigned && (
+                                        <div className="detail-section" style={{marginTop: '1.5rem'}}>
+                                            <div className="detail-label">Contract Details</div>
+                                            <div className="detail-value">
+                                                ✅ Signed on {job.contractSigned}<br/>
+                                                💰 Deposit: ${job.depositReceived?.toLocaleString()} received
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {job.startDate && (
+                                        <div className="detail-section" style={{marginTop: '1.5rem'}}>
+                                            <div className="detail-label">Schedule</div>
+                                            <div className="detail-value">
+                                                Start: {job.startDate}<br/>
+                                                End: {job.endDate}<br/>
+                                                Duration: 5 days
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {activeTab === 'timeline' && (
+                                <div className="timeline">
+                                    {activities.map(activity => (
+                                        <div key={activity.id} className="timeline-item">
+                                            <div className="timeline-dot"></div>
+                                            <div className="timeline-content">
+                                                <div className="timeline-header">
+                                                    <div className="timeline-title">{activity.title}</div>
+                                                    <div className="timeline-time">{activity.timestamp}</div>
+                                                </div>
+                                                <div className="timeline-description">{activity.description}</div>
+                                                <div className="timeline-description" style={{marginTop: '0.25rem'}}>
+                                                    by {activity.user}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {activeTab === 'files' && (
+                                <div>
+                                    <button className="btn btn-primary btn-small" style={{marginBottom: '1rem'}}>
+                                        📎 Upload File
+                                    </button>
+                                    <div style={{display: 'flex', flexDirection: 'column', gap: '0.75rem'}}>
+                                        <div style={{padding: '1rem', background: '#f8f9fa', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                            <div>
+                                                <div style={{fontWeight: 600}}>📄 estimate_v2.pdf</div>
+                                                <div style={{fontSize: '0.875rem', color: '#7f8c8d'}}>
+                                                    Uploaded on Jan 14, 2026 • 245 KB
+                                                </div>
+                                            </div>
+                                            <button className="btn btn-secondary btn-small">Download</button>
+                                        </div>
+                                        <div style={{padding: '1rem', background: '#f8f9fa', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                            <div>
+                                                <div style={{fontWeight: 600}}>📄 signed_contract.pdf</div>
+                                                <div style={{fontSize: '0.875rem', color: '#7f8c8d'}}>
+                                                    Uploaded on Jan 20, 2026 • 512 KB
+                                                </div>
+                                            </div>
+                                            <button className="btn btn-secondary btn-small">Download</button>
+                                        </div>
+                                        <div style={{padding: '1rem', background: '#f8f9fa', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                            <div>
+                                                <div style={{fontWeight: 600}}>🖼️ staircase_design.jpg</div>
+                                                <div style={{fontSize: '0.875rem', color: '#7f8c8d'}}>
+                                                    Uploaded on Jan 12, 2026 • 1.2 MB
+                                                </div>
+                                            </div>
+                                            <button className="btn btn-secondary btn-small">Download</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'payments' && (
+                                <div>
+                                    <div className="detail-grid">
+                                        <div className="detail-section">
+                                            <div className="detail-label">Total Contract Value</div>
+                                            <div className="detail-value" style={{fontSize: '1.5rem', fontWeight: 600, color: '#27ae60'}}>
+                                                ${job.value.toLocaleString()}
+                                            </div>
+                                        </div>
+                                        <div className="detail-section">
+                                            <div className="detail-label">Deposit Received</div>
+                                            <div className="detail-value" style={{fontSize: '1.5rem', fontWeight: 600}}>
+                                                ${job.depositReceived?.toLocaleString() || '0'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="detail-section" style={{marginTop: '1.5rem'}}>
+                                        <div className="detail-label">Payment Schedule</div>
+                                        <div style={{display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem'}}>
+                                            <div style={{padding: '0.75rem', background: '#d4edda', borderRadius: '6px', borderLeft: '4px solid #27ae60'}}>
+                                                ✅ Deposit: ${job.depositReceived?.toLocaleString() || '0'} (Paid)
+                                            </div>
+                                            <div style={{padding: '0.75rem', background: '#f8f9fa', borderRadius: '6px', borderLeft: '4px solid #95a5a6'}}>
+                                                ⏳ Final Payment: ${(job.value - (job.depositReceived || 0)).toLocaleString()} (Due on completion)
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Render App
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
