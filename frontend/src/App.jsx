@@ -19,6 +19,7 @@ import CustomersPage from './pages/CustomersPage';
 import PayrollPage from './pages/PayrollPage';
 import UsersPage from './pages/UsersPage';
 import BillsPage from './pages/BillsPage';
+import AccountSettingsPage from './pages/AccountSettingsPage';
 
 function App() {
   const { user, loading } = useAuth();
@@ -59,6 +60,7 @@ function App() {
                   <Route path="/payroll" element={<PayrollPage />} />
                   <Route path="/bills" element={<BillsPage />} />
                   <Route path="/users" element={<ProtectedRoute requireAdmin><UsersPage /></ProtectedRoute>} />
+                  <Route path="/account-settings" element={<AccountSettingsPage />} />
                 </Routes>
               </MainLayout>
             </ProtectedRoute>

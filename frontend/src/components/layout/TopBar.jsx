@@ -10,6 +10,7 @@ import {
 import {
   Settings as SettingsIcon,
   Logout as LogoutIcon,
+  Person as PersonIcon,
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +27,11 @@ function TopBar() {
 
   const handleClose = () => {
     setAnchorEl(null);
+  };
+
+  const handleAccountSettings = () => {
+    handleClose();
+    navigate('/account-settings');
   };
 
   const handleLogout = async () => {
@@ -65,6 +71,10 @@ function TopBar() {
           open={Boolean(anchorEl)}
           onClose={handleClose}
         >
+          <MenuItem onClick={handleAccountSettings}>
+            <PersonIcon sx={{ mr: 1, fontSize: 20 }} />
+            Account Settings
+          </MenuItem>
           <MenuItem onClick={handleLogout}>
             <LogoutIcon sx={{ mr: 1, fontSize: 20 }} />
             Logout
