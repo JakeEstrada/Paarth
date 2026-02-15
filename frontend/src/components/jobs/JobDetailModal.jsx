@@ -589,49 +589,6 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
               </Paper>
             </Grid>
 
-            <Grid item xs={12} sm={6}>
-              <Paper sx={{ p: 2, height: '100%' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <MoneyIcon sx={{ mr: 1, color: 'info.main' }} />
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Contracted Value
-                  </Typography>
-                </Box>
-                {isEditing ? (
-                  <TextField
-                    type="number"
-                    value={editedJob?.valueContracted || 0}
-                    onChange={(e) => handleFieldChange('valueContracted', parseFloat(e.target.value) || 0)}
-                    variant="outlined"
-                    size="small"
-                    fullWidth
-                    sx={{ mt: 1 }}
-                    InputProps={{
-                      startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>,
-                    }}
-                  />
-                ) : (
-                  <Typography variant="h5" sx={{ color: 'info.main', fontWeight: 600, mt: 1 }}>
-                    {formatCurrency(job.valueContracted || 0)}
-                  </Typography>
-                )}
-              </Paper>
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Paper sx={{ p: 2, height: '100%' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <PersonIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Assigned To
-                  </Typography>
-                </Box>
-                <Typography variant="body1" sx={{ mt: 1, fontWeight: 500 }}>
-                  {job.assignedTo?.name || 'Unassigned'}
-                </Typography>
-              </Paper>
-            </Grid>
-
             {/* Customer Information */}
             <Grid item xs={12} sm={6}>
               <Paper sx={{ p: 2, height: '100%' }}>
