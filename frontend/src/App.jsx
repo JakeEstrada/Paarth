@@ -20,6 +20,7 @@ import PayrollPage from './pages/PayrollPage';
 import UsersPage from './pages/UsersPage';
 import BillsPage from './pages/BillsPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
+import DashboardPage from './pages/DashboardPage';
 
 function App() {
   const { user, loading } = useAuth();
@@ -46,7 +47,8 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <Routes>
-                  <Route path="/" element={<Navigate to="/pipeline" replace />} />
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/pipeline" element={<PipelinePage />} />
                   <Route path="/customers" element={<CustomersPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
