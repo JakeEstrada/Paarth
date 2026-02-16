@@ -24,6 +24,7 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
+  useTheme,
 } from '@mui/material';
 import {
   Print as PrintIcon,
