@@ -94,6 +94,7 @@ const jobSchema = new mongoose.Schema({
   schedule: {
     startDate: Date,
     endDate: Date,
+    installer: String, // Installer name for calendar ordering
     crewNotes: String,
     recurrence: {
       type: {

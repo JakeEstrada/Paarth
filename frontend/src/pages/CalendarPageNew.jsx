@@ -43,6 +43,16 @@ import { useAuth } from '../context/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+// Installer order - fixed priority list
+const INSTALLER_ORDER = [
+  'Nick',
+  'Walter',
+  'Ed',
+  'Moris',
+  'Eder',
+  'Hayden'
+];
+
 // Event creation/edit modal
 function EventModal({ open, onClose, selectedDate, job, onSave }) {
   const [formData, setFormData] = useState({
@@ -57,6 +67,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
     description: '',
     jobId: null,
     color: '#1976D2', // Default blue
+    installer: '', // Installer name
   });
   const [availableJobs, setAvailableJobs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -79,6 +90,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
         description: job?.customerId?.name ? `Customer: ${job.customerId.name}` : '',
         jobId: job?._id || null,
         color: job?.color || '#1976D2',
+        installer: job?.schedule?.installer || '',
       });
 
       // Fetch available jobs
@@ -119,6 +131,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
           schedule: {
             startDate: startDateTime.toISOString(),
             endDate: endDateTime.toISOString(),
+            installer: formData.installer,
             recurrence: {
               type: formData.recurrence,
               interval: 1,
@@ -198,6 +211,22 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
               {availableJobs.map((j) => (
                 <MenuItem key={j._id} value={j._id}>
                   {j.title} - {j.customerId?.name || 'Unknown'}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth>
+            <InputLabel>Installer</InputLabel>
+            <Select
+              value={formData.installer}
+              onChange={(e) => setFormData({ ...formData, installer: e.target.value })}
+              label="Installer"
+            >
+              <MenuItem value="">None</MenuItem>
+              {INSTALLER_ORDER.map((installer) => (
+                <MenuItem key={installer} value={installer}>
+                  {installer}
                 </MenuItem>
               ))}
             </Select>
@@ -396,7 +425,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
 }
 
 // Calendar Day Component
-function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete, customerRowMap }) {
+function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete }) {
   const theme = useTheme();
   const [contextMenu, setContextMenu] = useState(null);
   const [contextMenuEvent, setContextMenuEvent] = useState(null);
@@ -413,8 +442,26 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
     
     return dateStr >= startStr && dateStr <= endStr;
   })
-  // Sort events: older first (new ones appear below)
+  // Sort events by installer order, then by date (older first, so new ones appear below)
   .sort((a, b) => {
+    const installerA = a.schedule?.installer || '';
+    const installerB = b.schedule?.installer || '';
+    
+    // Get installer order indices
+    const indexA = INSTALLER_ORDER.indexOf(installerA);
+    const indexB = INSTALLER_ORDER.indexOf(installerB);
+    
+    // If both have installers, sort by installer order
+    if (indexA !== -1 && indexB !== -1) {
+      if (indexA !== indexB) {
+        return indexA - indexB; // Sort by installer order
+      }
+    } else if (indexA !== -1) {
+      return -1; // A has installer, B doesn't - A comes first
+    } else if (indexB !== -1) {
+      return 1; // B has installer, A doesn't - B comes first
+    }
+    // If neither has installer or same installer, sort by date (older first)
     const dateA = new Date(a.schedule?.startDate || a.createdAt || 0);
     const dateB = new Date(b.schedule?.startDate || b.createdAt || 0);
     return dateA - dateB; // Ascending: older first
@@ -488,38 +535,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           flex: 1,
           overflow: 'hidden'
         }}>
-          {(() => {
-            // Group events by customer and sort by customer row, then by date
-            const eventsByCustomer = {};
-            dayEvents.forEach(event => {
-              const customerId = event.customerId?._id || event.customerId || 'unknown';
-              if (!eventsByCustomer[customerId]) {
-                eventsByCustomer[customerId] = [];
-              }
-              eventsByCustomer[customerId].push(event);
-            });
-            
-            // Sort customers by their row index (for alignment across days)
-            const sortedCustomers = Object.keys(eventsByCustomer).sort((a, b) => {
-              const rowA = customerRowMap?.[a] ?? 999;
-              const rowB = customerRowMap?.[b] ?? 999;
-              return rowA - rowB;
-            });
-            
-            // Flatten events in customer order, with events from same customer stacked
-            // (older events first, so new ones appear below)
-            const orderedEvents = [];
-            sortedCustomers.forEach(customerId => {
-              // Sort events within customer by date (older first, so new ones below)
-              const customerEvents = eventsByCustomer[customerId].sort((a, b) => {
-                const dateA = new Date(a.schedule?.startDate || a.createdAt || 0);
-                const dateB = new Date(b.schedule?.startDate || b.createdAt || 0);
-                return dateA - dateB; // Ascending: older first
-              });
-              orderedEvents.push(...customerEvents);
-            });
-            
-            return orderedEvents.slice(0, 10).map((event) => (
+          {dayEvents.slice(0, 10).map((event) => (
               <Chip
                 key={event._id}
                 label={event.title}
@@ -541,8 +557,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                   },
                 }}
               />
-            ));
-          })()}
+            ))}
           {dayEvents.length > 10 && (
             <Typography variant="caption" color="text.secondary">
               +{dayEvents.length - 10} more
@@ -731,65 +746,6 @@ function CalendarPageNew() {
     ];
   }, [currentDate]);
 
-  // Calculate customer row map for alignment across days
-  const customerRowMap = useMemo(() => {
-    const map = {};
-    let currentRow = 0;
-    
-    // Get all days across all visible months
-    const allDays = months.flatMap(monthDate => {
-      const monthStart = startOfMonth(monthDate);
-      const monthEnd = endOfMonth(monthDate);
-      const calendarStart = startOfWeek(monthStart);
-      const calendarEnd = endOfWeek(monthEnd);
-      return eachDayOfInterval({ start: calendarStart, end: calendarEnd });
-    });
-    
-    // Collect all unique customers with their earliest appearance
-    const customerFirstAppearance = new Map();
-    
-    allDays.forEach(date => {
-      scheduledJobs.forEach(job => {
-        if (!job.schedule?.startDate) return;
-        const startDate = new Date(job.schedule.startDate);
-        const endDate = job.schedule.endDate ? new Date(job.schedule.endDate) : startDate;
-        
-        const dateStr = format(date, 'yyyy-MM-dd');
-        const startStr = format(startDate, 'yyyy-MM-dd');
-        const endStr = format(endDate, 'yyyy-MM-dd');
-        
-        if (dateStr >= startStr && dateStr <= endStr) {
-          const customerId = job.customerId?._id || job.customerId || 'unknown';
-          if (!customerFirstAppearance.has(customerId)) {
-            customerFirstAppearance.set(customerId, date);
-          } else {
-            // Keep the earliest date
-            const existingDate = customerFirstAppearance.get(customerId);
-            if (date < existingDate) {
-              customerFirstAppearance.set(customerId, date);
-            }
-          }
-        }
-      });
-    });
-    
-    // Sort customers by their first appearance date, then assign row indices
-    const sortedCustomers = Array.from(customerFirstAppearance.entries())
-      .sort((a, b) => {
-        // Sort by date first
-        const dateCompare = a[1] - b[1];
-        if (dateCompare !== 0) return dateCompare;
-        // If same date, sort by customer ID for consistency
-        return String(a[0]).localeCompare(String(b[0]));
-      });
-    
-    sortedCustomers.forEach(([customerId]) => {
-      map[customerId] = currentRow++;
-    });
-    
-    return map;
-  }, [scheduledJobs, months]);
-
   const handleDayClick = (date) => {
     if (!canModifyCalendar()) {
       toast.error('You do not have permission to create or modify calendar events');
@@ -896,7 +852,6 @@ function CalendarPageNew() {
               onDayClick={handleDayClick}
               onEventClick={handleEventClick}
               onEventDelete={handleEventDelete}
-              customerRowMap={customerRowMap}
             />
           ))}
         </Box>
