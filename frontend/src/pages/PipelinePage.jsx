@@ -6,6 +6,7 @@ import {
   CircularProgress,
   Paper,
   IconButton,
+  useTheme,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -26,6 +27,7 @@ import AddJobModal from '../components/jobs/AddJobModal';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function PipelinePage() {
+  const theme = useTheme();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
@@ -153,8 +155,9 @@ function PipelinePage() {
                   sx={{
                     borderRadius: '16px',
                     p: 3,
-                    background: 'white',
-                    boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+                    boxShadow: theme.palette.mode === 'dark'
+                      ? '0 2px 12px rgba(0, 0, 0, 0.3)'
+                      : '0 2px 12px rgba(0, 0, 0, 0.06)',
                     cursor: 'pointer',
                     textAlign: 'center',
                     '&:hover': {
@@ -165,7 +168,7 @@ function PipelinePage() {
                   <Typography 
                     variant="body1" 
                     sx={{ 
-                      color: '#FF6B35',
+                      color: theme.palette.mode === 'dark' ? '#FF8A65' : '#FF6B35',
                       fontWeight: 600,
                     }}
                   >
@@ -178,8 +181,9 @@ function PipelinePage() {
                   sx={{
                     borderRadius: '16px',
                     p: 3,
-                    background: 'white',
-                    boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+                    boxShadow: theme.palette.mode === 'dark'
+                      ? '0 2px 12px rgba(0, 0, 0, 0.3)'
+                      : '0 2px 12px rgba(0, 0, 0, 0.06)',
                   }}
                 >
                   <TodoList
@@ -223,8 +227,9 @@ function PipelinePage() {
                   sx={{
                     borderRadius: '16px',
                     p: 3,
-                    background: 'white',
-                    boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+                    boxShadow: theme.palette.mode === 'dark'
+                      ? '0 2px 12px rgba(0, 0, 0, 0.3)'
+                      : '0 2px 12px rgba(0, 0, 0, 0.06)',
                     cursor: 'pointer',
                     textAlign: 'center',
                     '&:hover': {
@@ -235,7 +240,7 @@ function PipelinePage() {
                   <Typography 
                     variant="body1" 
                     sx={{ 
-                      color: '#FF6B35',
+                      color: theme.palette.mode === 'dark' ? '#FF8A65' : '#FF6B35',
                       fontWeight: 600,
                     }}
                   >
@@ -248,8 +253,9 @@ function PipelinePage() {
                   sx={{
                     borderRadius: '16px',
                     p: 3,
-                    background: 'white',
-                    boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+                    boxShadow: theme.palette.mode === 'dark'
+                      ? '0 2px 12px rgba(0, 0, 0, 0.3)'
+                      : '0 2px 12px rgba(0, 0, 0, 0.06)',
                   }}
                 >
                   <AppointmentList

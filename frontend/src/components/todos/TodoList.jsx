@@ -143,7 +143,7 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCoun
               />
               
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="body1" sx={{ fontWeight: 400, color: '#263238' }}>
+                <Typography variant="body1" sx={{ fontWeight: 400 }}>
                   {todo.customerId?.name 
                     ? `${todo.title} - ${todo.description} | ${todo.customerId.name}`
                     : `${todo.title} - ${todo.description}`

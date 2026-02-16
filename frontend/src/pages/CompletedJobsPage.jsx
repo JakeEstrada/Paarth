@@ -9,6 +9,7 @@ import {
   AccordionSummary,
   AccordionDetails,
   Chip,
+  useTheme,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import axios from 'axios';
@@ -18,6 +19,7 @@ import JobDetailModal from '../components/jobs/JobDetailModal';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function CompletedJobsPage() {
+  const theme = useTheme();
   const [completedJobs, setCompletedJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
@@ -129,7 +131,7 @@ function CompletedJobsPage() {
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                      <Typography variant="h6" sx={{ color: '#43A047', fontWeight: 500 }}>
+                      <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 500 }}>
                         {formatCurrency(getTotalValue(group.jobs))}
                       </Typography>
                     </Box>
@@ -177,15 +179,15 @@ function CompletedJobsPage() {
                             {job.customerId?.name || 'Unknown Customer'}
                           </Typography>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5 }}>
-                            <Typography variant="h6" sx={{ color: '#43A047', fontWeight: 500 }}>
+                            <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 500 }}>
                               {formatCurrency(job.valueContracted || job.valueEstimated)}
                             </Typography>
                             <Chip
                               label="Completed"
                               size="small"
                               sx={{
-                                backgroundColor: '#43A04715',
-                                color: '#43A047',
+                                backgroundColor: theme.palette.mode === 'dark' ? 'rgba(67, 160, 71, 0.3)' : '#43A04715',
+                                color: 'success.main',
                                 fontSize: '0.7rem',
                                 fontWeight: 600,
                               }}

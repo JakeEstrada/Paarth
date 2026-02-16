@@ -22,6 +22,7 @@ import {
   Menu,
   ListItemIcon,
   ListItemText,
+  useTheme,
 } from '@mui/material';
 import {
   ChevronLeft as ChevronLeftIcon,
@@ -396,6 +397,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
 
 // Calendar Day Component
 function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete }) {
+  const theme = useTheme();
   const [contextMenu, setContextMenu] = useState(null);
   const [contextMenuEvent, setContextMenuEvent] = useState(null);
 
@@ -444,15 +446,19 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
         sx={{
           aspectRatio: '1 / 1', // Make it square
           p: 1,
-          border: '1px solid #e0e0e0',
-          backgroundColor: isCurrentMonth ? 'white' : '#fafafa',
+          border: `1px solid ${theme.palette.divider}`,
+          backgroundColor: isCurrentMonth 
+            ? theme.palette.background.paper 
+            : (theme.palette.mode === 'dark' ? '#1A1A1A' : '#fafafa'),
           opacity: isCurrentMonth ? 1 : 0.6,
           cursor: 'pointer',
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
           '&:hover': {
-            backgroundColor: isCurrentMonth ? '#f5f5f5' : '#f0f0f0',
+            backgroundColor: isCurrentMonth 
+              ? (theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5') 
+              : (theme.palette.mode === 'dark' ? '#1E1E1E' : '#f0f0f0'),
           },
         }}
         onClick={() => onDayClick(date)}
@@ -613,6 +619,7 @@ function ScheduledJobCard({ job, onJobClick, onJobDelete }) {
 }
 
 function CalendarPageNew() {
+  const theme = useTheme();
   const { canModifyCalendar, canViewCalendar } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [benchJobs, setBenchJobs] = useState([]);
@@ -763,8 +770,8 @@ function CalendarPageNew() {
               sx={{
                 p: 1,
                 textAlign: 'center',
-                backgroundColor: '#f5f5f5',
-                border: '1px solid #e0e0e0',
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
+                border: `1px solid ${theme.palette.divider}`,
                 fontWeight: 600,
               }}
             >
@@ -846,8 +853,8 @@ function CalendarPageNew() {
       <Box
         sx={{
           flexShrink: 0,
-          backgroundColor: 'white',
-          borderTop: '3px solid #e0e0e0',
+          backgroundColor: theme.palette.background.paper,
+          borderTop: `3px solid ${theme.palette.divider}`,
           p: isBenchMinimized ? 0 : 2,
           height: isBenchMinimized ? '40px' : `${benchHeight}px`,
           overflow: isBenchMinimized ? 'hidden' : 'auto',
@@ -882,10 +889,10 @@ function CalendarPageNew() {
             }}
             size="small"
             sx={{
-              backgroundColor: 'white',
-              border: '1px solid #e0e0e0',
+              backgroundColor: theme.palette.background.paper,
+              border: `1px solid ${theme.palette.divider}`,
               '&:hover': {
-                backgroundColor: '#f5f5f5',
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
               },
             }}
             title={isBenchMinimized ? 'Expand Bench' : 'Minimize Bench'}
@@ -966,7 +973,7 @@ function CalendarPageNew() {
               height: '100%',
               cursor: 'pointer',
               '&:hover': {
-                backgroundColor: '#f5f5f5',
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
               },
             }}
             onClick={() => setIsBenchMinimized(false)}

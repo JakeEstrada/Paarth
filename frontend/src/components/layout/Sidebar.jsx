@@ -9,6 +9,7 @@ import {
   Box,
   Typography,
   Divider,
+  useTheme,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -47,6 +48,7 @@ const archiveItems = [
 function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
+  const theme = useTheme();
   const { isAdmin } = useAuth();
 
   const isActive = (path) => {
@@ -62,8 +64,8 @@ function Sidebar() {
         '& .MuiDrawer-paper': {
           width: DRAWER_WIDTH,
           boxSizing: 'border-box',
-          borderRight: '1px solid #E0E0E0',
-          backgroundColor: '#FAFAFA',
+          borderRight: `1px solid ${theme.palette.divider}`,
+          backgroundColor: theme.palette.mode === 'dark' ? '#1E1E1E' : '#FAFAFA',
         },
       }}
     >
@@ -73,7 +75,7 @@ function Sidebar() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderBottom: '1px solid #E0E0E0',
+          borderBottom: `1px solid ${theme.palette.divider}`,
         }}
       >
         <Box
@@ -99,24 +101,30 @@ function Sidebar() {
                 mb: 0.5,
                 borderRadius: '8px',
                 '&.Mui-selected': {
-                  backgroundColor: '#E3F2FD',
-                  color: '#1976D2',
+                  backgroundColor: theme.palette.mode === 'dark' 
+                    ? 'rgba(25, 118, 210, 0.16)' 
+                    : '#E3F2FD',
+                  color: theme.palette.primary.main,
                   '&:hover': {
-                    backgroundColor: '#BBDEFB',
+                    backgroundColor: theme.palette.mode === 'dark'
+                      ? 'rgba(25, 118, 210, 0.24)'
+                      : '#BBDEFB',
                   },
                   '& .MuiListItemIcon-root': {
-                    color: '#1976D2',
+                    color: theme.palette.primary.main,
                   },
                 },
                 '&:hover': {
-                  backgroundColor: '#F5F5F5',
+                  backgroundColor: theme.palette.mode === 'dark'
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : '#F5F5F5',
                 },
               }}
             >
               <ListItemIcon
                 sx={{
                   minWidth: 40,
-                  color: isActive(item.path) ? '#1976D2' : 'inherit',
+                  color: isActive(item.path) ? theme.palette.primary.main : 'inherit',
                 }}
               >
                 {item.icon}
@@ -141,17 +149,23 @@ function Sidebar() {
                 mb: 0.5,
                 borderRadius: '8px',
                 '&.Mui-selected': {
-                  backgroundColor: '#E3F2FD',
-                  color: '#1976D2',
+                  backgroundColor: theme.palette.mode === 'dark' 
+                    ? 'rgba(25, 118, 210, 0.16)' 
+                    : '#E3F2FD',
+                  color: theme.palette.primary.main,
                   '&:hover': {
-                    backgroundColor: '#BBDEFB',
+                    backgroundColor: theme.palette.mode === 'dark'
+                      ? 'rgba(25, 118, 210, 0.24)'
+                      : '#BBDEFB',
                   },
                   '& .MuiListItemIcon-root': {
-                    color: '#1976D2',
+                    color: theme.palette.primary.main,
                   },
                 },
                 '&:hover': {
-                  backgroundColor: '#F5F5F5',
+                  backgroundColor: theme.palette.mode === 'dark'
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : '#F5F5F5',
                 },
               }}
             >
@@ -184,7 +198,7 @@ function Sidebar() {
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
             fontWeight: 600,
-            color: '#757575',
+            color: theme.palette.text.secondary,
             fontSize: '0.75rem',
           }}
         >
@@ -203,24 +217,30 @@ function Sidebar() {
                 mb: 0.5,
                 borderRadius: '8px',
                 '&.Mui-selected': {
-                  backgroundColor: '#E3F2FD',
-                  color: '#1976D2',
+                  backgroundColor: theme.palette.mode === 'dark' 
+                    ? 'rgba(25, 118, 210, 0.16)' 
+                    : '#E3F2FD',
+                  color: theme.palette.primary.main,
                   '&:hover': {
-                    backgroundColor: '#BBDEFB',
+                    backgroundColor: theme.palette.mode === 'dark'
+                      ? 'rgba(25, 118, 210, 0.24)'
+                      : '#BBDEFB',
                   },
                   '& .MuiListItemIcon-root': {
-                    color: '#1976D2',
+                    color: theme.palette.primary.main,
                   },
                 },
                 '&:hover': {
-                  backgroundColor: '#F5F5F5',
+                  backgroundColor: theme.palette.mode === 'dark'
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : '#F5F5F5',
                 },
               }}
             >
               <ListItemIcon
                 sx={{
                   minWidth: 40,
-                  color: isActive(item.path) ? '#1976D2' : 'inherit',
+                  color: isActive(item.path) ? theme.palette.primary.main : 'inherit',
                 }}
               >
                 {item.icon}
@@ -246,7 +266,7 @@ function Sidebar() {
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
             fontWeight: 600,
-            color: '#757575',
+            color: theme.palette.text.secondary,
             fontSize: '0.75rem',
           }}
         >
@@ -264,17 +284,23 @@ function Sidebar() {
               mb: 0.5,
               borderRadius: '8px',
               '&.Mui-selected': {
-                backgroundColor: '#FFF3E0',
+                backgroundColor: theme.palette.mode === 'dark'
+                  ? 'rgba(245, 124, 0, 0.16)'
+                  : '#FFF3E0',
                 color: '#F57C00',
                 '&:hover': {
-                  backgroundColor: '#FFE0B2',
+                  backgroundColor: theme.palette.mode === 'dark'
+                    ? 'rgba(245, 124, 0, 0.24)'
+                    : '#FFE0B2',
                 },
                 '& .MuiListItemIcon-root': {
                   color: '#F57C00',
                 },
               },
               '&:hover': {
-                backgroundColor: '#F5F5F5',
+                backgroundColor: theme.palette.mode === 'dark'
+                  ? 'rgba(255, 255, 255, 0.08)'
+                  : '#F5F5F5',
               },
             }}
           >

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Card, CardContent, Typography, Paper, Button } from '@mui/material';
+import { Box, Card, CardContent, Typography, Paper, Button, useTheme } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -49,6 +49,7 @@ const EXECUTION_PHASE = [
 ];
 
 function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobClick, onJobContextMenu }) {
+  const theme = useTheme();
   const { canModifyPipeline } = useAuth();
   const [draggedOverStage, setDraggedOverStage] = useState(null);
 
@@ -129,26 +130,34 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
           flex: '1 1 0',
           maxWidth: '100%',
           transition: 'all 0.2s ease',
-          backgroundColor: isDraggedOver ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+          backgroundColor: isDraggedOver 
+            ? theme.palette.mode === 'dark' 
+              ? 'rgba(25, 118, 210, 0.2)' 
+              : 'rgba(25, 118, 210, 0.08)' 
+            : 'transparent',
           borderRadius: isDraggedOver ? '8px' : '0',
-          border: isDraggedOver ? '2px dashed #1976D2' : '2px solid transparent',
+          border: isDraggedOver ? `2px dashed ${theme.palette.primary.main}` : '2px solid transparent',
           p: isDraggedOver ? 1 : 0,
         }}
       >
         {/* Column Header */}
         <Card
           sx={{
-            background: 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
+            background: theme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, #2A2A2A 0%, #1E1E1E 100%)'
+              : 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
             borderRadius: '12px',
             mb: 1.5,
-            boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
+            boxShadow: theme.palette.mode === 'dark'
+              ? '0 1px 4px rgba(0, 0, 0, 0.3)'
+              : '0 1px 4px rgba(0, 0, 0, 0.04)',
           }}
         >
           <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
             <Typography
               variant="caption"
               sx={{
-                color: '#455A64',
+                color: theme.palette.text.secondary,
                 fontWeight: 500,
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
@@ -162,13 +171,13 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box
                 sx={{
-                  background: 'white',
+                  background: theme.palette.mode === 'dark' ? '#424242' : 'white',
                   px: 1,
                   py: 0.25,
                   borderRadius: '12px',
                   fontSize: '0.75rem',
                   fontWeight: 500,
-                  color: '#546E7A',
+                  color: theme.palette.text.secondary,
                 }}
               >
                 {count}
@@ -178,7 +187,7 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
                 sx={{
                   fontSize: '0.875rem',
                   fontWeight: 500,
-                  color: '#1976D2',
+                  color: theme.palette.primary.main,
                 }}
               >
                 ${Math.round(value / 1000)}K
@@ -206,7 +215,9 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
               sx={{
                 py: 3,
                 textAlign: 'center',
-                color: isDraggedOver ? '#1976D2' : '#B0BEC5',
+                color: isDraggedOver 
+                  ? theme.palette.primary.main 
+                  : theme.palette.text.disabled,
                 fontSize: '0.75rem',
                 fontWeight: isDraggedOver ? 600 : 400,
                 transition: 'all 0.2s ease',
@@ -228,7 +239,7 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
         sx={{
           fontSize: '1rem',
           fontWeight: 600,
-          color: '#263238',
+          color: theme.palette.text.primary,
           mb: 1.5,
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
@@ -247,10 +258,10 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
             height: 6,
           },
           '&::-webkit-scrollbar-track': {
-            background: '#F5F7FA',
+            background: theme.palette.mode === 'dark' ? '#2A2A2A' : '#F5F7FA',
           },
           '&::-webkit-scrollbar-thumb': {
-            background: '#CFD8DC',
+            background: theme.palette.mode === 'dark' ? '#616161' : '#CFD8DC',
             borderRadius: '3px',
           },
         }}
@@ -266,11 +277,9 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
       sx={{
         borderRadius: '20px',
         p: 3,
-        background: 'white',
-        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
       }}
     >
-      <Box sx={{ mb: 3, pb: 2, borderBottom: '1px solid #ECEFF1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ mb: 3, pb: 2, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {onNewJobClick && (
             <Button

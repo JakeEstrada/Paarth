@@ -1,4 +1,4 @@
-import { Box } from '@mui/material';
+import { Box, useTheme } from '@mui/material';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import MainLayout from './components/layout/MainLayout';
@@ -24,6 +24,7 @@ import DashboardPage from './pages/DashboardPage';
 
 function App() {
   const { user, loading } = useAuth();
+  const theme = useTheme();
 
   if (loading) {
     return null; // Loading handled by ProtectedRoute
@@ -33,7 +34,9 @@ function App() {
     <Box
       sx={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
+        background: theme.palette.mode === 'dark'
+          ? '#121212'
+          : 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
       }}
     >
       <Routes>

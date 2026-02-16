@@ -13,6 +13,7 @@ import {
   DialogContent,
   DialogActions,
   Checkbox,
+  useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -27,6 +28,7 @@ import toast from 'react-hot-toast';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function DeveloperTasksPage() {
+  const theme = useTheme();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
@@ -213,7 +215,7 @@ function DeveloperTasksPage() {
                 />
 
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="body1" sx={{ fontWeight: 500, color: '#263238' }}>
+                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
                     {task.title}
                   </Typography>
                   {task.description && (
@@ -275,7 +277,7 @@ function DeveloperTasksPage() {
                   checkedIcon={<CheckCircleIcon />}
                   checked={true}
                   onChange={() => handleToggleComplete(task.id)}
-                  sx={{ color: '#43A047' }}
+                  sx={{ color: 'success.main' }}
                 />
 
                 <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -283,7 +285,6 @@ function DeveloperTasksPage() {
                     variant="body1"
                     sx={{
                       fontWeight: 400,
-                      color: '#263238',
                       textDecoration: 'line-through',
                     }}
                   >

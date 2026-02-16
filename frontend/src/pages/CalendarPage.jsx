@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  useTheme,
 } from '@mui/material';
 import {
   DragIndicator as DragIndicatorIcon,
@@ -408,7 +409,7 @@ function MultiDayJobBar({ job, calendarDays, onResize, onMove, canModify = true 
                 width: '6px',
                 height: '6px',
                 borderRadius: '50%',
-                backgroundColor: 'white',
+                backgroundColor: theme.palette.background.paper,
                 mr: 0.5,
                 flexShrink: 0,
               }}
@@ -472,6 +473,7 @@ function MultiDayJobBar({ job, calendarDays, onResize, onMove, canModify = true 
 
 // Calendar Day Component
 function CalendarDay({ date, scheduledJobs, onDrop, onJobMove, onJobResize, isCurrentMonth, isLastInRow, canModify = true }) {
+  const theme = useTheme();
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDrop = (e) => {
@@ -553,14 +555,18 @@ function CalendarDay({ date, scheduledJobs, onDrop, onJobMove, onJobResize, isCu
       sx={{
         minHeight: 100,
         p: 1,
-        borderRight: isLastInRow ? 'none' : '1px solid #e0e0e0',
-        borderBottom: '1px solid #e0e0e0',
-        backgroundColor: isDragOver ? '#E3F2FD' : isCurrentMonth ? 'white' : '#fafafa',
+        borderRight: isLastInRow ? 'none' : `1px solid ${theme.palette.divider}`,
+        borderBottom: `1px solid ${theme.palette.divider}`,
+        backgroundColor: isDragOver 
+          ? (theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.2)' : '#E3F2FD')
+          : (isCurrentMonth ? theme.palette.background.paper : (theme.palette.mode === 'dark' ? '#1A1A1A' : '#fafafa')),
         opacity: isCurrentMonth ? 1 : 0.5,
         transition: 'background-color 0.2s',
         position: 'relative',
         '&:hover': {
-          backgroundColor: isCurrentMonth ? '#f5f5f5' : '#f0f0f0',
+          backgroundColor: isCurrentMonth 
+            ? (theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5')
+            : (theme.palette.mode === 'dark' ? '#1E1E1E' : '#f0f0f0'),
         },
       }}
       onDrop={canModify ? handleDrop : undefined}
@@ -584,6 +590,7 @@ function CalendarDay({ date, scheduledJobs, onDrop, onJobMove, onJobResize, isCu
 }
 
 function CalendarPage() {
+  const theme = useTheme();
   const { canModifyCalendar } = useAuth();
   const [benchJobs, setBenchJobs] = useState([]);
   const [scheduledJobs, setScheduledJobs] = useState([]);
@@ -878,13 +885,13 @@ function CalendarPage() {
       flexDirection: 'column', 
       height: '100vh', 
       overflow: 'hidden',
-      backgroundColor: '#f5f5f5'
+      backgroundColor: theme.palette.background.default
     }}>
       {/* Calendar Header */}
       <Box sx={{ 
         p: 2, 
-        backgroundColor: 'white', 
-        borderBottom: '1px solid #e0e0e0',
+        backgroundColor: theme.palette.background.paper, 
+        borderBottom: `1px solid ${theme.palette.divider}`,
         flexShrink: 0,
         display: 'flex',
         justifyContent: 'space-between',
@@ -961,7 +968,7 @@ function CalendarPage() {
             );
 
             return (
-              <Box key={monthIndex} sx={{ backgroundColor: 'white', borderRadius: 2, p: 2, boxShadow: 1 }}>
+              <Box key={monthIndex} sx={{ backgroundColor: theme.palette.background.paper, borderRadius: 2, p: 2, boxShadow: 1 }}>
                 <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}>
                   {format(month, 'MMMM yyyy')}
                 </Typography>
@@ -969,7 +976,7 @@ function CalendarPage() {
                   display: 'grid', 
                   gridTemplateColumns: 'repeat(7, 1fr)', 
                   gap: 0,
-                  border: '1px solid #e0e0e0',
+                  border: `1px solid ${theme.palette.divider}`,
                   borderRadius: 1,
                   overflow: 'visible', // Changed from 'hidden' to 'visible' so bars can show
                   position: 'relative',
@@ -982,10 +989,10 @@ function CalendarPage() {
                       sx={{
                         p: 1.5,
                         textAlign: 'center',
-                        backgroundColor: '#f5f5f5',
-                        borderRight: '1px solid #e0e0e0',
+                        backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
+                        borderRight: `1px solid ${theme.palette.divider}`,
                         '&:last-child': { borderRight: 'none' },
-                        borderBottom: '1px solid #e0e0e0',
+                        borderBottom: `1px solid ${theme.palette.divider}`,
                       }}
                     >
                       <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
@@ -1038,8 +1045,10 @@ function CalendarPage() {
       <Box 
         sx={{ 
           flexShrink: 0,
-          backgroundColor: isBenchDragOver ? '#E3F2FD' : 'white',
-          borderTop: `2px solid ${isBenchDragOver ? '#1976D2' : '#e0e0e0'}`,
+          backgroundColor: isBenchDragOver 
+            ? (theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.2)' : '#E3F2FD')
+            : theme.palette.background.paper,
+          borderTop: `2px solid ${isBenchDragOver ? theme.palette.primary.main : theme.palette.divider}`,
           p: 2,
           height: `${benchHeight}px`,
           overflowY: 'auto',

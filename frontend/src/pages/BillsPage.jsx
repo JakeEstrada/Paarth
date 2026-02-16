@@ -38,6 +38,7 @@ import toast from 'react-hot-toast';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function BillsPage() {
+  const theme = useTheme();
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -212,7 +213,7 @@ function BillsPage() {
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
-            <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+            <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
               <TableCell sx={{ fontWeight: 700 }}>Title</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Vendor</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Due Day</TableCell>

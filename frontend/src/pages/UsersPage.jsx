@@ -23,6 +23,7 @@ import {
   IconButton,
   Switch,
   FormControlLabel,
+  useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -39,6 +40,7 @@ import { useAuth } from '../context/AuthContext';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function UsersPage() {
+  const theme = useTheme();
   const { user: currentUser, isAdmin, isSuperAdmin } = useAuth();
   const [users, setUsers] = useState([]);
   const [pendingUsers, setPendingUsers] = useState([]);
@@ -268,7 +270,7 @@ function UsersPage() {
           <TableContainer component={Paper} sx={{ mb: 3 }}>
             <Table>
               <TableHead>
-                <TableRow sx={{ backgroundColor: '#fff3e0' }}>
+                <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? 'rgba(245, 124, 0, 0.16)' : '#fff3e0' }}>
                   <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Registered</TableCell>
@@ -316,7 +318,7 @@ function UsersPage() {
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
-            <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+            <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
               <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Role</TableCell>

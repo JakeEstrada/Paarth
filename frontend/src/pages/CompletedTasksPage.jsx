@@ -13,6 +13,7 @@ import {
   MenuItem,
   Paper,
   Divider,
+  useTheme,
 } from '@mui/material';
 import { 
   CheckCircle as CheckCircleIcon,
@@ -53,6 +54,7 @@ const getWeekRange = (date) => {
 };
 
 function CompletedTasksPage() {
+  const theme = useTheme();
   const [allTasks, setAllTasks] = useState([]);
   const [allAppointments, setAllAppointments] = useState([]);
   const [allActivities, setAllActivities] = useState([]);
@@ -312,7 +314,7 @@ function CompletedTasksPage() {
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {/* Week Summary */}
-            <Card sx={{ p: 3, backgroundColor: '#f5f5f5' }}>
+            <Card sx={{ p: 3, backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
               <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
                 Week of {selectedWeek.label}
               </Typography>

@@ -41,6 +41,7 @@ const DAYS = ['Friday', 'Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 
 const PRESETS_STORAGE_KEY = 'payroll_saved_presets';
 
 function PayrollPage() {
+  const theme = useTheme();
   const [employeeName, setEmployeeName] = useState('Dave');
   const [ratePerHour, setRatePerHour] = useState('');
   const [date, setDate] = useState(new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }));
@@ -365,7 +366,7 @@ function PayrollPage() {
                   </TableRow>
                 );
               })}
-              <TableRow sx={{ backgroundColor: '#f5f5f5', '& td': { fontWeight: 700, borderTop: '2px solid #000', fontSize: '9pt', py: 0.5 } }}>
+              <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5', '& td': { fontWeight: 700, borderTop: `2px solid ${theme.palette.divider}`, fontSize: '9pt', py: 0.5 } }}>
                 <TableCell sx={{ borderRight: '1px solid #000' }}>Total</TableCell>
                 <TableCell sx={{ borderRight: '1px solid #000' }}></TableCell>
                 <TableCell sx={{ borderRight: '1px solid #000' }}></TableCell>
@@ -420,7 +421,7 @@ function PayrollPage() {
           </Typography>
         </Box>
 
-        <Box sx={{ mt: 3, p: 2, border: '2px solid #000', backgroundColor: '#f9f9f9' }}>
+        <Box sx={{ mt: 3, p: 2, border: `2px solid ${theme.palette.divider}`, backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f9f9f9' }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, textAlign: 'center', fontSize: '12pt' }}>
             Paycheck Summary
           </Typography>
@@ -443,7 +444,7 @@ function PayrollPage() {
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 5 }}>
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, color: '#1976d2' }}>
+            <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, color: theme.palette.primary.main }}>
               SAN CLEMENTE WOODWORKING
             </Typography>
             <Typography variant="body1" color="text.secondary">
@@ -565,7 +566,7 @@ function PayrollPage() {
           border: '1px solid #e0e0e0',
           borderRadius: 2,
           p: 3,
-          backgroundColor: '#fafafa'
+          backgroundColor: theme.palette.mode === 'dark' ? '#1E1E1E' : '#fafafa'
         }}>
           {/* Flexbox container for all widgets */}
           <Box sx={{ 
@@ -598,7 +599,7 @@ function PayrollPage() {
 
               <Table size="small" sx={{ mb: 4, width: '100%' }}>
                 <TableHead>
-                  <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                  <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
                     <TableCell sx={{ fontWeight: 700, width: '20%' }}>Day</TableCell>
                     <TableCell sx={{ fontWeight: 700, width: '20%' }}>In</TableCell>
                     <TableCell sx={{ fontWeight: 700, width: '20%' }}>Out</TableCell>
@@ -666,7 +667,7 @@ function PayrollPage() {
                       </TableRow>
                     );
                   })}
-                  <TableRow sx={{ backgroundColor: '#e3f2fd', '& td': { fontWeight: 700, borderTop: '2px solid #1976d2' } }}>
+                  <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.16)' : '#e3f2fd', '& td': { fontWeight: 700, borderTop: `2px solid ${theme.palette.primary.main}` } }}>
                     <TableCell sx={{ width: '20%' }}>Total</TableCell>
                     <TableCell sx={{ width: '20%' }}></TableCell>
                     <TableCell sx={{ width: '20%' }}></TableCell>
@@ -722,7 +723,7 @@ function PayrollPage() {
 
               <Table size="small" sx={{ mb: 3, width: '100%' }}>
                 <TableHead>
-                  <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                  <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
                     <TableCell sx={{ fontWeight: 700, width: '50%' }}>Day</TableCell>
                     <TableCell sx={{ fontWeight: 700, width: '50%' }} align="right">Miles</TableCell>
                   </TableRow>
@@ -762,7 +763,7 @@ function PayrollPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  <TableRow sx={{ backgroundColor: '#e3f2fd', '& td': { fontWeight: 700, borderTop: '2px solid #1976d2' } }}>
+                  <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.16)' : '#e3f2fd', '& td': { fontWeight: 700, borderTop: `2px solid ${theme.palette.primary.main}` } }}>
                     <TableCell sx={{ width: '50%' }}>Total</TableCell>
                     <TableCell align="right" sx={{ color: 'primary.main', fontSize: '1.1rem', width: '50%' }}>
                       {totalMiles.toFixed(0)} miles
@@ -772,7 +773,7 @@ function PayrollPage() {
               </Table>
 
               <Box sx={{ mt: 3 }}>
-                <Paper sx={{ p: 2.5, backgroundColor: '#f5f5f5' }}>
+                <Paper sx={{ p: 2.5, backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.95rem' }}>
                       Price per mile
@@ -898,7 +899,7 @@ function PayrollPage() {
               <Card sx={{ 
                 flex: 1,
                 boxShadow: 3,
-                backgroundColor: '#f8f9fa',
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f8f9fa',
                 display: 'flex',
                 flexDirection: 'column'
               }}>

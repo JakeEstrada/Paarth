@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, Typography, Box, Chip } from '@mui/material';
+import { Card, CardContent, Typography, Box, Chip, useTheme } from '@mui/material';
 
 function JobCard({ job, onClick, onContextMenu, canModify = true }) {
+  const theme = useTheme();
   const [daysSinceSent, setDaysSinceSent] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const cardRef = useRef(null);
@@ -91,13 +92,17 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
       onContextMenu={handleContextMenu}
       sx={{
         borderRadius: '8px',
-        boxShadow: '0 1px 4px rgba(0, 0, 0, 0.06)',
+        boxShadow: theme.palette.mode === 'dark'
+          ? '0 1px 4px rgba(0, 0, 0, 0.3)'
+          : '0 1px 4px rgba(0, 0, 0, 0.06)',
         cursor: canModify ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
         transition: 'all 0.2s ease',
-        borderLeft: '3px solid #1976D2',
+        borderLeft: `3px solid ${theme.palette.primary.main}`,
         opacity: isDragging ? 0.5 : 1,
         '&:hover': {
-          boxShadow: '0 4px 12px rgba(25, 118, 210, 0.12)',
+          boxShadow: theme.palette.mode === 'dark'
+            ? '0 4px 12px rgba(25, 118, 210, 0.3)'
+            : '0 4px 12px rgba(25, 118, 210, 0.12)',
           transform: isDragging ? 'none' : 'translateY(-2px)',
         },
       }}
@@ -105,18 +110,18 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
       <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Typography
           variant="body2"
-          sx={{
-            fontSize: '0.875rem',
-            fontWeight: 500,
-            color: '#263238',
-            lineHeight: 1.4,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            mb: (job.stage === 'ESTIMATE_SENT' || job.stage === 'ESTIMATE_IN_PROGRESS') && daysSinceSent !== null ? 0.5 : 0,
-          }}
+            sx={{
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              color: theme.palette.text.primary,
+              lineHeight: 1.4,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              mb: (job.stage === 'ESTIMATE_SENT' || job.stage === 'ESTIMATE_IN_PROGRESS') && daysSinceSent !== null ? 0.5 : 0,
+            }}
           title={job.title}
         >
           {truncateTitle(job.title, 50)}

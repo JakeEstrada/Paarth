@@ -10,6 +10,7 @@ import {
   Container,
   InputAdornment,
   IconButton,
+  useTheme,
 } from '@mui/material';
 import {
   Visibility,
@@ -21,6 +22,7 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 function LoginPage() {
+  const theme = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -52,16 +54,17 @@ function LoginPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'white',
+        backgroundColor: theme.palette.background.default,
         padding: 3,
       }}
     >
       <Container maxWidth="xs">
         <Box 
           sx={{ 
-            border: '1px solid #000',
+            border: `1px solid ${theme.palette.divider}`,
             borderRadius: 0,
             p: 5,
+            backgroundColor: theme.palette.background.paper,
           }}
         >
           <Box sx={{ mb: 4, textAlign: 'center' }}>
@@ -76,10 +79,10 @@ function LoginPage() {
                 mb: 2,
               }}
             />
-            <Typography variant="h5" sx={{ fontWeight: 500, mb: 0.5, color: '#212121' }}>
+            <Typography variant="h5" sx={{ fontWeight: 500, mb: 0.5 }}>
               Sign in
             </Typography>
-            <Typography variant="body2" sx={{ color: '#757575' }}>
+            <Typography variant="body2" color="text.secondary">
               Enter your credentials to continue
             </Typography>
           </Box>
@@ -96,7 +99,7 @@ function LoginPage() {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <PersonIcon sx={{ color: '#9e9e9e', fontSize: 20 }} />
+                  <PersonIcon sx={{ color: theme.palette.text.secondary, fontSize: 20 }} />
                 </InputAdornment>
               ),
             }}
@@ -120,7 +123,7 @@ function LoginPage() {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <LockIcon sx={{ color: '#9e9e9e', fontSize: 20 }} />
+                  <LockIcon sx={{ color: theme.palette.text.secondary, fontSize: 20 }} />
                 </InputAdornment>
               ),
               endAdornment: (
@@ -129,7 +132,7 @@ function LoginPage() {
                     onClick={() => setShowPassword(!showPassword)}
                     edge="end"
                     size="small"
-                    sx={{ color: '#9e9e9e' }}
+                    sx={{ color: theme.palette.text.secondary }}
                   >
                     {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
                   </IconButton>
@@ -157,9 +160,9 @@ function LoginPage() {
               textTransform: 'none',
               borderRadius: 1,
               mb: 3,
-              backgroundColor: '#1976d2',
+              backgroundColor: theme.palette.primary.main,
               '&:hover': {
-                backgroundColor: '#1565c0',
+                backgroundColor: theme.palette.primary.dark,
               },
             }}
           >
@@ -173,30 +176,30 @@ function LoginPage() {
               size="small"
               sx={{ 
                 textTransform: 'none',
-                color: '#757575',
+                color: theme.palette.text.secondary,
                 fontSize: '0.875rem',
                 minWidth: 'auto',
                 '&:hover': {
                   backgroundColor: 'transparent',
-                  color: '#1976d2',
+                  color: theme.palette.primary.main,
                 },
               }}
             >
               Forgot Username?
             </Button>
-            <Typography sx={{ color: '#bdbdbd' }}>•</Typography>
+            <Typography sx={{ color: theme.palette.text.disabled }}>•</Typography>
             <Button
               component={Link}
               to="/forgot-password"
               size="small"
               sx={{ 
                 textTransform: 'none',
-                color: '#757575',
+                color: theme.palette.text.secondary,
                 fontSize: '0.875rem',
                 minWidth: 'auto',
                 '&:hover': {
                   backgroundColor: 'transparent',
-                  color: '#1976d2',
+                  color: theme.palette.primary.main,
                 },
               }}
             >
@@ -205,7 +208,7 @@ function LoginPage() {
           </Box>
 
           <Box sx={{ textAlign: 'center' }}>
-            <Typography variant="body2" sx={{ color: '#757575', mb: 1.5 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
               Don't have an account?
             </Typography>
             <Button
@@ -217,11 +220,10 @@ function LoginPage() {
                 textTransform: 'none',
                 borderRadius: 1,
                 px: 4,
-                borderColor: '#e0e0e0',
-                color: '#424242',
+                borderColor: theme.palette.divider,
                 '&:hover': {
-                  borderColor: '#bdbdbd',
-                  backgroundColor: '#fafafa',
+                  borderColor: theme.palette.divider,
+                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : '#fafafa',
                 },
               }}
             >

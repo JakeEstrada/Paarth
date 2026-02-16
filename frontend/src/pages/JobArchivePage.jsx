@@ -17,6 +17,7 @@ import {
   Menu,
   ListItemIcon,
   ListItemText,
+  useTheme,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, Unarchive as UnarchiveIcon } from '@mui/icons-material';
 import axios from 'axios';
@@ -27,6 +28,7 @@ import JobDetailModal from '../components/jobs/JobDetailModal';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function JobArchivePage() {
+  const theme = useTheme();
   const [deadEstimates, setDeadEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
@@ -277,7 +279,7 @@ function JobArchivePage() {
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                      <Typography variant="h6" sx={{ color: '#1976D2', fontWeight: 500 }}>
+                      <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 500 }}>
                         {formatCurrency(getTotalValue(group.jobs))}
                       </Typography>
                     </Box>
@@ -328,7 +330,7 @@ function JobArchivePage() {
                               {job.customerId?.name || 'Unknown Customer'}
                             </Typography>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5 }}>
-                              <Typography variant="h6" sx={{ color: '#43A047', fontWeight: 500 }}>
+                              <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 500 }}>
                                 {formatCurrency(job.valueEstimated)}
                               </Typography>
                               {daysSince !== null && (
@@ -336,8 +338,8 @@ function JobArchivePage() {
                                   label={`${daysSince} day${daysSince !== 1 ? 's' : ''} old`}
                                   size="small"
                                   sx={{
-                                    backgroundColor: '#D32F2F15',
-                                    color: '#D32F2F',
+                                    backgroundColor: theme.palette.mode === 'dark' ? 'rgba(211, 47, 47, 0.3)' : '#D32F2F15',
+                                    color: 'error.main',
                                     fontSize: '0.7rem',
                                     fontWeight: 600,
                                   }}

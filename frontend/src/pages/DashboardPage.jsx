@@ -15,6 +15,7 @@ import {
   ListItemIcon,
   Divider,
   Button,
+  useTheme,
 } from '@mui/material';
 import {
   AccountTree as JobsIcon,
@@ -37,6 +38,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function DashboardPage() {
   const navigate = useNavigate();
+  const theme = useTheme();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalJobs: 0,
@@ -196,7 +198,13 @@ function DashboardPage() {
       {/* Key Metrics Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+          <Card sx={{ 
+            height: '100%', 
+            background: theme.palette.mode === 'dark' 
+              ? 'linear-gradient(135deg, #424242 0%, #616161 100%)'
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+            color: 'white' 
+          }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
@@ -214,7 +222,13 @@ function DashboardPage() {
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+          <Card sx={{ 
+            height: '100%', 
+            background: theme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, #424242 0%, #616161 100%)'
+              : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', 
+            color: 'white' 
+          }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
@@ -232,7 +246,13 @@ function DashboardPage() {
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
+          <Card sx={{ 
+            height: '100%', 
+            background: theme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, #424242 0%, #616161 100%)'
+              : 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', 
+            color: 'white' 
+          }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
@@ -250,7 +270,13 @@ function DashboardPage() {
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', color: 'white' }}>
+          <Card sx={{ 
+            height: '100%', 
+            background: theme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, #424242 0%, #616161 100%)'
+              : 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', 
+            color: 'white' 
+          }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>

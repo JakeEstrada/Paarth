@@ -26,6 +26,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  useTheme,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -47,6 +48,7 @@ import toast from 'react-hot-toast';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function CustomersPage() {
+  const theme = useTheme();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -508,7 +510,7 @@ function CustomersPage() {
         <TableContainer component={Paper} sx={{ borderRadius: '8px' }}>
           <Table>
             <TableHead>
-              <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+              <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
                 <TableCell>
                   <TableSortLabel
                     active={sortField === 'name'}
