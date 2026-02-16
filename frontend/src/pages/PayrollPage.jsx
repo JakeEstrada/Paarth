@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import {
   Box,
   Paper,
@@ -14,6 +15,15 @@ import {
   Card,
   CardContent,
   Divider,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -22,14 +32,22 @@ import {
   Receipt as ReceiptIcon,
   AccountBalance as PaycheckIcon,
   Add as AddIcon,
+  Save as SaveIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 
 const DAYS = ['Friday', 'Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'];
+
+const PRESETS_STORAGE_KEY = 'payroll_saved_presets';
 
 function PayrollPage() {
   const [employeeName, setEmployeeName] = useState('Dave');
   const [ratePerHour, setRatePerHour] = useState('');
   const [date, setDate] = useState(new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }));
+  const [presetSelect, setPresetSelect] = useState('');
+  const [savedPresets, setSavedPresets] = useState([]);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [presetName, setPresetName] = useState('');
   
   // Work hours - default 6:00 AM - 2:30 PM (600 - 1430)
   const [workHours, setWorkHours] = useState(
@@ -40,6 +58,18 @@ function PayrollPage() {
       breaks: day === 'Saturday' || day === 'Sunday' ? '0' : '30',
     }))
   );
+
+  // Load saved presets from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(PRESETS_STORAGE_KEY);
+    if (saved) {
+      try {
+        setSavedPresets(JSON.parse(saved));
+      } catch (error) {
+        console.error('Error loading saved presets:', error);
+      }
+    }
+  }, []);
 
   // Travel miles
   const [travelMiles, setTravelMiles] = useState(
@@ -169,6 +199,84 @@ function PayrollPage() {
   const handleRemoveReceipt = (index) => {
     const updated = receipts.filter((_, i) => i !== index);
     setReceipts(updated);
+  };
+
+  // Load preset hours
+  const handlePresetChange = (preset) => {
+    if (preset === 'zero') {
+      // All zeros
+      setWorkHours(
+        DAYS.map(day => ({
+          day,
+          in: '0',
+          out: '0',
+          breaks: '0',
+        }))
+      );
+    } else if (preset === 'standard') {
+      // Friday and Mon-Thurs: 600-1430 with 30min break
+      setWorkHours(
+        DAYS.map(day => {
+          if (day === 'Friday' || day === 'Monday' || day === 'Tuesday' || day === 'Wednesday' || day === 'Thursday') {
+            return {
+              day,
+              in: '600',
+              out: '1430',
+              breaks: '30',
+            };
+          } else {
+            // Saturday and Sunday
+            return {
+              day,
+              in: '0',
+              out: '0',
+              breaks: '0',
+            };
+          }
+        })
+      );
+    } else {
+      // Load saved preset
+      const savedPreset = savedPresets.find(p => p.id === preset);
+      if (savedPreset) {
+        setWorkHours(savedPreset.hours);
+      }
+    }
+    // Reset the select after loading
+    setPresetSelect('');
+  };
+
+  // Save current hours as a new preset
+  const handleSavePreset = () => {
+    if (!presetName.trim()) {
+      return;
+    }
+
+    const newPreset = {
+      id: Date.now().toString(),
+      name: presetName.trim(),
+      hours: [...workHours],
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedPresets = [...savedPresets, newPreset];
+    setSavedPresets(updatedPresets);
+    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
+    
+    setPresetName('');
+    setSaveDialogOpen(false);
+    toast.success(`Preset "${newPreset.name}" saved successfully`);
+  };
+
+  // Delete a saved preset
+  const handleDeletePreset = (presetId, e) => {
+    e.stopPropagation(); // Prevent dropdown from closing
+    if (window.confirm('Are you sure you want to delete this preset?')) {
+      const updatedPresets = savedPresets.filter(p => p.id !== presetId);
+      setSavedPresets(updatedPresets);
+      localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
+      toast.success('Preset deleted');
+    }
   };
 
   // Print functionality
@@ -343,6 +451,67 @@ function PayrollPage() {
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <FormControl size="small" sx={{ minWidth: 250 }}>
+              <InputLabel>Load Hours</InputLabel>
+              <Select
+                label="Load Hours"
+                value={presetSelect}
+                onChange={(e) => {
+                  const preset = e.target.value;
+                  if (preset) {
+                    handlePresetChange(preset);
+                  }
+                }}
+                sx={{ textTransform: 'none' }}
+              >
+                <MenuItem value="zero">Clear All (Set to Zero)</MenuItem>
+                <MenuItem value="standard">Standard Week (Mon-Thurs & Fri: 6:00-14:30, 30min break)</MenuItem>
+                {savedPresets.length > 0 && (
+                  <>
+                    <Divider sx={{ my: 0.5 }} />
+                    {savedPresets.map((preset) => (
+                      <MenuItem 
+                        key={preset.id} 
+                        value={preset.id}
+                        sx={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          pr: 0.5
+                        }}
+                      >
+                        <Box sx={{ flex: 1 }}>{preset.name}</Box>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            handleDeletePreset(preset.id, e);
+                          }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                          }}
+                          sx={{ 
+                            ml: 1,
+                            '&:hover': { backgroundColor: 'error.light', color: 'error.main' }
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </MenuItem>
+                    ))}
+                  </>
+                )}
+              </Select>
+            </FormControl>
+            <Button
+              variant="outlined"
+              startIcon={<SaveIcon />}
+              onClick={() => setSaveDialogOpen(true)}
+              sx={{ textTransform: 'none', borderRadius: 2 }}
+            >
+              Save Current Hours
+            </Button>
             <Button
               variant="contained"
               startIcon={<PrintIcon />}
@@ -784,6 +953,47 @@ function PayrollPage() {
           </Box>
         </Box>
       </Box>
+
+      {/* Save Preset Dialog */}
+      <Dialog open={saveDialogOpen} onClose={() => {
+        setSaveDialogOpen(false);
+        setPresetName('');
+      }} maxWidth="sm" fullWidth>
+        <DialogTitle>Save Current Hours as Preset</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Preset Name"
+            fullWidth
+            variant="outlined"
+            value={presetName}
+            onChange={(e) => setPresetName(e.target.value)}
+            placeholder="e.g., Week 1 Schedule, Overtime Week"
+            sx={{ mt: 2 }}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && presetName.trim()) {
+                handleSavePreset();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setSaveDialogOpen(false);
+            setPresetName('');
+          }}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSavePreset} 
+            variant="contained"
+            disabled={!presetName.trim()}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
     </>
   );
