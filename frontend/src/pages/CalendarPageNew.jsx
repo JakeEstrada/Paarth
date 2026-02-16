@@ -396,7 +396,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
 }
 
 // Calendar Day Component
-function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete }) {
+function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete, customerRowMap }) {
   const theme = useTheme();
   const [contextMenu, setContextMenu] = useState(null);
   const [contextMenuEvent, setContextMenuEvent] = useState(null);
@@ -412,6 +412,12 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
     const endStr = format(endDate, 'yyyy-MM-dd');
     
     return dateStr >= startStr && dateStr <= endStr;
+  })
+  // Sort events: older first (new ones appear below)
+  .sort((a, b) => {
+    const dateA = new Date(a.schedule?.startDate || a.createdAt || 0);
+    const dateB = new Date(b.schedule?.startDate || b.createdAt || 0);
+    return dateA - dateB; // Ascending: older first
   });
 
   const handleContextMenu = (e, event) => {
@@ -474,32 +480,72 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           {format(date, 'd')}
         </Typography>
         
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-          {dayEvents.slice(0, 3).map((event) => (
-            <Chip
-              key={event._id}
-              label={event.title}
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEventClick(event);
-              }}
-              onContextMenu={(e) => handleContextMenu(e, event)}
-              sx={{
-                fontSize: '0.7rem',
-                height: 20,
-                backgroundColor: event.color || '#1976D2',
-                color: 'white',
-                '&:hover': {
-                  opacity: 0.8,
-                  transform: 'scale(1.05)',
-                },
-              }}
-            />
-          ))}
-          {dayEvents.length > 3 && (
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: 0.5,
+          position: 'relative',
+          flex: 1,
+          overflow: 'hidden'
+        }}>
+          {(() => {
+            // Group events by customer and sort by customer row, then by date
+            const eventsByCustomer = {};
+            dayEvents.forEach(event => {
+              const customerId = event.customerId?._id || event.customerId || 'unknown';
+              if (!eventsByCustomer[customerId]) {
+                eventsByCustomer[customerId] = [];
+              }
+              eventsByCustomer[customerId].push(event);
+            });
+            
+            // Sort customers by their row index (for alignment across days)
+            const sortedCustomers = Object.keys(eventsByCustomer).sort((a, b) => {
+              const rowA = customerRowMap?.[a] ?? 999;
+              const rowB = customerRowMap?.[b] ?? 999;
+              return rowA - rowB;
+            });
+            
+            // Flatten events in customer order, with events from same customer stacked
+            // (older events first, so new ones appear below)
+            const orderedEvents = [];
+            sortedCustomers.forEach(customerId => {
+              // Sort events within customer by date (older first, so new ones below)
+              const customerEvents = eventsByCustomer[customerId].sort((a, b) => {
+                const dateA = new Date(a.schedule?.startDate || a.createdAt || 0);
+                const dateB = new Date(b.schedule?.startDate || b.createdAt || 0);
+                return dateA - dateB; // Ascending: older first
+              });
+              orderedEvents.push(...customerEvents);
+            });
+            
+            return orderedEvents.slice(0, 10).map((event) => (
+              <Chip
+                key={event._id}
+                label={event.title}
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEventClick(event);
+                }}
+                onContextMenu={(e) => handleContextMenu(e, event)}
+                sx={{
+                  fontSize: '0.7rem',
+                  height: 20,
+                  backgroundColor: event.color || '#1976D2',
+                  color: 'white',
+                  flexShrink: 0,
+                  '&:hover': {
+                    opacity: 0.8,
+                    transform: 'scale(1.05)',
+                  },
+                }}
+              />
+            ));
+          })()}
+          {dayEvents.length > 10 && (
             <Typography variant="caption" color="text.secondary">
-              +{dayEvents.length - 3} more
+              +{dayEvents.length - 10} more
             </Typography>
           )}
         </Box>
@@ -685,6 +731,65 @@ function CalendarPageNew() {
     ];
   }, [currentDate]);
 
+  // Calculate customer row map for alignment across days
+  const customerRowMap = useMemo(() => {
+    const map = {};
+    let currentRow = 0;
+    
+    // Get all days across all visible months
+    const allDays = months.flatMap(monthDate => {
+      const monthStart = startOfMonth(monthDate);
+      const monthEnd = endOfMonth(monthDate);
+      const calendarStart = startOfWeek(monthStart);
+      const calendarEnd = endOfWeek(monthEnd);
+      return eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+    });
+    
+    // Collect all unique customers with their earliest appearance
+    const customerFirstAppearance = new Map();
+    
+    allDays.forEach(date => {
+      scheduledJobs.forEach(job => {
+        if (!job.schedule?.startDate) return;
+        const startDate = new Date(job.schedule.startDate);
+        const endDate = job.schedule.endDate ? new Date(job.schedule.endDate) : startDate;
+        
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const startStr = format(startDate, 'yyyy-MM-dd');
+        const endStr = format(endDate, 'yyyy-MM-dd');
+        
+        if (dateStr >= startStr && dateStr <= endStr) {
+          const customerId = job.customerId?._id || job.customerId || 'unknown';
+          if (!customerFirstAppearance.has(customerId)) {
+            customerFirstAppearance.set(customerId, date);
+          } else {
+            // Keep the earliest date
+            const existingDate = customerFirstAppearance.get(customerId);
+            if (date < existingDate) {
+              customerFirstAppearance.set(customerId, date);
+            }
+          }
+        }
+      });
+    });
+    
+    // Sort customers by their first appearance date, then assign row indices
+    const sortedCustomers = Array.from(customerFirstAppearance.entries())
+      .sort((a, b) => {
+        // Sort by date first
+        const dateCompare = a[1] - b[1];
+        if (dateCompare !== 0) return dateCompare;
+        // If same date, sort by customer ID for consistency
+        return String(a[0]).localeCompare(String(b[0]));
+      });
+    
+    sortedCustomers.forEach(([customerId]) => {
+      map[customerId] = currentRow++;
+    });
+    
+    return map;
+  }, [scheduledJobs, months]);
+
   const handleDayClick = (date) => {
     if (!canModifyCalendar()) {
       toast.error('You do not have permission to create or modify calendar events');
@@ -791,6 +896,7 @@ function CalendarPageNew() {
               onDayClick={handleDayClick}
               onEventClick={handleEventClick}
               onEventDelete={handleEventDelete}
+              customerRowMap={customerRowMap}
             />
           ))}
         </Box>
