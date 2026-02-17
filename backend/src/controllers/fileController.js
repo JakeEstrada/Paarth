@@ -4,6 +4,45 @@ const Activity = require('../models/Activity');
 const fs = require('fs');
 const path = require('path');
 
+// Get uploads directory - same as in upload.js middleware
+// Use environment variable if set, otherwise use relative path
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
+
+// Helper function to find file path
+function findFilePath(file) {
+  // Try the stored path first (should be absolute from multer)
+  let filePath = file.path;
+  
+  // If path is absolute, use it directly
+  if (path.isAbsolute(filePath)) {
+    if (fs.existsSync(filePath)) {
+      return filePath;
+    }
+  } else {
+    // If relative, try resolving it
+    const resolvedPath = path.resolve(__dirname, '../../', filePath);
+    if (fs.existsSync(resolvedPath)) {
+      return resolvedPath;
+    }
+  }
+  
+  // Fallback: try in uploads directory with just the filename
+  // This works for both local and deployed environments
+  const fallbackPath = path.join(UPLOADS_DIR, file.filename);
+  
+  if (fs.existsSync(fallbackPath)) {
+    return fallbackPath;
+  }
+  
+  // Last resort: try resolving from current working directory
+  const cwdPath = path.resolve(process.cwd(), 'uploads', file.filename);
+  if (fs.existsSync(cwdPath)) {
+    return cwdPath;
+  }
+  
+  return null;
+}
+
 // Upload file
 async function uploadFile(req, res) {
   try {
@@ -39,6 +78,13 @@ async function uploadFile(req, res) {
       }
     }
 
+    // Ensure we store an absolute path
+    // Multer should already provide absolute path, but let's be sure
+    let absolutePath = req.file.path;
+    if (!path.isAbsolute(absolutePath)) {
+      absolutePath = path.resolve(UPLOADS_DIR, req.file.filename);
+    }
+
     const file = new File({
       jobId: job._id,
       customerId: job.customerId,
@@ -46,7 +92,7 @@ async function uploadFile(req, res) {
       originalName: req.file.originalname,
       mimetype: req.file.mimetype,
       size: req.file.size,
-      path: req.file.path,
+      path: absolutePath,
       fileType: fileType,
       uploadedBy: createdBy
     });
@@ -101,14 +147,17 @@ async function downloadFile(req, res) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    if (!fs.existsSync(file.path)) {
+    // Find the file path (with fallback)
+    const filePath = findFilePath(file);
+    
+    if (!filePath) {
       return res.status(404).json({ error: 'File not found on server' });
     }
 
     res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
     res.setHeader('Content-Type', file.mimetype);
 
-    const fileStream = fs.createReadStream(file.path);
+    const fileStream = fs.createReadStream(filePath);
     fileStream.pipe(res);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -124,14 +173,17 @@ async function getFile(req, res) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    if (!fs.existsSync(file.path)) {
+    // Find the file path (with fallback)
+    const filePath = findFilePath(file);
+    
+    if (!filePath) {
       return res.status(404).json({ error: 'File not found on server' });
     }
 
     res.setHeader('Content-Type', file.mimetype);
     res.setHeader('Content-Disposition', `inline; filename="${file.originalName}"`);
 
-    const fileStream = fs.createReadStream(file.path);
+    const fileStream = fs.createReadStream(filePath);
     fileStream.pipe(res);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -147,9 +199,11 @@ async function deleteFile(req, res) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Delete physical file
-    if (fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
+    // Delete physical file - find path with fallback
+    const filePath = findFilePath(file);
+    
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
     }
 
     // Log activity before deleting

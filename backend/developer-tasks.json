@@ -1,5 +1,19 @@
 [
   {
+    "id": "1771295076446",
+    "title": "AI: text to data",
+    "description": "Upload worksheets and prefill the data for new jobs",
+    "completed": false,
+    "createdAt": "2026-02-17T02:24:36.446Z"
+  },
+  {
+    "id": "1771295030634",
+    "title": "AI: NLP",
+    "description": "Chatbot trained on messages emails etc",
+    "completed": false,
+    "createdAt": "2026-02-17T02:23:50.634Z"
+  },
+  {
     "id": "1770238371268",
     "title": "Authentication system",
     "description": "I need to be able to create new users from the super admin .\nUsers will have different tiers of priveleges",
