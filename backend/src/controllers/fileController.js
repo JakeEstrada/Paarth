@@ -10,35 +10,44 @@ const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploa
 
 // Helper function to find file path
 function findFilePath(file) {
-  // Try the stored path first (should be absolute from multer)
-  let filePath = file.path;
+  const pathsToTry = [];
   
-  // If path is absolute, use it directly
-  if (path.isAbsolute(filePath)) {
+  // 1. Try the stored path (should be absolute from multer)
+  if (file.path) {
+    if (path.isAbsolute(file.path)) {
+      pathsToTry.push(file.path);
+    } else {
+      // If relative, resolve it
+      pathsToTry.push(path.resolve(__dirname, '../../', file.path));
+    }
+  }
+  
+  // 2. Try in uploads directory with filename (most reliable)
+  pathsToTry.push(path.join(UPLOADS_DIR, file.filename));
+  
+  // 3. Try resolving from current working directory
+  pathsToTry.push(path.resolve(process.cwd(), 'uploads', file.filename));
+  
+  // 4. Try relative to backend directory
+  pathsToTry.push(path.resolve(__dirname, '../../uploads', file.filename));
+  
+  // Try each path
+  for (const filePath of pathsToTry) {
     if (fs.existsSync(filePath)) {
+      console.log('Found file at:', filePath);
       return filePath;
     }
-  } else {
-    // If relative, try resolving it
-    const resolvedPath = path.resolve(__dirname, '../../', filePath);
-    if (fs.existsSync(resolvedPath)) {
-      return resolvedPath;
-    }
   }
   
-  // Fallback: try in uploads directory with just the filename
-  // This works for both local and deployed environments
-  const fallbackPath = path.join(UPLOADS_DIR, file.filename);
-  
-  if (fs.existsSync(fallbackPath)) {
-    return fallbackPath;
-  }
-  
-  // Last resort: try resolving from current working directory
-  const cwdPath = path.resolve(process.cwd(), 'uploads', file.filename);
-  if (fs.existsSync(cwdPath)) {
-    return cwdPath;
-  }
+  // Log all attempted paths for debugging
+  console.error('File not found. Searched paths:', {
+    storedPath: file.path,
+    filename: file.filename,
+    attemptedPaths: pathsToTry,
+    uploadsDir: UPLOADS_DIR,
+    __dirname: __dirname,
+    cwd: process.cwd()
+  });
   
   return null;
 }
@@ -79,10 +88,26 @@ async function uploadFile(req, res) {
     }
 
     // Ensure we store an absolute path
-    // Multer should already provide absolute path, but let's be sure
+    // Multer's req.file.path should be absolute, but let's verify and fix if needed
     let absolutePath = req.file.path;
+    console.log('Upload - req.file.path:', req.file.path);
+    console.log('Upload - isAbsolute:', path.isAbsolute(absolutePath));
+    console.log('Upload - UPLOADS_DIR:', UPLOADS_DIR);
+    console.log('Upload - filename:', req.file.filename);
+    
     if (!path.isAbsolute(absolutePath)) {
       absolutePath = path.resolve(UPLOADS_DIR, req.file.filename);
+      console.log('Upload - resolved to:', absolutePath);
+    }
+    
+    // Verify the file exists at this path
+    if (!fs.existsSync(absolutePath)) {
+      console.error('Upload - File does not exist at resolved path:', absolutePath);
+      // Try the original path
+      if (fs.existsSync(req.file.path)) {
+        absolutePath = path.resolve(req.file.path);
+        console.log('Upload - Using original path resolved:', absolutePath);
+      }
     }
 
     const file = new File({

@@ -498,6 +498,8 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
       <Paper
         sx={{
           aspectRatio: '1 / 1', // Make it square
+          width: '100%',
+          height: '100%',
           p: 1,
           border: `1px solid ${theme.palette.divider}`,
           backgroundColor: isCurrentMonth 
@@ -508,6 +510,8 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden',
           '&:hover': {
             backgroundColor: isCurrentMonth 
               ? (theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5') 
@@ -842,7 +846,16 @@ function CalendarPageNew() {
         </Box>
 
         {/* Calendar Days Grid */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', flex: 1 }}>
+        <Box sx={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(7, 1fr)', 
+          flex: 1,
+          gap: 0,
+          '& > *': {
+            aspectRatio: '1 / 1',
+            minHeight: 0,
+          }
+        }}>
           {calendarDays.map((date, index) => (
             <CalendarDay
               key={index}
