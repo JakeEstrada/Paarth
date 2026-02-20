@@ -120,7 +120,7 @@ function PipelinePage() {
   return (
     <Box>
       {/* Main Content */}
-      <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 1, sm: 2 } }}>
         {/* Page Header */}
         <Box sx={{ mb: 4 }}>
           <Typography variant="h1" sx={{ mb: 1 }}>
@@ -133,7 +133,7 @@ function PipelinePage() {
 
         {/* Todos and Appointments Section */}
         <Box sx={{ mb: 4 }}>
-          <Box sx={{ display: 'flex', gap: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: { xs: 2, sm: 3 } }}>
             {/* Todos Section */}
             <Box sx={{ flex: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>

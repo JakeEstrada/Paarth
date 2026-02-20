@@ -6,6 +6,8 @@ import {
   Box,
   Menu,
   MenuItem,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
@@ -13,16 +15,19 @@ import {
   Person as PersonIcon,
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
+  Menu as MenuIcon,
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
-function TopBar() {
+function TopBar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useTheme();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [anchorEl, setAnchorEl] = useState(null);
 
   const handleSettingsClick = (event) => {
@@ -49,10 +54,26 @@ function TopBar() {
       position="sticky"
       elevation={0}
     >
-      <Toolbar sx={{ justifyContent: 'space-between', px: 3, minHeight: '48px !important', py: 1 }}>
-        <Typography variant="body2" sx={{ fontSize: '0.875rem', fontWeight: 500 }}>
-          {user?.name || 'User'}
-        </Typography>
+      <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1, sm: 2, md: 3 }, minHeight: '48px !important', py: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {isMobile && (
+            <IconButton
+              onClick={onMenuClick}
+              size="small"
+              sx={{
+                mr: 1,
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                },
+              }}
+            >
+              <MenuIcon fontSize="small" />
+            </IconButton>
+          )}
+          <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, fontWeight: 500 }}>
+            {user?.name || 'User'}
+          </Typography>
+        </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <IconButton
             onClick={toggleColorMode}

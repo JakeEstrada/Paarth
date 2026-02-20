@@ -180,9 +180,20 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
 
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth="sm" 
+      fullWidth
+      sx={{
+        '& .MuiDialog-paper': {
+          m: { xs: 1, sm: 2 },
+          maxHeight: { xs: '95vh', sm: '90vh' },
+        }
+      }}
+    >
       <DialogTitle>{job ? 'Edit Event' : 'Create Event'}</DialogTitle>
-      <DialogContent>
+      <DialogContent sx={{ px: { xs: 2, sm: 3 } }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
           <TextField
             label="Title"
@@ -526,6 +537,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
             fontWeight: isToday(date) ? 700 : 500,
             color: isToday(date) ? 'primary.main' : isCurrentMonth ? 'text.primary' : 'text.secondary',
             mb: 0.5,
+            fontSize: { xs: '0.75rem', sm: '0.875rem' },
           }}
         >
           {format(date, 'd')}
@@ -550,11 +562,14 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                 }}
                 onContextMenu={(e) => handleContextMenu(e, event)}
                 sx={{
-                  fontSize: '0.7rem',
-                  height: 20,
+                  fontSize: { xs: '0.6rem', sm: '0.7rem' },
+                  height: { xs: 18, sm: 20 },
                   backgroundColor: event.color || '#1976D2',
                   color: 'white',
                   flexShrink: 0,
+                  '& .MuiChip-label': {
+                    px: { xs: 0.5, sm: 1 },
+                  },
                   '&:hover': {
                     opacity: 0.8,
                     transform: 'scale(1.05)',
@@ -833,14 +848,14 @@ function CalendarPageNew() {
             <Paper
               key={day}
               sx={{
-                p: 1,
+                p: { xs: 0.5, sm: 1 },
                 textAlign: 'center',
                 backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
                 border: `1px solid ${theme.palette.divider}`,
                 fontWeight: 600,
               }}
             >
-              <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{day}</Typography>
+              <Typography variant="body2" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>{day}</Typography>
             </Paper>
           ))}
         </Box>
@@ -875,15 +890,31 @@ function CalendarPageNew() {
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
-      <Box sx={{ p: 2, borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <IconButton onClick={handlePrevMonth}>
+      <Box sx={{ 
+        p: { xs: 1, sm: 2 }, 
+        borderBottom: '1px solid #e0e0e0', 
+        display: 'flex', 
+        flexDirection: { xs: 'column', sm: 'row' },
+        justifyContent: 'space-between', 
+        alignItems: { xs: 'stretch', sm: 'center' },
+        gap: { xs: 1, sm: 0 }
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap' }}>
+          <IconButton onClick={handlePrevMonth} size="small">
             <ChevronLeftIcon />
           </IconButton>
-          <Typography variant="h5" sx={{ fontWeight: 600, minWidth: 200, textAlign: 'center' }}>
+          <Typography 
+            variant="h5" 
+            sx={{ 
+              fontWeight: 600, 
+              minWidth: { xs: 'auto', sm: 200 }, 
+              textAlign: 'center',
+              fontSize: { xs: '1rem', sm: '1.5rem' }
+            }}
+          >
             {format(currentDate, 'MMMM yyyy')} - {format(addMonths(currentDate, 2), 'MMMM yyyy')}
           </Typography>
-          <IconButton onClick={handleNextMonth}>
+          <IconButton onClick={handleNextMonth} size="small">
             <ChevronRightIcon />
           </IconButton>
           <Button
@@ -891,6 +922,7 @@ function CalendarPageNew() {
             onClick={handleToday}
             variant="outlined"
             size="small"
+            sx={{ display: { xs: 'none', sm: 'flex' } }}
           >
             Today
           </Button>
@@ -904,6 +936,8 @@ function CalendarPageNew() {
               setSelectedJob(null);
               setEventModalOpen(true);
             }}
+            size="small"
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
           >
             Create Event
           </Button>
@@ -911,13 +945,13 @@ function CalendarPageNew() {
       </Box>
 
       {/* Calendar Grid - Three Months Stacked Vertically */}
-      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+      <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 } }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
             <CircularProgress />
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 3 } }}>
             {months.map((monthDate, index) => renderMonth(monthDate, index))}
           </Box>
         )}
@@ -1060,16 +1094,16 @@ function CalendarPageNew() {
             </Typography>
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', gap: 3, height: '100%', mt: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 }, height: '100%', mt: 1 }}>
           {/* Bench Jobs - Need to Schedule */}
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
               Bench ({benchJobs.length})
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
               Jobs ready to schedule. Click to schedule on calendar.
             </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
               {benchJobs.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
                   No jobs on bench
@@ -1095,14 +1129,21 @@ function CalendarPageNew() {
           </Box>
 
           {/* Scheduled Jobs - With Green Checkmark */}
-          <Box sx={{ flex: 1, minWidth: 0, borderLeft: '1px solid #e0e0e0', pl: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+          <Box sx={{ 
+            flex: 1, 
+            minWidth: 0, 
+            borderLeft: { xs: 'none', md: '1px solid #e0e0e0' },
+            borderTop: { xs: '1px solid #e0e0e0', md: 'none' },
+            pl: { xs: 0, md: 3 },
+            pt: { xs: 2, md: 0 }
+          }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
               Scheduled ({scheduledJobs.length})
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
               Jobs with scheduled dates. Click to edit.
             </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
               {scheduledJobs.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
                   No scheduled jobs

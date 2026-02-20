@@ -10,6 +10,7 @@ import {
   Typography,
   Divider,
   useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -45,30 +46,26 @@ const archiveItems = [
   { text: 'Completed Tasks & Appointments', icon: <TasksIcon />, path: '/completed-tasks' },
 ];
 
-function Sidebar() {
+function Sidebar({ mobileOpen, onMobileClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
   const { isAdmin } = useAuth();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const isActive = (path) => {
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
-  return (
-    <Drawer
-      variant="permanent"
-      sx={{
-        width: DRAWER_WIDTH,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: DRAWER_WIDTH,
-          boxSizing: 'border-box',
-          borderRight: `1px solid ${theme.palette.divider}`,
-          backgroundColor: theme.palette.mode === 'dark' ? '#1E1E1E' : '#FAFAFA',
-        },
-      }}
-    >
+  const handleNavigation = (path) => {
+    navigate(path);
+    if (isMobile) {
+      onMobileClose();
+    }
+  };
+
+  const drawerContent = (
+    <>
       <Box
         sx={{
           p: 3,
@@ -94,7 +91,7 @@ function Sidebar() {
         {menuItems.map((item) => (
           <ListItem key={item.path} disablePadding>
             <ListItemButton
-              onClick={() => navigate(item.path)}
+              onClick={() => handleNavigation(item.path)}
               selected={isActive(item.path)}
               sx={{
                 mx: 1,
@@ -142,7 +139,7 @@ function Sidebar() {
         {isAdmin() && (
           <ListItem disablePadding>
             <ListItemButton
-              onClick={() => navigate('/users')}
+              onClick={() => handleNavigation('/users')}
               selected={isActive('/users')}
               sx={{
                 mx: 1,
@@ -210,7 +207,7 @@ function Sidebar() {
         {archiveItems.map((item) => (
           <ListItem key={item.path} disablePadding>
             <ListItemButton
-              onClick={() => navigate(item.path)}
+              onClick={() => handleNavigation(item.path)}
               selected={isActive(item.path)}
               sx={{
                 mx: 1,
@@ -277,7 +274,7 @@ function Sidebar() {
       <List>
         <ListItem disablePadding>
           <ListItemButton
-            onClick={() => navigate('/developer')}
+            onClick={() => handleNavigation('/developer')}
             selected={isActive('/developer')}
             sx={{
               mx: 1,
@@ -322,7 +319,50 @@ function Sidebar() {
           </ListItemButton>
         </ListItem>
       </List>
-    </Drawer>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile drawer */}
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={onMobileClose}
+        ModalProps={{
+          keepMounted: true, // Better open performance on mobile
+        }}
+        sx={{
+          display: { xs: 'block', md: 'none' },
+          '& .MuiDrawer-paper': {
+            boxSizing: 'border-box',
+            width: DRAWER_WIDTH,
+            borderRight: `1px solid ${theme.palette.divider}`,
+            backgroundColor: theme.palette.mode === 'dark' ? '#1E1E1E' : '#FAFAFA',
+          },
+        }}
+      >
+        {drawerContent}
+      </Drawer>
+      
+      {/* Desktop drawer */}
+      <Drawer
+        variant="permanent"
+        sx={{
+          display: { xs: 'none', md: 'block' },
+          width: DRAWER_WIDTH,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: DRAWER_WIDTH,
+            boxSizing: 'border-box',
+            borderRight: `1px solid ${theme.palette.divider}`,
+            backgroundColor: theme.palette.mode === 'dark' ? '#1E1E1E' : '#FAFAFA',
+          },
+        }}
+      >
+        {drawerContent}
+      </Drawer>
+    </>
   );
 }
 

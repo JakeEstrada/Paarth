@@ -440,13 +440,20 @@ function CustomersPage() {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 1, sm: 2, md: 3 } }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 600 }}>
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: { xs: 'column', sm: 'row' },
+        justifyContent: 'space-between', 
+        alignItems: { xs: 'stretch', sm: 'center' },
+        mb: { xs: 2, sm: 3 },
+        gap: { xs: 2, sm: 0 }
+      }}>
+        <Typography variant="h4" sx={{ fontWeight: 600, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
           Customers
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
           <Button
             variant="outlined"
             startIcon={<UploadIcon />}
@@ -507,8 +514,15 @@ function CustomersPage() {
           <CircularProgress />
         </Box>
       ) : (
-        <TableContainer component={Paper} sx={{ borderRadius: '8px' }}>
-          <Table>
+        <TableContainer 
+          component={Paper} 
+          sx={{ 
+            borderRadius: '8px',
+            overflowX: 'auto',
+            maxWidth: '100%',
+          }}
+        >
+          <Table sx={{ minWidth: 650 }}>
             <TableHead>
               <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
                 <TableCell>
