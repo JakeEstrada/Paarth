@@ -3,13 +3,52 @@ const Job = require('../models/Job');
 const Activity = require('../models/Activity');
 const fs = require('fs');
 const path = require('path');
+const { GetObjectCommand } = require('@aws-sdk/client-s3');
+const { s3Client, BUCKET_NAME, isS3Configured } = require('../config/s3');
 
 // Get uploads directory - same as in upload.js middleware
 // Use environment variable if set, otherwise use relative path
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
 
-// Helper function to find file path
-function findFilePath(file) {
+// Helper function to check if file is stored in S3
+function isS3File(file) {
+  // Check if file has s3Key or if path looks like an S3 key (starts with 'uploads/')
+  return file.s3Key || (file.path && file.path.startsWith('uploads/') && !path.isAbsolute(file.path));
+}
+
+// Helper function to get file stream from S3 or local filesystem
+async function getFileStream(file) {
+  if (isS3Configured() && isS3File(file)) {
+    // Get file from S3
+    const s3Key = file.s3Key || file.path;
+    console.log('Fetching file from S3:', s3Key);
+    
+    try {
+      const command = new GetObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: s3Key,
+      });
+      
+      const response = await s3Client.send(command);
+      return response.Body; // This is a stream
+    } catch (error) {
+      console.error('Error fetching file from S3:', error);
+      throw error;
+    }
+  } else {
+    // Get file from local filesystem
+    const filePath = findLocalFilePath(file);
+    if (!filePath) {
+      throw new Error('File not found on server');
+    }
+    
+    console.log('Reading file from local filesystem:', filePath);
+    return fs.createReadStream(filePath);
+  }
+}
+
+// Helper function to find file path on local filesystem (fallback)
+function findLocalFilePath(file) {
   const pathsToTry = [];
   
   // 1. Try the stored path (should be absolute from multer)
@@ -64,14 +103,40 @@ async function uploadFile(req, res) {
     const { jobId, fileType = 'other' } = req.body;
 
     if (!jobId) {
-      // Delete uploaded file if jobId is missing
-      fs.unlinkSync(req.file.path);
+      // Delete uploaded file if jobId is missing (only for local files)
+      if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      } else if (isS3Configured() && req.file.key) {
+        // Delete from S3 if uploaded there
+        const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+        try {
+          await s3Client.send(new DeleteObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: req.file.key,
+          }));
+        } catch (s3Error) {
+          console.error('Error deleting file from S3:', s3Error);
+        }
+      }
       return res.status(400).json({ error: 'Job ID is required' });
     }
 
     const job = await Job.findById(jobId);
     if (!job) {
-      fs.unlinkSync(req.file.path);
+      // Delete uploaded file if job not found
+      if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      } else if (isS3Configured() && req.file.key) {
+        const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+        try {
+          await s3Client.send(new DeleteObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: req.file.key,
+          }));
+        } catch (s3Error) {
+          console.error('Error deleting file from S3:', s3Error);
+        }
+      }
       return res.status(404).json({ error: 'Job not found' });
     }
 
@@ -82,42 +147,74 @@ async function uploadFile(req, res) {
       if (defaultUser) {
         createdBy = defaultUser._id;
       } else {
-        fs.unlinkSync(req.file.path);
+        // Delete uploaded file if no user available
+        if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        } else if (isS3Configured() && req.file.key) {
+          const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+          try {
+            await s3Client.send(new DeleteObjectCommand({
+              Bucket: BUCKET_NAME,
+              Key: req.file.key,
+            }));
+          } catch (s3Error) {
+            console.error('Error deleting file from S3:', s3Error);
+          }
+        }
         return res.status(400).json({ error: 'No user available' });
       }
     }
 
-    // Ensure we store an absolute path
-    // Multer's req.file.path should be absolute, but let's verify and fix if needed
-    let absolutePath = req.file.path;
-    console.log('Upload - req.file.path:', req.file.path);
-    console.log('Upload - isAbsolute:', path.isAbsolute(absolutePath));
-    console.log('Upload - UPLOADS_DIR:', UPLOADS_DIR);
-    console.log('Upload - filename:', req.file.filename);
+    // Determine file location based on storage type
+    let filePath;
+    let s3Key;
     
-    if (!path.isAbsolute(absolutePath)) {
-      absolutePath = path.resolve(UPLOADS_DIR, req.file.filename);
-      console.log('Upload - resolved to:', absolutePath);
-    }
-    
-    // Verify the file exists at this path
-    if (!fs.existsSync(absolutePath)) {
-      console.error('Upload - File does not exist at resolved path:', absolutePath);
-      // Try the original path
-      if (fs.existsSync(req.file.path)) {
-        absolutePath = path.resolve(req.file.path);
-        console.log('Upload - Using original path resolved:', absolutePath);
+    if (isS3Configured() && (req.file.location || req.file.key)) {
+      // File was uploaded to S3 (multer-s3 provides location and key)
+      s3Key = req.file.key || (req.file.location ? req.file.location.split('/').slice(-2).join('/') : null);
+      filePath = s3Key; // Store S3 key as path for backward compatibility
+      console.log('Upload - File uploaded to S3:', s3Key);
+      console.log('Upload - req.file.location:', req.file.location);
+      console.log('Upload - req.file.key:', req.file.key);
+    } else {
+      // File was uploaded to local filesystem
+      let absolutePath = req.file.path;
+      console.log('Upload - req.file.path:', req.file.path);
+      console.log('Upload - isAbsolute:', path.isAbsolute(absolutePath));
+      console.log('Upload - UPLOADS_DIR:', UPLOADS_DIR);
+      console.log('Upload - filename:', req.file.filename);
+      
+      if (!path.isAbsolute(absolutePath)) {
+        absolutePath = path.resolve(UPLOADS_DIR, req.file.filename);
+        console.log('Upload - resolved to:', absolutePath);
       }
+      
+      // Verify the file exists at this path
+      if (!fs.existsSync(absolutePath)) {
+        console.error('Upload - File does not exist at resolved path:', absolutePath);
+        // Try the original path
+        if (fs.existsSync(req.file.path)) {
+          absolutePath = path.resolve(req.file.path);
+          console.log('Upload - Using original path resolved:', absolutePath);
+        }
+      }
+      
+      filePath = absolutePath;
+      console.log('Upload - File stored locally:', filePath);
     }
 
+    // Get filename - multer-s3 uses 'key' instead of 'filename'
+    const filename = req.file.filename || (req.file.key ? req.file.key.split('/').pop() : 'unknown');
+    
     const file = new File({
       jobId: job._id,
       customerId: job.customerId,
-      filename: req.file.filename,
+      filename: filename,
       originalName: req.file.originalname,
-      mimetype: req.file.mimetype,
+      mimetype: req.file.mimetype || req.file.contentType,
       size: req.file.size,
-      path: absolutePath,
+      path: filePath,
+      s3Key: s3Key, // Store S3 key separately
       fileType: fileType,
       uploadedBy: createdBy
     });
@@ -140,8 +237,8 @@ async function uploadFile(req, res) {
 
     res.status(201).json(file);
   } catch (error) {
-    // Clean up uploaded file on error
-    if (req.file && fs.existsSync(req.file.path)) {
+    // Clean up uploaded file on error (only for local files)
+    if (req.file && req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
     res.status(500).json({ error: error.message });
@@ -172,20 +269,14 @@ async function downloadFile(req, res) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Find the file path (with fallback)
-    const filePath = findFilePath(file);
-    
-    if (!filePath) {
-      return res.status(404).json({ error: 'File not found on server' });
-    }
-
     res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
     res.setHeader('Content-Type', file.mimetype);
 
-    const fileStream = fs.createReadStream(filePath);
+    const fileStream = await getFileStream(file);
     fileStream.pipe(res);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error downloading file:', error);
+    res.status(500).json({ error: error.message || 'Failed to download file' });
   }
 }
 
@@ -198,20 +289,14 @@ async function getFile(req, res) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Find the file path (with fallback)
-    const filePath = findFilePath(file);
-    
-    if (!filePath) {
-      return res.status(404).json({ error: 'File not found on server' });
-    }
-
     res.setHeader('Content-Type', file.mimetype);
     res.setHeader('Content-Disposition', `inline; filename="${file.originalName}"`);
 
-    const fileStream = fs.createReadStream(filePath);
+    const fileStream = await getFileStream(file);
     fileStream.pipe(res);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error getting file:', error);
+    res.status(500).json({ error: error.message || 'Failed to retrieve file' });
   }
 }
 
@@ -224,11 +309,29 @@ async function deleteFile(req, res) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Delete physical file - find path with fallback
-    const filePath = findFilePath(file);
-    
-    if (filePath && fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // Delete physical file from S3 or local filesystem
+    if (isS3Configured() && isS3File(file)) {
+      // Delete from S3
+      const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+      const s3Key = file.s3Key || file.path;
+      try {
+        const command = new DeleteObjectCommand({
+          Bucket: BUCKET_NAME,
+          Key: s3Key,
+        });
+        await s3Client.send(command);
+        console.log('File deleted from S3:', s3Key);
+      } catch (error) {
+        console.error('Error deleting file from S3:', error);
+        // Continue with database deletion even if S3 deletion fails
+      }
+    } else {
+      // Delete from local filesystem
+      const filePath = findLocalFilePath(file);
+      if (filePath && fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log('File deleted from local filesystem:', filePath);
+      }
     }
 
     // Log activity before deleting

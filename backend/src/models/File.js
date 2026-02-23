@@ -31,6 +31,10 @@ const fileSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  s3Key: {
+    type: String,
+    required: false // Optional - only set when using S3
+  },
   fileType: {
     type: String,
     enum: ['estimate', 'contract', 'photo', 'other'],

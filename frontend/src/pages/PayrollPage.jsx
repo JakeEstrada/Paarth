@@ -315,7 +315,7 @@ function PayrollPage() {
         }
       `}</style>
       
-      <Box sx={{ p: 4, width: '100%', '@media print': { p: 0 } }}>
+      <Box sx={{ p: { xs: 1, sm: 2, md: 4 }, width: '100%', '@media print': { p: 0 } }}>
         {/* Print Summary - Only visible when printing */}
         <Box className="print-summary" sx={{ display: 'none', '@media print': { display: 'block', p: 2 } }}>
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
@@ -443,16 +443,23 @@ function PayrollPage() {
       {/* Interactive Form - Hidden when printing */}
       <Box sx={{ '@media print': { display: 'none' } }}>
         {/* Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 5 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', md: 'row' },
+          justifyContent: 'space-between', 
+          alignItems: { xs: 'stretch', md: 'center' }, 
+          mb: { xs: 3, sm: 4, md: 5 },
+          gap: { xs: 2, md: 0 }
+        }}>
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, color: theme.palette.primary.main }}>
+            <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, color: theme.palette.primary.main, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               SAN CLEMENTE WOODWORKING
             </Typography>
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
               Payroll Timesheet
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 1, sm: 2 }, alignItems: 'stretch', width: { xs: '100%', md: 'auto' } }}>
             <FormControl size="small" sx={{ minWidth: 250 }}>
               <InputLabel>Load Hours</InputLabel>
               <Select
@@ -526,9 +533,9 @@ function PayrollPage() {
         </Box>
 
         {/* Employee Info Card */}
-        <Card sx={{ mb: 4, boxShadow: 2 }}>
-          <CardContent sx={{ p: 3 }}>
-            <Grid container spacing={4}>
+        <Card sx={{ mb: { xs: 2, sm: 3, md: 4 }, boxShadow: 2 }}>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Grid container spacing={{ xs: 2, sm: 3, md: 4 }}>
               <Grid item xs={12} sm={4}>
                 <TextField
                   label="Employee Name"
@@ -566,20 +573,21 @@ function PayrollPage() {
           width: '100%',
           border: '1px solid #e0e0e0',
           borderRadius: 2,
-          p: 3,
+          p: { xs: 1.5, sm: 2, md: 3 },
           backgroundColor: theme.palette.mode === 'dark' ? '#1E1E1E' : '#fafafa'
         }}>
           {/* Flexbox container for all widgets */}
           <Box sx={{ 
             display: 'flex',
             flexDirection: 'column',
-            gap: 3,
+            gap: { xs: 2, sm: 3 },
             width: '100%'
           }}>
             {/* Top Row: Work Hours and Travel Miles */}
             <Box sx={{ 
               display: 'flex',
-              gap: 3,
+              flexDirection: { xs: 'column', lg: 'row' },
+              gap: { xs: 2, sm: 3 },
               width: '100%'
             }}>
               {/* Work Hours Section */}
@@ -801,7 +809,8 @@ function PayrollPage() {
             {/* Bottom Row: Receipts and Paycheck Summary */}
             <Box sx={{ 
               display: 'flex',
-              gap: 3,
+              flexDirection: { xs: 'column', lg: 'row' },
+              gap: { xs: 2, sm: 3 },
               width: '100%'
             }}>
               {/* Receipts Section */}

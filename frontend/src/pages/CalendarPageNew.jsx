@@ -23,6 +23,7 @@ import {
   ListItemIcon,
   ListItemText,
   useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   ChevronLeft as ChevronLeftIcon,
@@ -511,7 +512,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           aspectRatio: '1 / 1', // Make it square
           width: '100%',
           height: '100%',
-          p: 1,
+          p: { xs: 0.5, sm: 1 },
           border: `1px solid ${theme.palette.divider}`,
           backgroundColor: isCurrentMonth 
             ? theme.palette.background.paper 
@@ -546,12 +547,13 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
         <Box sx={{ 
           display: 'flex', 
           flexDirection: 'column', 
-          gap: 0.5,
+          gap: { xs: 0.25, sm: 0.5 },
           position: 'relative',
           flex: 1,
-          overflow: 'hidden'
+          overflow: 'hidden',
+          minHeight: 0,
         }}>
-          {dayEvents.slice(0, 10).map((event) => (
+          {dayEvents.slice(0, isMobile ? 3 : 10).map((event) => (
               <Chip
                 key={event._id}
                 label={event.title}
@@ -562,13 +564,16 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                 }}
                 onContextMenu={(e) => handleContextMenu(e, event)}
                 sx={{
-                  fontSize: { xs: '0.6rem', sm: '0.7rem' },
-                  height: { xs: 18, sm: 20 },
+                  fontSize: { xs: '0.65rem', sm: '0.7rem' },
+                  height: { xs: 20, sm: 22 },
                   backgroundColor: event.color || '#1976D2',
                   color: 'white',
                   flexShrink: 0,
                   '& .MuiChip-label': {
-                    px: { xs: 0.5, sm: 1 },
+                    px: { xs: 0.75, sm: 1 },
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
                   },
                   '&:hover': {
                     opacity: 0.8,
@@ -577,9 +582,9 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                 }}
               />
             ))}
-          {dayEvents.length > 10 && (
-            <Typography variant="caption" color="text.secondary">
-              +{dayEvents.length - 10} more
+          {dayEvents.length > (isMobile ? 3 : 10) && (
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
+              +{dayEvents.length - (isMobile ? 3 : 10)} more
             </Typography>
           )}
         </Box>
@@ -701,6 +706,7 @@ function ScheduledJobCard({ job, onJobClick, onJobDelete }) {
 function CalendarPageNew() {
   const theme = useTheme();
   const { canModifyCalendar, canViewCalendar } = useAuth();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [currentDate, setCurrentDate] = useState(new Date());
   const [benchJobs, setBenchJobs] = useState([]);
   const [scheduledJobs, setScheduledJobs] = useState([]);
@@ -756,14 +762,17 @@ function CalendarPageNew() {
     return eachDayOfInterval({ start: calendarStart, end: calendarEnd });
   };
 
-  // Get three months: current, next, and next+1
+  // Get months: one on mobile, three on desktop
   const months = useMemo(() => {
+    if (isMobile) {
+      return [currentDate];
+    }
     return [
       currentDate,
       addMonths(currentDate, 1),
       addMonths(currentDate, 2),
     ];
-  }, [currentDate]);
+  }, [currentDate, isMobile]);
 
   const handleDayClick = (date) => {
     if (!canModifyCalendar()) {
@@ -837,13 +846,15 @@ function CalendarPageNew() {
     
     return (
       <Box key={monthIndex} sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        {/* Month Header */}
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, textAlign: 'center' }}>
-          {format(monthDate, 'MMMM yyyy')}
-        </Typography>
+        {/* Month Header - hide on mobile since it's in the main header */}
+        {!isMobile && (
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, textAlign: 'center', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+            {format(monthDate, 'MMMM yyyy')}
+          </Typography>
+        )}
         
         {/* Day Headers */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', mb: 0 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', mb: 0, gap: 0 }}>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
             <Paper
               key={day}
@@ -855,7 +866,7 @@ function CalendarPageNew() {
                 fontWeight: 600,
               }}
             >
-              <Typography variant="body2" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>{day}</Typography>
+              <Typography variant="body2" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>{isMobile ? day.substring(0, 1) : day}</Typography>
             </Paper>
           ))}
         </Box>
@@ -909,10 +920,13 @@ function CalendarPageNew() {
               fontWeight: 600, 
               minWidth: { xs: 'auto', sm: 200 }, 
               textAlign: 'center',
-              fontSize: { xs: '1rem', sm: '1.5rem' }
+              fontSize: { xs: '0.875rem', sm: '1.25rem', md: '1.5rem' }
             }}
           >
-            {format(currentDate, 'MMMM yyyy')} - {format(addMonths(currentDate, 2), 'MMMM yyyy')}
+            {isMobile 
+              ? format(currentDate, 'MMMM yyyy')
+              : `${format(currentDate, 'MMMM yyyy')} - ${format(addMonths(currentDate, 2), 'MMMM yyyy')}`
+            }
           </Typography>
           <IconButton onClick={handleNextMonth} size="small">
             <ChevronRightIcon />
@@ -963,8 +977,8 @@ function CalendarPageNew() {
           flexShrink: 0,
           backgroundColor: theme.palette.background.paper,
           borderTop: `3px solid ${theme.palette.divider}`,
-          p: isBenchMinimized ? 0 : 2,
-          height: isBenchMinimized ? '40px' : `${benchHeight}px`,
+          p: isBenchMinimized ? 0 : { xs: 1, sm: 2 },
+          height: isBenchMinimized ? '40px' : isMobile ? '200px' : `${benchHeight}px`,
           overflow: isBenchMinimized ? 'hidden' : 'auto',
           position: 'relative',
           display: 'flex',
@@ -1076,7 +1090,7 @@ function CalendarPageNew() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              px: 2,
+              px: { xs: 1, sm: 2 },
               py: 1,
               height: '100%',
               cursor: 'pointer',
@@ -1086,11 +1100,11 @@ function CalendarPageNew() {
             }}
             onClick={() => setIsBenchMinimized(false)}
           >
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
               Bench ({benchJobs.length}) • Scheduled ({scheduledJobs.length})
             </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Click to expand
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
+              Tap to expand
             </Typography>
           </Box>
         ) : (

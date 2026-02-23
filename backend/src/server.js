@@ -58,7 +58,7 @@ app.get('/', (req, res) => {
   res.json({ message: 'Paarth CRM API is running!' });
 });
 
-// Diagnostic route to check MongoDB connection status
+// Diagnostic route to check MongoDB connection status and S3 configuration
 app.get('/health', (req, res) => {
   const mongoose = require('mongoose');
   const connectionState = mongoose.connection.readyState;
@@ -69,6 +69,10 @@ app.get('/health', (req, res) => {
     3: 'disconnecting'
   };
   
+  // Check S3 configuration
+  const { isS3Configured } = require('./config/s3');
+  const s3Configured = isS3Configured();
+  
   res.json({
     server: 'running',
     mongodb: {
@@ -77,6 +81,14 @@ app.get('/health', (req, res) => {
       connected: connectionState === 1,
       host: mongoose.connection.host || 'not connected',
       name: mongoose.connection.name || 'not connected'
+    },
+    s3: {
+      configured: s3Configured,
+      bucket: s3Configured ? process.env.AWS_S3_BUCKET_NAME : null,
+      region: process.env.AWS_REGION || 'us-east-2',
+      message: s3Configured 
+        ? 'S3 storage is configured and ready' 
+        : 'S3 not configured - using local file storage (files will be lost on restart)'
     },
     timestamp: new Date().toISOString()
   });

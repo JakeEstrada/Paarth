@@ -1,28 +1,50 @@
 const multer = require('multer');
+const multerS3 = require('multer-s3');
 const path = require('path');
 const fs = require('fs');
+const { s3Client, BUCKET_NAME, isS3Configured } = require('../config/s3');
 
-// Ensure uploads directory exists
-// Use environment variable if set, otherwise use relative path
-// This allows deployment flexibility
-const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+// Determine storage strategy: S3 if configured, otherwise local disk
+let storage;
 
-// Configure storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    // Generate unique filename: timestamp-random-originalname
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    const name = path.basename(file.originalname, ext);
-    cb(null, `${name}-${uniqueSuffix}${ext}`);
+if (isS3Configured()) {
+  console.log('Using S3 storage for file uploads');
+  // Use S3 storage
+  storage = multerS3({
+    s3: s3Client,
+    bucket: BUCKET_NAME,
+    acl: 'private', // Files are private by default
+    key: (req, file, cb) => {
+      // Generate unique filename: timestamp-random-originalname
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      const name = path.basename(file.originalname, ext);
+      const filename = `${name}-${uniqueSuffix}${ext}`;
+      cb(null, `uploads/${filename}`);
+    },
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+  });
+} else {
+  console.log('Using local disk storage for file uploads (S3 not configured)');
+  // Fallback to local disk storage
+  const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
   }
-});
+
+  storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+      // Generate unique filename: timestamp-random-originalname
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      const name = path.basename(file.originalname, ext);
+      cb(null, `${name}-${uniqueSuffix}${ext}`);
+    }
+  });
+}
 
 // File filter - allow images and PDFs
 const fileFilter = (req, file, cb) => {

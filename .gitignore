@@ -70,3 +70,12 @@ logs/
 !**/*.example
 !**/*.sample
 
+# Documentation files (keep README.md)
+DEPLOYMENT_INSTRUCTIONS.md
+SECURITY_AUDIT.md
+STORAGE_USAGE.md
+DEPLOYMENT_BREAKDOWN.md
+GOOGLE_CALENDAR_SETUP.md
+backend/S3_SETUP.md
+frontend/README.md
+
