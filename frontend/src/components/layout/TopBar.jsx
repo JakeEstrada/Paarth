@@ -7,7 +7,7 @@ import {
   Menu,
   MenuItem,
   useMediaQuery,
-  useTheme,
+  useTheme as useMuiTheme,
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
@@ -26,7 +26,7 @@ function TopBar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useTheme();
   const navigate = useNavigate();
-  const theme = useTheme();
+  const theme = useMuiTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [anchorEl, setAnchorEl] = useState(null);
 
