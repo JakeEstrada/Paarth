@@ -88,12 +88,20 @@ function CustomersPage() {
         try {
           const response = await axios.post(`${API_URL}/customers/upload-csv`);
           localStorage.setItem('csvImported', 'true');
-          toast.success(`Imported ${response.data.imported} customers from CSV`);
-          if (response.data.errors > 0) {
-            toast.error(`${response.data.errors} rows had errors`);
+          
+          // Only show success message if customers were actually imported
+          if (response.data.imported > 0) {
+            toast.success(`Imported ${response.data.imported} customers from CSV`);
+            if (response.data.errors > 0) {
+              toast.error(`${response.data.errors} rows had errors`);
+            }
+            // Refresh the customer list after import
+            await fetchCustomers();
+          } else if (response.data.message) {
+            // File not found or other non-error message
+            console.log('CSV import:', response.data.message);
+            // Don't show toast for file not found - it's expected on first load
           }
-          // Refresh the customer list after import
-          await fetchCustomers();
         } catch (error) {
           console.error('Error auto-importing CSV:', error);
           // Don't show error toast on auto-import failure, just log it

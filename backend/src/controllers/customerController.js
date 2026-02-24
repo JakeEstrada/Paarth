@@ -240,11 +240,26 @@ async function uploadCustomersCSV(req, res) {
     const filePath = req.body.filePath || path.join(__dirname, '../../Contact_list_processed.CSV');
     
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'CSV file not found' });
+      // Return a more informative error that won't crash the frontend
+      return res.status(200).json({ 
+        message: 'CSV file not found. Please upload the CSV file to the server or provide a file path.',
+        imported: 0,
+        errors: 0,
+        errorDetails: []
+      });
     }
     
     // Read and parse CSV
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    let fileContent;
+    try {
+      fileContent = fs.readFileSync(filePath, 'utf-8');
+    } catch (readError) {
+      console.error('Error reading CSV file:', readError);
+      return res.status(500).json({ 
+        error: `Failed to read CSV file: ${readError.message}` 
+      });
+    }
+    
     const lines = fileContent.split('\n').filter(line => line.trim() !== '');
     
     if (lines.length < 2) {
@@ -411,13 +426,18 @@ async function uploadCustomersCSV(req, res) {
           await customer.save();
           customers.push(customer);
           
-          // Log activity
-          await Activity.create({
-            type: 'customer_created',
-            customerId: customer._id,
-            note: `Customer "${customer.name}" created from CSV import`,
-            createdBy: createdBy
-          });
+          // Log activity (wrap in try-catch to prevent failures)
+          try {
+            await Activity.create({
+              type: 'customer_created',
+              customerId: customer._id,
+              note: `Customer "${customer.name}" created from CSV import`,
+              createdBy: createdBy
+            });
+          } catch (activityError) {
+            // Log but don't fail the import if activity creation fails
+            console.error('Failed to create activity log:', activityError.message);
+          }
         } catch (error) {
           errors.push({ row: i + 1, name, error: error.message });
         }
@@ -431,7 +451,11 @@ async function uploadCustomersCSV(req, res) {
       errorDetails: errors
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error in uploadCustomersCSV:', error);
+    res.status(500).json({ 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }
 
