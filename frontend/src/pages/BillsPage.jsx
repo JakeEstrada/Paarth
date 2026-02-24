@@ -24,6 +24,7 @@ import {
   Switch,
   FormControlLabel,
   Link,
+  useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon,
