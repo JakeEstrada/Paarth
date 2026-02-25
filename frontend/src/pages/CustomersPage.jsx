@@ -104,6 +104,8 @@ function CustomersPage() {
           }
         } catch (error) {
           console.error('Error auto-importing CSV:', error);
+          // Mark as imported even on failure so we don't keep retrying every load
+          localStorage.setItem('csvImported', 'true');
           // Don't show error toast on auto-import failure, just log it
         }
       }

@@ -439,6 +439,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
 // Calendar Day Component
 function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete }) {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [contextMenu, setContextMenu] = useState(null);
   const [contextMenuEvent, setContextMenuEvent] = useState(null);
 
