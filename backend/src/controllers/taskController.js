@@ -72,13 +72,30 @@ async function createTask(req, res) {
     // Handle assignedTo - use createdBy if not provided
     let assignedTo = req.body.assignedTo || createdBy;
     
-    const task = new Task({
+    // Initialize notes and updates arrays if creating a project
+    const taskData = {
       ...req.body,
       jobId: jobId || undefined,
       customerId: customerId || undefined,
       assignedTo: assignedTo,
       createdBy: createdBy
-    });
+    };
+    
+    // If creating a project, initialize notes and updates arrays
+    if (req.body.isProject) {
+      taskData.notes = [];
+      taskData.updates = [];
+      // If description exists, add it as initial note
+      if (req.body.description && req.body.description.trim()) {
+        taskData.notes.push({
+          content: req.body.description.trim(),
+          createdBy: createdBy,
+          createdAt: new Date()
+        });
+      }
+    }
+    
+    const task = new Task(taskData);
     
     await task.save();
     
@@ -339,6 +356,176 @@ async function getCompletedTasks(req, res) {
   }
 }
 
+// Convert a task to a project
+async function convertTaskToProject(req, res) {
+  try {
+    const task = await Task.findById(req.params.id);
+    
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    if (task.isProject) {
+      return res.status(400).json({ error: 'Task is already a project' });
+    }
+    
+    task.isProject = true;
+    // Initialize notes and updates arrays if they don't exist
+    if (!task.notes) {
+      task.notes = [];
+    }
+    if (!task.updates) {
+      task.updates = [];
+    }
+    
+    // Add initial note from description if it exists
+    if (task.description && task.description.trim()) {
+      task.notes.push({
+        content: task.description,
+        createdBy: task.createdBy,
+        createdAt: new Date()
+      });
+    }
+    
+    await task.save();
+    
+    await task.populate('assignedTo', 'name email');
+    await task.populate('createdBy', 'name email');
+    await task.populate('notes.createdBy', 'name email');
+    await task.populate('updates.createdBy', 'name email');
+    
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// Get project details with notes and updates
+async function getProjectDetails(req, res) {
+  try {
+    const task = await Task.findById(req.params.id)
+      .populate('assignedTo', 'name email')
+      .populate('createdBy', 'name email')
+      .populate('completedBy', 'name email')
+      .populate('jobId', 'title stage')
+      .populate('customerId', 'name')
+      .populate('notes.createdBy', 'name email')
+      .populate('updates.createdBy', 'name email');
+    
+    if (!task) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    if (!task.isProject) {
+      return res.status(400).json({ error: 'This is not a project' });
+    }
+    
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// Add a note to a project
+async function addProjectNote(req, res) {
+  try {
+    const User = require('../models/User');
+    const task = await Task.findById(req.params.id);
+    
+    if (!task) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    if (!task.isProject) {
+      return res.status(400).json({ error: 'This is not a project' });
+    }
+    
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Note content is required' });
+    }
+    
+    // Get createdBy
+    let createdBy = req.user?._id || req.body.createdBy;
+    if (!createdBy) {
+      const defaultUser = await User.findOne({ isActive: true });
+      if (defaultUser) {
+        createdBy = defaultUser._id;
+      } else {
+        return res.status(400).json({ error: 'No user available' });
+      }
+    }
+    
+    if (!task.notes) {
+      task.notes = [];
+    }
+    
+    task.notes.push({
+      content: content.trim(),
+      createdBy: createdBy,
+      createdAt: new Date()
+    });
+    
+    await task.save();
+    
+    await task.populate('notes.createdBy', 'name email');
+    
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// Add an update to a project
+async function addProjectUpdate(req, res) {
+  try {
+    const User = require('../models/User');
+    const task = await Task.findById(req.params.id);
+    
+    if (!task) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    if (!task.isProject) {
+      return res.status(400).json({ error: 'This is not a project' });
+    }
+    
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Update content is required' });
+    }
+    
+    // Get createdBy
+    let createdBy = req.user?._id || req.body.createdBy;
+    if (!createdBy) {
+      const defaultUser = await User.findOne({ isActive: true });
+      if (defaultUser) {
+        createdBy = defaultUser._id;
+      } else {
+        return res.status(400).json({ error: 'No user available' });
+      }
+    }
+    
+    if (!task.updates) {
+      task.updates = [];
+    }
+    
+    task.updates.push({
+      content: content.trim(),
+      createdBy: createdBy,
+      createdAt: new Date()
+    });
+    
+    await task.save();
+    
+    await task.populate('updates.createdBy', 'name email');
+    
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 module.exports = {
   getJobTasks,
   getUserTasks,
@@ -348,5 +535,9 @@ module.exports = {
   deleteTask,
   getOverdueTasks,
   getAllIncompleteTasks,
-  getCompletedTasks
+  getCompletedTasks,
+  convertTaskToProject,
+  getProjectDetails,
+  addProjectNote,
+  addProjectUpdate
 };

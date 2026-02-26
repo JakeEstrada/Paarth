@@ -14,24 +14,24 @@ import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-function AddTodoModal({ open, onClose, onSuccess, taskId, taskData }) {
+function AddTodoModal({ open, onClose, onSuccess, taskId, initialData, isProject = false, refreshTrigger }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const isEditMode = !!taskId;
 
-  // Reset form when modal opens or taskData changes
+  // Reset form when modal opens or initialData changes
   useEffect(() => {
     if (open) {
-      if (isEditMode && taskData) {
-        setTitle(taskData.title || '');
-        setDescription(taskData.description || '');
+      if (isEditMode && initialData) {
+        setTitle(initialData.title || '');
+        setDescription(initialData.description || '');
       } else {
         setTitle('');
         setDescription('');
       }
     }
-  }, [open, isEditMode, taskData]);
+  }, [open, isEditMode, initialData]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -54,12 +54,17 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, taskData }) {
         description: description.trim(),
       };
 
+      // Only set isProject when creating a new project
+      if (!isEditMode && isProject) {
+        data.isProject = true;
+      }
+
       if (isEditMode) {
         await axios.patch(`${API_URL}/tasks/${taskId}`, data);
-        toast.success('Task updated successfully');
+        toast.success(isProject ? 'Project updated successfully' : 'Task updated successfully');
       } else {
-        await axios.post(`${API_URL}/tasks`, data);
-        toast.success('Task created successfully');
+        const response = await axios.post(`${API_URL}/tasks`, data);
+        toast.success(isProject ? 'Project created successfully' : 'Task created successfully');
       }
       
       // Reset form
@@ -89,7 +94,9 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, taskData }) {
       <form onSubmit={handleSubmit}>
         <DialogTitle>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            {isEditMode ? 'Edit Task' : 'Add New Task'}
+            {isEditMode
+              ? (isProject ? 'Edit Project' : 'Edit Task')
+              : (isProject ? 'Create New Project' : 'Add New Task')}
           </Typography>
         </DialogTitle>
         <DialogContent>
@@ -125,7 +132,9 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, taskData }) {
             disabled={loading}
             sx={{ borderRadius: '8px' }}
           >
-            {loading ? (isEditMode ? 'Updating...' : 'Creating...') : (isEditMode ? 'Update Task' : 'Create Task')}
+            {loading
+              ? (isEditMode ? 'Updating...' : 'Creating...')
+              : (isEditMode ? (isProject ? 'Update Project' : 'Update Task') : (isProject ? 'Create Project' : 'Create Task'))}
           </Button>
         </DialogActions>
       </form>

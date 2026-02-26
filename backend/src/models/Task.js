@@ -56,7 +56,44 @@ const taskSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
-  }
+  },
+  // Project fields
+  isProject: {
+    type: Boolean,
+    default: false
+  },
+  notes: [{
+    content: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  updates: [{
+    content: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }]
 }, {
   timestamps: true
 });
@@ -65,6 +102,7 @@ const taskSchema = new mongoose.Schema({
 taskSchema.index({ jobId: 1, completedAt: 1 });
 taskSchema.index({ assignedTo: 1, completedAt: 1, dueDate: 1 });
 taskSchema.index({ dueDate: 1 });
+taskSchema.index({ isProject: 1, completedAt: 1 });
 
 // Virtual for checking if overdue
 taskSchema.virtual('isOverdue').get(function() {
