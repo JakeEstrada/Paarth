@@ -25,6 +25,7 @@ import {
   AccountBalance as PayrollIcon,
   Person as UsersIcon,
   Receipt as ReceiptIcon,
+  Description as DocumentsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 
@@ -36,6 +37,7 @@ const menuItems = [
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
   { text: 'Tasks', icon: <TasksIcon />, path: '/tasks' },
+  { text: 'Documents', icon: <DocumentsIcon />, path: '/documents' },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
   { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
 ];

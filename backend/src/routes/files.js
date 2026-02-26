@@ -5,6 +5,8 @@ const {
   uploadFile,
   getJobFiles,
   getTaskFiles,
+  uploadDocument,
+  getDocuments,
   downloadFile,
   getFile,
   deleteFile
@@ -13,6 +15,8 @@ const {
 //router.use(requireAuth);
 
 router.post('/upload', upload.single('file'), uploadFile);
+router.post('/upload-document', upload.single('file'), uploadDocument);
+router.get('/documents', getDocuments);
 router.get('/job/:jobId', getJobFiles);
 router.get('/task/:taskId', getTaskFiles);
 router.get('/:id/download', downloadFile);

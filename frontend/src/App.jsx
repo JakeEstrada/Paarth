@@ -21,6 +21,7 @@ import UsersPage from './pages/UsersPage';
 import BillsPage from './pages/BillsPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
 import DashboardPage from './pages/DashboardPage';
+import DocumentsPage from './pages/DocumentsPage';
 
 function App() {
   const { user, loading } = useAuth();
@@ -56,6 +57,7 @@ function App() {
                   <Route path="/customers" element={<CustomersPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/tasks" element={<TasksPage />} />
+                  <Route path="/documents" element={<DocumentsPage />} />
                   <Route path="/dead-estimates" element={<JobArchivePage />} />
                   <Route path="/archive" element={<JobArchivePage />} />
                   <Route path="/completed-appointments" element={<CompletedAppointmentsPage />} />

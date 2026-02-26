@@ -307,6 +307,128 @@ async function getTaskFiles(req, res) {
   }
 }
 
+// Upload standalone document (not tied to job or task)
+async function uploadDocument(req, res) {
+  try {
+    const User = require('../models/User');
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Only allow PDFs
+    if (req.file.mimetype !== 'application/pdf') {
+      // Delete uploaded file
+      if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      } else if (isS3Configured() && req.file.key) {
+        const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+        try {
+          await s3Client.send(new DeleteObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: req.file.key,
+          }));
+        } catch (s3Error) {
+          console.error('Error deleting file from S3:', s3Error);
+        }
+      }
+      return res.status(400).json({ error: 'Only PDF files are allowed' });
+    }
+
+    const { fileType = 'other' } = req.body;
+
+    // Handle createdBy
+    let createdBy = req.user?._id || req.body.createdBy;
+    if (!createdBy) {
+      const defaultUser = await User.findOne({ isActive: true });
+      if (defaultUser) {
+        createdBy = defaultUser._id;
+      } else {
+        // Delete uploaded file if no user available
+        if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        } else if (isS3Configured() && req.file.key) {
+          const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+          try {
+            await s3Client.send(new DeleteObjectCommand({
+              Bucket: BUCKET_NAME,
+              Key: req.file.key,
+            }));
+          } catch (s3Error) {
+            console.error('Error deleting file from S3:', s3Error);
+          }
+        }
+        return res.status(400).json({ error: 'No user available' });
+      }
+    }
+
+    // Determine file location based on storage type
+    let filePath;
+    let s3Key;
+    
+    if (isS3Configured() && (req.file.location || req.file.key)) {
+      s3Key = req.file.key || (req.file.location ? req.file.location.split('/').slice(-2).join('/') : null);
+      filePath = s3Key;
+      console.log('Upload Document - File uploaded to S3:', s3Key);
+    } else {
+      let absolutePath = req.file.path;
+      if (!path.isAbsolute(absolutePath)) {
+        absolutePath = path.resolve(UPLOADS_DIR, req.file.filename);
+      }
+      if (!fs.existsSync(absolutePath)) {
+        if (fs.existsSync(req.file.path)) {
+          absolutePath = path.resolve(req.file.path);
+        }
+      }
+      filePath = absolutePath;
+      console.log('Upload Document - File stored locally:', filePath);
+    }
+
+    const filename = req.file.filename || (req.file.key ? req.file.key.split('/').pop() : 'unknown');
+    
+    const file = new File({
+      jobId: undefined,
+      taskId: undefined,
+      customerId: undefined,
+      filename: filename,
+      originalName: req.file.originalname,
+      mimetype: req.file.mimetype || req.file.contentType,
+      size: req.file.size,
+      path: filePath,
+      s3Key: s3Key,
+      fileType: fileType,
+      uploadedBy: createdBy
+    });
+
+    await file.save();
+    await file.populate('uploadedBy', 'name email');
+
+    res.status(201).json(file);
+  } catch (error) {
+    // Clean up uploaded file on error
+    if (req.file && req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// Get all standalone documents (not tied to jobs or tasks)
+async function getDocuments(req, res) {
+  try {
+    const files = await File.find({
+      jobId: null,
+      taskId: null
+    })
+      .populate('uploadedBy', 'name email')
+      .sort({ createdAt: -1 });
+
+    res.json(files);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 // Download file
 async function downloadFile(req, res) {
   try {
@@ -391,14 +513,20 @@ async function deleteFile(req, res) {
       }
     }
 
-    if (createdBy) {
-      await Activity.create({
-        type: 'file_deleted',
-        jobId: file.jobId,
-        customerId: file.customerId,
-        fileName: file.originalName,
-        createdBy: createdBy
-      });
+    // Log activity only if file is associated with a job or customer
+    if (createdBy && (file.jobId || file.customerId)) {
+      try {
+        await Activity.create({
+          type: 'file_deleted',
+          jobId: file.jobId || undefined,
+          customerId: file.customerId || undefined,
+          fileName: file.originalName,
+          createdBy: createdBy
+        });
+      } catch (activityError) {
+        // Log but don't fail if activity creation fails (e.g., for standalone documents)
+        console.error('Failed to create activity log:', activityError.message);
+      }
     }
 
     await File.findByIdAndDelete(req.params.id);
@@ -413,6 +541,8 @@ module.exports = {
   uploadFile,
   getJobFiles,
   getTaskFiles,
+  uploadDocument,
+  getDocuments,
   downloadFile,
   getFile,
   deleteFile
