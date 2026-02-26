@@ -7,6 +7,7 @@ const {
   createTask,
   updateTask,
   completeTask,
+  uncompleteTask,
   deleteTask,
   getOverdueTasks,
   getAllIncompleteTasks,
@@ -30,6 +31,7 @@ router.get('/overdue', getOverdueTasks);          // All overdue tasks
 router.post('/', createTask);                     // Create new task
 router.patch('/:id', updateTask);                 // Update task
 router.post('/:id/complete', completeTask);       // Mark task complete
+router.post('/:id/uncomplete', uncompleteTask);   // Mark task incomplete
 router.delete('/:id', deleteTask);                // Delete task
 
 // Project routes

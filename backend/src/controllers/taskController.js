@@ -182,8 +182,8 @@ async function completeTask(req, res) {
     task.completedBy = req.user?._id || task.createdBy;
     await task.save();
     
-    // Log activity if job exists
-    if (task.jobId && task.customerId) {
+    // Log activity if job exists (but not for projects - projects are separate)
+    if (task.jobId && task.customerId && !task.isProject) {
       const activityNote = task.description 
         ? `${task.title} - ${task.description}`
         : task.title;
@@ -199,6 +199,32 @@ async function completeTask(req, res) {
     
     await task.populate('assignedTo', 'name email');
     await task.populate('completedBy', 'name email');
+    await task.populate('createdBy', 'name email');
+    
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// Uncomplete a task/project
+async function uncompleteTask(req, res) {
+  try {
+    const task = await Task.findById(req.params.id);
+    
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    if (!task.completedAt) {
+      return res.status(400).json({ error: 'Task is not completed' });
+    }
+    
+    task.completedAt = null;
+    task.completedBy = undefined;
+    await task.save();
+    
+    await task.populate('assignedTo', 'name email');
     await task.populate('createdBy', 'name email');
     
     res.json(task);
@@ -253,8 +279,10 @@ async function getAllIncompleteTasks(req, res) {
       });
     }
 
+    // Exclude projects (isProject: true) from pipeline tasks
     const tasks = await Task.find({
-      completedAt: null
+      completedAt: null,
+      isProject: { $ne: true } // Exclude projects from pipeline
     })
       .populate({
         path: 'jobId',
@@ -532,6 +560,7 @@ module.exports = {
   createTask,
   updateTask,
   completeTask,
+  uncompleteTask,
   deleteTask,
   getOverdueTasks,
   getAllIncompleteTasks,

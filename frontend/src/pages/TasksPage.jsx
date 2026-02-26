@@ -50,8 +50,19 @@ function TasksPage() {
   const fetchTodos = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/tasks`);
-      const allItems = response.data || [];
+      // Fetch incomplete tasks (excludes projects)
+      const incompleteResponse = await axios.get(`${API_URL}/tasks`);
+      const incompleteItems = incompleteResponse.data || [];
+      
+      // Fetch completed tasks to get completed projects
+      const completedResponse = await axios.get(`${API_URL}/tasks/completed`);
+      const completedItems = completedResponse.data || [];
+      
+      // Flatten completed items (they're organized by month)
+      const allCompletedItems = completedItems.flatMap(monthData => monthData.tasks || []);
+      
+      // Combine incomplete and completed items
+      const allItems = [...incompleteItems, ...allCompletedItems];
       
       // Separate tasks and projects
       const tasksList = allItems.filter(item => !item.isProject);
@@ -78,6 +89,19 @@ function TasksPage() {
     } catch (error) {
       console.error('Error completing task:', error);
       toast.error('Failed to complete task');
+    }
+  };
+
+  const handleUncomplete = async (itemId, e) => {
+    e.stopPropagation();
+    try {
+      await axios.post(`${API_URL}/tasks/${itemId}/uncomplete`);
+      toast.success('Project marked as incomplete');
+      fetchTodos();
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error uncompleting project:', error);
+      toast.error('Failed to uncomplete project');
     }
   };
 
@@ -219,19 +243,24 @@ function TasksPage() {
               }}
               onClick={() => item.isProject && handleProjectClick(item._id)}
             >
-              {!item.isProject && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {item.isProject && (
+                  <FolderOpenIcon sx={{ color: item.completedAt ? '#9C27B0' : '#9C27B0', opacity: item.completedAt ? 0.5 : 1 }} />
+                )}
                 <Checkbox
                   icon={<RadioButtonUncheckedIcon />}
                   checkedIcon={<CheckCircleIcon />}
-                  checked={false}
-                  onChange={(e) => handleComplete(item._id, e)}
-                  sx={{ color: 'primary.main' }}
+                  checked={!!item.completedAt}
+                  onChange={(e) => {
+                    if (item.completedAt) {
+                      handleUncomplete(item._id, e);
+                    } else {
+                      handleComplete(item._id, e);
+                    }
+                  }}
+                  sx={{ color: item.isProject ? '#9C27B0' : 'primary.main' }}
                 />
-              )}
-              
-              {item.isProject && (
-                <FolderOpenIcon sx={{ color: '#9C27B0' }} />
-              )}
+              </Box>
               
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -254,7 +283,7 @@ function TasksPage() {
                   }
                 </Typography>
                 {item.isProject && (
-                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1, alignItems: 'center' }}>
                     <Typography variant="caption" color="text.secondary">
                       {item.notes?.length || 0} notes
                     </Typography>
@@ -264,6 +293,19 @@ function TasksPage() {
                     <Typography variant="caption" color="text.secondary">
                       {item.updates?.length || 0} updates
                     </Typography>
+                    {item.completedAt && (
+                      <>
+                        <Typography variant="caption" color="text.secondary">
+                          •
+                        </Typography>
+                        <Chip 
+                          label="Completed" 
+                          size="small" 
+                          sx={{ height: 18, fontSize: '0.65rem' }}
+                          color="success"
+                        />
+                      </>
+                    )}
                   </Box>
                 )}
               </Box>
