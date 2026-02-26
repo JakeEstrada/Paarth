@@ -100,10 +100,11 @@ async function uploadFile(req, res) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { jobId, fileType = 'other' } = req.body;
+    const { jobId, taskId, fileType = 'other' } = req.body;
 
-    if (!jobId) {
-      // Delete uploaded file if jobId is missing (only for local files)
+    // Support both jobId and taskId (for projects)
+    if (!jobId && !taskId) {
+      // Delete uploaded file if neither jobId nor taskId is provided
       if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       } else if (isS3Configured() && req.file.key) {
@@ -118,30 +119,60 @@ async function uploadFile(req, res) {
           console.error('Error deleting file from S3:', s3Error);
         }
       }
-      return res.status(400).json({ error: 'Job ID is required' });
+      return res.status(400).json({ error: 'Job ID or Task ID is required' });
     }
 
-    const job = await Job.findById(jobId);
-    if (!job) {
-      // Delete uploaded file if job not found
-      if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      } else if (isS3Configured() && req.file.key) {
-        const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
-        try {
-          await s3Client.send(new DeleteObjectCommand({
-            Bucket: BUCKET_NAME,
-            Key: req.file.key,
-          }));
-        } catch (s3Error) {
-          console.error('Error deleting file from S3:', s3Error);
+    let job = null;
+    let task = null;
+    let customerId = null;
+    let createdBy = null;
+
+    if (taskId) {
+      // Handle project file upload
+      const Task = require('../models/Task');
+      task = await Task.findById(taskId);
+      if (!task) {
+        // Delete uploaded file if task not found
+        if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        } else if (isS3Configured() && req.file.key) {
+          const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+          try {
+            await s3Client.send(new DeleteObjectCommand({
+              Bucket: BUCKET_NAME,
+              Key: req.file.key,
+            }));
+          } catch (s3Error) {
+            console.error('Error deleting file from S3:', s3Error);
+          }
         }
+        return res.status(404).json({ error: 'Task/Project not found' });
       }
-      return res.status(404).json({ error: 'Job not found' });
+      customerId = task.customerId;
+      createdBy = req.user?._id || task.createdBy;
+    } else if (jobId) {
+      // Handle job file upload (existing logic)
+      job = await Job.findById(jobId);
+      if (!job) {
+        // Delete uploaded file if job not found
+        if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        } else if (isS3Configured() && req.file.key) {
+          const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+          try {
+            await s3Client.send(new DeleteObjectCommand({
+              Bucket: BUCKET_NAME,
+              Key: req.file.key,
+            }));
+          } catch (s3Error) {
+            console.error('Error deleting file from S3:', s3Error);
+          }
+        }
+        return res.status(404).json({ error: 'Job not found' });
+      }
+      customerId = job.customerId;
+      createdBy = req.user?._id || job.createdBy;
     }
-
-    // Handle createdBy
-    let createdBy = req.user?._id || job.createdBy;
     if (!createdBy) {
       const defaultUser = await User.findOne({ isActive: true });
       if (defaultUser) {
@@ -207,8 +238,9 @@ async function uploadFile(req, res) {
     const filename = req.file.filename || (req.file.key ? req.file.key.split('/').pop() : 'unknown');
     
     const file = new File({
-      jobId: job._id,
-      customerId: job.customerId,
+      jobId: job?._id || undefined,
+      taskId: task?._id || undefined,
+      customerId: customerId || undefined,
       filename: filename,
       originalName: req.file.originalname,
       mimetype: req.file.mimetype || req.file.contentType,
@@ -225,8 +257,8 @@ async function uploadFile(req, res) {
     if (createdBy) {
       await Activity.create({
         type: 'file_uploaded',
-        jobId: job._id,
-        customerId: job.customerId,
+        jobId: job?._id || undefined,
+        customerId: customerId || undefined,
         fileName: req.file.originalname,
         fileId: file._id,
         createdBy: createdBy
@@ -251,6 +283,21 @@ async function getJobFiles(req, res) {
     const { jobId } = req.params;
 
     const files = await File.find({ jobId })
+      .populate('uploadedBy', 'name email')
+      .sort({ createdAt: -1 });
+
+    res.json(files);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// Get files for a task/project
+async function getTaskFiles(req, res) {
+  try {
+    const { taskId } = req.params;
+
+    const files = await File.find({ taskId })
       .populate('uploadedBy', 'name email')
       .sort({ createdAt: -1 });
 
@@ -365,6 +412,7 @@ async function deleteFile(req, res) {
 module.exports = {
   uploadFile,
   getJobFiles,
+  getTaskFiles,
   downloadFile,
   getFile,
   deleteFile

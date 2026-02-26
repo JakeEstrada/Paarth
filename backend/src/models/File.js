@@ -4,12 +4,17 @@ const fileSchema = new mongoose.Schema({
   jobId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Job',
-    required: true
+    required: false // Made optional to support projects
+  },
+  taskId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Task',
+    required: false // For project files
   },
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Customer',
-    required: true
+    required: false // Made optional to support projects
   },
   filename: {
     type: String,
@@ -51,6 +56,7 @@ const fileSchema = new mongoose.Schema({
 
 // Indexes for querying
 fileSchema.index({ jobId: 1, createdAt: -1 });
+fileSchema.index({ taskId: 1, createdAt: -1 });
 fileSchema.index({ customerId: 1 });
 fileSchema.index({ fileType: 1 });
 

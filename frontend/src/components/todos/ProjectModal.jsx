@@ -20,6 +20,11 @@ import {
   Add as AddIcon,
   Note as NoteIcon,
   Update as UpdateIcon,
+  AttachFile as AttachFileIcon,
+  Delete as DeleteIcon,
+  Download as DownloadIcon,
+  PictureAsPdf as PictureAsPdfIcon,
+  Image as ImageIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -35,14 +40,19 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
   const [newUpdate, setNewUpdate] = useState('');
   const [addingNote, setAddingNote] = useState(false);
   const [addingUpdate, setAddingUpdate] = useState(false);
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
 
   useEffect(() => {
     if (open && projectId) {
       fetchProjectDetails();
+      fetchFiles();
     } else {
       setProject(null);
       setNewNote('');
       setNewUpdate('');
+      setFiles([]);
     }
   }, [open, projectId]);
 
@@ -104,6 +114,132 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
     } finally {
       setAddingUpdate(false);
     }
+  };
+
+  const fetchFiles = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/files/task/${projectId}`);
+      setFiles(response.data || []);
+    } catch (error) {
+      console.error('Error fetching files:', error);
+    }
+  };
+
+  const handleFileUpload = async (file, resetInput = null) => {
+    if (!file) return;
+
+    // Validate file type - allow PDFs and images
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Invalid file type. Only images and PDFs are allowed.');
+      return;
+    }
+
+    // Validate file size (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size must be less than 10MB');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('taskId', projectId);
+      formData.append('fileType', 'other');
+
+      await axios.post(`${API_URL}/files/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      toast.success('File uploaded successfully');
+      await fetchFiles();
+      if (resetInput) {
+        resetInput.value = '';
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      toast.error(error.response?.data?.error || 'Failed to upload file');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleDeleteFile = async (fileId) => {
+    if (!window.confirm('Are you sure you want to delete this file?')) {
+      return;
+    }
+
+    try {
+      await axios.delete(`${API_URL}/files/${fileId}`);
+      toast.success('File deleted successfully');
+      await fetchFiles();
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      toast.error('Failed to delete file');
+    }
+  };
+
+  const handleDownloadFile = async (fileId) => {
+    try {
+      const response = await axios.get(`${API_URL}/files/${fileId}/download`, {
+        responseType: 'blob',
+      });
+      
+      // Create a blob URL and trigger download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Get filename from response headers or use default
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = 'download';
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      toast.error('Failed to download file');
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
   if (!open) return null;
@@ -301,6 +437,136 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                   No updates yet
+                </Typography>
+              )}
+            </Box>
+
+            <Divider />
+
+            {/* Files Section */}
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                  FILES ({files.length})
+                </Typography>
+              </Box>
+
+              {/* File Upload Section */}
+              <Paper
+                sx={{
+                  p: 2,
+                  border: '2px dashed',
+                  borderColor: dragActive ? 'primary.main' : 'grey.300',
+                  backgroundColor: dragActive ? 'action.hover' : 'background.default',
+                  transition: 'all 0.2s ease',
+                  cursor: 'pointer',
+                  mb: 2,
+                }}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => document.getElementById('project-file-upload')?.click()}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <AttachFileIcon
+                    sx={{
+                      fontSize: 32,
+                      color: 'primary.main',
+                      transition: 'transform 0.2s ease',
+                      transform: dragActive ? 'scale(1.1)' : 'scale(1)',
+                    }}
+                  />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                      {dragActive ? 'Drop files here' : 'Upload Files'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Drag & drop or click to browse • PDFs or photos • Max 10MB
+                    </Typography>
+                  </Box>
+                  <input
+                    accept="image/*,application/pdf"
+                    style={{ display: 'none' }}
+                    id="project-file-upload"
+                    type="file"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileUpload(e.target.files[0], e.target);
+                      }
+                    }}
+                    disabled={uploading}
+                  />
+                  <Button
+                    variant="outlined"
+                    component="span"
+                    size="small"
+                    startIcon={uploading ? <CircularProgress size={16} /> : <AttachFileIcon />}
+                    disabled={uploading}
+                    sx={{ textTransform: 'none' }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {uploading ? 'Uploading...' : 'Browse'}
+                  </Button>
+                </Box>
+              </Paper>
+
+              {/* Files List */}
+              {files.length > 0 ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {files.map((file) => {
+                    const isPDF = file.mimetype === 'application/pdf';
+                    const isImage = file.mimetype?.startsWith('image/');
+                    return (
+                      <Paper
+                        key={file._id}
+                        sx={{
+                          p: 1.5,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 2,
+                          backgroundColor: 'background.default',
+                          borderLeft: '3px solid #FF9800',
+                        }}
+                      >
+                        {isPDF ? (
+                          <PictureAsPdfIcon sx={{ color: '#F44336', fontSize: 28 }} />
+                        ) : isImage ? (
+                          <ImageIcon sx={{ color: '#2196F3', fontSize: 28 }} />
+                        ) : (
+                          <AttachFileIcon sx={{ color: '#757575', fontSize: 28 }} />
+                        )}
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {file.originalName}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatFileSize(file.size)} • {format(new Date(file.createdAt), 'MMM dd, yyyy')}
+                        </Typography>
+                      </Box>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleDownloadFile(file._id)}
+                        sx={{ color: 'primary.main' }}
+                        title="Download"
+                      >
+                        <DownloadIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleDeleteFile(file._id)}
+                        sx={{ color: 'error.main' }}
+                        title="Delete"
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Paper>
+                    );
+                  })}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  No files uploaded yet
                 </Typography>
               )}
             </Box>
