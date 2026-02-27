@@ -32,6 +32,8 @@ function PipelinePage() {
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
+  const [editAppointmentOpen, setEditAppointmentOpen] = useState(false);
+  const [editingAppointmentId, setEditingAppointmentId] = useState(null);
   const [appointmentRefreshTrigger, setAppointmentRefreshTrigger] = useState(0);
   const [addTodoOpen, setAddTodoOpen] = useState(false);
   const [editTodoOpen, setEditTodoOpen] = useState(false);
@@ -260,8 +262,8 @@ function PipelinePage() {
                 >
                   <AppointmentList
                     onAppointmentClick={(id) => {
-                      // TODO: Open appointment detail modal
-                      console.log('Appointment clicked:', id);
+                      setEditingAppointmentId(id);
+                      setEditAppointmentOpen(true);
                     }}
                     onAppointmentComplete={() => {
                       // Refresh if needed
@@ -320,6 +322,22 @@ function PipelinePage() {
             // Trigger refresh of appointment list
             setAppointmentRefreshTrigger(prev => prev + 1);
           }}
+        />
+
+        {/* Edit Appointment Modal */}
+        <AddAppointmentModal
+          open={editAppointmentOpen}
+          onClose={() => {
+            setEditAppointmentOpen(false);
+            setEditingAppointmentId(null);
+          }}
+          onSuccess={() => {
+            // Trigger refresh of appointment list
+            setAppointmentRefreshTrigger(prev => prev + 1);
+            setEditAppointmentOpen(false);
+            setEditingAppointmentId(null);
+          }}
+          appointmentId={editingAppointmentId}
         />
 
         {/* Add Todo Modal */}

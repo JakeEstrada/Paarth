@@ -16,7 +16,9 @@ import { format } from 'date-fns';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-function AddAppointmentModal({ open, onClose, onSuccess, job }) {
+function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
+  const isEditMode = Boolean(appointmentId);
+
   // Set default date to today
   const getDefaultDate = () => {
     const today = new Date();
@@ -35,6 +37,65 @@ function AddAppointmentModal({ open, onClose, onSuccess, job }) {
   const [date, setDate] = useState(getDefaultDate());
   const [time, setTime] = useState(getDefaultTime());
   const [loading, setLoading] = useState(false);
+
+  // Load an existing appointment when editing
+  const loadAppointment = async () => {
+    if (!appointmentId) return;
+
+    try {
+      setLoading(true);
+      const response = await axios.get(`${API_URL}/appointments/${appointmentId}`);
+      const appt = response.data;
+
+      setTitle(appt.title || '');
+      setDescription(appt.reason || '');
+
+      // Convert stored Date to yyyy-MM-dd for input
+      const apptDate = appt.date ? new Date(appt.date) : new Date();
+      const isoDate = apptDate.toISOString().split('T')[0];
+      setDate(isoDate);
+
+      // Convert stored time string (e.g. "10:00 AM" or "14:30") to 24h "HH:mm"
+      const to24Hour = (timeString) => {
+        if (!timeString) return getDefaultTime();
+
+        const trimmed = timeString.trim();
+
+        // If it's already in HH:mm format (no AM/PM), just return it
+        if (/^\d{2}:\d{2}$/.test(trimmed)) {
+          return trimmed;
+        }
+
+        // Parse formats like "10:00 AM" or "2:30 pm"
+        const match = trimmed.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/);
+        if (!match) {
+          return getDefaultTime();
+        }
+
+        let [, hStr, mStr, ampm] = match;
+        let hour = parseInt(hStr, 10);
+        const minutes = mStr;
+        const upper = ampm.toUpperCase();
+
+        if (upper === 'PM' && hour !== 12) {
+          hour += 12;
+        } else if (upper === 'AM' && hour === 12) {
+          hour = 0;
+        }
+
+        return `${String(hour).padStart(2, '0')}:${minutes}`;
+      };
+
+      setTime(to24Hour(appt.time));
+    } catch (error) {
+      console.error('Error loading appointment:', error);
+      toast.error('Failed to load appointment details');
+      // Fall back to defaults so user can still edit something
+      setTitle(appt?.title || '');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -73,20 +134,28 @@ function AddAppointmentModal({ open, onClose, onSuccess, job }) {
         reason: description.trim() || undefined,
         date: dateTime,
         time: timeFormatted,
-        status: 'scheduled',
       };
 
-      // If job is provided, link the appointment to the job
-      if (job && job._id) {
-        appointmentData.jobId = job._id;
-        if (job.customerId) {
-          appointmentData.customerId = job.customerId._id || job.customerId;
+      // When creating, set status and job/customer linkage
+      if (!isEditMode) {
+        appointmentData.status = 'scheduled';
+
+        // If job is provided, link the appointment to the job
+        if (job && job._id) {
+          appointmentData.jobId = job._id;
+          if (job.customerId) {
+            appointmentData.customerId = job.customerId._id || job.customerId;
+          }
         }
       }
 
-      await axios.post(`${API_URL}/appointments`, appointmentData);
-      
-      toast.success('Appointment created successfully');
+      if (isEditMode) {
+        await axios.patch(`${API_URL}/appointments/${appointmentId}`, appointmentData);
+        toast.success('Appointment updated successfully');
+      } else {
+        await axios.post(`${API_URL}/appointments`, appointmentData);
+        toast.success('Appointment created successfully');
+      }
       
       // Reset form
       setTitle('');
@@ -104,15 +173,20 @@ function AddAppointmentModal({ open, onClose, onSuccess, job }) {
     }
   };
 
-  // Reset form when modal opens
+  // Reset or load data when modal opens
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+
+    if (isEditMode) {
+      loadAppointment();
+    } else {
       setTitle('');
       setDescription('');
       setDate(getDefaultDate());
       setTime(getDefaultTime());
     }
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, appointmentId]);
 
   const handleClose = () => {
     if (!loading) {
@@ -129,7 +203,7 @@ function AddAppointmentModal({ open, onClose, onSuccess, job }) {
       <form onSubmit={handleSubmit}>
         <DialogTitle>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Add New Appointment
+            {isEditMode ? 'Edit Appointment' : 'Add New Appointment'}
           </Typography>
         </DialogTitle>
         <DialogContent>
@@ -190,14 +264,16 @@ function AddAppointmentModal({ open, onClose, onSuccess, job }) {
           <Button onClick={handleClose} disabled={loading}>
             Cancel
           </Button>
-          <Button 
-            type="submit" 
-            variant="contained" 
-            disabled={loading}
-            sx={{ borderRadius: '8px' }}
-          >
-            {loading ? 'Creating...' : 'Create Appointment'}
-          </Button>
+            <Button 
+              type="submit" 
+              variant="contained" 
+              disabled={loading}
+              sx={{ borderRadius: '8px' }}
+            >
+              {loading
+                ? (isEditMode ? 'Saving...' : 'Creating...')
+                : (isEditMode ? 'Save Changes' : 'Create Appointment')}
+            </Button>
         </DialogActions>
       </form>
     </Dialog>
