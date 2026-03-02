@@ -41,6 +41,7 @@ import {
   Cancel as CancelIcon,
   Add as AddCircleIcon,
   Delete as DeleteOutlineIcon,
+  Note as NoteIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -62,6 +63,9 @@ function CustomersPage() {
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const [editCustomerForm, setEditCustomerForm] = useState({});
+  const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+  const [notesCustomer, setNotesCustomer] = useState(null);
+  const [notesText, setNotesText] = useState('');
 
   // Fetch customers
   const fetchCustomers = async () => {
@@ -449,6 +453,47 @@ function CustomersPage() {
     }
   };
 
+  // Open notes dialog
+  const handleOpenNotesDialog = (customer, e) => {
+    e.stopPropagation();
+    setNotesCustomer(customer);
+    setNotesText(customer.notes || '');
+    setNotesDialogOpen(true);
+  };
+
+  // Save notes
+  const handleSaveNotes = async () => {
+    if (!notesCustomer) return;
+    
+    try {
+      await axios.patch(`${API_URL}/customers/${notesCustomer._id}`, {
+        notes: notesText.trim() || undefined,
+      });
+      toast.success('Notes updated successfully');
+      setNotesDialogOpen(false);
+      setNotesCustomer(null);
+      setNotesText('');
+      fetchCustomers();
+    } catch (error) {
+      console.error('Error updating notes:', error);
+      toast.error('Failed to update notes');
+    }
+  };
+
+  // Close notes dialog
+  const handleCloseNotesDialog = () => {
+    setNotesDialogOpen(false);
+    setNotesCustomer(null);
+    setNotesText('');
+  };
+
+  // Truncate notes for display
+  const truncateNotes = (notes, maxLength = 50) => {
+    if (!notes) return '-';
+    if (notes.length <= maxLength) return notes;
+    return notes.substring(0, maxLength) + '...';
+  };
+
   return (
     <Box sx={{ p: { xs: 1, sm: 2, md: 3 } }}>
       {/* Header */}
@@ -489,7 +534,9 @@ function CustomersPage() {
                 });
                 const newCustomer = response.data;
                 setCustomers([newCustomer, ...customers]);
-                handleEdit(newCustomer);
+                setSelectedCustomer(newCustomer);
+                handleStartEditCustomer();
+                setContactModalOpen(true);
                 toast.success('New customer created');
               } catch (error) {
                 console.error('Error creating customer:', error);
@@ -572,13 +619,14 @@ function CustomersPage() {
                   </TableSortLabel>
                 </TableCell>
                 <TableCell>Source</TableCell>
+                <TableCell>Notes</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredAndSortedCustomers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       {searchTerm ? 'No customers found matching your search' : 'No customers found'}
                     </Typography>
@@ -604,6 +652,36 @@ function CustomersPage() {
                         size="small"
                         sx={{ textTransform: 'capitalize' }}
                       />
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography 
+                          variant="body2" 
+                          color="text.secondary"
+                          sx={{ 
+                            maxWidth: 200,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flex: 1
+                          }}
+                        >
+                          {truncateNotes(customer.notes)}
+                        </Typography>
+                        <Tooltip title={customer.notes ? "Edit notes" : "Add notes"}>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => handleOpenNotesDialog(customer, e)}
+                            color={customer.notes ? "primary" : "default"}
+                            sx={{ 
+                              opacity: customer.notes ? 1 : 0.5,
+                              '&:hover': { opacity: 1 }
+                            }}
+                          >
+                            <NoteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     </TableCell>
                     <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                       <Tooltip title="Delete">
@@ -663,6 +741,39 @@ function CustomersPage() {
             startIcon={uploading ? <CircularProgress size={16} /> : <UploadIcon />}
           >
             {uploading ? 'Uploading...' : 'Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Quick Notes Dialog */}
+      <Dialog 
+        open={notesDialogOpen} 
+        onClose={handleCloseNotesDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <NoteIcon color="primary" />
+            <span>Notes for {notesCustomer?.name}</span>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            rows={6}
+            value={notesText}
+            onChange={(e) => setNotesText(e.target.value)}
+            placeholder="Add notes about this customer (e.g., gate codes, special instructions, etc.)"
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseNotesDialog}>Cancel</Button>
+          <Button onClick={handleSaveNotes} variant="contained" startIcon={<SaveIcon />}>
+            Save Notes
           </Button>
         </DialogActions>
       </Dialog>
