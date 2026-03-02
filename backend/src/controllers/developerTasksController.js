@@ -26,10 +26,22 @@ function readTasks() {
 function writeTasks(tasks) {
   ensureFileExists();
   try {
-    fs.writeFileSync(TASKS_FILE, JSON.stringify(tasks, null, 2));
+    // Use atomic write: write to temp file first, then rename
+    const tempFile = TASKS_FILE + '.tmp';
+    fs.writeFileSync(tempFile, JSON.stringify(tasks, null, 2), 'utf8');
+    fs.renameSync(tempFile, TASKS_FILE);
     return true;
   } catch (error) {
     console.error('Error writing tasks file:', error);
+    // Clean up temp file if it exists
+    try {
+      const tempFile = TASKS_FILE + '.tmp';
+      if (fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
+      }
+    } catch (cleanupError) {
+      console.error('Error cleaning up temp file:', cleanupError);
+    }
     return false;
   }
 }
@@ -63,10 +75,14 @@ async function createDeveloperTask(req, res) {
     };
 
     tasks.unshift(newTask); // Add to beginning
-    writeTasks(tasks);
+    const writeSuccess = writeTasks(tasks);
+    if (!writeSuccess) {
+      return res.status(500).json({ error: 'Failed to save task to file' });
+    }
 
     res.status(201).json(newTask);
   } catch (error) {
+    console.error('Error creating developer task:', error);
     res.status(500).json({ error: error.message });
   }
 }
@@ -94,9 +110,14 @@ async function updateDeveloperTask(req, res) {
       tasks[taskIndex].completed = completed;
     }
 
-    writeTasks(tasks);
+    const writeSuccess = writeTasks(tasks);
+    if (!writeSuccess) {
+      return res.status(500).json({ error: 'Failed to save task to file' });
+    }
+
     res.json(tasks[taskIndex]);
   } catch (error) {
+    console.error('Error updating developer task:', error);
     res.status(500).json({ error: error.message });
   }
 }
@@ -113,9 +134,14 @@ async function deleteDeveloperTask(req, res) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    writeTasks(filteredTasks);
+    const writeSuccess = writeTasks(filteredTasks);
+    if (!writeSuccess) {
+      return res.status(500).json({ error: 'Failed to save task deletion to file' });
+    }
+
     res.json({ message: 'Task deleted successfully' });
   } catch (error) {
+    console.error('Error deleting developer task:', error);
     res.status(500).json({ error: error.message });
   }
 }
