@@ -182,7 +182,17 @@ function DashboardPage() {
             </Typography>
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: '1fr',
+                md: 'repeat(2, minmax(0, 1fr))',
+                lg: 'repeat(3, minmax(0, 1fr))',
+              },
+              gap: 3,
+            }}
+          >
             {/* Helper to render a section */}
             {[
               { title: 'Job Updates', items: jobActivities },
@@ -191,7 +201,7 @@ function DashboardPage() {
               { title: 'Tasks / Projects', items: taskActivities },
               { title: 'Notes', items: noteActivities },
             ].map((section) => (
-              <Box key={section.title}>
+              <Box key={section.title} sx={{ minWidth: 0 }}>
                 <Typography
                   variant="subtitle2"
                   sx={{
