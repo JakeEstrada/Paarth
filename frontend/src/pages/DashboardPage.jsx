@@ -6,21 +6,9 @@ import {
   Typography,
   CircularProgress,
   Chip,
-  Avatar,
   Divider,
   useTheme,
-  Card,
-  CardContent,
 } from '@mui/material';
-import {
-  Note as NoteIcon,
-  Assignment as ProjectIcon,
-  CheckCircle as CheckCircleIcon,
-  Update as UpdateIcon,
-  Event as AppointmentIcon,
-  ArrowForward as ArrowForwardIcon,
-  Person as PersonIcon,
-} from '@mui/icons-material';
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -33,7 +21,6 @@ function DashboardPage() {
   const theme = useTheme();
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState([]);
-  const [projects, setProjects] = useState([]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -43,41 +30,20 @@ function DashboardPage() {
     try {
       setLoading(true);
       
-      // Fetch activities and projects in parallel
-      const [activitiesRes, tasksRes] = await Promise.all([
-        axios.get(`${API_URL}/activities/recent?limit=100`).catch(() => ({ data: [] })),
-        axios.get(`${API_URL}/tasks`).catch(() => ({ data: [] })),
-      ]);
+      const activitiesRes = await axios
+        .get(`${API_URL}/activities/recent?limit=200`)
+        .catch(() => ({ data: [] }));
 
       const allActivities = activitiesRes.data || [];
-      const allTasks = tasksRes.data?.tasks || tasksRes.data || [];
 
-      // Filter projects (tasks with isProject=true)
-      const projectTasks = allTasks.filter(task => task.isProject === true);
-      
-      // Create activity items from projects
-      const projectActivities = projectTasks.map(task => ({
-        _id: task._id,
-        type: task.completedAt ? 'project_completed' : 'project_created',
-        createdAt: task.completedAt || task.createdAt,
-        title: task.title,
-        description: task.description,
-        completedAt: task.completedAt,
-        createdBy: task.createdBy,
-        jobId: task.jobId,
-        customerId: task.customerId,
-        isProject: true,
-      }));
-
-      // Combine activities and project activities, sort by date (most recent first)
-      const combined = [...allActivities, ...projectActivities].sort((a, b) => {
-        const dateA = new Date(a.createdAt || a.createdAt);
-        const dateB = new Date(b.createdAt || b.createdAt);
+      // Sort by date (most recent first)
+      const combined = [...allActivities].sort((a, b) => {
+        const dateA = new Date(a.createdAt);
+        const dateB = new Date(b.createdAt);
         return dateB - dateA; // Most recent first
       });
 
       setActivities(combined);
-      setProjects(projectTasks);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       toast.error('Failed to load dashboard data');
@@ -86,51 +52,8 @@ function DashboardPage() {
     }
   };
 
-  const getActivityIcon = (activity) => {
-    if (activity.isProject) {
-      return activity.completedAt ? (
-        <CheckCircleIcon sx={{ color: 'success.main' }} />
-      ) : (
-        <ProjectIcon sx={{ color: 'primary.main' }} />
-      );
-    }
-
-    switch (activity.type) {
-      case 'project_created':
-      case 'project_completed':
-        return activity.type === 'project_completed' ? (
-          <CheckCircleIcon sx={{ color: 'success.main' }} />
-        ) : (
-          <ProjectIcon sx={{ color: 'primary.main' }} />
-        );
-      case 'stage_change':
-        return <UpdateIcon sx={{ color: 'info.main' }} />;
-      case 'note':
-        return <NoteIcon sx={{ color: 'warning.main' }} />;
-      case 'meeting':
-      case 'job_scheduled':
-        return <AppointmentIcon sx={{ color: 'secondary.main' }} />;
-      case 'task_created':
-        return <ProjectIcon sx={{ color: 'primary.main' }} />;
-      case 'task_completed':
-        return <CheckCircleIcon sx={{ color: 'success.main' }} />;
-      default:
-        return <NoteIcon sx={{ color: 'text.secondary' }} />;
-    }
-  };
-
   const getActivityTitle = (activity) => {
-    if (activity.isProject) {
-      return activity.completedAt 
-        ? `Project Completed: ${activity.title}`
-        : `Project Created: ${activity.title}`;
-    }
-
     switch (activity.type) {
-      case 'project_created':
-        return `Project Created: ${activity.title || 'Untitled'}`;
-      case 'project_completed':
-        return `Project Completed: ${activity.title || 'Untitled'}`;
       case 'stage_change':
         const STAGE_LABELS = {
           APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
@@ -152,63 +75,43 @@ function DashboardPage() {
         const toLabel = activity.toStage ? (STAGE_LABELS[activity.toStage] || activity.toStage) : 'Unknown';
         return `Stage Changed: ${fromLabel} → ${toLabel}`;
       case 'note':
-        return 'Note Added';
-      case 'meeting':
-        return 'Meeting Scheduled';
-      case 'job_scheduled':
-        return 'Job Scheduled';
+        return 'Note';
       case 'job_created':
         return 'Job Created';
       case 'job_updated':
         return 'Job Updated';
-      case 'task_created':
-        return 'Task Created';
-      case 'task_completed':
-        return 'Task Completed';
       default:
         return activity.type?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Activity';
     }
   };
 
   const getActivityDescription = (activity) => {
-    if (activity.isProject) {
-      return activity.description || '';
-    }
-
+    // Prefer explicit note text
     if (activity.note) {
       return activity.note;
     }
 
+    // For job_updated with changes map, show a compact summary of first change
+    if (activity.type === 'job_updated' && activity.changes) {
+      const entries = Object.entries(activity.changes);
+      if (entries.length > 0) {
+        const [field, change] = entries[0];
+        const fromVal = change?.from ?? 'empty';
+        const toVal = change?.to ?? 'empty';
+        const more = entries.length > 1 ? ` (+${entries.length - 1} more)` : '';
+        return `${field}: ${fromVal} → ${toVal}${more}`;
+      }
+    }
+
+    // Fall back to job / customer name
     if (activity.jobId?.title) {
       return activity.jobId.title;
     }
-
     if (activity.customerId?.name) {
       return activity.customerId.name;
     }
 
     return '';
-  };
-
-  const getActivityColor = (activity) => {
-    if (activity.isProject) {
-      return activity.completedAt ? 'success' : 'primary';
-    }
-
-    switch (activity.type) {
-      case 'project_completed':
-      case 'task_completed':
-        return 'success';
-      case 'stage_change':
-        return 'info';
-      case 'note':
-        return 'warning';
-      case 'meeting':
-      case 'job_scheduled':
-        return 'secondary';
-      default:
-        return 'default';
-    }
   };
 
   const formatActivityTime = (dateString) => {
@@ -231,32 +134,23 @@ function DashboardPage() {
     }
   };
 
-  const handleActivityClick = (activity) => {
-    if (activity.jobId?._id || activity.jobId) {
-      navigate(`/pipeline`);
-    } else if (activity.customerId?._id || activity.customerId) {
-      navigate(`/customers`);
-    }
-  };
-
-  // Filter activities by type
-  const createdProjects = activities.filter(a => 
-    (a.isProject && !a.completedAt) || 
-    (a.type === 'project_created' || a.type === 'task_created')
+  // Group activities into logical sections
+  const jobActivities = activities.filter((a) =>
+    ['job_created', 'job_updated', 'job_archived', 'stage_change', 'job_scheduled', 'takeoff_complete', 'value_update'].includes(a.type)
   );
 
-  const completedProjects = activities.filter(a => 
-    (a.isProject && a.completedAt) || 
-    a.type === 'project_completed' || 
-    a.type === 'task_completed'
+  const fileActivities = activities.filter((a) =>
+    ['file_uploaded', 'file_deleted'].includes(a.type)
   );
 
-  const stageChanges = activities.filter(a => a.type === 'stage_change');
-  const notes = activities.filter(a => a.type === 'note');
-  const appointments = activities.filter(a => 
-    a.type === 'meeting' || 
-    a.type === 'job_scheduled' ||
-    a.type === 'appointment_created'
+  const noteActivities = activities.filter((a) => a.type === 'note');
+
+  const appointmentActivities = activities.filter((a) =>
+    ['meeting', 'job_scheduled', 'appointment_created'].includes(a.type)
+  );
+
+  const taskActivities = activities.filter((a) =>
+    ['task_created', 'task_completed'].includes(a.type)
   );
 
   if (loading) {
@@ -272,159 +166,141 @@ function DashboardPage() {
       {/* Header */}
       <Box sx={{ mb: { xs: 2, sm: 3, md: 4 } }}>
         <Typography variant="h4" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
-          Activity Feed
+          Dashboard Activity
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-          Recent activity across projects, jobs, notes, and appointments
+          Most recent updates, in simple lists by type
         </Typography>
       </Box>
 
-      {/* Activity Feed */}
-      <Paper sx={{ p: { xs: 2, sm: 3 }, maxHeight: '80vh', overflowY: 'auto' }}>
+      {/* Activity sections as compact lists */}
+      <Paper sx={{ p: { xs: 2, sm: 3 } }}>
         {activities.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 8 }}>
-            <Typography variant="body1" color="text.secondary">
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="body2" color="text.secondary">
               No recent activity
             </Typography>
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {activities.map((activity, index) => {
-              const icon = getActivityIcon(activity);
-              const title = getActivityTitle(activity);
-              const description = getActivityDescription(activity);
-              const color = getActivityColor(activity);
-              const timeAgo = formatActivityTime(activity.createdAt);
-              const fullDate = formatActivityDate(activity.createdAt);
-
-              return (
-                <Card
-                  key={activity._id || index}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {/* Helper to render a section */}
+            {[
+              { title: 'Job Updates', items: jobActivities },
+              { title: 'Files', items: fileActivities },
+              { title: 'Appointments', items: appointmentActivities },
+              { title: 'Tasks / Projects', items: taskActivities },
+              { title: 'Notes', items: noteActivities },
+            ].map((section) => (
+              <Box key={section.title}>
+                <Typography
+                  variant="subtitle2"
                   sx={{
-                    cursor: (activity.jobId || activity.customerId) ? 'pointer' : 'default',
-                    transition: 'all 0.2s',
-                    '&:hover': (activity.jobId || activity.customerId) ? {
-                      boxShadow: 4,
-                      transform: 'translateY(-2px)',
-                    } : {},
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    fontSize: '0.75rem',
+                    letterSpacing: 0.5,
+                    mb: 1,
+                    color: 'text.secondary',
                   }}
-                  onClick={() => handleActivityClick(activity)}
                 >
-                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                      {/* Icon */}
-                      <Avatar
-                        sx={{
-                          bgcolor: `${theme.palette[color]?.main || theme.palette.primary.main}20`,
-                          color: theme.palette[color]?.main || theme.palette.primary.main,
-                          width: 48,
-                          height: 48,
-                        }}
-                      >
-                        {icon}
-                      </Avatar>
+                  {section.title}
+                </Typography>
+                {section.items.length === 0 ? (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontStyle: 'italic' }}
+                  >
+                    No recent {section.title.toLowerCase()}
+                  </Typography>
+                ) : (
+                  <Box>
+                    {section.items.slice(0, 30).map((activity, idx) => {
+                      const title = getActivityTitle(activity);
+                      const description = getActivityDescription(activity);
+                      const timeShort = formatActivityTime(activity.createdAt);
+                      const fullDate = formatActivityDate(activity.createdAt);
+                      const jobLabel = activity.jobId?.title || '';
+                      const customerLabel = activity.customerId?.name || '';
+                      const userName = activity.createdBy?.name || '';
 
-                      {/* Content */}
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: 0.5 }}>
-                          <Typography variant="body1" sx={{ fontWeight: 600, flex: 1 }}>
-                            {title}
-                          </Typography>
-                          <Chip
-                            label={timeAgo}
-                            size="small"
-                            variant="outlined"
-                            title={fullDate}
-                            sx={{ flexShrink: 0 }}
-                          />
-                        </Box>
+                      return (
+                        <Box key={activity._id || idx}>
+                          <Box
+                            sx={{
+                              display: 'grid',
+                              gridTemplateColumns: '110px 1fr 140px',
+                              columnGap: 1.5,
+                              py: 0.4,
+                              fontSize: '0.8rem',
+                            }}
+                          >
+                            {/* Date / time */}
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              title={fullDate}
+                              sx={{ whiteSpace: 'nowrap' }}
+                            >
+                              {timeShort}
+                            </Typography>
 
-                        {description && (
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            {description}
-                          </Typography>
-                        )}
-
-                        {/* Additional info */}
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 1 }}>
-                          {activity.jobId?.title && (
-                            <Chip
-                              label={`Job: ${activity.jobId.title}`}
-                              size="small"
-                              variant="outlined"
-                              color="primary"
-                            />
-                          )}
-                          {activity.customerId?.name && (
-                            <Chip
-                              label={`Customer: ${activity.customerId.name}`}
-                              size="small"
-                              variant="outlined"
-                              color="secondary"
-                            />
-                          )}
-                          {activity.createdBy?.name && (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <PersonIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
-                              <Typography variant="caption" color="text.secondary">
-                                {activity.createdBy.name}
+                            {/* Main line: type + description */}
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography
+                                variant="caption"
+                                sx={{ fontWeight: 600, mr: 0.5 }}
+                              >
+                                {title}
                               </Typography>
+                              {description && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ whiteSpace: 'nowrap' }}
+                                >
+                                  {' '}- {description}
+                                </Typography>
+                              )}
+                              {(jobLabel || customerLabel) && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{
+                                    display: 'block',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.7rem',
+                                  }}
+                                >
+                                  {jobLabel && `Job: ${jobLabel}`}
+                                  {jobLabel && customerLabel && ' | '}
+                                  {customerLabel && `Customer: ${customerLabel}`}
+                                </Typography>
+                              )}
                             </Box>
+
+                            {/* User */}
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}
+                            >
+                              {userName}
+                            </Typography>
+                          </Box>
+                          {idx < section.items.length - 1 && (
+                            <Divider sx={{ opacity: 0.2 }} />
                           )}
                         </Box>
-                      </Box>
-                    </Box>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                      );
+                    })}
+                  </Box>
+                )}
+              </Box>
+            ))}
           </Box>
         )}
       </Paper>
-
-      {/* Summary Stats */}
-      <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <Paper sx={{ p: 2, flex: 1, minWidth: 150 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            {createdProjects.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Created Projects/Notes
-          </Typography>
-        </Paper>
-        <Paper sx={{ p: 2, flex: 1, minWidth: 150 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: 'success.main' }}>
-            {completedProjects.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Completed Projects
-          </Typography>
-        </Paper>
-        <Paper sx={{ p: 2, flex: 1, minWidth: 150 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: 'info.main' }}>
-            {stageChanges.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Stage Changes
-          </Typography>
-        </Paper>
-        <Paper sx={{ p: 2, flex: 1, minWidth: 150 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: 'warning.main' }}>
-            {notes.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Notes Added
-          </Typography>
-        </Paper>
-        <Paper sx={{ p: 2, flex: 1, minWidth: 150 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: 'secondary.main' }}>
-            {appointments.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Appointments
-          </Typography>
-        </Paper>
-      </Box>
     </Container>
   );
 }
