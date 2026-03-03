@@ -500,7 +500,6 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
     <>
       <Paper
         sx={{
-          aspectRatio: '1 / 1', // Make it square
           width: '100%',
           height: '100%',
           p: { xs: 0.5, sm: 1 },
@@ -917,8 +916,7 @@ function CalendarPageNew() {
           flex: 1,
           gap: 0,
           '& > *': {
-            aspectRatio: '1 / 1',
-            minHeight: 0,
+            minHeight: { xs: 90, sm: 110 }, // allow rows to grow to fit events
           }
         }}>
           {calendarDays.map((date, index) => (
