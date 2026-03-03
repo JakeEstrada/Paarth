@@ -442,8 +442,8 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [contextMenu, setContextMenu] = useState(null);
   const [contextMenuEvent, setContextMenuEvent] = useState(null);
-
-  const dayEvents = events.filter(e => {
+  // First, get all events that fall on this calendar day
+  const eventsForDate = events.filter(e => {
     if (!e.schedule?.startDate) return false;
     const startDate = new Date(e.schedule.startDate);
     const endDate = e.schedule.endDate ? new Date(e.schedule.endDate) : startDate;
@@ -455,29 +455,19 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
     
     return dateStr >= startStr && dateStr <= endStr;
   })
-  // Sort events by installer order, then by date (older first, so new ones appear below)
-  .sort((a, b) => {
-    const installerA = a.schedule?.installer || '';
-    const installerB = b.schedule?.installer || '';
-    
-    // Get installer order indices
-    const indexA = INSTALLER_ORDER.indexOf(installerA);
-    const indexB = INSTALLER_ORDER.indexOf(installerB);
-    
-    // If both have installers, sort by installer order
-    if (indexA !== -1 && indexB !== -1) {
-      if (indexA !== indexB) {
-        return indexA - indexB; // Sort by installer order
-      }
-    } else if (indexA !== -1) {
-      return -1; // A has installer, B doesn't - A comes first
-    } else if (indexB !== -1) {
-      return 1; // B has installer, A doesn't - B comes first
-    }
-    // If neither has installer or same installer, sort by date (older first)
-    const dateA = new Date(a.schedule?.startDate || a.createdAt || 0);
-    const dateB = new Date(b.schedule?.startDate || b.createdAt || 0);
-    return dateA - dateB; // Ascending: older first
+  // Keep rows visually aligned across days by installer “lane”
+  // 1. For each installer in INSTALLER_ORDER, pick at most one event for that lane.
+  const laneEvents = INSTALLER_ORDER.map((installer) => {
+    const match = eventsForDate.find(
+      (e) => (e.schedule?.installer || '') === installer
+    );
+    return match || null;
+  });
+
+  // 2. Any remaining events (installer not in INSTALLER_ORDER) get rendered after the lanes.
+  const otherEvents = eventsForDate.filter((e) => {
+    const installer = e.schedule?.installer || '';
+    return !INSTALLER_ORDER.includes(installer);
   });
 
   const handleContextMenu = (e, event) => {
@@ -554,7 +544,9 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           overflow: 'hidden',
           minHeight: 0,
         }}>
-          {dayEvents.slice(0, isMobile ? 3 : 10).map((event) => (
+          {/* Fixed “lanes” per installer so rows line up across days */}
+          {laneEvents.map((event, index) =>
+            event ? (
               <Chip
                 key={event._id}
                 label={event.title}
@@ -582,10 +574,56 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                   },
                 }}
               />
-            ))}
-          {dayEvents.length > (isMobile ? 3 : 10) && (
+            ) : (
+              // Invisible spacer to keep lane height consistent when no event for that installer on this day
+              <Box
+                key={`spacer-${index}`}
+                sx={{
+                  height: { xs: 20, sm: 22 },
+                  flexShrink: 0,
+                }}
+              />
+            )
+          )}
+
+          {/* Render any extra events (installers not in INSTALLER_ORDER) below the fixed lanes */}
+          {otherEvents.map((event) => (
+            <Chip
+              key={event._id}
+              label={event.title}
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEventClick(event);
+              }}
+              onContextMenu={(e) => handleContextMenu(e, event)}
+              sx={{
+                fontSize: { xs: '0.65rem', sm: '0.7rem' },
+                height: { xs: 20, sm: 22 },
+                backgroundColor: event.color || '#1976D2',
+                color: 'white',
+                flexShrink: 0,
+                '& .MuiChip-label': {
+                  px: { xs: 0.75, sm: 1 },
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                },
+                '&:hover': {
+                  opacity: 0.8,
+                  transform: 'scale(1.05)',
+                },
+              }}
+            />
+          ))}
+
+          {/* “+ more” indicator if we ever exceed the visual limit (mainly for very small screens) */}
+          {(laneEvents.filter(Boolean).length + otherEvents.length) > (isMobile ? 3 : 10) && (
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
-              +{dayEvents.length - (isMobile ? 3 : 10)} more
+              +
+              {(laneEvents.filter(Boolean).length + otherEvents.length) -
+                (isMobile ? 3 : 10)}{' '}
+              more
             </Typography>
           )}
         </Box>
