@@ -515,13 +515,13 @@ async function getArchivedJobs(req, res) {
   }
 }
 
-// Get completed jobs (FINAL_PAYMENT_CLOSED)
+// Get completed jobs (FINAL_PAYMENT_CLOSED) - includes archived jobs
 async function getCompletedJobs(req, res) {
   try {
     const jobs = await Job.find({ 
       stage: 'FINAL_PAYMENT_CLOSED',
-      isArchived: { $ne: true },
       isDeadEstimate: { $ne: true }
+      // Note: We include archived jobs here to keep a permanent list
     })
       .populate('customerId', 'name primaryPhone primaryEmail')
       .populate('assignedTo', 'name email')

@@ -151,9 +151,10 @@ function CompletedJobsPage() {
                         key={job._id}
                         onClick={() => setSelectedJobId(job._id)}
                         sx={{
-                          borderLeft: '4px solid #43A047',
+                          borderLeft: `4px solid ${job.isArchived ? '#9E9E9E' : '#43A047'}`,
                           cursor: 'pointer',
                           transition: 'all 0.2s ease',
+                          opacity: job.isArchived ? 0.7 : 1,
                           '&:hover': {
                             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
                             transform: 'translateY(-2px)',
@@ -161,20 +162,36 @@ function CompletedJobsPage() {
                         }}
                       >
                         <Box sx={{ p: 2 }}>
-                          <Typography
-                            variant="subtitle1"
-                            sx={{
-                              fontWeight: 600,
-                              mb: 1,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                            }}
-                          >
-                            {job.title}
-                          </Typography>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                            <Typography
+                              variant="subtitle1"
+                              sx={{
+                                fontWeight: 600,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                flex: 1,
+                              }}
+                            >
+                              {job.title}
+                            </Typography>
+                            {job.isArchived && (
+                              <Chip
+                                label="Archived"
+                                size="small"
+                                sx={{
+                                  ml: 1,
+                                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(158, 158, 158, 0.3)' : '#9E9E9E15',
+                                  color: 'text.secondary',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 500,
+                                  height: 20,
+                                }}
+                              />
+                            )}
+                          </Box>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                             {job.customerId?.name || 'Unknown Customer'}
                           </Typography>
