@@ -1044,6 +1044,96 @@ async function unarchiveJob(req, res) {
   }
 }
 
+// Archive all jobs in FINAL_PAYMENT_CLOSED stage
+async function archiveCompletedJobs(req, res) {
+  try {
+    const User = require('../models/User');
+    
+    // Find all jobs in FINAL_PAYMENT_CLOSED stage that aren't already archived
+    const jobsToArchive = await Job.find({
+      stage: 'FINAL_PAYMENT_CLOSED',
+      isArchived: { $ne: true },
+      isDeadEstimate: { $ne: true }
+    });
+
+    if (jobsToArchive.length === 0) {
+      return res.json({ 
+        message: 'No jobs to archive',
+        archived: 0,
+        jobIds: []
+      });
+    }
+
+    const archiveDate = new Date();
+    const archivedIds = [];
+    
+    // Handle createdBy for notes and activities
+    let createdBy = req.user?._id;
+    if (!createdBy) {
+      const defaultUser = await User.findOne({ isActive: true });
+      if (defaultUser) {
+        createdBy = defaultUser._id;
+      }
+    }
+
+    // Format timestamp for note
+    const timestamp = archiveDate.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    // Archive each job
+    for (const job of jobsToArchive) {
+      job.isArchived = true;
+      job.archivedAt = archiveDate;
+      
+      if (req.user) {
+        job.archivedBy = req.user._id;
+      }
+
+      // Add timestamped note
+      if (createdBy) {
+        job.notes.push({
+          content: `Job archived on ${timestamp} (bulk archive of completed jobs)`,
+          createdBy: createdBy,
+          createdAt: archiveDate
+        });
+      }
+
+      await job.save();
+      archivedIds.push(job._id);
+
+      // Log activity
+      if (createdBy) {
+        try {
+          await Activity.create({
+            type: 'job_archived',
+            jobId: job._id,
+            customerId: job.customerId,
+            note: `Job bulk archived on ${timestamp} - Final Payment Closed`,
+            createdBy: createdBy
+          });
+        } catch (activityError) {
+          console.error(`Error creating activity for job ${job._id}:`, activityError.message);
+        }
+      }
+    }
+
+    res.json({
+      message: `Successfully archived ${archivedIds.length} completed job(s)`,
+      archived: archivedIds.length,
+      jobIds: archivedIds
+    });
+  } catch (error) {
+    console.error('Error archiving completed jobs:', error);
+    res.status(500).json({ error: error.message });
+  }
+}
+
 module.exports = {
   getJobs,
   getJob,
@@ -1059,5 +1149,6 @@ module.exports = {
   autoMoveDeadEstimates,
   archiveJob,
   unarchiveJob,
+  archiveCompletedJobs,
   debugDeadEstimates
 };

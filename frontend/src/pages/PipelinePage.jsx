@@ -6,11 +6,18 @@ import {
   CircularProgress,
   Paper,
   IconButton,
+  Button,
   useTheme,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
+  Archive as ArchiveIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -50,6 +57,8 @@ function PipelinePage() {
   const [appointmentsCollapsed, setAppointmentsCollapsed] = useState(false);
   const [tasksCount, setTasksCount] = useState(0);
   const [appointmentsCount, setAppointmentsCount] = useState(0);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const autoMoveDeadEstimates = async () => {
     try {
@@ -119,18 +128,53 @@ function PipelinePage() {
     await fetchJobs(); // Refresh the list
   };
 
+  const handleArchiveCompleted = async () => {
+    try {
+      setArchiving(true);
+      const response = await axios.post(`${API_URL}/jobs/archive-completed`);
+      toast.success(`Archived ${response.data.archived} completed job(s)`);
+      setArchiveDialogOpen(false);
+      await fetchJobs(); // Refresh the list
+    } catch (error) {
+      console.error('Error archiving completed jobs:', error);
+      toast.error('Failed to archive completed jobs');
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Count jobs in FINAL_PAYMENT_CLOSED stage
+  const completedJobsCount = jobs.filter(
+    job => job.stage === 'FINAL_PAYMENT_CLOSED' && !job.isArchived && !job.isDeadEstimate
+  ).length;
+
   return (
     <Box>
       {/* Main Content */}
       <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 1, sm: 2 } }}>
         {/* Page Header */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h1" sx={{ mb: 1 }}>
-            Sales Pipeline
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-            Manage your woodworking projects from first contact to final payment
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+            <Box>
+              <Typography variant="h1" sx={{ mb: 1 }}>
+                Sales Pipeline
+              </Typography>
+              <Typography variant="body1" color="text.secondary">
+                Manage your woodworking projects from first contact to final payment
+              </Typography>
+            </Box>
+            {completedJobsCount > 0 && (
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<ArchiveIcon />}
+                onClick={() => setArchiveDialogOpen(true)}
+                sx={{ ml: 2 }}
+              >
+                Archive Completed ({completedJobsCount})
+              </Button>
+            )}
+          </Box>
         </Box>
 
         {/* Todos and Appointments Section */}
@@ -429,6 +473,31 @@ function PipelinePage() {
             fetchJobs();
           }}
         />
+
+        {/* Archive Completed Jobs Dialog */}
+        <Dialog open={archiveDialogOpen} onClose={() => !archiving && setArchiveDialogOpen(false)}>
+          <DialogTitle>Archive Completed Jobs</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Are you sure you want to archive all {completedJobsCount} job(s) in the "Final Payment Closed" stage?
+              These jobs will be moved to the archive and removed from the active pipeline.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setArchiveDialogOpen(false)} disabled={archiving}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleArchiveCompleted} 
+              color="secondary" 
+              variant="contained"
+              disabled={archiving}
+              startIcon={<ArchiveIcon />}
+            >
+              {archiving ? 'Archiving...' : `Archive ${completedJobsCount} Job(s)`}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </Box>
   );

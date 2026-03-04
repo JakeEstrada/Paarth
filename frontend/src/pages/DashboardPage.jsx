@@ -678,32 +678,46 @@ function DashboardPage() {
 
                         return (
                           <Box key={activity._id || idx}>
-                            <Box sx={{ display: 'grid', gridTemplateColumns: '80px 1fr', columnGap: 1, py: 0.5, fontSize: '0.75rem' }}>
-                              <Typography variant="caption" color="text.secondary" title={activity.createdAt} sx={{ whiteSpace: 'nowrap' }}>
+                            <Box sx={{ py: 0.5, fontSize: '0.75rem' }}>
+                              <Typography variant="caption" color="text.secondary">
                                 {timeShort}
                               </Typography>
-                              <Box sx={{ minWidth: 0 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                                  {title}
+                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
+                                {title}
+                              </Typography>
+                              {description && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: 'block', fontSize: '0.7rem' }}
+                                >
+                                  {description}
                                 </Typography>
-                                {description && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem' }}>
-                                    {description}
-                                  </Typography>
-                                )}
-                                {(jobLabel || customerLabel) && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.65rem', fontFamily: 'monospace' }}>
-                                    {jobLabel && `Job: ${jobLabel}`}
-                                    {jobLabel && customerLabel && ' | '}
-                                    {customerLabel && `Customer: ${customerLabel}`}
-                                  </Typography>
-                                )}
-                                {userName && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                    by {userName}
-                                  </Typography>
-                                )}
-                              </Box>
+                              )}
+                              {(jobLabel || customerLabel) && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{
+                                    display: 'block',
+                                    fontSize: '0.65rem',
+                                    fontFamily: 'monospace',
+                                  }}
+                                >
+                                  {jobLabel && `Job: ${jobLabel}`}
+                                  {jobLabel && customerLabel && ' | '}
+                                  {customerLabel && `Customer: ${customerLabel}`}
+                                </Typography>
+                              )}
+                              {userName && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ fontSize: '0.65rem' }}
+                                >
+                                  by {userName}
+                                </Typography>
+                              )}
                             </Box>
                             {idx < Math.min(jobActivities.length, 10) - 1 && <Divider sx={{ opacity: 0.2, my: 0.5 }} />}
                           </Box>
@@ -728,25 +742,31 @@ function DashboardPage() {
 
                         return (
                           <Box key={activity._id || idx}>
-                            <Box sx={{ display: 'grid', gridTemplateColumns: '80px 1fr', columnGap: 1, py: 0.5, fontSize: '0.75rem' }}>
-                              <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                            <Box sx={{ py: 0.5, fontSize: '0.75rem' }}>
+                              <Typography variant="caption" color="text.secondary">
                                 {timeShort}
                               </Typography>
-                              <Box sx={{ minWidth: 0 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                                  {title}
+                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
+                                {title}
+                              </Typography>
+                              {description && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: 'block', fontSize: '0.7rem' }}
+                                >
+                                  {description}
                                 </Typography>
-                                {description && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem' }}>
-                                    {description}
-                                  </Typography>
-                                )}
-                                {userName && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                    by {userName}
-                                  </Typography>
-                                )}
-                              </Box>
+                              )}
+                              {userName && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ fontSize: '0.65rem' }}
+                                >
+                                  by {userName}
+                                </Typography>
+                              )}
                             </Box>
                             {idx < Math.min(fileActivities.length, 5) - 1 && <Divider sx={{ opacity: 0.2, my: 0.5 }} />}
                           </Box>
@@ -770,20 +790,26 @@ function DashboardPage() {
 
                         return (
                           <Box key={activity._id || idx}>
-                            <Box sx={{ display: 'grid', gridTemplateColumns: '80px 1fr', columnGap: 1, py: 0.5, fontSize: '0.75rem' }}>
-                              <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                            <Box sx={{ py: 0.5, fontSize: '0.75rem' }}>
+                              <Typography variant="caption" color="text.secondary">
                                 {timeShort}
                               </Typography>
-                              <Box sx={{ minWidth: 0 }}>
-                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                                  {description}
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block', fontSize: '0.7rem' }}
+                              >
+                                {description}
+                              </Typography>
+                              {userName && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ fontSize: '0.65rem' }}
+                                >
+                                  by {userName}
                                 </Typography>
-                                {userName && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                    by {userName}
-                                  </Typography>
-                                )}
-                              </Box>
+                              )}
                             </Box>
                             {idx < Math.min(noteActivities.length, 5) - 1 && <Divider sx={{ opacity: 0.2, my: 0.5 }} />}
                           </Box>
@@ -808,25 +834,31 @@ function DashboardPage() {
 
                         return (
                           <Box key={activity._id || idx}>
-                            <Box sx={{ display: 'grid', gridTemplateColumns: '80px 1fr', columnGap: 1, py: 0.5, fontSize: '0.75rem' }}>
-                              <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                            <Box sx={{ py: 0.5, fontSize: '0.75rem' }}>
+                              <Typography variant="caption" color="text.secondary">
                                 {timeShort}
                               </Typography>
-                              <Box sx={{ minWidth: 0 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                                  {title}
+                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
+                                {title}
+                              </Typography>
+                              {description && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: 'block', fontSize: '0.7rem' }}
+                                >
+                                  {description}
                                 </Typography>
-                                {description && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem' }}>
-                                    {description}
-                                  </Typography>
-                                )}
-                                {userName && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                    by {userName}
-                                  </Typography>
-                                )}
-                              </Box>
+                              )}
+                              {userName && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ fontSize: '0.65rem' }}
+                                >
+                                  by {userName}
+                                </Typography>
+                              )}
                             </Box>
                             {idx < Math.min(appointmentActivities.length, 5) - 1 && <Divider sx={{ opacity: 0.2, my: 0.5 }} />}
                           </Box>
@@ -851,25 +883,31 @@ function DashboardPage() {
 
                         return (
                           <Box key={activity._id || idx}>
-                            <Box sx={{ display: 'grid', gridTemplateColumns: '80px 1fr', columnGap: 1, py: 0.5, fontSize: '0.75rem' }}>
-                              <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                            <Box sx={{ py: 0.5, fontSize: '0.75rem' }}>
+                              <Typography variant="caption" color="text.secondary">
                                 {timeShort}
                               </Typography>
-                              <Box sx={{ minWidth: 0 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                                  {title}
+                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
+                                {title}
+                              </Typography>
+                              {description && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: 'block', fontSize: '0.7rem' }}
+                                >
+                                  {description}
                                 </Typography>
-                                {description && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem' }}>
-                                    {description}
-                                  </Typography>
-                                )}
-                                {userName && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                    by {userName}
-                                  </Typography>
-                                )}
-                              </Box>
+                              )}
+                              {userName && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ fontSize: '0.65rem' }}
+                                >
+                                  by {userName}
+                                </Typography>
+                              )}
                             </Box>
                             {idx < Math.min(taskActivities.length, 5) - 1 && <Divider sx={{ opacity: 0.2, my: 0.5 }} />}
                           </Box>
