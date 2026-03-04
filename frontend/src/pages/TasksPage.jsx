@@ -50,9 +50,18 @@ function TasksPage() {
   const fetchTodos = async () => {
     try {
       setLoading(true);
-      // Fetch incomplete tasks (excludes projects)
-      const incompleteResponse = await axios.get(`${API_URL}/tasks`);
-      const incompleteItems = incompleteResponse.data || [];
+      // Fetch incomplete tasks (excludes projects by default)
+      const incompleteTasksResponse = await axios.get(`${API_URL}/tasks`);
+      const incompleteTasks = incompleteTasksResponse.data || [];
+      
+      // Fetch incomplete projects separately (include projects)
+      const incompleteAllResponse = await axios.get(`${API_URL}/tasks`, {
+        params: { includeProjects: 'true' }
+      });
+      const allIncompleteItems = incompleteAllResponse.data || [];
+      
+      // Extract incomplete projects from the full list
+      const incompleteProjects = allIncompleteItems.filter(item => item.isProject);
       
       // Fetch completed tasks to get completed projects
       const completedResponse = await axios.get(`${API_URL}/tasks/completed`);
@@ -62,7 +71,7 @@ function TasksPage() {
       const allCompletedItems = completedItems.flatMap(monthData => monthData.tasks || []);
       
       // Combine incomplete and completed items
-      const allItems = [...incompleteItems, ...allCompletedItems];
+      const allItems = [...allIncompleteItems, ...allCompletedItems];
       
       // Separate tasks and projects
       const tasksList = allItems.filter(item => !item.isProject);

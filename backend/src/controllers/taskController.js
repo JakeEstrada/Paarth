@@ -279,11 +279,19 @@ async function getAllIncompleteTasks(req, res) {
       });
     }
 
-    // Exclude projects (isProject: true) from pipeline tasks
-    const tasks = await Task.find({
-      completedAt: null,
-      isProject: { $ne: true } // Exclude projects from pipeline
-    })
+    // Check if we should include projects (for Tasks/Projects page)
+    const includeProjects = req.query.includeProjects === 'true';
+    
+    // Build query - exclude projects by default, but include them if requested
+    const query = {
+      completedAt: null
+    };
+    
+    if (!includeProjects) {
+      query.isProject = { $ne: true }; // Exclude projects from pipeline by default
+    }
+    
+    const tasks = await Task.find(query)
       .populate({
         path: 'jobId',
         select: 'title stage',
