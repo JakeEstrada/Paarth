@@ -18,7 +18,29 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, initialData, isProject
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const isEditMode = !!taskId;
+
+  // Fetch task data if taskId is provided but initialData is not
+  useEffect(() => {
+    if (open && isEditMode && taskId && !initialData) {
+      const fetchTask = async () => {
+        try {
+          setFetching(true);
+          const response = await axios.get(`${API_URL}/tasks/${taskId}`);
+          const task = response.data;
+          setTitle(task.title || '');
+          setDescription(task.description || '');
+        } catch (error) {
+          console.error('Error fetching task:', error);
+          toast.error('Failed to load task data');
+        } finally {
+          setFetching(false);
+        }
+      };
+      fetchTask();
+    }
+  }, [open, isEditMode, taskId, initialData]);
 
   // Reset form when modal opens or initialData changes
   useEffect(() => {
@@ -26,12 +48,13 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, initialData, isProject
       if (isEditMode && initialData) {
         setTitle(initialData.title || '');
         setDescription(initialData.description || '');
-      } else {
+      } else if (!isEditMode || (isEditMode && !taskId)) {
+        // Only reset if not in edit mode or if we don't have a taskId to fetch
         setTitle('');
         setDescription('');
       }
     }
-  }, [open, isEditMode, initialData]);
+  }, [open, isEditMode, initialData, taskId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

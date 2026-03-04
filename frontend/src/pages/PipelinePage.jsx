@@ -394,7 +394,7 @@ function PipelinePage() {
             setEditingTodo(null);
           }}
           taskId={editingTodo?.id}
-          taskData={editingTodo?.data}
+          initialData={editingTodo?.data}
         />
 
         {/* Job Context Menu */}
