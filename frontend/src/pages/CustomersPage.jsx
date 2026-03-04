@@ -176,6 +176,30 @@ function CustomersPage() {
     }
   };
 
+  // Fetch jobs for a customer
+  const fetchCustomerJobs = async (customerId) => {
+    if (!customerId) return;
+    try {
+      setLoadingJobs(true);
+      const response = await axios.get(`${API_URL}/jobs`);
+      const allJobs = response.data.jobs || response.data || [];
+      // Filter jobs for this customer - handle both string and ObjectId comparisons
+      const customerIdStr = String(customerId);
+      const jobs = allJobs
+        .filter(job => {
+          const jobCustomerId = job.customerId?._id || job.customerId;
+          return String(jobCustomerId) === customerIdStr;
+        })
+        .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      setCustomerJobs(jobs);
+    } catch (error) {
+      console.error('Error fetching customer jobs:', error);
+      setCustomerJobs([]);
+    } finally {
+      setLoadingJobs(false);
+    }
+  };
+
   // Open contact modal
   const handleOpenContactModal = (customer) => {
     setSelectedCustomer(customer);
@@ -246,6 +270,10 @@ function CustomersPage() {
       
       // Refresh the customer list
       fetchCustomers();
+      // Refresh jobs if customer modal is open
+      if (selectedCustomer) {
+        fetchCustomerJobs(selectedCustomer._id);
+      }
     } catch (error) {
       console.error('Error updating customer:', error);
       toast.error(error.response?.data?.error || 'Failed to update customer');
@@ -1230,7 +1258,8 @@ function CustomersPage() {
                               },
                             }}
                             onClick={() => {
-                              window.open(`/pipeline`, '_blank');
+                              // Navigate to pipeline and highlight this job
+                              window.location.href = `/pipeline`;
                             }}
                           >
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
