@@ -154,27 +154,12 @@ function PipelinePage() {
       <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 1, sm: 2 } }}>
         {/* Page Header */}
         <Box sx={{ mb: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-            <Box>
-              <Typography variant="h1" sx={{ mb: 1 }}>
-                Sales Pipeline
-              </Typography>
-              <Typography variant="body1" color="text.secondary">
-                Manage your woodworking projects from first contact to final payment
-              </Typography>
-            </Box>
-            {completedJobsCount > 0 && (
-              <Button
-                variant="outlined"
-                color="secondary"
-                startIcon={<ArchiveIcon />}
-                onClick={() => setArchiveDialogOpen(true)}
-                sx={{ ml: 2 }}
-              >
-                Archive Completed ({completedJobsCount})
-              </Button>
-            )}
-          </Box>
+          <Typography variant="h1" sx={{ mb: 1 }}>
+            Sales Pipeline
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+            Manage your woodworking projects from first contact to final payment
+          </Typography>
         </Box>
 
         {/* Todos and Appointments Section */}
@@ -341,6 +326,8 @@ function PipelinePage() {
               setContextMenuAnchor(e.currentTarget);
               setContextMenuJob(job);
             }}
+            onArchiveCompleted={() => setArchiveDialogOpen(true)}
+            completedJobsCount={completedJobsCount}
           />
         )}
 

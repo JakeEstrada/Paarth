@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Box, Card, CardContent, Typography, Paper, Button, useTheme } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Box, Card, CardContent, Typography, Paper, Button, IconButton, Tooltip, useTheme } from '@mui/material';
+import { Add as AddIcon, Archive as ArchiveIcon } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import JobCard from './JobCard';
@@ -48,7 +48,7 @@ const EXECUTION_PHASE = [
   'FINAL_PAYMENT_CLOSED',
 ];
 
-function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobClick, onJobContextMenu }) {
+function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobClick, onJobContextMenu, onArchiveCompleted, completedJobsCount }) {
   const theme = useTheme();
   const { canModifyPipeline } = useAuth();
   const [draggedOverStage, setDraggedOverStage] = useState(null);
@@ -182,16 +182,39 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
               >
                 {count}
               </Box>
-              <Typography
-                variant="body2"
-                sx={{
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  color: theme.palette.primary.main,
-                }}
-              >
-                ${Math.round(value / 1000)}K
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontSize: '0.875rem',
+                    fontWeight: 500,
+                    color: theme.palette.primary.main,
+                  }}
+                >
+                  ${Math.round(value / 1000)}K
+                </Typography>
+                {stageId === 'FINAL_PAYMENT_CLOSED' && completedJobsCount > 0 && onArchiveCompleted && (
+                  <Tooltip title={`Archive ${completedJobsCount} completed job(s)`}>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onArchiveCompleted();
+                      }}
+                      sx={{
+                        color: theme.palette.secondary.main,
+                        '&:hover': {
+                          backgroundColor: theme.palette.mode === 'dark' 
+                            ? 'rgba(156, 39, 176, 0.2)' 
+                            : 'rgba(156, 39, 176, 0.1)',
+                        },
+                      }}
+                    >
+                      <ArchiveIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </Box>
             </Box>
           </CardContent>
         </Card>
