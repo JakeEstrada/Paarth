@@ -42,6 +42,8 @@ import {
   Add as AddCircleIcon,
   Delete as DeleteOutlineIcon,
   Note as NoteIcon,
+  Work as WorkIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -66,6 +68,8 @@ function CustomersPage() {
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [notesCustomer, setNotesCustomer] = useState(null);
   const [notesText, setNotesText] = useState('');
+  const [customerJobs, setCustomerJobs] = useState([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
 
   // Fetch customers
   const fetchCustomers = async () => {
@@ -178,6 +182,7 @@ function CustomersPage() {
     setIsEditingCustomer(false);
     setEditCustomerForm({});
     setContactModalOpen(true);
+    fetchCustomerJobs(customer._id);
   };
 
   // Start editing customer
@@ -1196,6 +1201,67 @@ function CustomersPage() {
                       </Box>
                     </Box>
                   )}
+
+                  {/* Jobs */}
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                      <WorkIcon color="primary" />
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        Jobs ({customerJobs.length})
+                      </Typography>
+                    </Box>
+                    {loadingJobs ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                        <CircularProgress size={24} />
+                      </Box>
+                    ) : customerJobs.length > 0 ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pl: 4 }}>
+                        {customerJobs.map((job) => (
+                          <Box
+                            key={job._id}
+                            sx={{
+                              p: 1.5,
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              borderRadius: 1,
+                              '&:hover': {
+                                backgroundColor: 'action.hover',
+                                cursor: 'pointer',
+                              },
+                            }}
+                            onClick={() => {
+                              window.open(`/pipeline`, '_blank');
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                                  {job.title}
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
+                                  <Chip
+                                    label={job.stage?.replace(/_/g, ' ') || 'Unknown'}
+                                    size="small"
+                                    sx={{ height: 20, fontSize: '0.7rem' }}
+                                  />
+                                  {(job.valueEstimated || job.valueContracted) && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      ${((job.valueContracted || job.valueEstimated) / 1000).toFixed(0)}K
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </Box>
+                              <OpenInNewIcon sx={{ fontSize: 16, color: 'text.secondary', ml: 1 }} />
+                            </Box>
+                          </Box>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary" sx={{ pl: 4, fontStyle: 'italic' }}>
+                        No jobs found for this customer
+                      </Typography>
+                    )}
+                  </Box>
 
                   {/* Show message if no contact info */}
                   {getAllPhones(selectedCustomer).length === 0 && 

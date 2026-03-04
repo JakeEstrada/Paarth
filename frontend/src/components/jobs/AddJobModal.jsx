@@ -12,7 +12,10 @@ import {
   MenuItem,
   Box,
   CircularProgress,
+  Autocomplete,
+  Chip,
 } from '@mui/material';
+import { Add as AddIcon } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
@@ -31,6 +34,7 @@ const SOURCE_OPTIONS = [
 function AddJobModal({ open, onClose, onJobCreated }) {
   const [formData, setFormData] = useState({
     title: '',
+    customerId: null,
     customerName: '',
     customerPhone: '',
     customerEmail: '',
@@ -45,12 +49,16 @@ function AddJobModal({ open, onClose, onJobCreated }) {
   });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
+  const [customers, setCustomers] = useState([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [customerInputValue, setCustomerInputValue] = useState('');
 
   useEffect(() => {
     if (open) {
       // Reset form when modal opens
       setFormData({
         title: '',
+        customerId: null,
         customerName: '',
         customerPhone: '',
         customerEmail: '',
@@ -64,8 +72,88 @@ function AddJobModal({ open, onClose, onJobCreated }) {
         source: 'other',
       });
       setErrors({});
+      setCustomerInputValue('');
+      fetchCustomers();
     }
   }, [open]);
+
+  const fetchCustomers = async () => {
+    try {
+      setLoadingCustomers(true);
+      const response = await axios.get(`${API_URL}/customers?limit=1000`);
+      setCustomers(response.data.customers || response.data || []);
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+    } finally {
+      setLoadingCustomers(false);
+    }
+  };
+
+  const handleCustomerChange = (event, newValue, reason) => {
+    if (reason === 'selectOption' && newValue) {
+      // Check if it's the "Create new" option
+      if (newValue._id === 'new') {
+        // User wants to create new customer
+        setFormData({
+          ...formData,
+          customerId: null,
+          customerName: customerInputValue,
+          customerPhone: '',
+          customerEmail: '',
+          customerAddress: {
+            street: '',
+            city: '',
+            state: '',
+            zip: '',
+          },
+        });
+      } else {
+        // Customer selected from list
+        setFormData({
+          ...formData,
+          customerId: newValue._id,
+          customerName: newValue.name,
+          customerPhone: newValue.primaryPhone || '',
+          customerEmail: newValue.primaryEmail || '',
+          customerAddress: newValue.address || {
+            street: '',
+            city: '',
+            state: '',
+            zip: '',
+          },
+        });
+        setCustomerInputValue(newValue.name);
+      }
+    } else if (reason === 'clear') {
+      // Customer cleared
+      setFormData({
+        ...formData,
+        customerId: null,
+        customerName: '',
+        customerPhone: '',
+        customerEmail: '',
+        customerAddress: {
+          street: '',
+          city: '',
+          state: '',
+          zip: '',
+        },
+      });
+      setCustomerInputValue('');
+    }
+  };
+
+  const handleCustomerInputChange = (event, newInputValue) => {
+    setCustomerInputValue(newInputValue);
+    // If user is typing and it doesn't match any customer, treat as new customer
+    if (newInputValue && !customers.some(c => c.name.toLowerCase() === newInputValue.toLowerCase())) {
+      setFormData({
+        ...formData,
+        customerId: null,
+        customerName: newInputValue,
+      });
+    }
+  };
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({
@@ -97,7 +185,7 @@ function AddJobModal({ open, onClose, onJobCreated }) {
     if (!formData.title.trim()) {
       newErrors.title = 'Job title is required';
     }
-    if (!formData.customerName.trim()) {
+    if (!formData.customerName.trim() && !formData.customerId) {
       newErrors.customerName = 'Customer name is required';
     }
     if (formData.valueEstimated && isNaN(formData.valueEstimated)) {
@@ -115,57 +203,55 @@ function AddJobModal({ open, onClose, onJobCreated }) {
     try {
       setSaving(true);
       
-      // First, find or create the customer
-      let customerId;
+      // Use existing customer ID if selected, otherwise find or create
+      let customerId = formData.customerId;
       const customerName = formData.customerName.trim();
       
-      try {
-        // Try to find existing customer by name
-        const customersResponse = await axios.get(`${API_URL}/customers`);
-        const customers = customersResponse.data.customers || customersResponse.data || [];
-        const existingCustomer = customers.find(
-          (c) => c.name.toLowerCase() === customerName.toLowerCase()
-        );
-        
-        if (existingCustomer) {
-          customerId = existingCustomer._id;
-          // Update existing customer with any new information provided
-          const updateData = {};
-          if (formData.customerPhone && !existingCustomer.primaryPhone) {
-            updateData.primaryPhone = formData.customerPhone;
+      if (!customerId) {
+        // Need to find or create customer
+        try {
+          const existingCustomer = customers.find(
+            (c) => c.name.toLowerCase() === customerName.toLowerCase()
+          );
+          
+          if (existingCustomer) {
+            customerId = existingCustomer._id;
+            // Update existing customer with any new information provided
+            const updateData = {};
+            if (formData.customerPhone && !existingCustomer.primaryPhone) {
+              updateData.primaryPhone = formData.customerPhone;
+            }
+            if (formData.customerEmail && !existingCustomer.primaryEmail) {
+              updateData.primaryEmail = formData.customerEmail;
+            }
+            if ((formData.customerAddress.street || formData.customerAddress.city) && 
+                (!existingCustomer.address?.street && !existingCustomer.address?.city)) {
+              updateData.address = formData.customerAddress;
+            }
+            if (Object.keys(updateData).length > 0) {
+              await axios.patch(`${API_URL}/customers/${customerId}`, updateData);
+            }
+          } else {
+            // Create new customer with all provided information
+            const customerResponse = await axios.post(`${API_URL}/customers`, {
+              name: customerName,
+              primaryPhone: formData.customerPhone || undefined,
+              primaryEmail: formData.customerEmail || undefined,
+              address: (formData.customerAddress.street || formData.customerAddress.city) 
+                ? formData.customerAddress 
+                : undefined,
+            });
+            customerId = customerResponse.data._id;
           }
-          if (formData.customerEmail && !existingCustomer.primaryEmail) {
-            updateData.primaryEmail = formData.customerEmail;
+        } catch (customerError) {
+          console.error('Error finding/creating customer:', customerError);
+          if (customerError.response?.data?.error) {
+            toast.error(`Customer error: ${customerError.response.data.error}`);
+          } else {
+            toast.error('Failed to find or create customer');
           }
-          if ((formData.customerAddress.street || formData.customerAddress.city) && 
-              (!existingCustomer.address?.street && !existingCustomer.address?.city)) {
-            updateData.address = formData.customerAddress;
-          }
-          if (Object.keys(updateData).length > 0) {
-            await axios.patch(`${API_URL}/customers/${customerId}`, updateData);
-            toast.success(`Updated customer: ${customerName}`);
-          }
-        } else {
-          // Create new customer with all provided information
-          const customerResponse = await axios.post(`${API_URL}/customers`, {
-            name: customerName,
-            primaryPhone: formData.customerPhone || undefined,
-            primaryEmail: formData.customerEmail || undefined,
-            address: (formData.customerAddress.street || formData.customerAddress.city) 
-              ? formData.customerAddress 
-              : undefined,
-          });
-          customerId = customerResponse.data._id;
-          toast.success(`Created new customer: ${customerName}`);
+          return;
         }
-      } catch (customerError) {
-        console.error('Error finding/creating customer:', customerError);
-        if (customerError.response?.data?.error) {
-          toast.error(`Customer error: ${customerError.response.data.error}`);
-        } else {
-          toast.error('Failed to find or create customer');
-        }
-        return;
       }
       
       // Create the job
@@ -217,14 +303,73 @@ function AddJobModal({ open, onClose, onJobCreated }) {
             autoFocus
           />
 
-          <TextField
-            label="Customer Name"
-            value={formData.customerName}
-            onChange={(e) => handleChange('customerName', e.target.value)}
-            required
-            error={!!errors.customerName}
-            helperText={errors.customerName || 'Enter customer name (will be created if it doesn\'t exist)'}
-            fullWidth
+          <Autocomplete
+            freeSolo
+            options={customers}
+            getOptionLabel={(option) => {
+              if (typeof option === 'string') return option;
+              if (option._id === 'new') return option.name;
+              return option.name || '';
+            }}
+            value={formData.customerId ? customers.find(c => c._id === formData.customerId) || null : null}
+            inputValue={customerInputValue || formData.customerName}
+            onInputChange={handleCustomerInputChange}
+            onChange={handleCustomerChange}
+            loading={loadingCustomers}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Customer Name"
+                required
+                error={!!errors.customerName}
+                helperText={errors.customerName || 'Select existing customer or type to create new'}
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {loadingCustomers ? <CircularProgress size={20} /> : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  ),
+                }}
+              />
+            )}
+            renderOption={(props, option) => {
+              if (option._id === 'new') {
+                return (
+                  <Box component="li" {...props} key="new" sx={{ fontStyle: 'italic', color: 'primary.main' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <AddIcon fontSize="small" />
+                      <Typography variant="body1">{option.name}</Typography>
+                    </Box>
+                  </Box>
+                );
+              }
+              return (
+                <Box component="li" {...props} key={option._id}>
+                  <Box>
+                    <Typography variant="body1">{option.name}</Typography>
+                    {(option.primaryPhone || option.primaryEmail) && (
+                      <Typography variant="caption" color="text.secondary">
+                        {[option.primaryPhone, option.primaryEmail].filter(Boolean).join(' • ')}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              );
+            }}
+            filterOptions={(options, params) => {
+              const filtered = options.filter((option) =>
+                option.name.toLowerCase().includes(params.inputValue.toLowerCase())
+              );
+              
+              // If input doesn't match any option exactly, show "Create new" option
+              if (params.inputValue !== '' && !options.some(opt => opt.name.toLowerCase() === params.inputValue.toLowerCase())) {
+                return [{ _id: 'new', name: `Create "${params.inputValue}"` }, ...filtered];
+              }
+              
+              return filtered;
+            }}
           />
 
           <Box sx={{ display: 'flex', gap: 2 }}>
