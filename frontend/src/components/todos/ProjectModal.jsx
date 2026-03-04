@@ -25,6 +25,8 @@ import {
   Download as DownloadIcon,
   PictureAsPdf as PictureAsPdfIcon,
   Image as ImageIcon,
+  CheckCircle as CheckCircleIcon,
+  RadioButtonUnchecked as RadioButtonUncheckedIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -43,6 +45,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [uncompleting, setUncompleting] = useState(false);
 
   useEffect(() => {
     if (open && projectId) {
@@ -161,7 +164,14 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
       }
     } catch (error) {
       console.error('Error uploading file:', error);
-      toast.error(error.response?.data?.error || 'Failed to upload file');
+      // Check if file was actually uploaded despite the error
+      if (error.response?.status === 500) {
+        // File might have been uploaded, try refreshing the file list
+        await fetchFiles();
+        toast.error('File may have been uploaded, but an error occurred. Please refresh if needed.');
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to upload file');
+      }
     } finally {
       setUploading(false);
     }
@@ -242,6 +252,21 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
+  const handleUncomplete = async () => {
+    try {
+      setUncompleting(true);
+      await axios.post(`${API_URL}/tasks/${projectId}/uncomplete`);
+      toast.success('Project marked as incomplete');
+      await fetchProjectDetails();
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error uncompleting project:', error);
+      toast.error('Failed to uncomplete project');
+    } finally {
+      setUncompleting(false);
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -257,9 +282,23 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
       }}
     >
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          {project ? project.title : 'Project Details'}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            {project ? project.title : 'Project Details'}
+          </Typography>
+          {project?.completedAt && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<RadioButtonUncheckedIcon />}
+              onClick={handleUncomplete}
+              disabled={uncompleting}
+              sx={{ textTransform: 'none' }}
+            >
+              {uncompleting ? 'Uncompleting...' : 'Mark Incomplete'}
+            </Button>
+          )}
+        </Box>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
         </IconButton>

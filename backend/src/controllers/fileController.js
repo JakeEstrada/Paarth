@@ -253,16 +253,21 @@ async function uploadFile(req, res) {
 
     await file.save();
 
-    // Log activity
-    if (createdBy) {
-      await Activity.create({
-        type: 'file_uploaded',
-        jobId: job?._id || undefined,
-        customerId: customerId || undefined,
-        fileName: req.file.originalname,
-        fileId: file._id,
-        createdBy: createdBy
-      });
+    // Log activity (only if customerId exists, as it's required by Activity model)
+    if (createdBy && customerId) {
+      try {
+        await Activity.create({
+          type: 'file_uploaded',
+          jobId: job?._id || undefined,
+          customerId: customerId,
+          fileName: req.file.originalname,
+          fileId: file._id,
+          createdBy: createdBy
+        });
+      } catch (activityError) {
+        // Log but don't fail if activity creation fails (e.g., missing customerId for tasks)
+        console.error('Failed to create activity log:', activityError.message);
+      }
     }
 
     await file.populate('uploadedBy', 'name email');
