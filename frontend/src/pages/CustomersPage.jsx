@@ -1258,8 +1258,8 @@ function CustomersPage() {
                               },
                             }}
                             onClick={() => {
-                              // Navigate to pipeline and highlight this job
-                              window.location.href = `/pipeline`;
+                              // Navigate to pipeline page
+                              window.location.href = '/pipeline';
                             }}
                           >
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

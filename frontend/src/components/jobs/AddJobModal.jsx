@@ -217,7 +217,8 @@ function AddJobModal({ open, onClose, onJobCreated }) {
           
           if (existingCustomer) {
             customerId = existingCustomer._id;
-            // Update existing customer with any new information provided
+            // For existing customers, only update if fields are completely missing
+            // Don't overwrite existing data - job-specific info will be stored on the job
             const updateData = {};
             if (formData.customerPhone && !existingCustomer.primaryPhone) {
               updateData.primaryPhone = formData.customerPhone;
@@ -266,6 +267,25 @@ function AddJobModal({ open, onClose, onJobCreated }) {
       // Only include valueEstimated if it's provided and valid
       if (formData.valueEstimated && !isNaN(formData.valueEstimated)) {
         jobData.valueEstimated = parseFloat(formData.valueEstimated);
+      }
+
+      // Store job-specific address if provided (for contractors with multiple job sites)
+      if (formData.customerAddress.street || formData.customerAddress.city || 
+          formData.customerAddress.state || formData.customerAddress.zip) {
+        jobData.jobAddress = {
+          street: formData.customerAddress.street || undefined,
+          city: formData.customerAddress.city || undefined,
+          state: formData.customerAddress.state || undefined,
+          zip: formData.customerAddress.zip || undefined,
+        };
+      }
+
+      // Store job-specific contact if different from customer
+      if (formData.customerPhone || formData.customerEmail) {
+        jobData.jobContact = {
+          phone: formData.customerPhone || undefined,
+          email: formData.customerEmail || undefined,
+        };
       }
 
       const response = await axios.post(`${API_URL}/jobs`, jobData);

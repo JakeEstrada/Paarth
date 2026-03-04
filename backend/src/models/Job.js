@@ -113,6 +113,20 @@ const jobSchema = new mongoose.Schema({
     }
   },
   
+  // Job-specific address (for contractors with multiple job sites)
+  jobAddress: {
+    street: String,
+    city: String,
+    state: String,
+    zip: String
+  },
+  
+  // Job-specific contact info (if different from customer)
+  jobContact: {
+    phone: String,
+    email: String
+  },
+  
   // Calendar sync
   calendar: {
     googleEventId: String,

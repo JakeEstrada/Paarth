@@ -435,15 +435,28 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
                     Customer #: {job.customerId._id.toString().slice(-6).toUpperCase()}
                   </Typography>
                 )}
-                {(job.customerId.address?.street || job.customerId.address?.city) && (
+                {/* Show job-specific address if available, otherwise show customer address */}
+                {(job.jobAddress?.street || job.jobAddress?.city || 
+                  (!job.jobAddress && (job.customerId.address?.street || job.customerId.address?.city))) && (
                   <Typography variant="caption" color="text.secondary">
                     <LocationIcon sx={{ fontSize: 12, verticalAlign: 'middle', mr: 0.5 }} />
-                    {[
-                      job.customerId.address?.street,
-                      job.customerId.address?.city,
-                      job.customerId.address?.state,
-                      job.customerId.address?.zip
-                    ].filter(Boolean).join(', ')}
+                    {job.jobAddress ? (
+                      // Job-specific address
+                      [
+                        job.jobAddress.street,
+                        job.jobAddress.city,
+                        job.jobAddress.state,
+                        job.jobAddress.zip
+                      ].filter(Boolean).join(', ')
+                    ) : (
+                      // Customer address
+                      [
+                        job.customerId.address?.street,
+                        job.customerId.address?.city,
+                        job.customerId.address?.state,
+                        job.customerId.address?.zip
+                      ].filter(Boolean).join(', ')
+                    )}
                   </Typography>
                 )}
               </Box>
@@ -607,26 +620,40 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
                       Customer #: {job.customerId._id.toString().slice(-6).toUpperCase()}
                     </Typography>
                   )}
-                  {job.customerId?.primaryPhone && (
+                  {/* Show job-specific contact if available, otherwise show customer contact */}
+                  {(job.jobContact?.phone || job.customerId?.primaryPhone) && (
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      Phone: {job.customerId.primaryPhone}
+                      Phone: {job.jobContact?.phone || job.customerId.primaryPhone}
                     </Typography>
                   )}
-                  {job.customerId?.primaryEmail && (
+                  {(job.jobContact?.email || job.customerId?.primaryEmail) && (
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      Email: {job.customerId.primaryEmail}
+                      Email: {job.jobContact?.email || job.customerId.primaryEmail}
                     </Typography>
                   )}
-                  {(job.customerId?.address?.street || job.customerId?.address?.city) && (
+                  {/* Show job-specific address if available, otherwise show customer address */}
+                  {(job.jobAddress?.street || job.jobAddress?.city || 
+                    (!job.jobAddress && (job.customerId?.address?.street || job.customerId?.address?.city))) && (
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', mt: 1 }}>
                       <LocationIcon sx={{ fontSize: 16, color: 'text.secondary', mr: 0.5, mt: 0.25 }} />
                       <Typography variant="caption" color="text.secondary">
-                        {[
-                          job.customerId.address?.street,
-                          job.customerId.address?.city,
-                          job.customerId.address?.state,
-                          job.customerId.address?.zip
-                        ].filter(Boolean).join(', ')}
+                        {job.jobAddress ? (
+                          // Job-specific address
+                          [
+                            job.jobAddress.street,
+                            job.jobAddress.city,
+                            job.jobAddress.state,
+                            job.jobAddress.zip
+                          ].filter(Boolean).join(', ')
+                        ) : (
+                          // Customer address
+                          [
+                            job.customerId.address?.street,
+                            job.customerId.address?.city,
+                            job.customerId.address?.state,
+                            job.customerId.address?.zip
+                          ].filter(Boolean).join(', ')
+                        )}
                       </Typography>
                     </Box>
                   )}
