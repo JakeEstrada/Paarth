@@ -221,7 +221,15 @@ function TasksPage() {
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {[...currentItems].sort((a, b) => {
-            // Sort by createdAt descending (most recent first)
+            // First sort by completion status: uncompleted first, completed last
+            const aCompleted = !!a.completedAt;
+            const bCompleted = !!b.completedAt;
+            
+            if (aCompleted !== bCompleted) {
+              return aCompleted ? 1 : -1; // Uncompleted (false) comes first
+            }
+            
+            // If both have same completion status, sort by createdAt descending (most recent first)
             const dateA = new Date(a.createdAt || 0);
             const dateB = new Date(b.createdAt || 0);
             return dateB - dateA;
@@ -264,7 +272,15 @@ function TasksPage() {
               
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                  <Typography variant="body1" sx={{ fontWeight: 500, color: '#263238' }}>
+                  <Typography 
+                    variant="body1" 
+                    sx={{ 
+                      fontWeight: 500, 
+                      color: '#263238',
+                      textDecoration: item.completedAt ? 'line-through' : 'none',
+                      opacity: item.completedAt ? 0.6 : 1,
+                    }}
+                  >
                     {item.title}
                   </Typography>
                   {item.isProject && (
@@ -276,7 +292,14 @@ function TasksPage() {
                     />
                   )}
                 </Box>
-                <Typography variant="body2" color="text.secondary">
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{
+                    textDecoration: item.completedAt ? 'line-through' : 'none',
+                    opacity: item.completedAt ? 0.6 : 1,
+                  }}
+                >
                   {item.customerId?.name 
                     ? `${item.description || 'No description'} | ${item.customerId.name}`
                     : item.description || 'No description'
