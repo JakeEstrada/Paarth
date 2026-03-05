@@ -269,22 +269,48 @@ function DashboardPage() {
     }
   };
 
-  // Group activities
-  const jobActivities = activities.filter((a) =>
-    ['job_created', 'job_updated', 'job_archived', 'stage_change', 'job_scheduled', 'takeoff_complete', 'value_update'].includes(a.type)
-  );
-  const fileActivities = activities.filter((a) =>
-    ['file_uploaded', 'file_deleted'].includes(a.type)
-  );
-  const noteActivities = activities.filter((a) => 
-    a.type === 'note' || a.type === 'project_note_added'
-  );
-  const appointmentActivities = activities.filter((a) =>
-    ['meeting', 'job_scheduled', 'appointment_created'].includes(a.type)
-  );
-  const taskActivities = activities.filter((a) =>
-    ['task_created', 'task_completed', 'project_note_added'].includes(a.type)
-  );
+  // Get color for activity type
+  const getActivityTypeColor = (type) => {
+    const colorMap = {
+      // Job-related
+      'job_created': 'success',
+      'job_updated': 'info',
+      'job_archived': 'default',
+      'stage_change': 'primary',
+      'job_scheduled': 'primary',
+      'takeoff_complete': 'success',
+      'value_update': 'warning',
+      // Files
+      'file_uploaded': 'success',
+      'file_deleted': 'error',
+      // Notes
+      'note': 'info',
+      'project_note_added': 'info',
+      // Appointments
+      'meeting': 'primary',
+      'appointment_created': 'primary',
+      // Tasks/Projects
+      'task_created': 'success',
+      'task_completed': 'success',
+      // Other
+      'customer_created': 'success',
+      'customer_updated': 'info',
+      'estimate_sent': 'warning',
+      'estimate_updated': 'warning',
+      'contract_signed': 'success',
+      'deposit_received': 'success',
+      'payment_received': 'success',
+      'calendar_sync': 'info',
+    };
+    return colorMap[type] || 'default';
+  };
+
+  // Sort all activities by most recent (they should already be sorted, but ensure it)
+  const sortedActivities = [...activities].sort((a, b) => {
+    const dateA = new Date(a.createdAt);
+    const dateB = new Date(b.createdAt);
+    return dateB - dateA; // Most recent first
+  });
 
   if (loading) {
     return (
@@ -306,7 +332,7 @@ function DashboardPage() {
         </Typography>
       </Box>
 
-      {/* Split Layout */}
+      {/* Dashboard Content */}
       <Grid container spacing={{ xs: 2, sm: 3 }}>
         {/* Left Side - Original Dashboard */}
         <Grid item xs={12} lg={8}>
@@ -655,314 +681,87 @@ function DashboardPage() {
           </Grid>
         </Grid>
 
-        {/* Right Side - Activity Feed */}
-        <Grid item xs={12} lg={4}>
-          <Paper sx={{ p: 2, height: 'calc(100vh - 200px)', overflowY: 'auto', position: 'sticky', top: 20 }}>
+        {/* Full Width Activity Feed */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
               Recent Activity
             </Typography>
             
-            {activities.length === 0 ? (
+            {sortedActivities.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
                 No recent activity
               </Typography>
             ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {/* Job Updates */}
-                {jobActivities.length > 0 && (
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 0.5, mb: 1, color: 'text.secondary' }}>
-                      Job Updates
-                    </Typography>
-                    <Box>
-                      {jobActivities.slice(0, 10).map((activity, idx) => {
-                        const title = getActivityTitle(activity);
-                        const description = getActivityDescription(activity);
-                        const timeShort = formatActivityTime(activity.createdAt);
-                        const jobLabel = activity.jobId?.title || '';
-                        const taskLabel = activity.taskId?.title || '';
-                        const customerLabel = activity.customerId?.name || '';
-                        const userName = activity.createdBy?.name || '';
+              <Box>
+                {sortedActivities.slice(0, 50).map((activity, idx) => {
+                  const title = getActivityTitle(activity);
+                  const description = getActivityDescription(activity);
+                  const timeShort = formatActivityTime(activity.createdAt);
+                  const jobLabel = activity.jobId?.title || '';
+                  const taskLabel = activity.taskId?.title || '';
+                  const customerLabel = activity.customerId?.name || '';
+                  const userName = activity.createdBy?.name || '';
+                  const typeColor = getActivityTypeColor(activity.type);
 
-                        return (
-                          <Box key={activity._id || idx}>
-                            <Box sx={{ py: 0.5, fontSize: '0.75rem' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {timeShort}
-                              </Typography>
-                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
-                                {title}
-                              </Typography>
-                              {description && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ display: 'block', fontSize: '0.7rem' }}
-                                >
-                                  {description}
-                                </Typography>
-                              )}
-                              {(jobLabel || taskLabel || customerLabel) && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{
-                                    display: 'block',
-                                    fontSize: '0.65rem',
-                                    fontFamily: 'monospace',
-                                  }}
-                                >
-                                  {jobLabel && `Job: ${jobLabel}`}
-                                  {taskLabel && `${jobLabel ? ' | ' : ''}${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}`}
-                                  {(jobLabel || taskLabel) && customerLabel && ' | '}
-                                  {customerLabel && `Customer: ${customerLabel}`}
-                                </Typography>
-                              )}
-                              {userName && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ fontSize: '0.65rem' }}
-                                >
-                                  by {userName}
-                                </Typography>
-                              )}
-                            </Box>
-                            {idx < Math.min(jobActivities.length, 10) - 1 && <Divider sx={{ opacity: 0.2, my: 0.5 }} />}
-                          </Box>
-                        );
-                      })}
+                  return (
+                    <Box key={activity._id || idx}>
+                      <Box sx={{ py: 1, fontSize: '0.75rem' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <Chip 
+                            label={title}
+                            size="small"
+                            color={typeColor}
+                            sx={{ 
+                              height: 20, 
+                              fontSize: '0.65rem',
+                              fontWeight: 600
+                            }}
+                          />
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                            {timeShort}
+                          </Typography>
+                        </Box>
+                        {description && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: 'block', fontSize: '0.7rem', mb: 0.5 }}
+                          >
+                            {description}
+                          </Typography>
+                        )}
+                        {(jobLabel || taskLabel || customerLabel) && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{
+                              display: 'block',
+                              fontSize: '0.65rem',
+                              fontFamily: 'monospace',
+                              mb: 0.5,
+                            }}
+                          >
+                            {jobLabel && `Job: ${jobLabel}`}
+                            {taskLabel && `${jobLabel ? ' | ' : ''}${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}`}
+                            {(jobLabel || taskLabel) && customerLabel && ' | '}
+                            {customerLabel && `Customer: ${customerLabel}`}
+                          </Typography>
+                        )}
+                        {userName && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ fontSize: '0.65rem' }}
+                          >
+                            by {userName}
+                          </Typography>
+                        )}
+                      </Box>
+                      {idx < Math.min(sortedActivities.length, 50) - 1 && <Divider sx={{ opacity: 0.2 }} />}
                     </Box>
-                  </Box>
-                )}
-
-                {/* Files */}
-                {fileActivities.length > 0 && (
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 0.5, mb: 1, color: 'text.secondary' }}>
-                      Files
-                    </Typography>
-                    <Box>
-                      {fileActivities.slice(0, 5).map((activity, idx) => {
-                        const title = getActivityTitle(activity);
-                        const description = getActivityDescription(activity);
-                        const timeShort = formatActivityTime(activity.createdAt);
-                        const userName = activity.createdBy?.name || '';
-
-                        return (
-                          <Box key={activity._id || idx}>
-                            <Box sx={{ py: 0.5, fontSize: '0.75rem' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {timeShort}
-                              </Typography>
-                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
-                                {title}
-                              </Typography>
-                              {description && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ display: 'block', fontSize: '0.7rem' }}
-                                >
-                                  {description}
-                                </Typography>
-                              )}
-                              {userName && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ fontSize: '0.65rem' }}
-                                >
-                                  by {userName}
-                                </Typography>
-                              )}
-                            </Box>
-                            {idx < Math.min(fileActivities.length, 5) - 1 && <Divider sx={{ opacity: 0.2, my: 0.5 }} />}
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  </Box>
-                )}
-
-                {/* Notes */}
-                {noteActivities.length > 0 && (
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 0.5, mb: 1, color: 'text.secondary' }}>
-                      Notes
-                    </Typography>
-                    <Box>
-                      {noteActivities.slice(0, 5).map((activity, idx) => {
-                        const description = getActivityDescription(activity);
-                        const timeShort = formatActivityTime(activity.createdAt);
-                        const jobLabel = activity.jobId?.title || '';
-                        const taskLabel = activity.taskId?.title || '';
-                        const customerLabel = activity.customerId?.name || '';
-                        const userName = activity.createdBy?.name || '';
-
-                        return (
-                          <Box key={activity._id || idx}>
-                            <Box sx={{ py: 0.5, fontSize: '0.75rem' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {timeShort}
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ display: 'block', fontSize: '0.7rem' }}
-                              >
-                                {description}
-                              </Typography>
-                              {(jobLabel || taskLabel || customerLabel) && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{
-                                    display: 'block',
-                                    fontSize: '0.65rem',
-                                    fontFamily: 'monospace',
-                                  }}
-                                >
-                                  {jobLabel && `Job: ${jobLabel}`}
-                                  {taskLabel && `${jobLabel ? ' | ' : ''}${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}`}
-                                  {(jobLabel || taskLabel) && customerLabel && ' | '}
-                                  {customerLabel && `Customer: ${customerLabel}`}
-                                </Typography>
-                              )}
-                              {userName && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ fontSize: '0.65rem' }}
-                                >
-                                  by {userName}
-                                </Typography>
-                              )}
-                            </Box>
-                            {idx < Math.min(noteActivities.length, 5) - 1 && <Divider sx={{ opacity: 0.2, my: 0.5 }} />}
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  </Box>
-                )}
-
-                {/* Appointments */}
-                {appointmentActivities.length > 0 && (
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 0.5, mb: 1, color: 'text.secondary' }}>
-                      Appointments
-                    </Typography>
-                    <Box>
-                      {appointmentActivities.slice(0, 5).map((activity, idx) => {
-                        const title = getActivityTitle(activity);
-                        const description = getActivityDescription(activity);
-                        const timeShort = formatActivityTime(activity.createdAt);
-                        const userName = activity.createdBy?.name || '';
-
-                        return (
-                          <Box key={activity._id || idx}>
-                            <Box sx={{ py: 0.5, fontSize: '0.75rem' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {timeShort}
-                              </Typography>
-                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
-                                {title}
-                              </Typography>
-                              {description && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ display: 'block', fontSize: '0.7rem' }}
-                                >
-                                  {description}
-                                </Typography>
-                              )}
-                              {userName && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ fontSize: '0.65rem' }}
-                                >
-                                  by {userName}
-                                </Typography>
-                              )}
-                            </Box>
-                            {idx < Math.min(appointmentActivities.length, 5) - 1 && <Divider sx={{ opacity: 0.2, my: 0.5 }} />}
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  </Box>
-                )}
-
-                {/* Tasks / Projects */}
-                {taskActivities.length > 0 && (
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 0.5, mb: 1, color: 'text.secondary' }}>
-                      Tasks / Projects
-                    </Typography>
-                    <Box>
-                      {taskActivities.slice(0, 5).map((activity, idx) => {
-                        const title = getActivityTitle(activity);
-                        const description = getActivityDescription(activity);
-                        const timeShort = formatActivityTime(activity.createdAt);
-                        const jobLabel = activity.jobId?.title || '';
-                        const taskLabel = activity.taskId?.title || '';
-                        const customerLabel = activity.customerId?.name || '';
-                        const userName = activity.createdBy?.name || '';
-
-                        return (
-                          <Box key={activity._id || idx}>
-                            <Box sx={{ py: 0.5, fontSize: '0.75rem' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {timeShort}
-                              </Typography>
-                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
-                                {title}
-                              </Typography>
-                              {description && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ display: 'block', fontSize: '0.7rem' }}
-                                >
-                                  {description}
-                                </Typography>
-                              )}
-                              {(jobLabel || taskLabel || customerLabel) && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{
-                                    display: 'block',
-                                    fontSize: '0.65rem',
-                                    fontFamily: 'monospace',
-                                  }}
-                                >
-                                  {jobLabel && `Job: ${jobLabel}`}
-                                  {taskLabel && `${jobLabel ? ' | ' : ''}${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}`}
-                                  {(jobLabel || taskLabel) && customerLabel && ' | '}
-                                  {customerLabel && `Customer: ${customerLabel}`}
-                                </Typography>
-                              )}
-                              {userName && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ fontSize: '0.65rem' }}
-                                >
-                                  by {userName}
-                                </Typography>
-                              )}
-                            </Box>
-                            {idx < Math.min(taskActivities.length, 5) - 1 && <Divider sx={{ opacity: 0.2, my: 0.5 }} />}
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  </Box>
-                )}
+                  );
+                })}
               </Box>
             )}
           </Paper>
