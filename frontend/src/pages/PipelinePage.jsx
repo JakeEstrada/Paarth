@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Typography,
   Container,
@@ -35,6 +36,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function PipelinePage() {
   const theme = useTheme();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
@@ -78,6 +80,21 @@ function PipelinePage() {
     };
     initialize();
   }, []);
+
+  // Check for jobId in URL query params and open that job's modal
+  useEffect(() => {
+    const jobIdFromUrl = searchParams.get('jobId');
+    if (jobIdFromUrl && jobs.length > 0) {
+      // Verify the job exists in the current jobs list
+      const jobExists = jobs.some(job => job._id === jobIdFromUrl);
+      if (jobExists) {
+        setSelectedJobId(jobIdFromUrl);
+        // Remove the query parameter from URL after opening
+        searchParams.delete('jobId');
+        setSearchParams(searchParams, { replace: true });
+      }
+    }
+  }, [jobs, searchParams, setSearchParams]);
 
   const fetchJobs = async () => {
     try {

@@ -742,7 +742,28 @@ function DashboardPage() {
                               mb: 0.5,
                             }}
                           >
-                            {jobLabel && `Job: ${jobLabel}`}
+                            {jobLabel && (
+                              <Box
+                                component="span"
+                                onClick={() => {
+                                  // jobId can be either an object with _id or just the _id string
+                                  const jobId = activity.jobId?._id || activity.jobId;
+                                  if (jobId) {
+                                    navigate(`/pipeline?jobId=${jobId}`);
+                                  }
+                                }}
+                                sx={{
+                                  color: 'primary.main',
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                  '&:hover': {
+                                    color: 'primary.dark',
+                                  },
+                                }}
+                              >
+                                Job: {jobLabel}
+                              </Box>
+                            )}
                             {taskLabel && `${jobLabel ? ' | ' : ''}${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}`}
                             {(jobLabel || taskLabel) && customerLabel && ' | '}
                             {customerLabel && `Customer: ${customerLabel}`}
