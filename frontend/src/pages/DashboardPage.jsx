@@ -64,6 +64,22 @@ function DashboardPage() {
 
   useEffect(() => {
     fetchDashboardData();
+    
+    // Refresh activities periodically (every 30 seconds) and on window focus
+    const refreshInterval = setInterval(() => {
+      fetchDashboardData();
+    }, 30000); // Refresh every 30 seconds
+    
+    const handleFocus = () => {
+      fetchDashboardData();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      clearInterval(refreshInterval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const fetchDashboardData = async () => {
@@ -327,15 +343,18 @@ function DashboardPage() {
   const handlePrint = () => {
     setPrintDialogOpen(false);
     
-    // Filter activities for selected date
-    const selectedDateObj = new Date(selectedPrintDate);
-    selectedDateObj.setHours(0, 0, 0, 0);
-    const nextDay = new Date(selectedDateObj);
-    nextDay.setDate(nextDay.getDate() + 1);
+    // Filter activities for selected date (handle timezone correctly)
+    // Parse the date string and create date in local timezone
+    const [year, month, day] = selectedPrintDate.split('-').map(Number);
+    const selectedDateObj = new Date(year, month - 1, day, 0, 0, 0, 0); // Local timezone
+    const nextDay = new Date(year, month - 1, day + 1, 0, 0, 0, 0); // Next day in local timezone
     
     const filteredActivities = sortedActivities.filter((activity) => {
       const activityDate = new Date(activity.createdAt);
-      return activityDate >= selectedDateObj && activityDate < nextDay;
+      // Normalize activity date to local date (ignore time)
+      const activityDateLocal = new Date(activityDate.getFullYear(), activityDate.getMonth(), activityDate.getDate());
+      const selectedDateLocal = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate());
+      return activityDateLocal.getTime() === selectedDateLocal.getTime();
     });
 
     // Group activities by type for summary
@@ -1164,15 +1183,18 @@ function DashboardPage() {
 
 // Print View Component
 function PrintView({ activities, selectedDate }) {
-  const selectedDateObj = new Date(selectedDate);
-  selectedDateObj.setHours(0, 0, 0, 0);
-  const nextDay = new Date(selectedDateObj);
-  nextDay.setDate(nextDay.getDate() + 1);
+  // Filter activities for selected date (handle timezone correctly)
+  // Parse the date string and create date in local timezone
+  const [year, month, day] = selectedDate.split('-').map(Number);
+  const selectedDateObj = new Date(year, month - 1, day, 0, 0, 0, 0); // Local timezone
 
   // Filter activities for selected date
   const filteredActivities = activities.filter((activity) => {
     const activityDate = new Date(activity.createdAt);
-    return activityDate >= selectedDateObj && activityDate < nextDay;
+    // Normalize activity date to local date (ignore time)
+    const activityDateLocal = new Date(activityDate.getFullYear(), activityDate.getMonth(), activityDate.getDate());
+    const selectedDateLocal = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate());
+    return activityDateLocal.getTime() === selectedDateLocal.getTime();
   });
 
   // Group activities by type for summary
