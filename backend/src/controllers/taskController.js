@@ -100,7 +100,12 @@ async function createTask(req, res) {
     await task.save();
     
     // Log activity and add note to job if job exists
-    if (job && jobId && customerId) {
+    if (job && jobId) {
+      // Ensure customerId is set from job if not already set
+      if (!customerId && job.customerId) {
+        customerId = job.customerId;
+      }
+      
       const activityNote = task.description 
         ? `${task.title} - ${task.description}`
         : task.title;
@@ -124,36 +129,66 @@ async function createTask(req, res) {
         ? `Project added: ${activityNote}`
         : `Change order/task added: ${activityNote}`;
       
-      try {
-        await Activity.create({
-          type: activityType,
-          taskId: task._id, // Include taskId so it can be linked
-          jobId: jobId,
-          customerId: customerId,
-          note: activityNoteText,
-          createdBy: createdBy
-        });
-      } catch (activityError) {
-        console.error('Error creating activity for task with jobId:', activityError);
-        // Don't fail the request if activity logging fails
+      if (customerId) {
+        try {
+          const activity = await Activity.create({
+            type: activityType,
+            taskId: task._id, // Include taskId so it can be linked
+            jobId: jobId,
+            customerId: customerId,
+            note: activityNoteText,
+            createdBy: createdBy
+          });
+          console.log(`✅ Activity created for task "${task.title}": ${activity._id}`);
+        } catch (activityError) {
+          console.error('❌ Error creating activity for task with jobId:', activityError);
+          console.error('   Task ID:', task._id);
+          console.error('   Job ID:', jobId);
+          console.error('   Customer ID:', customerId);
+          console.error('   Error details:', activityError.message);
+          // Don't fail the request if activity logging fails
+        }
+      } else {
+        console.warn(`⚠️  Cannot create activity for task "${task.title}": No customerId available`);
       }
-    } else if (customerId) {
+    } else {
       // Log activity for standalone tasks/projects (not associated with a job)
-      const activityNote = task.isProject 
-        ? `Project created: ${task.title}`
-        : `Task created: ${task.title}`;
+      // If no customerId provided, try to get a default customer
+      let activityCustomerId = customerId;
+      if (!activityCustomerId) {
+        const Customer = require('../models/Customer');
+        const defaultCustomer = await Customer.findOne().sort({ createdAt: 1 }); // Get first customer
+        if (defaultCustomer) {
+          activityCustomerId = defaultCustomer._id;
+          // Also update the task with this customerId for consistency
+          task.customerId = activityCustomerId;
+          await task.save();
+        }
+      }
       
-      try {
-        await Activity.create({
-          type: task.isProject ? 'project_created' : 'task_created',
-          taskId: task._id,
-          customerId: customerId,
-          note: activityNote,
-          createdBy: createdBy
-        });
-      } catch (activityError) {
-        console.error('Error creating activity for standalone task:', activityError);
-        // Don't fail the request if activity logging fails
+      if (activityCustomerId) {
+        const activityNote = task.isProject 
+          ? `Project created: ${task.title}`
+          : `Task created: ${task.title}`;
+        
+        try {
+          const activity = await Activity.create({
+            type: task.isProject ? 'project_created' : 'task_created',
+            taskId: task._id,
+            customerId: activityCustomerId,
+            note: activityNote,
+            createdBy: createdBy
+          });
+          console.log(`✅ Activity created for standalone ${task.isProject ? 'project' : 'task'} "${task.title}": ${activity._id}`);
+        } catch (activityError) {
+          console.error('❌ Error creating activity for standalone task:', activityError);
+          console.error('   Task ID:', task._id);
+          console.error('   Customer ID:', activityCustomerId);
+          console.error('   Error details:', activityError.message);
+          // Don't fail the request if activity logging fails
+        }
+      } else {
+        console.warn(`⚠️  Could not create activity for standalone ${task.isProject ? 'project' : 'task'} "${task.title}": No customerId available and no default customer found`);
       }
     }
     
