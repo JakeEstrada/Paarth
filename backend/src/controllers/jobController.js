@@ -178,6 +178,14 @@ async function updateJob(req, res) {
     if (newNotes && Array.isArray(newNotes)) {
       // Find newly added notes (notes that weren't in the old array)
       const oldNoteIds = (oldData.notes || []).map(n => n._id?.toString()).filter(Boolean);
+      const oldNotesMap = new Map();
+      (oldData.notes || []).forEach(note => {
+        if (note._id) {
+          oldNotesMap.set(note._id.toString(), note);
+        }
+      });
+      
+      const notesToUpdate = [];
       const updatedNotes = newNotes.map(note => {
         // If it's a new note (no _id or _id not in old array), set createdBy and createdAt
         if (!note._id || !oldNoteIds.includes(note._id?.toString())) {
@@ -190,17 +198,33 @@ async function updateJob(req, res) {
               isStageChange: note.isStageChange || false
             };
           }
+        } else {
+          // Existing note - check if content was updated
+          const oldNote = oldNotesMap.get(note._id.toString());
+          if (oldNote && oldNote.content !== note.content && note.content) {
+            notesToUpdate.push({
+              oldContent: oldNote.content,
+              newContent: note.content
+            });
+          }
         }
-        // Return existing note as-is
+        // Return note (either new or existing)
         return note;
       });
       
       // Replace notes array with updated one
       req.body.notes = updatedNotes;
+      
+      // Store notesToUpdate for activity logging
+      req.body._notesToUpdate = notesToUpdate;
     }
     
-    // Update the job
-    Object.assign(job, req.body);
+    // Store notesToUpdate before updating job (since Object.assign will include it)
+    const notesToUpdate = req.body._notesToUpdate || [];
+    
+    // Update the job (remove temporary _notesToUpdate field first)
+    const { _notesToUpdate, ...jobUpdateData } = req.body;
+    Object.assign(job, jobUpdateData);
     await job.save();
     
     // Track ALL field changes (excluding notes which we handle separately)
@@ -267,6 +291,22 @@ async function updateJob(req, res) {
         note: noteContent,
         createdBy: req.user?._id || job.createdBy
       });
+    }
+    
+    // Log notes being updated
+    for (const noteUpdate of notesToUpdate) {
+      try {
+        await Activity.create({
+          type: 'note',
+          jobId: job._id,
+          customerId: job.customerId,
+          note: `Note updated: ${noteUpdate.newContent}`,
+          createdBy: req.user?._id || job.createdBy
+        });
+      } catch (activityError) {
+        console.error('Error creating activity for note update:', activityError);
+        // Don't fail the request if activity logging fails
+      }
     }
     
     // Log other field changes (if any) - but exclude schedule since we handle it separately
