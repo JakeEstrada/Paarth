@@ -28,6 +28,7 @@ const activitySchema = new mongoose.Schema({
       'calendar_sync',
       'task_created',
       'task_completed',
+      'project_note_added',
       'takeoff_complete'
     ]
   },
@@ -35,6 +36,11 @@ const activitySchema = new mongoose.Schema({
   jobId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Job'
+  },
+  
+  taskId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Task'
   },
   
   customerId: {
@@ -88,6 +94,7 @@ const activitySchema = new mongoose.Schema({
 
 // Indexes for querying
 activitySchema.index({ jobId: 1, createdAt: -1 });
+activitySchema.index({ taskId: 1, createdAt: -1 });
 activitySchema.index({ customerId: 1, createdAt: -1 });
 activitySchema.index({ type: 1 });
 

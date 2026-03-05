@@ -63,6 +63,7 @@ async function getRecentActivities(req, res) {
       .populate('createdBy', 'name email')
       .populate('customerId', 'name')
       .populate('jobId', 'title')
+      .populate('taskId', 'title isProject')
       .sort({ createdAt: -1 });
     
     // Only apply limit if specified, otherwise return all
@@ -108,6 +109,7 @@ async function getActivitiesByDateRange(req, res) {
       .populate('createdBy', 'name email')
       .populate('customerId', 'name')
       .populate('jobId', 'title')
+      .populate('taskId', 'title isProject')
       .sort({ createdAt: -1 });
     
     res.json(activities);

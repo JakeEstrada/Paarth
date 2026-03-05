@@ -126,6 +126,24 @@ async function createTask(req, res) {
         note: `Change order/task added: ${activityNote}`,
         createdBy: createdBy
       });
+    } else if (customerId) {
+      // Log activity for standalone tasks/projects (not associated with a job)
+      const activityNote = task.isProject 
+        ? `Project created: ${task.title}`
+        : `Task created: ${task.title}`;
+      
+      try {
+        await Activity.create({
+          type: 'task_created',
+          taskId: task._id,
+          customerId: customerId,
+          note: activityNote,
+          createdBy: createdBy
+        });
+      } catch (activityError) {
+        console.error('Error creating activity for standalone task:', activityError);
+        // Don't fail the request if activity logging fails
+      }
     }
     
     await task.populate('assignedTo', 'name email');
@@ -503,6 +521,44 @@ async function addProjectNote(req, res) {
     });
     
     await task.save();
+    
+    // Log activity for project note
+    const Customer = require('../models/Customer');
+    let customerId = task.customerId;
+    
+    // If no customerId, try to get it from the job
+    if (!customerId && task.jobId) {
+      const Job = require('../models/Job');
+      const job = await Job.findById(task.jobId);
+      if (job) {
+        customerId = job.customerId;
+      }
+    }
+    
+    // If still no customerId, try to get a default customer or skip activity logging
+    if (!customerId) {
+      // Try to find a default customer or use the first available customer
+      const defaultCustomer = await Customer.findOne();
+      if (defaultCustomer) {
+        customerId = defaultCustomer._id;
+      }
+    }
+    
+    if (customerId) {
+      try {
+        await Activity.create({
+          type: 'project_note_added',
+          taskId: task._id,
+          jobId: task.jobId || undefined,
+          customerId: customerId,
+          note: `Note added to project "${task.title}": ${content.trim()}`,
+          createdBy: createdBy
+        });
+      } catch (activityError) {
+        console.error('Error creating activity for project note:', activityError);
+        // Don't fail the request if activity logging fails
+      }
+    }
     
     await task.populate('notes.createdBy', 'name email');
     

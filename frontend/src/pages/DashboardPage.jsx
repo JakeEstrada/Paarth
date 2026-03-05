@@ -220,9 +220,11 @@ function DashboardPage() {
       case 'job_scheduled':
         return 'Scheduled';
       case 'task_created':
-        return 'Task Created';
+        return 'Task/Project Created';
       case 'task_completed':
         return 'Task Completed';
+      case 'project_note_added':
+        return 'Project Note Added';
       default:
         return activity.type?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Activity';
     }
@@ -244,6 +246,9 @@ function DashboardPage() {
     }
     if (activity.jobId?.title) {
       return activity.jobId.title;
+    }
+    if (activity.taskId?.title) {
+      return activity.taskId.title;
     }
     if (activity.customerId?.name) {
       return activity.customerId.name;
@@ -271,12 +276,14 @@ function DashboardPage() {
   const fileActivities = activities.filter((a) =>
     ['file_uploaded', 'file_deleted'].includes(a.type)
   );
-  const noteActivities = activities.filter((a) => a.type === 'note');
+  const noteActivities = activities.filter((a) => 
+    a.type === 'note' || a.type === 'project_note_added'
+  );
   const appointmentActivities = activities.filter((a) =>
     ['meeting', 'job_scheduled', 'appointment_created'].includes(a.type)
   );
   const taskActivities = activities.filter((a) =>
-    ['task_created', 'task_completed'].includes(a.type)
+    ['task_created', 'task_completed', 'project_note_added'].includes(a.type)
   );
 
   if (loading) {
@@ -673,6 +680,7 @@ function DashboardPage() {
                         const description = getActivityDescription(activity);
                         const timeShort = formatActivityTime(activity.createdAt);
                         const jobLabel = activity.jobId?.title || '';
+                        const taskLabel = activity.taskId?.title || '';
                         const customerLabel = activity.customerId?.name || '';
                         const userName = activity.createdBy?.name || '';
 
@@ -694,7 +702,7 @@ function DashboardPage() {
                                   {description}
                                 </Typography>
                               )}
-                              {(jobLabel || customerLabel) && (
+                              {(jobLabel || taskLabel || customerLabel) && (
                                 <Typography
                                   variant="caption"
                                   color="text.secondary"
@@ -705,7 +713,8 @@ function DashboardPage() {
                                   }}
                                 >
                                   {jobLabel && `Job: ${jobLabel}`}
-                                  {jobLabel && customerLabel && ' | '}
+                                  {taskLabel && `${jobLabel ? ' | ' : ''}${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}`}
+                                  {(jobLabel || taskLabel) && customerLabel && ' | '}
                                   {customerLabel && `Customer: ${customerLabel}`}
                                 </Typography>
                               )}
@@ -786,6 +795,9 @@ function DashboardPage() {
                       {noteActivities.slice(0, 5).map((activity, idx) => {
                         const description = getActivityDescription(activity);
                         const timeShort = formatActivityTime(activity.createdAt);
+                        const jobLabel = activity.jobId?.title || '';
+                        const taskLabel = activity.taskId?.title || '';
+                        const customerLabel = activity.customerId?.name || '';
                         const userName = activity.createdBy?.name || '';
 
                         return (
@@ -801,6 +813,22 @@ function DashboardPage() {
                               >
                                 {description}
                               </Typography>
+                              {(jobLabel || taskLabel || customerLabel) && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{
+                                    display: 'block',
+                                    fontSize: '0.65rem',
+                                    fontFamily: 'monospace',
+                                  }}
+                                >
+                                  {jobLabel && `Job: ${jobLabel}`}
+                                  {taskLabel && `${jobLabel ? ' | ' : ''}${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}`}
+                                  {(jobLabel || taskLabel) && customerLabel && ' | '}
+                                  {customerLabel && `Customer: ${customerLabel}`}
+                                </Typography>
+                              )}
                               {userName && (
                                 <Typography
                                   variant="caption"
@@ -879,6 +907,9 @@ function DashboardPage() {
                         const title = getActivityTitle(activity);
                         const description = getActivityDescription(activity);
                         const timeShort = formatActivityTime(activity.createdAt);
+                        const jobLabel = activity.jobId?.title || '';
+                        const taskLabel = activity.taskId?.title || '';
+                        const customerLabel = activity.customerId?.name || '';
                         const userName = activity.createdBy?.name || '';
 
                         return (
@@ -897,6 +928,22 @@ function DashboardPage() {
                                   sx={{ display: 'block', fontSize: '0.7rem' }}
                                 >
                                   {description}
+                                </Typography>
+                              )}
+                              {(jobLabel || taskLabel || customerLabel) && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{
+                                    display: 'block',
+                                    fontSize: '0.65rem',
+                                    fontFamily: 'monospace',
+                                  }}
+                                >
+                                  {jobLabel && `Job: ${jobLabel}`}
+                                  {taskLabel && `${jobLabel ? ' | ' : ''}${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}`}
+                                  {(jobLabel || taskLabel) && customerLabel && ' | '}
+                                  {customerLabel && `Customer: ${customerLabel}`}
                                 </Typography>
                               )}
                               {userName && (
