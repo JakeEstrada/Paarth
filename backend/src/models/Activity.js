@@ -28,6 +28,7 @@ const activitySchema = new mongoose.Schema({
       'calendar_sync',
       'task_created',
       'task_completed',
+      'project_created',
       'project_note_added',
       'takeoff_complete'
     ]

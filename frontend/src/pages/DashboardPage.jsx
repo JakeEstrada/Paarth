@@ -16,6 +16,11 @@ import {
   Divider,
   Button,
   useTheme,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from '@mui/material';
 import {
   AccountTree as JobsIcon,
@@ -28,6 +33,7 @@ import {
   Schedule as ScheduleIcon,
   People as PeopleIcon,
   Note as NoteIcon,
+  Print as PrintIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -53,6 +59,8 @@ function DashboardPage() {
     totalCustomers: 0,
   });
   const [activities, setActivities] = useState([]);
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  const [selectedPrintDate, setSelectedPrintDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -220,7 +228,9 @@ function DashboardPage() {
       case 'job_scheduled':
         return 'Scheduled';
       case 'task_created':
-        return 'Task/Project Created';
+        return 'Task Created';
+      case 'project_created':
+        return 'Project Created';
       case 'task_completed':
         return 'Task Completed';
       case 'project_note_added':
@@ -291,6 +301,7 @@ function DashboardPage() {
       'appointment_created': 'primary',
       // Tasks/Projects
       'task_created': 'success',
+      'project_created': 'success',
       'task_completed': 'success',
       // Other
       'customer_created': 'success',
@@ -311,6 +322,318 @@ function DashboardPage() {
     const dateB = new Date(b.createdAt);
     return dateB - dateA; // Most recent first
   });
+
+  // Handle print
+  const handlePrint = () => {
+    setPrintDialogOpen(false);
+    
+    // Filter activities for selected date
+    const selectedDateObj = new Date(selectedPrintDate);
+    selectedDateObj.setHours(0, 0, 0, 0);
+    const nextDay = new Date(selectedDateObj);
+    nextDay.setDate(nextDay.getDate() + 1);
+    
+    const filteredActivities = sortedActivities.filter((activity) => {
+      const activityDate = new Date(activity.createdAt);
+      return activityDate >= selectedDateObj && activityDate < nextDay;
+    });
+
+    // Group activities by type for summary
+    const activityCounts = {};
+    filteredActivities.forEach((activity) => {
+      const type = activity.type || 'other';
+      activityCounts[type] = (activityCounts[type] || 0) + 1;
+    });
+
+    // Group activities by customer
+    const activitiesByCustomer = {};
+    filteredActivities.forEach((activity) => {
+      const customerName = activity.customerId?.name || 'Unknown Customer';
+      if (!activitiesByCustomer[customerName]) {
+        activitiesByCustomer[customerName] = [];
+      }
+      activitiesByCustomer[customerName].push(activity);
+    });
+
+    const getActivityTitle = (type) => {
+      const titles = {
+        'stage_change': 'Stage Change',
+        'note': 'Note',
+        'job_created': 'Job Created',
+        'job_updated': 'Job Updated',
+        'file_uploaded': 'File Uploaded',
+        'file_deleted': 'File Deleted',
+        'meeting': 'Scheduled',
+        'job_scheduled': 'Scheduled',
+        'task_created': 'Task Created',
+        'project_created': 'Project Created',
+        'task_completed': 'Task Completed',
+        'project_note_added': 'Project Note Added',
+      };
+      return titles[type] || type?.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) || 'Activity';
+    };
+
+    const getActivityDescription = (activity) => {
+      if (activity.note) return activity.note;
+      if (activity.jobId?.title) return activity.jobId.title;
+      if (activity.taskId?.title) return activity.taskId.title;
+      if (activity.customerId?.name) return activity.customerId.name;
+      if (activity.fileName) return activity.fileName;
+      return '';
+    };
+
+    const formatDate = (dateString) => {
+      if (!dateString) return '';
+      try {
+        const date = typeof dateString === 'string' ? parseISO(dateString) : new Date(dateString);
+        return format(date, 'MMM dd, yyyy h:mm a');
+      } catch (error) {
+        return '';
+      }
+    };
+
+    // Generate summary HTML
+    const summaryHTML = Object.entries(activityCounts).map(([type, count]) => `
+      <div class="summary-item">
+        <div class="summary-item-label">${getActivityTitle(type)}</div>
+        <div class="summary-item-value">${count}</div>
+      </div>
+    `).join('');
+
+    // Sort all filtered activities by most recent first (same as recent activity feed)
+    const sortedFilteredActivities = [...filteredActivities].sort((a, b) => {
+      const dateA = new Date(a.createdAt);
+      const dateB = new Date(b.createdAt);
+      return dateB - dateA; // Most recent first
+    });
+
+    // Generate activities HTML - maintain chronological order, group consecutive activities by customer
+    let currentCustomer = null;
+    let activitiesHTML = '';
+    
+    sortedFilteredActivities.forEach((activity, index) => {
+      const customerName = activity.customerId?.name || 'Unknown Customer';
+      const isNewCustomer = customerName !== currentCustomer;
+      
+      // If new customer, close previous section and start new one
+      if (isNewCustomer) {
+        if (currentCustomer !== null) {
+          activitiesHTML += '</div>'; // Close previous customer section
+        }
+        activitiesHTML += `
+          <div class="customer-section">
+            <div class="customer-name">${customerName}</div>
+        `;
+        currentCustomer = customerName;
+      }
+      
+      const title = getActivityTitle(activity.type);
+      const description = getActivityDescription(activity);
+      const jobLabel = activity.jobId?.title || '';
+      const taskLabel = activity.taskId?.title || '';
+      const userName = activity.createdBy?.name || '';
+      
+      activitiesHTML += `
+        <div class="activity-item">
+          <div class="activity-header">
+            <div class="activity-title">${title}</div>
+            <div class="activity-time">${formatDate(activity.createdAt)}</div>
+          </div>
+          ${description ? `<div class="activity-description">${description}</div>` : ''}
+          ${(jobLabel || taskLabel) ? `<div class="activity-meta">${jobLabel ? `Job: ${jobLabel}` : ''}${jobLabel && taskLabel ? ' | ' : ''}${taskLabel ? `${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}` : ''}</div>` : ''}
+          ${userName ? `<div class="activity-user">by ${userName}</div>` : ''}
+        </div>
+      `;
+    });
+    
+    // Close last customer section
+    if (currentCustomer !== null) {
+      activitiesHTML += '</div>';
+    }
+
+    // Wait a moment for dialog to close, then trigger print
+    setTimeout(() => {
+      const printWindow = window.open('', '_blank');
+      
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Activity Report - ${format(selectedDateObj, 'MMMM dd, yyyy')}</title>
+            <style>
+                * {
+                  margin: 0;
+                  padding: 0;
+                  box-sizing: border-box;
+                }
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                  font-size: 12pt;
+                  line-height: 1.5;
+                  color: #000;
+                  padding: 20px;
+                }
+                img {
+                  max-width: 100%;
+                  height: auto;
+                }
+                .header {
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-bottom: 20px;
+                  padding-bottom: 15px;
+                  border-bottom: 2px solid #000;
+                }
+                .logo-container {
+                  display: flex;
+                  align-items: center;
+                  gap: 15px;
+                }
+                .logo-container img {
+                  height: 60px;
+                }
+                .summary {
+                  margin-bottom: 20px;
+                }
+                .summary-title {
+                  font-size: 14pt;
+                  font-weight: 600;
+                  margin-bottom: 10px;
+                }
+                .summary-grid {
+                  display: grid;
+                  grid-template-columns: repeat(4, 1fr);
+                  gap: 10px;
+                  margin-bottom: 15px;
+                }
+                .summary-item {
+                  border: 2px solid #000;
+                  border-radius: 4px;
+                  padding: 10px;
+                  text-align: center;
+                }
+                .summary-item-label {
+                  font-size: 10pt;
+                  color: #666;
+                  margin-bottom: 5px;
+                }
+                .summary-item-value {
+                  font-size: 16pt;
+                  font-weight: 600;
+                }
+                .activities-section {
+                  margin-top: 20px;
+                }
+                .activities-title {
+                  font-size: 14pt;
+                  font-weight: 600;
+                  margin-bottom: 15px;
+                }
+                .customer-section {
+                  margin-bottom: 20px;
+                  padding-bottom: 15px;
+                  border-bottom: 2px solid #000;
+                }
+                .customer-section:last-child {
+                  border-bottom: none;
+                }
+                .customer-name {
+                  font-weight: 700;
+                  font-size: 12pt;
+                  margin-bottom: 10px;
+                }
+                .activity-item {
+                  margin-bottom: 10px;
+                  padding-left: 15px;
+                  border-left: 1px solid #ccc;
+                }
+                .activity-header {
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: flex-start;
+                  margin-bottom: 5px;
+                }
+                .activity-title {
+                  font-weight: 600;
+                  font-size: 11pt;
+                }
+                .activity-time {
+                  font-size: 9pt;
+                  color: #666;
+                }
+                .activity-description {
+                  font-size: 10pt;
+                  margin-bottom: 5px;
+                }
+                .activity-meta {
+                  font-size: 9pt;
+                  color: #666;
+                  font-family: monospace;
+                }
+                .activity-user {
+                  font-size: 9pt;
+                  color: #666;
+                  margin-top: 3px;
+                }
+                @media print {
+                  body {
+                    padding: 15px;
+                  }
+                  .header {
+                    margin-bottom: 15px;
+                    padding-bottom: 10px;
+                  }
+                  .summary {
+                    margin-bottom: 15px;
+                  }
+                  .customer-section {
+                    margin-bottom: 15px;
+                    padding-bottom: 10px;
+                  }
+                  .activity-item {
+                    margin-bottom: 8px;
+                  }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="header">
+                <div class="logo-container">
+                  <img src="${window.location.origin}/logo.png" alt="Logo" />
+                  <div>
+                    <h1>Activity Report</h1>
+                    <p>${format(selectedDateObj, 'EEEE, MMMM dd, yyyy')}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="summary">
+                <div class="summary-title">Summary</div>
+                <div class="summary-grid">
+                  ${summaryHTML}
+                  <div class="summary-item">
+                    <div class="summary-item-label">Total Activities</div>
+                    <div class="summary-item-value">${filteredActivities.length}</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="activities-section">
+                <div class="activities-title">Activities by Customer</div>
+                ${activitiesHTML}
+              </div>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+          printWindow.close();
+        }, 250);
+    }, 100);
+  };
 
   if (loading) {
     return (
@@ -684,9 +1007,19 @@ function DashboardPage() {
         {/* Full Width Activity Feed */}
         <Grid item xs={12}>
           <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-              Recent Activity
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Recent Activity
+              </Typography>
+              <Button
+                variant="outlined"
+                startIcon={<PrintIcon />}
+                onClick={() => setPrintDialogOpen(true)}
+                size="small"
+              >
+                Print Activity
+              </Button>
+            </Box>
             
             {sortedActivities.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
@@ -788,7 +1121,418 @@ function DashboardPage() {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* Print Dialog */}
+      <Dialog open={printDialogOpen} onClose={() => setPrintDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Print Activity Report</DialogTitle>
+        <DialogContent>
+          <TextField
+            label="Select Date"
+            type="date"
+            value={selectedPrintDate}
+            onChange={(e) => setSelectedPrintDate(e.target.value)}
+            fullWidth
+            sx={{ mt: 2 }}
+            InputLabelProps={{
+              shrink: true,
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPrintDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handlePrint} variant="contained" startIcon={<PrintIcon />}>
+            Print
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Print View (Hidden until print) */}
+      <Box
+        id="print-view"
+        sx={{
+          display: 'none',
+          '@media print': {
+            display: 'block',
+          },
+        }}
+      >
+        <PrintView activities={sortedActivities} selectedDate={selectedPrintDate} />
+      </Box>
     </Container>
+  );
+}
+
+// Print View Component
+function PrintView({ activities, selectedDate }) {
+  const selectedDateObj = new Date(selectedDate);
+  selectedDateObj.setHours(0, 0, 0, 0);
+  const nextDay = new Date(selectedDateObj);
+  nextDay.setDate(nextDay.getDate() + 1);
+
+  // Filter activities for selected date
+  const filteredActivities = activities.filter((activity) => {
+    const activityDate = new Date(activity.createdAt);
+    return activityDate >= selectedDateObj && activityDate < nextDay;
+  });
+
+  // Group activities by type for summary
+  const activityCounts = {};
+  filteredActivities.forEach((activity) => {
+    const type = activity.type || 'other';
+    activityCounts[type] = (activityCounts[type] || 0) + 1;
+  });
+
+  // Group activities by customer
+  const activitiesByCustomer = {};
+  filteredActivities.forEach((activity) => {
+    const customerName = activity.customerId?.name || 'Unknown Customer';
+    if (!activitiesByCustomer[customerName]) {
+      activitiesByCustomer[customerName] = [];
+    }
+    activitiesByCustomer[customerName].push(activity);
+  });
+
+  const getActivityTitle = (activity) => {
+    switch (activity.type) {
+      case 'stage_change':
+        return 'Stage Change';
+      case 'note':
+        return 'Note';
+      case 'job_created':
+        return 'Job Created';
+      case 'job_updated':
+        return 'Job Updated';
+      case 'file_uploaded':
+        return 'File Uploaded';
+      case 'file_deleted':
+        return 'File Deleted';
+      case 'meeting':
+      case 'job_scheduled':
+        return 'Scheduled';
+      case 'task_created':
+        return 'Task/Project Created';
+      case 'task_completed':
+        return 'Task Completed';
+      case 'project_note_added':
+        return 'Project Note Added';
+      default:
+        return activity.type?.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) || 'Activity';
+    }
+  };
+
+  const getActivityDescription = (activity) => {
+    if (activity.note) {
+      return activity.note;
+    }
+    if (activity.type === 'job_updated' && activity.changes) {
+      const entries = Object.entries(activity.changes);
+      if (entries.length > 0) {
+        const [field, change] = entries[0];
+        const fromVal = change?.from ?? 'empty';
+        const toVal = change?.to ?? 'empty';
+        return `${field}: ${fromVal} → ${toVal}`;
+      }
+    }
+    if (activity.jobId?.title) {
+      return activity.jobId.title;
+    }
+    if (activity.taskId?.title) {
+      return activity.taskId.title;
+    }
+    if (activity.customerId?.name) {
+      return activity.customerId.name;
+    }
+    if (activity.fileName) {
+      return activity.fileName;
+    }
+    return '';
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    try {
+      const date = typeof dateString === 'string' ? parseISO(dateString) : new Date(dateString);
+      return format(date, 'MMM dd, yyyy h:mm a');
+    } catch (error) {
+      return '';
+    }
+  };
+
+  return (
+    <Box sx={{ p: 3, '@media print': { p: 2 } }}>
+      {/* Header with Logo and Date */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, '@media print': { mb: 2 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <img
+            src="/logo.png"
+            alt="Logo"
+            style={{ height: '60px', '@media print': { height: '50px' } }}
+          />
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 600, '@media print': { fontSize: '1.25rem' } }}>
+              Activity Report
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ '@media print': { fontSize: '0.875rem' } }}>
+              {format(selectedDateObj, 'EEEE, MMMM dd, yyyy')}
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+
+      {/* Summary Section */}
+      <Box sx={{ mb: 3, '@media print': { mb: 2 } }}>
+        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, '@media print': { fontSize: '1rem', mb: 1 } }}>
+          Summary
+        </Typography>
+        <Box 
+          sx={{ 
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            gap: 1.5,
+            mb: 2,
+            '@media print': { 
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: 1,
+              mb: 1.5
+            }
+          }}
+        >
+          {Object.entries(activityCounts).map(([type, count]) => (
+            <Box
+              key={type}
+              sx={{
+                border: '2px solid',
+                borderColor: '#000',
+                borderRadius: 1,
+                p: 1.5,
+                textAlign: 'center',
+                '@media print': { 
+                  p: 1,
+                  border: '1.5px solid #000',
+                },
+              }}
+            >
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  fontSize: '0.7rem',
+                  fontWeight: 500,
+                  mb: 0.5,
+                  '@media print': { 
+                    fontSize: '0.65rem',
+                    mb: 0.25
+                  } 
+                }}
+              >
+                {getActivityTitle({ type })}
+              </Typography>
+              <Typography 
+                variant="h5" 
+                sx={{ 
+                  fontWeight: 700,
+                  '@media print': { 
+                    fontSize: '1.5rem'
+                  } 
+                }}
+              >
+                {count}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+        <Box
+          sx={{
+            border: '2px solid',
+            borderColor: '#000',
+            borderRadius: 1,
+            p: 1.5,
+            textAlign: 'center',
+            display: 'inline-block',
+            '@media print': {
+              border: '1.5px solid #000',
+              p: 1,
+            },
+          }}
+        >
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              mb: 0.5,
+              '@media print': { 
+                fontSize: '0.65rem',
+                mb: 0.25
+              } 
+            }}
+          >
+            Total Activities
+          </Typography>
+          <Typography 
+            variant="h5" 
+            sx={{ 
+              fontWeight: 700,
+              '@media print': { 
+                fontSize: '1.5rem'
+              } 
+            }}
+          >
+            {filteredActivities.length}
+          </Typography>
+        </Box>
+      </Box>
+
+      <Divider sx={{ mb: 3, '@media print': { mb: 2 } }} />
+
+      {/* Activities List - Grouped by Customer */}
+      <Box>
+        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, '@media print': { fontSize: '1rem', mb: 1 } }}>
+          Activities by Customer
+        </Typography>
+        {Object.keys(activitiesByCustomer).length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ '@media print': { fontSize: '0.875rem' } }}>
+            No activities for this date
+          </Typography>
+        ) : (
+          <Box>
+            {Object.entries(activitiesByCustomer)
+              .sort(([a], [b]) => a.localeCompare(b)) // Sort customers alphabetically
+              .map(([customerName, customerActivities], customerIdx) => (
+                <Box
+                  key={customerName}
+                  sx={{
+                    mb: 2,
+                    pb: 2,
+                    borderBottom: customerIdx < Object.keys(activitiesByCustomer).length - 1 ? '2px solid' : 'none',
+                    borderColor: '#000',
+                    '@media print': { 
+                      mb: 1.5, 
+                      pb: 1.5,
+                      borderBottom: customerIdx < Object.keys(activitiesByCustomer).length - 1 ? '1.5px solid #000' : 'none',
+                    },
+                  }}
+                >
+                  {/* Customer Header */}
+                  <Typography 
+                    variant="h6" 
+                    sx={{ 
+                      fontWeight: 700,
+                      mb: 1.5,
+                      fontSize: '1.1rem',
+                      '@media print': { 
+                        fontSize: '1rem',
+                        mb: 1,
+                        fontWeight: 600
+                      } 
+                    }}
+                  >
+                    {customerName}
+                  </Typography>
+                  
+                  {/* Activities for this customer */}
+                  {customerActivities.map((activity, activityIdx) => {
+                    const title = getActivityTitle(activity);
+                    const description = getActivityDescription(activity);
+                    const jobLabel = activity.jobId?.title || '';
+                    const taskLabel = activity.taskId?.title || '';
+                    const userName = activity.createdBy?.name || '';
+
+                    return (
+                      <Box
+                        key={activity._id || activityIdx}
+                        sx={{
+                          mb: 1,
+                          pl: 2,
+                          borderLeft: '2px solid',
+                          borderColor: 'divider',
+                          '@media print': {
+                            mb: 0.75,
+                            pl: 1.5,
+                            borderLeft: '1px solid #ccc',
+                          },
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              fontWeight: 600,
+                              '@media print': { 
+                                fontSize: '0.85rem',
+                                fontWeight: 500
+                              } 
+                            }}
+                          >
+                            {title}
+                          </Typography>
+                          <Typography 
+                            variant="caption" 
+                            color="text.secondary" 
+                            sx={{ 
+                              fontSize: '0.7rem',
+                              '@media print': { 
+                                fontSize: '0.65rem' 
+                              } 
+                            }}
+                          >
+                            {formatDate(activity.createdAt)}
+                          </Typography>
+                        </Box>
+                        {description && (
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              mb: 0.5,
+                              fontSize: '0.875rem',
+                              '@media print': { 
+                                fontSize: '0.8rem',
+                                mb: 0.25
+                              } 
+                            }}
+                          >
+                            {description}
+                          </Typography>
+                        )}
+                        {(jobLabel || taskLabel) && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{
+                              display: 'block',
+                              fontSize: '0.7rem',
+                              fontFamily: 'monospace',
+                              '@media print': {
+                                fontSize: '0.65rem',
+                              },
+                            }}
+                          >
+                            {jobLabel && `Job: ${jobLabel}`}
+                            {taskLabel && `${jobLabel ? ' | ' : ''}${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}`}
+                          </Typography>
+                        )}
+                        {userName && (
+                          <Typography 
+                            variant="caption" 
+                            color="text.secondary" 
+                            sx={{ 
+                              fontSize: '0.7rem',
+                              '@media print': { 
+                                fontSize: '0.65rem' 
+                              } 
+                            }}
+                          >
+                            by {userName}
+                          </Typography>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Box>
+              ))}
+          </Box>
+        )}
+      </Box>
+    </Box>
   );
 }
 

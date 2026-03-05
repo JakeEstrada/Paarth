@@ -118,14 +118,25 @@ async function createTask(req, res) {
       
       await job.save();
       
-      // Log activity
-      await Activity.create({
-        type: 'task_created',
-        jobId: jobId,
-        customerId: customerId,
-        note: `Change order/task added: ${activityNote}`,
-        createdBy: createdBy
-      });
+      // Log activity - check if it's a project or task
+      const activityType = task.isProject ? 'project_created' : 'task_created';
+      const activityNoteText = task.isProject 
+        ? `Project added: ${activityNote}`
+        : `Change order/task added: ${activityNote}`;
+      
+      try {
+        await Activity.create({
+          type: activityType,
+          taskId: task._id, // Include taskId so it can be linked
+          jobId: jobId,
+          customerId: customerId,
+          note: activityNoteText,
+          createdBy: createdBy
+        });
+      } catch (activityError) {
+        console.error('Error creating activity for task with jobId:', activityError);
+        // Don't fail the request if activity logging fails
+      }
     } else if (customerId) {
       // Log activity for standalone tasks/projects (not associated with a job)
       const activityNote = task.isProject 
@@ -134,7 +145,7 @@ async function createTask(req, res) {
       
       try {
         await Activity.create({
-          type: 'task_created',
+          type: task.isProject ? 'project_created' : 'task_created',
           taskId: task._id,
           customerId: customerId,
           note: activityNote,
