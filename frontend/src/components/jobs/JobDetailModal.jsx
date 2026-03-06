@@ -100,8 +100,6 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
   const [saving, setSaving] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [movingStage, setMovingStage] = useState(false);
-  const [selectedStage, setSelectedStage] = useState('');
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [fileType, setFileType] = useState('other');
@@ -113,11 +111,9 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
   useEffect(() => {
     if (open && jobId) {
       fetchJobDetails();
-      setSelectedStage('');
     } else {
       setIsEditing(false);
       setEditedJob(null);
-      setSelectedStage('');
     }
   }, [open, jobId]);
 
@@ -332,37 +328,6 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
     }
   };
 
-  const handleMoveStage = async (toStage) => {
-    if (!toStage) {
-      toast.error('Please select a stage');
-      return;
-    }
-
-    if (toStage === job.stage) {
-      toast.error('Job is already in this stage');
-      return;
-    }
-
-    try {
-      setMovingStage(true);
-      await axios.post(`${API_URL}/jobs/${jobId}/move-stage`, {
-        toStage,
-        note: `Moved from ${STAGE_LABELS[job.stage]} to ${STAGE_LABELS[toStage]}`
-      });
-      
-      toast.success(`Moved to ${STAGE_LABELS[toStage]}`);
-      await fetchJobDetails(); // Refresh job data
-      if (onJobUpdate) {
-        onJobUpdate(jobId, { stage: toStage });
-      }
-      setSelectedStage('');
-    } catch (error) {
-      console.error('Error moving stage:', error);
-      toast.error(error.response?.data?.error || 'Failed to move stage');
-    } finally {
-      setMovingStage(false);
-    }
-  };
 
   const formatCurrency = (value) => {
     if (!value) return '$0';
@@ -450,71 +415,60 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
                 )}
               </Box>
             )}
-            <Typography variant="body2" color="text.secondary">
-              {job.customerId?.name || 'Unknown Customer'}
-            </Typography>
-            {job.customerId && (
-              <Box sx={{ display: 'flex', gap: 2, mt: 0.5, flexWrap: 'wrap' }}>
-                {job.customerId._id && (
-                  <Typography variant="caption" color="text.secondary">
-                    Customer #: {job.customerId._id.toString().slice(-6).toUpperCase()}
-                  </Typography>
-                )}
-                {/* Show job-specific address if available, otherwise show customer address */}
-                {(job.jobAddress?.street || job.jobAddress?.city || 
-                  (!job.jobAddress && (job.customerId.address?.street || job.customerId.address?.city))) && (
-                  <Typography variant="caption" color="text.secondary">
-                    <LocationIcon sx={{ fontSize: 12, verticalAlign: 'middle', mr: 0.5 }} />
-                    {job.jobAddress ? (
-                      // Job-specific address
-                      [
-                        job.jobAddress.street,
-                        job.jobAddress.city,
-                        job.jobAddress.state,
-                        job.jobAddress.zip
-                      ].filter(Boolean).join(', ')
-                    ) : (
-                      // Customer address
-                      [
-                        job.customerId.address?.street,
-                        job.customerId.address?.city,
-                        job.customerId.address?.state,
-                        job.customerId.address?.zip
-                      ].filter(Boolean).join(', ')
-                    )}
-                  </Typography>
-                )}
-              </Box>
-            )}
           </Box>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            {!isEditing ? (
-              <>
-                <IconButton onClick={handleEdit} size="small" color="primary" title="Edit">
-                  <EditIcon />
-                </IconButton>
-                {!job?.isArchived && !job?.isDeadEstimate && (
-                  <IconButton onClick={handleArchive} size="small" color="warning" title="Archive" disabled={saving}>
-                    <ArchiveIcon />
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+            {/* Estimated Value in Header */}
+            <Box sx={{ textAlign: 'right' }}>
+              {isEditing ? (
+                <TextField
+                  type="number"
+                  value={editedJob?.valueEstimated || 0}
+                  onChange={(e) => handleFieldChange('valueEstimated', parseFloat(e.target.value) || 0)}
+                  variant="outlined"
+                  size="small"
+                  sx={{ width: '150px' }}
+                  InputProps={{
+                    startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>,
+                  }}
+                />
+              ) : (
+                <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
+                  {formatCurrency(job.valueEstimated)}
+                </Typography>
+              )}
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Estimated Value
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              {!isEditing ? (
+                <>
+                  <IconButton onClick={handleEdit} size="small" color="primary" title="Edit">
+                    <EditIcon />
                   </IconButton>
-                )}
-                <IconButton onClick={handleDeleteClick} size="small" color="error" title="Delete">
-                  <DeleteIcon />
-                </IconButton>
-              </>
-            ) : (
-              <>
-                <IconButton onClick={handleSave} size="small" color="primary" disabled={saving} title="Save">
-                  <SaveIcon />
-                </IconButton>
-                <IconButton onClick={handleCancel} size="small" disabled={saving} title="Cancel">
-                  <CancelIcon />
-                </IconButton>
-              </>
-            )}
-            <IconButton onClick={onClose} size="small" title="Close">
-              <CloseIcon />
-            </IconButton>
+                  {!job?.isArchived && !job?.isDeadEstimate && (
+                    <IconButton onClick={handleArchive} size="small" color="warning" title="Archive" disabled={saving}>
+                      <ArchiveIcon />
+                    </IconButton>
+                  )}
+                  <IconButton onClick={handleDeleteClick} size="small" color="error" title="Delete">
+                    <DeleteIcon />
+                  </IconButton>
+                </>
+              ) : (
+                <>
+                  <IconButton onClick={handleSave} size="small" color="primary" disabled={saving} title="Save">
+                    <SaveIcon />
+                  </IconButton>
+                  <IconButton onClick={handleCancel} size="small" disabled={saving} title="Cancel">
+                    <CancelIcon />
+                  </IconButton>
+                </>
+              )}
+              <IconButton onClick={onClose} size="small" title="Close">
+                <CloseIcon />
+              </IconButton>
+            </Box>
           </Box>
         </Box>
       </DialogTitle>
@@ -531,119 +485,14 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
 
         {activeTab === 0 && (
           <Grid container spacing={3}>
-            {/* Estimated Value - At the top */}
-            <Grid item xs={12} sm={6}>
-              <Paper sx={{ p: 2, height: '100%' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <MoneyIcon sx={{ mr: 1, color: 'success.main' }} />
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Estimated Value
-                  </Typography>
-                </Box>
-                {isEditing ? (
-                  <TextField
-                    type="number"
-                    value={editedJob?.valueEstimated || 0}
-                    onChange={(e) => handleFieldChange('valueEstimated', parseFloat(e.target.value) || 0)}
-                    variant="outlined"
-                    size="small"
-                    fullWidth
-                    sx={{ mt: 1 }}
-                    InputProps={{
-                      startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>,
-                    }}
-                  />
-                ) : (
-                  <Typography variant="h5" sx={{ color: 'success.main', fontWeight: 600, mt: 1 }}>
-                    {formatCurrency(job.valueEstimated)}
-                  </Typography>
-                )}
-              </Paper>
-            </Grid>
-
-            {/* Current Stage */}
-            <Grid item xs={12} sm={6}>
-              <Paper sx={{ p: 2, height: '100%' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <AssignmentIcon sx={{ mr: 1, color: 'primary.main' }} />
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Current Stage
-                  </Typography>
-                </Box>
-                <Chip
-                  label={STAGE_LABELS[job.stage] || job.stage}
-                  color="primary"
-                  sx={{ mt: 1, mb: 2 }}
-                />
-                
-                {/* Stage Movement Controls */}
-                {!job?.isArchived && !job?.isDeadEstimate && (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 2 }}>
-                    {/* Move to Any Stage Dropdown */}
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Move to Stage</InputLabel>
-                      <Select
-                        value={selectedStage}
-                        onChange={(e) => {
-                          const stage = e.target.value;
-                          setSelectedStage(stage);
-                          if (stage && stage !== job.stage) {
-                            handleMoveStage(stage);
-                          }
-                        }}
-                        label="Move to Stage"
-                        disabled={movingStage}
-                      >
-                        <MenuItem value="">
-                          <em>Select a stage...</em>
-                        </MenuItem>
-                        {ALL_STAGES.map((stage) => (
-                          <MenuItem 
-                            key={stage} 
-                            value={stage}
-                            disabled={stage === job.stage}
-                          >
-                            {STAGE_LABELS[stage]}
-                            {stage === job.stage && ' (Current)'}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                )}
-              </Paper>
-            </Grid>
-
-            {/* Recent Activity - More prominent */}
+            {/* Recent Activity - First thing users see */}
             <Grid item xs={12}>
               <Paper sx={{ p: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <DescriptionIcon sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                      Recent Activity
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<DescriptionIcon />}
-                      onClick={() => setAddNoteOpen(true)}
-                      sx={{ borderRadius: '8px', textTransform: 'none' }}
-                    >
-                      Add Note
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<AssignmentIcon />}
-                      onClick={() => setAddTaskOpen(true)}
-                      sx={{ borderRadius: '8px', textTransform: 'none' }}
-                    >
-                      Add Task
-                    </Button>
-                  </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <DescriptionIcon sx={{ mr: 1, color: 'primary.main' }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    Recent Activity
+                  </Typography>
                 </Box>
                 
                 {job.notes && job.notes.length > 0 ? (
@@ -696,14 +545,31 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
                   <Box sx={{ textAlign: 'center', py: 3 }}>
                     <DescriptionIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
                     <Typography variant="body2" color="text.secondary">
-                      No activity yet. Add a note or task to get started.
+                      No activity yet. View Notes tab to add notes or tasks.
                     </Typography>
                   </Box>
                 )}
               </Paper>
             </Grid>
 
-            {/* Customer Information */}
+            {/* Current Stage - At the top */}
+            <Grid item xs={12} sm={6}>
+              <Paper sx={{ p: 2, height: '100%' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <AssignmentIcon sx={{ mr: 1, color: 'primary.main' }} />
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Current Stage
+                  </Typography>
+                </Box>
+                <Chip
+                  label={STAGE_LABELS[job.stage] || job.stage}
+                  color="primary"
+                  sx={{ mt: 1 }}
+                />
+              </Paper>
+            </Grid>
+
+            {/* Customer Information - At the bottom */}
             <Grid item xs={12} sm={6}>
               <Paper sx={{ p: 2, height: '100%' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
