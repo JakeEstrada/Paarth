@@ -117,21 +117,37 @@ function PayrollPage() {
   };
 
   // Calculate weighted hours (overtime calculation)
-  // Regular hours: first 40 hours at 1x
-  // Overtime hours: hours over 40 at 1.5x
+  // Per day: first 8 hours at 1x, hours over 8 at 1.5x
+  // Example: 10 hours in a day = 8 regular + (2 * 1.5) = 8 + 3 = 11 weighted hours
   const calculateWeightedHours = () => {
-    const totalHours = workHours.reduce((sum, day) => {
-      return sum + calculateHours(day.in, day.out, day.breaks);
-    }, 0);
+    let totalRegular = 0;
+    let totalOvertime = 0;
+    let totalWeighted = 0;
 
-    if (totalHours <= 40) {
-      return { regular: totalHours, overtime: 0, weighted: totalHours };
-    } else {
-      const regular = 40;
-      const overtime = totalHours - 40;
-      const weighted = regular + (overtime * 1.5);
-      return { regular, overtime, weighted };
-    }
+    workHours.forEach((day) => {
+      const dayHours = calculateHours(day.in, day.out, day.breaks);
+      
+      if (dayHours <= 8) {
+        // 8 hours or less: all regular
+        totalRegular += dayHours;
+        totalWeighted += dayHours;
+      } else {
+        // Over 8 hours: first 8 are regular, rest are overtime (1.5x)
+        const regular = 8;
+        const overtime = dayHours - 8;
+        const weightedOvertime = overtime * 1.5;
+        
+        totalRegular += regular;
+        totalOvertime += overtime;
+        totalWeighted += regular + weightedOvertime;
+      }
+    });
+
+    return { 
+      regular: totalRegular, 
+      overtime: totalOvertime, 
+      weighted: totalWeighted 
+    };
   };
 
   // Calculate total hours

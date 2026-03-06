@@ -138,7 +138,13 @@ function AppointmentList({ onAppointmentClick, onAppointmentComplete, onAddClick
             icon={<RadioButtonUncheckedIcon />}
             checkedIcon={<CheckCircleIcon />}
             checked={false}
-            onChange={(e) => handleComplete(appointment._id, e)}
+            onChange={(e) => {
+              e.stopPropagation();
+              handleComplete(appointment._id, e);
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
             sx={{ color: 'primary.main' }}
           />
           
