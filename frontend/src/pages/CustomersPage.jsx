@@ -213,12 +213,40 @@ function CustomersPage() {
   const handleStartEditCustomer = () => {
     if (!selectedCustomer) return;
     setIsEditingCustomer(true);
+    
+    // Migrate old phones/emails to new structure if needed
+    let contactPhones = selectedCustomer.contactPhones ? [...selectedCustomer.contactPhones] : [];
+    if (selectedCustomer.primaryPhone && contactPhones.length === 0) {
+      contactPhones.push({ label: 'Primary', value: selectedCustomer.primaryPhone });
+    }
+    if (selectedCustomer.phones && selectedCustomer.phones.length > 0) {
+      selectedCustomer.phones.forEach(phone => {
+        if (phone && !contactPhones.find(p => p.value === phone)) {
+          contactPhones.push({ label: 'Phone', value: phone });
+        }
+      });
+    }
+    
+    let contactEmails = selectedCustomer.contactEmails ? [...selectedCustomer.contactEmails] : [];
+    if (selectedCustomer.primaryEmail && contactEmails.length === 0) {
+      contactEmails.push({ label: 'Primary', value: selectedCustomer.primaryEmail });
+    }
+    if (selectedCustomer.emails && selectedCustomer.emails.length > 0) {
+      selectedCustomer.emails.forEach(email => {
+        if (email && !contactEmails.find(e => e.value === email)) {
+          contactEmails.push({ label: 'Email', value: email });
+        }
+      });
+    }
+    
     setEditCustomerForm({
       name: selectedCustomer.name || '',
       primaryPhone: selectedCustomer.primaryPhone || '',
       primaryEmail: selectedCustomer.primaryEmail || '',
       phones: selectedCustomer.phones ? [...selectedCustomer.phones] : [],
       emails: selectedCustomer.emails ? [...selectedCustomer.emails] : [],
+      contactPhones: contactPhones,
+      contactEmails: contactEmails,
       address: {
         street: selectedCustomer.address?.street || '',
         city: selectedCustomer.address?.city || '',
@@ -250,6 +278,8 @@ function CustomersPage() {
         primaryEmail: editCustomerForm.primaryEmail || undefined,
         phones: editCustomerForm.phones || [],
         emails: editCustomerForm.emails || [],
+        contactPhones: editCustomerForm.contactPhones?.filter(cp => cp.value?.trim()) || [],
+        contactEmails: editCustomerForm.contactEmails?.filter(ce => ce.value?.trim()) || [],
         address: (editCustomerForm.address.street || editCustomerForm.address.city) 
           ? editCustomerForm.address 
           : undefined,
@@ -284,7 +314,7 @@ function CustomersPage() {
   const handleAddPhone = () => {
     setEditCustomerForm(prev => ({
       ...prev,
-      phones: [...(prev.phones || []), '']
+      contactPhones: [...(prev.contactPhones || []), { label: '', value: '' }]
     }));
   };
 
@@ -292,15 +322,23 @@ function CustomersPage() {
   const handleRemovePhone = (index) => {
     setEditCustomerForm(prev => ({
       ...prev,
-      phones: prev.phones.filter((_, i) => i !== index)
+      contactPhones: prev.contactPhones.filter((_, i) => i !== index)
     }));
   };
 
-  // Update phone
-  const handleUpdatePhone = (index, value) => {
+  // Update phone label
+  const handleUpdatePhoneLabel = (index, label) => {
     setEditCustomerForm(prev => ({
       ...prev,
-      phones: prev.phones.map((p, i) => i === index ? value : p)
+      contactPhones: prev.contactPhones.map((p, i) => i === index ? { ...p, label } : p)
+    }));
+  };
+
+  // Update phone value
+  const handleUpdatePhoneValue = (index, value) => {
+    setEditCustomerForm(prev => ({
+      ...prev,
+      contactPhones: prev.contactPhones.map((p, i) => i === index ? { ...p, value } : p)
     }));
   };
 
@@ -308,7 +346,7 @@ function CustomersPage() {
   const handleAddEmail = () => {
     setEditCustomerForm(prev => ({
       ...prev,
-      emails: [...(prev.emails || []), '']
+      contactEmails: [...(prev.contactEmails || []), { label: '', value: '' }]
     }));
   };
 
@@ -316,15 +354,23 @@ function CustomersPage() {
   const handleRemoveEmail = (index) => {
     setEditCustomerForm(prev => ({
       ...prev,
-      emails: prev.emails.filter((_, i) => i !== index)
+      contactEmails: prev.contactEmails.filter((_, i) => i !== index)
     }));
   };
 
-  // Update email
-  const handleUpdateEmail = (index, value) => {
+  // Update email label
+  const handleUpdateEmailLabel = (index, label) => {
     setEditCustomerForm(prev => ({
       ...prev,
-      emails: prev.emails.map((e, i) => i === index ? value : e)
+      contactEmails: prev.contactEmails.map((e, i) => i === index ? { ...e, label } : e)
+    }));
+  };
+
+  // Update email value
+  const handleUpdateEmailValue = (index, value) => {
+    setEditCustomerForm(prev => ({
+      ...prev,
+      contactEmails: prev.contactEmails.map((e, i) => i === index ? { ...e, value } : e)
     }));
   };
 
@@ -401,28 +447,46 @@ function CustomersPage() {
     return parts.length > 0 ? parts.join(', ') : '-';
   };
 
-  // Get all unique phone numbers for a customer
+  // Get all phones for a customer (with labels)
   const getAllPhones = (customer) => {
-    const phones = new Set();
-    if (customer.primaryPhone) phones.add(customer.primaryPhone);
+    // Use new structure if available
+    if (customer.contactPhones && customer.contactPhones.length > 0) {
+      return customer.contactPhones.filter(cp => cp.value);
+    }
+    // Fallback to old structure
+    const phones = [];
+    if (customer.primaryPhone) {
+      phones.push({ label: 'Primary', value: customer.primaryPhone });
+    }
     if (customer.phones && customer.phones.length > 0) {
       customer.phones.forEach(phone => {
-        if (phone) phones.add(phone);
+        if (phone && !phones.find(p => p.value === phone)) {
+          phones.push({ label: 'Phone', value: phone });
+        }
       });
     }
-    return Array.from(phones);
+    return phones;
   };
 
-  // Get all unique emails for a customer
+  // Get all emails for a customer (with labels)
   const getAllEmails = (customer) => {
-    const emails = new Set();
-    if (customer.primaryEmail) emails.add(customer.primaryEmail);
+    // Use new structure if available
+    if (customer.contactEmails && customer.contactEmails.length > 0) {
+      return customer.contactEmails.filter(ce => ce.value);
+    }
+    // Fallback to old structure
+    const emails = [];
+    if (customer.primaryEmail) {
+      emails.push({ label: 'Primary', value: customer.primaryEmail });
+    }
     if (customer.emails && customer.emails.length > 0) {
       customer.emails.forEach(email => {
-        if (email) emails.add(email);
+        if (email && !emails.find(e => e.value === email)) {
+          emails.push({ label: 'Email', value: email });
+        }
       });
     }
-    return Array.from(emails);
+    return emails;
   };
 
   // Get all addresses for a customer
@@ -561,6 +625,8 @@ function CustomersPage() {
                   name: 'New Customer',
                   primaryPhone: '',
                   primaryEmail: '',
+                  contactPhones: [],
+                  contactEmails: [],
                   address: { street: '', city: '', state: '', zip: '' },
                   notes: '',
                   source: 'other',
@@ -845,36 +911,35 @@ function CustomersPage() {
                     required
                   />
 
-                  {/* Primary Phone */}
-                  <TextField
-                    label="Primary Phone"
-                    value={editCustomerForm.primaryPhone || ''}
-                    onChange={(e) => setEditCustomerForm({ ...editCustomerForm, primaryPhone: e.target.value })}
-                    fullWidth
-                    InputProps={{
-                      startAdornment: <PhoneIcon sx={{ mr: 1, color: 'action.active' }} />,
-                    }}
-                  />
-
-                  {/* Additional Phones */}
+                  {/* Phone Numbers */}
                   <Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <PhoneIcon color="primary" />
                       <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        Additional Phones
+                        Phone Numbers
                       </Typography>
                       <IconButton size="small" onClick={handleAddPhone} color="primary">
                         <AddCircleIcon fontSize="small" />
                       </IconButton>
                     </Box>
-                    {editCustomerForm.phones?.map((phone, idx) => (
+                    {(editCustomerForm.contactPhones || []).map((phone, idx) => (
                       <Box key={idx} sx={{ display: 'flex', gap: 1, mb: 1 }}>
                         <TextField
                           size="small"
-                          value={phone}
-                          onChange={(e) => handleUpdatePhone(idx, e.target.value)}
+                          value={phone.label || ''}
+                          onChange={(e) => handleUpdatePhoneLabel(idx, e.target.value)}
+                          placeholder="Label (e.g., John's number, Office)"
+                          sx={{ width: '40%' }}
+                        />
+                        <TextField
+                          size="small"
+                          value={phone.value || ''}
+                          onChange={(e) => handleUpdatePhoneValue(idx, e.target.value)}
+                          placeholder="Phone number"
                           fullWidth
-                          placeholder="Additional phone number"
+                          InputProps={{
+                            startAdornment: <PhoneIcon sx={{ mr: 1, color: 'action.active', fontSize: '1rem' }} />,
+                          }}
                         />
                         <IconButton size="small" onClick={() => handleRemovePhone(idx)} color="error">
                           <DeleteOutlineIcon fontSize="small" />
@@ -883,38 +948,36 @@ function CustomersPage() {
                     ))}
                   </Box>
 
-                  {/* Primary Email */}
-                  <TextField
-                    label="Primary Email"
-                    value={editCustomerForm.primaryEmail || ''}
-                    onChange={(e) => setEditCustomerForm({ ...editCustomerForm, primaryEmail: e.target.value })}
-                    fullWidth
-                    type="email"
-                    InputProps={{
-                      startAdornment: <EmailIcon sx={{ mr: 1, color: 'action.active' }} />,
-                    }}
-                  />
-
-                  {/* Additional Emails */}
+                  {/* Email Addresses */}
                   <Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <EmailIcon color="primary" />
                       <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        Additional Emails
+                        Email Addresses
                       </Typography>
                       <IconButton size="small" onClick={handleAddEmail} color="primary">
                         <AddCircleIcon fontSize="small" />
                       </IconButton>
                     </Box>
-                    {editCustomerForm.emails?.map((email, idx) => (
+                    {(editCustomerForm.contactEmails || []).map((email, idx) => (
                       <Box key={idx} sx={{ display: 'flex', gap: 1, mb: 1 }}>
                         <TextField
                           size="small"
-                          value={email}
-                          onChange={(e) => handleUpdateEmail(idx, e.target.value)}
+                          value={email.label || ''}
+                          onChange={(e) => handleUpdateEmailLabel(idx, e.target.value)}
+                          placeholder="Label (e.g., John's email, Office)"
+                          sx={{ width: '40%' }}
+                        />
+                        <TextField
+                          size="small"
+                          value={email.value || ''}
+                          onChange={(e) => handleUpdateEmailValue(idx, e.target.value)}
+                          placeholder="Email address"
                           fullWidth
                           type="email"
-                          placeholder="Additional email address"
+                          InputProps={{
+                            startAdornment: <EmailIcon sx={{ mr: 1, color: 'action.active', fontSize: '1rem' }} />,
+                          }}
                         />
                         <IconButton size="small" onClick={() => handleRemoveEmail(idx)} color="error">
                           <DeleteOutlineIcon fontSize="small" />
@@ -1102,23 +1165,37 @@ function CustomersPage() {
                       </Box>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pl: 4 }}>
                         {getAllPhones(selectedCustomer).map((phone, idx) => (
-                          <Typography 
+                          <Box 
                             key={idx}
-                            variant="body2"
                             sx={{
-                              fontFamily: 'monospace',
-                              fontSize: '0.9rem',
                               pl: 2,
-                              borderLeft: idx === 0 && selectedCustomer.primaryPhone === phone 
-                                ? '3px solid #1976D2' 
-                                : '3px solid #e0e0e0'
+                              borderLeft: '3px solid #e0e0e0',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1
                             }}
                           >
-                            {phone}
-                            {idx === 0 && selectedCustomer.primaryPhone === phone && (
-                              <Chip label="Primary" size="small" sx={{ ml: 1, height: 20 }} />
-                            )}
-                          </Typography>
+                            <Typography 
+                              variant="body2"
+                              sx={{
+                                fontWeight: phone.label ? 600 : 400,
+                                color: phone.label ? 'text.primary' : 'text.secondary',
+                                minWidth: '100px'
+                              }}
+                            >
+                              {phone.label || 'Phone'}:
+                            </Typography>
+                            <Typography 
+                              variant="body2"
+                              sx={{
+                                fontFamily: 'monospace',
+                                fontSize: '0.9rem',
+                                flex: 1
+                              }}
+                            >
+                              {phone.value}
+                            </Typography>
+                          </Box>
                         ))}
                       </Box>
                     </Box>
@@ -1135,23 +1212,37 @@ function CustomersPage() {
                       </Box>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pl: 4 }}>
                         {getAllEmails(selectedCustomer).map((email, idx) => (
-                          <Typography 
+                          <Box 
                             key={idx}
-                            variant="body2"
                             sx={{
-                              fontFamily: 'monospace',
-                              fontSize: '0.9rem',
                               pl: 2,
-                              borderLeft: idx === 0 && selectedCustomer.primaryEmail === email 
-                                ? '3px solid #1976D2' 
-                                : '3px solid #e0e0e0'
+                              borderLeft: '3px solid #e0e0e0',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1
                             }}
                           >
-                            {email}
-                            {idx === 0 && selectedCustomer.primaryEmail === email && (
-                              <Chip label="Primary" size="small" sx={{ ml: 1, height: 20 }} />
-                            )}
-                          </Typography>
+                            <Typography 
+                              variant="body2"
+                              sx={{
+                                fontWeight: email.label ? 600 : 400,
+                                color: email.label ? 'text.primary' : 'text.secondary',
+                                minWidth: '100px'
+                              }}
+                            >
+                              {email.label || 'Email'}:
+                            </Typography>
+                            <Typography 
+                              variant="body2"
+                              sx={{
+                                fontFamily: 'monospace',
+                                fontSize: '0.9rem',
+                                flex: 1
+                              }}
+                            >
+                              {email.value}
+                            </Typography>
+                          </Box>
                         ))}
                       </Box>
                     </Box>

@@ -15,6 +15,7 @@ const customerSchema = new mongoose.Schema({
     trim: true,
     lowercase: true
   },
+  // Legacy support - keep for backward compatibility
   phones: [{
     type: String,
     trim: true
@@ -23,6 +24,32 @@ const customerSchema = new mongoose.Schema({
     type: String,
     trim: true,
     lowercase: true
+  }],
+  // New structure with labels
+  contactPhones: [{
+    label: {
+      type: String,
+      trim: true,
+      default: 'Phone'
+    },
+    value: {
+      type: String,
+      trim: true,
+      required: true
+    }
+  }],
+  contactEmails: [{
+    label: {
+      type: String,
+      trim: true,
+      default: 'Email'
+    },
+    value: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      required: true
+    }
   }],
   address: {
     street: String,
