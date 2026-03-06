@@ -516,7 +516,7 @@ async function getAllIncompleteTasks(req, res) {
         select: 'name email',
         strictPopulate: false
       })
-      .sort({ dueDate: 1 })
+      .sort({ isUrgent: -1, dueDate: 1 }) // Sort urgent tasks first, then by dueDate
       .exec();
     
     res.json(tasks);

@@ -241,15 +241,19 @@ function TasksPage() {
             
             // Then sort urgent tasks first (only for uncompleted tasks)
             if (!aCompleted && !bCompleted) {
-              if (a.isUrgent && !b.isUrgent) return -1;
-              if (!a.isUrgent && b.isUrgent) return 1;
+              const aUrgent = !!a.isUrgent; // Convert to boolean
+              const bUrgent = !!b.isUrgent; // Convert to boolean
+              if (aUrgent && !bUrgent) return -1;
+              if (!aUrgent && bUrgent) return 1;
             }
             
             // If both have same completion status and urgency, sort by createdAt descending (most recent first)
             const dateA = new Date(a.createdAt || 0);
             const dateB = new Date(b.createdAt || 0);
             return dateB - dateA;
-          }).map((item) => (
+          }).map((item) => {
+            const isUrgent = !!item.isUrgent; // Convert to boolean for consistent checking
+            return (
             <Card
               key={item._id}
               sx={{
@@ -257,8 +261,8 @@ function TasksPage() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 2,
-                borderLeft: item.isUrgent ? '3px solid #D32F2F' : (item.isProject ? '3px solid #9C27B0' : '3px solid #1976D2'),
-                backgroundColor: item.isUrgent ? 'rgba(211, 47, 47, 0.05)' : 'inherit',
+                borderLeft: isUrgent ? '3px solid #D32F2F' : (item.isProject ? '3px solid #9C27B0' : '3px solid #1976D2'),
+                backgroundColor: isUrgent ? 'rgba(211, 47, 47, 0.05)' : 'inherit',
                 cursor: item.isProject ? 'pointer' : 'default',
                 '&:hover': {
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
@@ -292,7 +296,7 @@ function TasksPage() {
                   <Typography 
                     variant="body1" 
                     sx={{ 
-                      fontWeight: item.isUrgent ? 600 : 500, 
+                      fontWeight: isUrgent ? 600 : 500, 
                       color: '#263238',
                       textDecoration: item.completedAt ? 'line-through' : 'none',
                       opacity: item.completedAt ? 0.6 : 1,
@@ -300,7 +304,7 @@ function TasksPage() {
                   >
                     {item.title}
                   </Typography>
-                  {item.isUrgent && (
+                  {isUrgent && (
                     <Chip
                       icon={<PriorityHighIcon />}
                       label="Urgent"
@@ -400,7 +404,8 @@ function TasksPage() {
                 </IconButton>
               </Box>
             </Card>
-          ))}
+            );
+          })}
         </Box>
       )}
 

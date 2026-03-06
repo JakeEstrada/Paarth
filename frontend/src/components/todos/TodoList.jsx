@@ -115,12 +115,16 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCoun
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {[...todos].sort((a, b) => {
             // Sort urgent tasks first, then by createdAt descending (most recent first)
-            if (a.isUrgent && !b.isUrgent) return -1;
-            if (!a.isUrgent && b.isUrgent) return 1;
+            const aUrgent = !!a.isUrgent; // Convert to boolean
+            const bUrgent = !!b.isUrgent; // Convert to boolean
+            if (aUrgent && !bUrgent) return -1;
+            if (!aUrgent && bUrgent) return 1;
             const dateA = new Date(a.createdAt || 0);
             const dateB = new Date(b.createdAt || 0);
             return dateB - dateA;
-          }).map((todo) => (
+          }).map((todo) => {
+            const isUrgent = !!todo.isUrgent; // Convert to boolean for consistent checking
+            return (
             <Paper
               key={todo._id}
               onClick={() => onTodoClick && onTodoClick(todo._id)}
@@ -131,8 +135,8 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCoun
                 gap: 2,
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                borderLeft: todo.isUrgent ? '3px solid #D32F2F' : '3px solid #1976D2',
-                backgroundColor: todo.isUrgent ? 'rgba(211, 47, 47, 0.05)' : 'inherit',
+                borderLeft: isUrgent ? '3px solid #D32F2F' : '3px solid #1976D2',
+                backgroundColor: isUrgent ? 'rgba(211, 47, 47, 0.05)' : 'inherit',
                 '&:hover': {
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
                   transform: 'translateY(-2px)',
@@ -148,13 +152,13 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCoun
               />
               
               <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="body1" sx={{ fontWeight: todo.isUrgent ? 600 : 400 }}>
+                <Typography variant="body1" sx={{ fontWeight: isUrgent ? 600 : 400 }}>
                   {todo.customerId?.name 
                     ? `${todo.title} - ${todo.description} | ${todo.customerId.name}`
                     : `${todo.title} - ${todo.description}`
                   }
                 </Typography>
-                {todo.isUrgent && (
+                {isUrgent && (
                   <Chip
                     icon={<PriorityHighIcon />}
                     label="Urgent"
@@ -191,7 +195,8 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCoun
                 </IconButton>
               </Box>
             </Paper>
-          ))}
+            );
+          })}
         </Box>
       )}
     </Box>
