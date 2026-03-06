@@ -250,10 +250,14 @@ function DashboardPage() {
         return 'Scheduled';
       case 'task_created':
         return 'Task Created';
+      case 'task_deleted':
+        return 'Task Deleted';
       case 'project_created':
         return 'Project Created';
       case 'project_updated':
         return 'Project Updated';
+      case 'project_deleted':
+        return 'Project Deleted';
       case 'task_completed':
         return 'Task Completed';
       case 'project_note_added':
@@ -355,8 +359,10 @@ function DashboardPage() {
       'appointment_created': 'primary',
       // Tasks/Projects
       'task_created': 'success',
+      'task_deleted': 'error',
       'project_created': 'success',
       'project_updated': 'info',
+      'project_deleted': 'error',
       'task_completed': 'success',
       // Other
       'customer_created': 'success',
@@ -424,8 +430,10 @@ function DashboardPage() {
         'meeting': 'Scheduled',
         'job_scheduled': 'Scheduled',
         'task_created': 'Task Created',
+        'task_deleted': 'Task Deleted',
         'project_created': 'Project Created',
         'project_updated': 'Project Updated',
+        'project_deleted': 'Project Deleted',
         'task_completed': 'Task Completed',
         'project_note_added': 'Project Note Added',
       };
@@ -1322,10 +1330,14 @@ function PrintView({ activities, selectedDate }) {
         return 'Scheduled';
       case 'task_created':
         return 'Task/Project Created';
+      case 'task_deleted':
+        return 'Task Deleted';
       case 'project_created':
         return 'Project Created';
       case 'project_updated':
         return 'Project Updated';
+      case 'project_deleted':
+        return 'Project Deleted';
       case 'task_completed':
         return 'Task Completed';
       case 'project_note_added':

@@ -9,7 +9,8 @@
     "create-super-admin": "node createSuperAdmin.js",
     "test-task-activities": "node src/scripts/testTaskActivityLogging.js",
     "backfill-task-activities": "node src/scripts/testTaskActivityLogging.js --backfill",
-    "create-test-tasks": "node src/scripts/testTaskActivityLogging.js --create-tests"
+    "create-test-tasks": "node src/scripts/testTaskActivityLogging.js --create-tests",
+    "test-activity-logging": "node src/scripts/testActivityLogging.js"
   },
   "keywords": [],
   "author": "",
