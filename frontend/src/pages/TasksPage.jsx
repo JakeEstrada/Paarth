@@ -22,6 +22,7 @@ import {
   Folder as FolderIcon,
   FolderOpen as FolderOpenIcon,
   Transform as TransformIcon,
+  PriorityHigh as PriorityHighIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -238,7 +239,13 @@ function TasksPage() {
               return aCompleted ? 1 : -1; // Uncompleted (false) comes first
             }
             
-            // If both have same completion status, sort by createdAt descending (most recent first)
+            // Then sort urgent tasks first (only for uncompleted tasks)
+            if (!aCompleted && !bCompleted) {
+              if (a.isUrgent && !b.isUrgent) return -1;
+              if (!a.isUrgent && b.isUrgent) return 1;
+            }
+            
+            // If both have same completion status and urgency, sort by createdAt descending (most recent first)
             const dateA = new Date(a.createdAt || 0);
             const dateB = new Date(b.createdAt || 0);
             return dateB - dateA;
@@ -250,7 +257,8 @@ function TasksPage() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 2,
-                borderLeft: item.isProject ? '3px solid #9C27B0' : '3px solid #1976D2',
+                borderLeft: item.isUrgent ? '3px solid #D32F2F' : (item.isProject ? '3px solid #9C27B0' : '3px solid #1976D2'),
+                backgroundColor: item.isUrgent ? 'rgba(211, 47, 47, 0.05)' : 'inherit',
                 cursor: item.isProject ? 'pointer' : 'default',
                 '&:hover': {
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
@@ -284,7 +292,7 @@ function TasksPage() {
                   <Typography 
                     variant="body1" 
                     sx={{ 
-                      fontWeight: 500, 
+                      fontWeight: item.isUrgent ? 600 : 500, 
                       color: '#263238',
                       textDecoration: item.completedAt ? 'line-through' : 'none',
                       opacity: item.completedAt ? 0.6 : 1,
@@ -292,6 +300,19 @@ function TasksPage() {
                   >
                     {item.title}
                   </Typography>
+                  {item.isUrgent && (
+                    <Chip
+                      icon={<PriorityHighIcon />}
+                      label="Urgent"
+                      size="small"
+                      color="error"
+                      sx={{
+                        height: 20,
+                        fontSize: '0.65rem',
+                        fontWeight: 600,
+                      }}
+                    />
+                  )}
                   {item.isProject && (
                     <Chip 
                       label="Project" 

@@ -8,6 +8,8 @@ import {
   TextField,
   Box,
   Typography,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -17,6 +19,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function AddTodoModal({ open, onClose, onSuccess, taskId, initialData, isProject = false, refreshTrigger }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [isUrgent, setIsUrgent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const isEditMode = !!taskId;
@@ -31,6 +34,7 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, initialData, isProject
           const task = response.data;
           setTitle(task.title || '');
           setDescription(task.description || '');
+          setIsUrgent(task.isUrgent || false);
         } catch (error) {
           console.error('Error fetching task:', error);
           toast.error('Failed to load task data');
@@ -48,10 +52,12 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, initialData, isProject
       if (isEditMode && initialData) {
         setTitle(initialData.title || '');
         setDescription(initialData.description || '');
+        setIsUrgent(initialData.isUrgent || false);
       } else if (!isEditMode || (isEditMode && !taskId)) {
         // Only reset if not in edit mode or if we don't have a taskId to fetch
         setTitle('');
         setDescription('');
+        setIsUrgent(false);
       }
     }
   }, [open, isEditMode, initialData, taskId]);
@@ -75,6 +81,7 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, initialData, isProject
       const data = {
         title: title.trim(),
         description: description.trim(),
+        isUrgent: isUrgent,
       };
 
       // Only set isProject when creating a new project
@@ -93,6 +100,7 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, initialData, isProject
       // Reset form
       setTitle('');
       setDescription('');
+      setIsUrgent(false);
       
       onSuccess?.();
       onClose();
@@ -108,6 +116,7 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, initialData, isProject
     if (!loading) {
       setTitle('');
       setDescription('');
+      setIsUrgent(false);
       onClose();
     }
   };
@@ -142,6 +151,21 @@ function AddTodoModal({ open, onClose, onSuccess, taskId, initialData, isProject
               multiline
               rows={3}
               placeholder="Description"
+            />
+            
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={isUrgent}
+                  onChange={(e) => setIsUrgent(e.target.checked)}
+                  color="error"
+                />
+              }
+              label={
+                <Typography variant="body2" sx={{ fontWeight: isUrgent ? 600 : 400, color: isUrgent ? 'error.main' : 'inherit' }}>
+                  Mark as Urgent
+                </Typography>
+              }
             />
           </Box>
         </DialogContent>

@@ -161,45 +161,41 @@ async function createAppointment(req, res) {
       }
     }
     
-    // Only create activity if customerId is available - don't assign default customer
-    if (customerId) {
-      try {
-        // Format appointment date/time for note
-        const appointmentDate = appointment.date ? new Date(appointment.date) : new Date();
-        const dateStr = appointmentDate.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric'
-        });
-        const timeStr = appointment.time || appointmentDate.toLocaleTimeString('en-US', {
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
-        });
-        
-        const noteText = appointment.location 
-          ? `Appointment created: ${appointment.title} on ${dateStr} at ${timeStr} - ${appointment.location}`
-          : `Appointment created: ${appointment.title} on ${dateStr} at ${timeStr}`;
-        
-        const activity = await Activity.create({
-          type: 'appointment_created',
-          customerId: customerId,
-          jobId: appointment.jobId || undefined,
-          note: noteText,
-          location: appointment.location,
-          createdBy: appointment.createdBy
-        });
-        console.log(`✅ Activity created for appointment "${appointment.title}": ${activity._id}`);
-      } catch (activityError) {
-        console.error('❌ Error creating activity for appointment:', activityError);
-        console.error('   Appointment ID:', appointment._id);
-        console.error('   Appointment Title:', appointment.title);
-        console.error('   Customer ID:', customerId);
-        console.error('   Error details:', activityError.message);
-        // Don't fail the request if activity logging fails
-      }
-    } else {
-      console.warn(`⚠️  Cannot create activity for appointment "${appointment.title}": No customerId available`);
+    // Log activity for appointment creation (customerId is now optional)
+    try {
+      // Format appointment date/time for note
+      const appointmentDate = appointment.date ? new Date(appointment.date) : new Date();
+      const dateStr = appointmentDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+      const timeStr = appointment.time || appointmentDate.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      
+      const noteText = appointment.location 
+        ? `Appointment created: ${appointment.title} on ${dateStr} at ${timeStr} - ${appointment.location}`
+        : `Appointment created: ${appointment.title} on ${dateStr} at ${timeStr}`;
+      
+      const activity = await Activity.create({
+        type: 'appointment_created',
+        customerId: customerId || null,
+        jobId: appointment.jobId || undefined,
+        note: noteText,
+        location: appointment.location,
+        createdBy: appointment.createdBy
+      });
+      console.log(`✅ Activity created for appointment "${appointment.title}": ${activity._id}`);
+    } catch (activityError) {
+      console.error('❌ Error creating activity for appointment:', activityError);
+      console.error('   Appointment ID:', appointment._id);
+      console.error('   Appointment Title:', appointment.title);
+      console.error('   Customer ID:', customerId);
+      console.error('   Error details:', activityError.message);
+      // Don't fail the request if activity logging fails
     }
     
     await appointment.populate('customerId', 'name primaryPhone primaryEmail');
@@ -245,15 +241,53 @@ async function completeAppointment(req, res) {
     appointment.completedAt = new Date();
     await appointment.save();
     
-    // Log activity
-    if (appointment.customerId) {
-      await Activity.create({
-        type: 'meeting',
-        customerId: appointment.customerId,
-        jobId: appointment.jobId,
-        note: `Appointment completed: ${appointment.title}`,
+    // Log activity for appointment completion
+    let customerId = appointment.customerId;
+    
+    // If no customerId, try to get it from the job
+    if (!customerId && appointment.jobId) {
+      const Job = require('../models/Job');
+      const job = await Job.findById(appointment.jobId);
+      if (job) {
+        customerId = job.customerId;
+        console.log(`📝 Appointment completion: Got customerId from job: ${customerId}`);
+      }
+    }
+    
+    try {
+      // Format appointment date/time for note
+      const appointmentDate = appointment.date ? new Date(appointment.date) : new Date();
+      const dateStr = appointmentDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+      const timeStr = appointment.time || appointmentDate.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      
+      const noteText = appointment.location 
+        ? `Appointment completed: ${appointment.title} on ${dateStr} at ${timeStr} - ${appointment.location}`
+        : `Appointment completed: ${appointment.title} on ${dateStr} at ${timeStr}`;
+      
+      const activity = await Activity.create({
+        type: 'appointment_completed',
+        customerId: customerId || null,
+        jobId: appointment.jobId || undefined,
+        note: noteText,
+        location: appointment.location,
         createdBy: req.user?._id || appointment.createdBy
       });
+      console.log(`✅ Activity created for appointment completion "${appointment.title}": ${activity._id}`);
+    } catch (activityError) {
+      console.error('❌ Error creating activity for appointment completion:', activityError);
+      console.error('   Appointment ID:', appointment._id);
+      console.error('   Appointment Title:', appointment.title);
+      console.error('   Customer ID:', customerId);
+      console.error('   Error details:', activityError.message);
+      // Don't fail the request if activity logging fails
     }
     
     await appointment.populate('customerId', 'name primaryPhone primaryEmail');
@@ -359,39 +393,35 @@ async function deleteAppointment(req, res) {
       }
     }
     
-    // Only create activity if customerId is available - don't assign default customer
-    if (customerId) {
-      try {
-        // Format appointment date/time for note
-        const dateStr = appointmentDate ? new Date(appointmentDate).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric'
-        }) : 'Unknown date';
-        const timeStr = appointmentTime || 'Unknown time';
-        
-        const noteText = appointmentLocation 
-          ? `Appointment deleted: ${appointmentTitle} on ${dateStr} at ${timeStr} - ${appointmentLocation}`
-          : `Appointment deleted: ${appointmentTitle} on ${dateStr} at ${timeStr}`;
-        
-        const activity = await Activity.create({
-          type: 'appointment_deleted',
-          customerId: customerId,
-          jobId: appointmentJobId || undefined,
-          note: noteText,
-          location: appointmentLocation,
-          createdBy: createdBy
-        });
-        console.log(`✅ Activity created for appointment deletion "${appointmentTitle}": ${activity._id}`);
-      } catch (activityError) {
-        console.error('❌ Error creating activity for appointment deletion:', activityError);
-        console.error('   Appointment Title:', appointmentTitle);
-        console.error('   Customer ID:', customerId);
-        console.error('   Error details:', activityError.message);
-        // Don't fail the request if activity logging fails
-      }
-    } else {
-      console.warn(`⚠️  Cannot create activity for appointment deletion "${appointmentTitle}": No customerId available`);
+    // Log activity for appointment deletion (customerId is now optional)
+    try {
+      // Format appointment date/time for note
+      const dateStr = appointmentDate ? new Date(appointmentDate).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      }) : 'Unknown date';
+      const timeStr = appointmentTime || 'Unknown time';
+      
+      const noteText = appointmentLocation 
+        ? `Appointment deleted: ${appointmentTitle} on ${dateStr} at ${timeStr} - ${appointmentLocation}`
+        : `Appointment deleted: ${appointmentTitle} on ${dateStr} at ${timeStr}`;
+      
+      const activity = await Activity.create({
+        type: 'appointment_deleted',
+        customerId: customerId || null,
+        jobId: appointmentJobId || undefined,
+        note: noteText,
+        location: appointmentLocation,
+        createdBy: createdBy
+      });
+      console.log(`✅ Activity created for appointment deletion "${appointmentTitle}": ${activity._id}`);
+    } catch (activityError) {
+      console.error('❌ Error creating activity for appointment deletion:', activityError);
+      console.error('   Appointment Title:', appointmentTitle);
+      console.error('   Customer ID:', customerId);
+      console.error('   Error details:', activityError.message);
+      // Don't fail the request if activity logging fails
     }
     
     res.json({ message: 'Appointment deleted successfully' });

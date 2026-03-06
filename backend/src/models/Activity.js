@@ -18,6 +18,7 @@ const activitySchema = new mongoose.Schema({
       'sms',
       'meeting',
       'appointment_created',
+      'appointment_completed',
       'appointment_deleted',
       'file_uploaded',
       'file_deleted',

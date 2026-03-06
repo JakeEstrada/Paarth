@@ -117,7 +117,7 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
               color: theme.palette.text.primary,
               lineHeight: 1.4,
               display: 'inline',
-              mb: (job.stage === 'ESTIMATE_SENT' || job.stage === 'ESTIMATE_IN_PROGRESS') && daysSinceSent !== null ? 0.5 : 0,
+              mb: job.stage === 'ESTIMATE_SENT' && daysSinceSent !== null ? 0.5 : 0,
             }}
             title={job.title}
           >
@@ -153,7 +153,7 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
           )}
         </Box>
         
-        {((job.stage === 'ESTIMATE_SENT' || job.stage === 'ESTIMATE_IN_PROGRESS') && daysSinceSent !== null) && (
+        {(job.stage === 'ESTIMATE_SENT' && daysSinceSent !== null) && (
           <Box sx={{ mt: 0.5 }}>
             <Chip
               label={`${daysSinceSent} day${daysSinceSent !== 1 ? 's' : ''} ago`}

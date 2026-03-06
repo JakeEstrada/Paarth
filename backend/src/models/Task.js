@@ -26,6 +26,10 @@ const taskSchema = new mongoose.Schema({
     enum: ['low', 'medium', 'high', 'urgent'],
     default: 'medium'
   },
+  isUrgent: {
+    type: Boolean,
+    default: false
+  },
   type: {
     type: String,
     enum: [

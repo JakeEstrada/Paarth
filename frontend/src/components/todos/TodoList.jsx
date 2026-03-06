@@ -7,6 +7,7 @@ import {
   IconButton,
   CircularProgress,
   Button,
+  Chip,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -14,6 +15,7 @@ import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Add as AddIcon,
+  PriorityHigh as PriorityHighIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -112,7 +114,9 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCoun
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {[...todos].sort((a, b) => {
-            // Sort by createdAt descending (most recent first)
+            // Sort urgent tasks first, then by createdAt descending (most recent first)
+            if (a.isUrgent && !b.isUrgent) return -1;
+            if (!a.isUrgent && b.isUrgent) return 1;
             const dateA = new Date(a.createdAt || 0);
             const dateB = new Date(b.createdAt || 0);
             return dateB - dateA;
@@ -127,7 +131,8 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCoun
                 gap: 2,
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                borderLeft: '3px solid #1976D2',
+                borderLeft: todo.isUrgent ? '3px solid #D32F2F' : '3px solid #1976D2',
+                backgroundColor: todo.isUrgent ? 'rgba(211, 47, 47, 0.05)' : 'inherit',
                 '&:hover': {
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
                   transform: 'translateY(-2px)',
@@ -142,13 +147,26 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCoun
                 sx={{ color: 'primary.main' }}
               />
               
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="body1" sx={{ fontWeight: 400 }}>
+              <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body1" sx={{ fontWeight: todo.isUrgent ? 600 : 400 }}>
                   {todo.customerId?.name 
                     ? `${todo.title} - ${todo.description} | ${todo.customerId.name}`
                     : `${todo.title} - ${todo.description}`
                   }
                 </Typography>
+                {todo.isUrgent && (
+                  <Chip
+                    icon={<PriorityHighIcon />}
+                    label="Urgent"
+                    size="small"
+                    color="error"
+                    sx={{
+                      height: 20,
+                      fontSize: '0.65rem',
+                      fontWeight: 600,
+                    }}
+                  />
+                )}
               </Box>
 
               <Box sx={{ display: 'flex', gap: 0.5 }}>
