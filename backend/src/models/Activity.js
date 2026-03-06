@@ -33,6 +33,7 @@ const activitySchema = new mongoose.Schema({
       'project_note_added',
       'project_updated',
       'project_deleted',
+      'payroll_printed',
       'takeoff_complete'
     ]
   },

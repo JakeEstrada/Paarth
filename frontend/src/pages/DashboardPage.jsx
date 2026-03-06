@@ -262,6 +262,8 @@ function DashboardPage() {
         return 'Task Completed';
       case 'project_note_added':
         return 'Project Note Added';
+      case 'payroll_printed':
+        return 'Payroll Printed';
       default:
         return activity.type?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Activity';
     }
@@ -364,6 +366,8 @@ function DashboardPage() {
       'project_updated': 'info',
       'project_deleted': 'error',
       'task_completed': 'success',
+      // Payroll
+      'payroll_printed': 'info',
       // Other
       'customer_created': 'success',
       'customer_updated': 'info',
@@ -436,6 +440,7 @@ function DashboardPage() {
         'project_deleted': 'Project Deleted',
         'task_completed': 'Task Completed',
         'project_note_added': 'Project Note Added',
+        'payroll_printed': 'Payroll Printed',
       };
       return titles[type] || type?.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) || 'Activity';
     };
@@ -1342,6 +1347,8 @@ function PrintView({ activities, selectedDate }) {
         return 'Task Completed';
       case 'project_note_added':
         return 'Project Note Added';
+      case 'payroll_printed':
+        return 'Payroll Printed';
       default:
         return activity.type?.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) || 'Activity';
     }

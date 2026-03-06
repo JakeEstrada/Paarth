@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import axios from 'axios';
 import {
   Box,
   Paper,
@@ -40,6 +41,7 @@ import {
 const DAYS = ['Friday', 'Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'];
 
 const PRESETS_STORAGE_KEY = 'payroll_saved_presets';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function PayrollPage() {
   const theme = useTheme();
@@ -282,7 +284,18 @@ function PayrollPage() {
   };
 
   // Print functionality
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    // Log the payroll print activity
+    try {
+      await axios.post(`${API_URL}/activities/payroll/print`, {
+        employeeName: employeeName.trim() || 'Unknown Employee'
+      });
+    } catch (error) {
+      console.error('Error logging payroll print:', error);
+      // Don't prevent printing if logging fails
+    }
+    
+    // Trigger browser print dialog
     window.print();
   };
 

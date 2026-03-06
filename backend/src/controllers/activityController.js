@@ -135,11 +135,56 @@ async function deleteActivity(req, res) {
   }
 }
 
+// Log payroll print activity
+async function logPayrollPrint(req, res) {
+  try {
+    const User = require('../models/User');
+    const Customer = require('../models/Customer');
+    const { employeeName } = req.body;
+    
+    if (!employeeName || !employeeName.trim()) {
+      return res.status(400).json({ error: 'Employee name is required' });
+    }
+    
+    // Get createdBy - use req.user if available, otherwise get default user
+    let createdBy = req.user?._id || req.body.createdBy;
+    if (!createdBy) {
+      const defaultUser = await User.findOne({ isActive: true });
+      if (defaultUser) {
+        createdBy = defaultUser._id;
+      } else {
+        return res.status(400).json({ error: 'No user available' });
+      }
+    }
+    
+    // Get a default customer (first customer) since payroll isn't customer-specific
+    const defaultCustomer = await Customer.findOne().sort({ createdAt: 1 });
+    if (!defaultCustomer) {
+      return res.status(400).json({ error: 'No customers found. Please create a customer first.' });
+    }
+    
+    const activity = await Activity.create({
+      type: 'payroll_printed',
+      customerId: defaultCustomer._id,
+      note: `Print "${employeeName.trim()}" Payroll timesheet`,
+      createdBy: createdBy
+    });
+    
+    console.log(`✅ Payroll print activity logged for "${employeeName}": ${activity._id}`);
+    
+    res.status(201).json(activity);
+  } catch (error) {
+    console.error('❌ Error logging payroll print:', error);
+    res.status(500).json({ error: error.message });
+  }
+}
+
 module.exports = {
   getJobActivities,
   getCustomerActivities,
   createActivity,
   getRecentActivities,
   getActivitiesByDateRange,
-  deleteActivity
+  deleteActivity,
+  logPayrollPrint
 };

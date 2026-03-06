@@ -104,6 +104,7 @@ async function createTask(req, res) {
       // Ensure customerId is set from job if not already set
       if (!customerId && job.customerId) {
         customerId = job.customerId;
+        console.log(`📝 Task creation: Got customerId from job: ${customerId}`);
       }
       
       // Build activity note with title and description
@@ -141,17 +142,22 @@ async function createTask(req, res) {
             note: activityNoteText,
             createdBy: createdBy
           });
-          console.log(`✅ Activity created for task "${task.title}": ${activity._id}`);
+          console.log(`✅ Activity created for ${task.isProject ? 'project' : 'task'} "${task.title}": ${activity._id}`);
+          console.log(`   Job ID: ${jobId}, Customer ID: ${customerId}, Created By: ${createdBy}`);
         } catch (activityError) {
           console.error('❌ Error creating activity for task with jobId:', activityError);
           console.error('   Task ID:', task._id);
+          console.error('   Task Title:', task.title);
           console.error('   Job ID:', jobId);
           console.error('   Customer ID:', customerId);
+          console.error('   Created By:', createdBy);
           console.error('   Error details:', activityError.message);
+          console.error('   Full error:', activityError);
           // Don't fail the request if activity logging fails
         }
       } else {
-        console.warn(`⚠️  Cannot create activity for task "${task.title}": No customerId available`);
+        console.warn(`⚠️  Cannot create activity for ${task.isProject ? 'project' : 'task'} "${task.title}": No customerId available`);
+        console.warn(`   Job ID: ${jobId}, Job customerId: ${job?.customerId}`);
       }
     } else {
       // Log activity for standalone tasks/projects (not associated with a job)
@@ -299,6 +305,7 @@ async function completeTask(req, res) {
       const job = await Job.findById(task.jobId);
       if (job) {
         customerId = job.customerId;
+        console.log(`📝 Task completion: Got customerId from job: ${customerId}`);
       }
     }
     
@@ -314,7 +321,7 @@ async function completeTask(req, res) {
           ? `Project completed: ${activityNote}`
           : `Change order/task completed: ${activityNote}`;
         
-        await Activity.create({
+        const activity = await Activity.create({
           type: activityType,
           taskId: task._id,
           jobId: task.jobId || undefined,
@@ -322,10 +329,22 @@ async function completeTask(req, res) {
           note: activityNoteText,
           createdBy: req.user?._id || task.createdBy
         });
+        console.log(`✅ Activity created for ${task.isProject ? 'project' : 'task'} completion "${task.title}": ${activity._id}`);
+        console.log(`   Task ID: ${task._id}, Job ID: ${task.jobId || 'N/A'}, Customer ID: ${customerId}, Created By: ${req.user?._id || task.createdBy}`);
       } catch (activityError) {
-        console.error('Error creating activity for task completion:', activityError);
+        console.error('❌ Error creating activity for task completion:', activityError);
+        console.error('   Task ID:', task._id);
+        console.error('   Task Title:', task.title);
+        console.error('   Job ID:', task.jobId);
+        console.error('   Customer ID:', customerId);
+        console.error('   Created By:', req.user?._id || task.createdBy);
+        console.error('   Error details:', activityError.message);
+        console.error('   Full error:', activityError);
         // Don't fail the request if activity logging fails
       }
+    } else {
+      console.warn(`⚠️  Cannot create activity for ${task.isProject ? 'project' : 'task'} completion "${task.title}": No customerId available`);
+      console.warn(`   Task ID: ${task._id}, Job ID: ${task.jobId || 'N/A'}, Task customerId: ${task.customerId || 'N/A'}`);
     }
     
     await task.populate('assignedTo', 'name email');
