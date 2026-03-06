@@ -155,22 +155,7 @@ async function createTask(req, res) {
       }
     } else {
       // Log activity for standalone tasks/projects (not associated with a job)
-      // Try to get customerId from a default customer if not provided
-      const Customer = require('../models/Customer');
-      if (!customerId) {
-        try {
-          const defaultCustomer = await Customer.findOne().sort({ createdAt: 1 }); // Get first customer
-          if (defaultCustomer) {
-            customerId = defaultCustomer._id;
-            console.log(`⚠️  Standalone ${task.isProject ? 'project' : 'task'}: Using default customer for activity logging: ${defaultCustomer.name} (${defaultCustomer._id})`);
-          } else {
-            console.warn(`⚠️  No customers found in database! Cannot create activity for standalone ${task.isProject ? 'project' : 'task'} "${task.title}"`);
-          }
-        } catch (customerError) {
-          console.error('❌ Error fetching default customer:', customerError);
-        }
-      }
-      
+      // Only create activity if customerId is explicitly provided - don't assign default customer
       if (customerId) {
         // Include description in activity note if it exists
         const activityNote = task.description 
@@ -196,12 +181,11 @@ async function createTask(req, res) {
           console.error('   Customer ID:', customerId);
           console.error('   Created By:', createdBy);
           console.error('   Error details:', activityError.message);
-          console.error('   Full error:', activityError);
           // Don't fail the request if activity logging fails
         }
       } else {
         // Don't create activity if no customerId - standalone tasks without customers won't show in activity feed
-        console.warn(`⚠️  Skipping activity creation for standalone ${task.isProject ? 'project' : 'task'} "${task.title}": No customerId available`);
+        console.log(`ℹ️  Skipping activity creation for standalone ${task.isProject ? 'project' : 'task'} "${task.title}": No customerId provided`);
       }
     }
     
@@ -413,15 +397,7 @@ async function deleteTask(req, res) {
       }
     }
     
-    // If still no customerId, try to get a default customer
-    if (!customerId) {
-      const defaultCustomer = await Customer.findOne();
-      if (defaultCustomer) {
-        customerId = defaultCustomer._id;
-        console.log(`⚠️  Task deletion: Using default customer for activity logging: ${defaultCustomer.name}`);
-      }
-    }
-    
+    // Only create activity if customerId is available - don't assign default customer
     if (customerId) {
       try {
         const activityNote = taskDescription 
@@ -726,15 +702,7 @@ async function addProjectNote(req, res) {
       }
     }
     
-    // If still no customerId, try to get a default customer or skip activity logging
-    if (!customerId) {
-      // Try to find a default customer or use the first available customer
-      const defaultCustomer = await Customer.findOne();
-      if (defaultCustomer) {
-        customerId = defaultCustomer._id;
-      }
-    }
-    
+    // Only create activity if customerId is available - don't assign default customer
     if (customerId) {
       try {
         await Activity.create({
@@ -814,15 +782,7 @@ async function addProjectUpdate(req, res) {
       }
     }
     
-    // If still no customerId, try to get a default customer or skip activity logging
-    if (!customerId) {
-      const defaultCustomer = await Customer.findOne();
-      if (defaultCustomer) {
-        customerId = defaultCustomer._id;
-        console.log(`⚠️  Project update: Using default customer for activity logging: ${defaultCustomer.name}`);
-      }
-    }
-    
+    // Only create activity if customerId is available - don't assign default customer
     if (customerId) {
       try {
         const activityNote = `Project "${task.title}" updated: ${content.trim()}`;
