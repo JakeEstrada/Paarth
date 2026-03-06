@@ -161,16 +161,7 @@ async function createAppointment(req, res) {
       }
     }
     
-    // Get a default customer if still no customerId (for standalone appointments)
-    if (!customerId) {
-      const Customer = require('../models/Customer');
-      const defaultCustomer = await Customer.findOne().sort({ createdAt: 1 });
-      if (defaultCustomer) {
-        customerId = defaultCustomer._id;
-        console.log(`📝 Appointment creation: Using default customer: ${defaultCustomer.name}`);
-      }
-    }
-    
+    // Only create activity if customerId is available - don't assign default customer
     if (customerId) {
       try {
         // Format appointment date/time for note
@@ -368,16 +359,7 @@ async function deleteAppointment(req, res) {
       }
     }
     
-    // Get a default customer if still no customerId
-    if (!customerId) {
-      const Customer = require('../models/Customer');
-      const defaultCustomer = await Customer.findOne().sort({ createdAt: 1 });
-      if (defaultCustomer) {
-        customerId = defaultCustomer._id;
-        console.log(`📝 Appointment deletion: Using default customer: ${defaultCustomer.name}`);
-      }
-    }
-    
+    // Only create activity if customerId is available - don't assign default customer
     if (customerId) {
       try {
         // Format appointment date/time for note

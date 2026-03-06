@@ -157,15 +157,10 @@ async function logPayrollPrint(req, res) {
       }
     }
     
-    // Get a default customer (first customer) since payroll isn't customer-specific
-    const defaultCustomer = await Customer.findOne().sort({ createdAt: 1 });
-    if (!defaultCustomer) {
-      return res.status(400).json({ error: 'No customers found. Please create a customer first.' });
-    }
-    
+    // Payroll isn't customer-specific, so don't assign a customer
     const activity = await Activity.create({
       type: 'payroll_printed',
-      customerId: defaultCustomer._id,
+      customerId: null,
       note: `Print "${employeeName.trim()}" Payroll timesheet`,
       createdBy: createdBy
     });

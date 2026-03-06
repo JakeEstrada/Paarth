@@ -421,7 +421,7 @@ function DashboardPage() {
     // Group activities by customer
     const activitiesByCustomer = {};
     filteredActivities.forEach((activity) => {
-      const customerName = activity.customerId?.name || 'Unknown Customer';
+      const customerName = activity.customerId?.name || '';
       if (!activitiesByCustomer[customerName]) {
         activitiesByCustomer[customerName] = [];
       }
@@ -491,7 +491,7 @@ function DashboardPage() {
     let activitiesHTML = '';
     
     sortedFilteredActivities.forEach((activity, index) => {
-      const customerName = activity.customerId?.name || 'Unknown Customer';
+      const customerName = activity.customerId?.name || '';
       const isNewCustomer = customerName !== currentCustomer;
       
       // If new customer, close previous section and start new one
@@ -499,10 +499,17 @@ function DashboardPage() {
         if (currentCustomer !== null) {
           activitiesHTML += '</div>'; // Close previous customer section
         }
-        activitiesHTML += `
-          <div class="customer-section">
-            <div class="customer-name">${customerName}</div>
-        `;
+        // Only show customer name header if there is a customer name
+        if (customerName) {
+          activitiesHTML += `
+            <div class="customer-section">
+              <div class="customer-name">${customerName}</div>
+          `;
+        } else {
+          activitiesHTML += `
+            <div class="customer-section">
+          `;
+        }
         currentCustomer = customerName;
       }
       
@@ -1316,7 +1323,7 @@ function PrintView({ activities, selectedDate }) {
   // Group activities by customer
   const activitiesByCustomer = {};
   filteredActivities.forEach((activity) => {
-    const customerName = activity.customerId?.name || 'Unknown Customer';
+    const customerName = activity.customerId?.name || '';
     if (!activitiesByCustomer[customerName]) {
       activitiesByCustomer[customerName] = [];
     }
@@ -1541,10 +1548,16 @@ function PrintView({ activities, selectedDate }) {
         ) : (
           <Box>
             {Object.entries(activitiesByCustomer)
-              .sort(([a], [b]) => a.localeCompare(b)) // Sort customers alphabetically
+              .sort(([a], [b]) => {
+                // Sort blank customer names to the end
+                if (!a && b) return 1;
+                if (a && !b) return -1;
+                if (!a && !b) return 0;
+                return a.localeCompare(b);
+              })
               .map(([customerName, customerActivities], customerIdx) => (
                 <Box
-                  key={customerName}
+                  key={customerName || 'no-customer'}
                   sx={{
                     mb: 2,
                     pb: 2,
@@ -1557,22 +1570,24 @@ function PrintView({ activities, selectedDate }) {
                     },
                   }}
                 >
-                  {/* Customer Header */}
-                  <Typography 
-                    variant="h6" 
-                    sx={{ 
-                      fontWeight: 700,
-                      mb: 1.5,
-                      fontSize: '1.1rem',
-                      '@media print': { 
-                        fontSize: '1rem',
-                        mb: 1,
-                        fontWeight: 600
-                      } 
-                    }}
-                  >
-                    {customerName}
-                  </Typography>
+                  {/* Customer Header - only show if there's a customer name */}
+                  {customerName && (
+                    <Typography 
+                      variant="h6" 
+                      sx={{ 
+                        fontWeight: 700,
+                        mb: 1.5,
+                        fontSize: '1.1rem',
+                        '@media print': { 
+                          fontSize: '1rem',
+                          mb: 1,
+                          fontWeight: 600
+                        } 
+                      }}
+                    >
+                      {customerName}
+                    </Typography>
+                  )}
                   
                   {/* Activities for this customer */}
                   {customerActivities.map((activity, activityIdx) => {

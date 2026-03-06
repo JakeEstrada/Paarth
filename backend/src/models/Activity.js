@@ -53,7 +53,7 @@ const activitySchema = new mongoose.Schema({
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Customer',
-    required: true
+    required: false
   },
   
   // Stage change specific
