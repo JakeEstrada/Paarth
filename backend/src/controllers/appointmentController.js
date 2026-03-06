@@ -148,16 +148,67 @@ async function createAppointment(req, res) {
       }
     }
     
-    // Log activity if customer exists
-    if (appointment.customerId) {
-      await Activity.create({
-        type: 'meeting',
-        customerId: appointment.customerId,
-        jobId: appointment.jobId,
-        note: `Appointment scheduled: ${appointment.title} on ${appointment.date}`,
-        location: appointment.location,
-        createdBy: appointment.createdBy
-      });
+    // Log activity for appointment creation
+    let customerId = appointment.customerId;
+    
+    // If no customerId, try to get it from the job
+    if (!customerId && appointment.jobId) {
+      const Job = require('../models/Job');
+      const job = await Job.findById(appointment.jobId);
+      if (job) {
+        customerId = job.customerId;
+        console.log(`📝 Appointment creation: Got customerId from job: ${customerId}`);
+      }
+    }
+    
+    // Get a default customer if still no customerId (for standalone appointments)
+    if (!customerId) {
+      const Customer = require('../models/Customer');
+      const defaultCustomer = await Customer.findOne().sort({ createdAt: 1 });
+      if (defaultCustomer) {
+        customerId = defaultCustomer._id;
+        console.log(`📝 Appointment creation: Using default customer: ${defaultCustomer.name}`);
+      }
+    }
+    
+    if (customerId) {
+      try {
+        // Format appointment date/time for note
+        const appointmentDate = appointment.date ? new Date(appointment.date) : new Date();
+        const dateStr = appointmentDate.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        });
+        const timeStr = appointment.time || appointmentDate.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        });
+        
+        const noteText = appointment.location 
+          ? `Appointment created: ${appointment.title} on ${dateStr} at ${timeStr} - ${appointment.location}`
+          : `Appointment created: ${appointment.title} on ${dateStr} at ${timeStr}`;
+        
+        const activity = await Activity.create({
+          type: 'appointment_created',
+          customerId: customerId,
+          jobId: appointment.jobId || undefined,
+          note: noteText,
+          location: appointment.location,
+          createdBy: appointment.createdBy
+        });
+        console.log(`✅ Activity created for appointment "${appointment.title}": ${activity._id}`);
+      } catch (activityError) {
+        console.error('❌ Error creating activity for appointment:', activityError);
+        console.error('   Appointment ID:', appointment._id);
+        console.error('   Appointment Title:', appointment.title);
+        console.error('   Customer ID:', customerId);
+        console.error('   Error details:', activityError.message);
+        // Don't fail the request if activity logging fails
+      }
+    } else {
+      console.warn(`⚠️  Cannot create activity for appointment "${appointment.title}": No customerId available`);
     }
     
     await appointment.populate('customerId', 'name primaryPhone primaryEmail');
@@ -285,10 +336,80 @@ async function getCompletedAppointments(req, res) {
 // Delete appointment
 async function deleteAppointment(req, res) {
   try {
-    const appointment = await Appointment.findByIdAndDelete(req.params.id);
+    // Get appointment info before deletion
+    const appointment = await Appointment.findById(req.params.id);
     
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
+    }
+    
+    // Store info for activity logging
+    const appointmentTitle = appointment.title;
+    const appointmentDate = appointment.date;
+    const appointmentTime = appointment.time;
+    const appointmentLocation = appointment.location;
+    const appointmentCustomerId = appointment.customerId;
+    const appointmentJobId = appointment.jobId;
+    const createdBy = req.user?._id || appointment.createdBy;
+    
+    // Delete the appointment
+    await Appointment.findByIdAndDelete(req.params.id);
+    
+    // Log activity for appointment deletion
+    let customerId = appointmentCustomerId;
+    
+    // If no customerId, try to get it from the job
+    if (!customerId && appointmentJobId) {
+      const Job = require('../models/Job');
+      const job = await Job.findById(appointmentJobId);
+      if (job) {
+        customerId = job.customerId;
+        console.log(`📝 Appointment deletion: Got customerId from job: ${customerId}`);
+      }
+    }
+    
+    // Get a default customer if still no customerId
+    if (!customerId) {
+      const Customer = require('../models/Customer');
+      const defaultCustomer = await Customer.findOne().sort({ createdAt: 1 });
+      if (defaultCustomer) {
+        customerId = defaultCustomer._id;
+        console.log(`📝 Appointment deletion: Using default customer: ${defaultCustomer.name}`);
+      }
+    }
+    
+    if (customerId) {
+      try {
+        // Format appointment date/time for note
+        const dateStr = appointmentDate ? new Date(appointmentDate).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        }) : 'Unknown date';
+        const timeStr = appointmentTime || 'Unknown time';
+        
+        const noteText = appointmentLocation 
+          ? `Appointment deleted: ${appointmentTitle} on ${dateStr} at ${timeStr} - ${appointmentLocation}`
+          : `Appointment deleted: ${appointmentTitle} on ${dateStr} at ${timeStr}`;
+        
+        const activity = await Activity.create({
+          type: 'appointment_deleted',
+          customerId: customerId,
+          jobId: appointmentJobId || undefined,
+          note: noteText,
+          location: appointmentLocation,
+          createdBy: createdBy
+        });
+        console.log(`✅ Activity created for appointment deletion "${appointmentTitle}": ${activity._id}`);
+      } catch (activityError) {
+        console.error('❌ Error creating activity for appointment deletion:', activityError);
+        console.error('   Appointment Title:', appointmentTitle);
+        console.error('   Customer ID:', customerId);
+        console.error('   Error details:', activityError.message);
+        // Don't fail the request if activity logging fails
+      }
+    } else {
+      console.warn(`⚠️  Cannot create activity for appointment deletion "${appointmentTitle}": No customerId available`);
     }
     
     res.json({ message: 'Appointment deleted successfully' });

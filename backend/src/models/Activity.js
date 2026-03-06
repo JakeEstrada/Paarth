@@ -17,6 +17,8 @@ const activitySchema = new mongoose.Schema({
       'email',
       'sms',
       'meeting',
+      'appointment_created',
+      'appointment_deleted',
       'file_uploaded',
       'file_deleted',
       'estimate_sent',

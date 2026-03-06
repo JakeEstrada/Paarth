@@ -248,6 +248,10 @@ function DashboardPage() {
       case 'meeting':
       case 'job_scheduled':
         return 'Scheduled';
+      case 'appointment_created':
+        return 'Appointment Created';
+      case 'appointment_deleted':
+        return 'Appointment Deleted';
       case 'task_created':
         return 'Task Created';
       case 'task_deleted':
@@ -358,7 +362,8 @@ function DashboardPage() {
       'project_note_added': 'info',
       // Appointments
       'meeting': 'primary',
-      'appointment_created': 'primary',
+      'appointment_created': 'success',
+      'appointment_deleted': 'error',
       // Tasks/Projects
       'task_created': 'success',
       'task_deleted': 'error',
@@ -433,6 +438,8 @@ function DashboardPage() {
         'file_deleted': 'File Deleted',
         'meeting': 'Scheduled',
         'job_scheduled': 'Scheduled',
+        'appointment_created': 'Appointment Created',
+        'appointment_deleted': 'Appointment Deleted',
         'task_created': 'Task Created',
         'task_deleted': 'Task Deleted',
         'project_created': 'Project Created',
@@ -1333,6 +1340,10 @@ function PrintView({ activities, selectedDate }) {
       case 'meeting':
       case 'job_scheduled':
         return 'Scheduled';
+      case 'appointment_created':
+        return 'Appointment Created';
+      case 'appointment_deleted':
+        return 'Appointment Deleted';
       case 'task_created':
         return 'Task/Project Created';
       case 'task_deleted':
