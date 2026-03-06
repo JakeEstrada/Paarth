@@ -118,10 +118,28 @@ async function getActivitiesByDateRange(req, res) {
   }
 }
 
+// Delete an activity
+async function deleteActivity(req, res) {
+  try {
+    const activity = await Activity.findById(req.params.id);
+    
+    if (!activity) {
+      return res.status(404).json({ error: 'Activity not found' });
+    }
+    
+    await Activity.findByIdAndDelete(req.params.id);
+    
+    res.json({ message: 'Activity deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 module.exports = {
   getJobActivities,
   getCustomerActivities,
   createActivity,
   getRecentActivities,
-  getActivitiesByDateRange
+  getActivitiesByDateRange,
+  deleteActivity
 };

@@ -6,7 +6,8 @@ const {
   getCustomerActivities,
   createActivity,
   getRecentActivities,
-  getActivitiesByDateRange
+  getActivitiesByDateRange,
+  deleteActivity
 } = require('../controllers/activityController');
 
 //router.use(requireAuth);
@@ -16,5 +17,6 @@ router.get('/date-range', getActivitiesByDateRange);
 router.get('/job/:jobId', getJobActivities);
 router.get('/customer/:customerId', getCustomerActivities);
 router.post('/job/:jobId', createActivity);
+router.delete('/:id', deleteActivity);
 
 module.exports = router;

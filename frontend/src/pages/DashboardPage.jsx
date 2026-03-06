@@ -21,6 +21,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  IconButton,
 } from '@mui/material';
 import {
   AccountTree as JobsIcon,
@@ -34,6 +35,7 @@ import {
   People as PeopleIcon,
   Note as NoteIcon,
   Print as PrintIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -61,6 +63,9 @@ function DashboardPage() {
   const [activities, setActivities] = useState([]);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [selectedPrintDate, setSelectedPrintDate] = useState(new Date().toISOString().split('T')[0]);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [activityToDelete, setActivityToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -247,6 +252,8 @@ function DashboardPage() {
         return 'Task Created';
       case 'project_created':
         return 'Project Created';
+      case 'project_updated':
+        return 'Project Updated';
       case 'task_completed':
         return 'Task Completed';
       case 'project_note_added':
@@ -295,6 +302,37 @@ function DashboardPage() {
     }
   };
 
+  const handleDeleteClick = (activity) => {
+    setActivityToDelete(activity);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!activityToDelete) return;
+
+    try {
+      setDeleting(true);
+      await axios.delete(`${API_URL}/activities/${activityToDelete._id}`);
+      toast.success('Activity deleted successfully');
+      
+      // Remove the activity from the list
+      setActivities(activities.filter(a => a._id !== activityToDelete._id));
+      
+      setDeleteConfirmOpen(false);
+      setActivityToDelete(null);
+    } catch (error) {
+      console.error('Error deleting activity:', error);
+      toast.error(error.response?.data?.error || 'Failed to delete activity');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setActivityToDelete(null);
+  };
+
   // Get color for activity type
   const getActivityTypeColor = (type) => {
     const colorMap = {
@@ -318,6 +356,7 @@ function DashboardPage() {
       // Tasks/Projects
       'task_created': 'success',
       'project_created': 'success',
+      'project_updated': 'info',
       'task_completed': 'success',
       // Other
       'customer_created': 'success',
@@ -386,6 +425,7 @@ function DashboardPage() {
         'job_scheduled': 'Scheduled',
         'task_created': 'Task Created',
         'project_created': 'Project Created',
+        'project_updated': 'Project Updated',
         'task_completed': 'Task Completed',
         'project_note_added': 'Project Note Added',
       };
@@ -1058,7 +1098,7 @@ function DashboardPage() {
 
                   return (
                     <Box key={activity._id || idx}>
-                      <Box sx={{ py: 1, fontSize: '0.75rem' }}>
+                      <Box sx={{ py: 1, fontSize: '0.75rem', position: 'relative' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                           <Chip 
                             label={title}
@@ -1073,6 +1113,20 @@ function DashboardPage() {
                           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
                             {timeShort}
                           </Typography>
+                          <Box sx={{ flexGrow: 1 }} />
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteClick(activity)}
+                            sx={{
+                              opacity: 0.6,
+                              '&:hover': {
+                                opacity: 1,
+                                color: 'error.main',
+                              },
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
                         </Box>
                         {description && (
                           <Typography
@@ -1140,6 +1194,41 @@ function DashboardPage() {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onClose={handleDeleteCancel}>
+        <DialogTitle>Delete Activity?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this activity? This action cannot be undone.
+          </Typography>
+          {activityToDelete && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {getActivityTitle(activityToDelete)}
+              </Typography>
+              {getActivityDescription(activityToDelete) && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  {getActivityDescription(activityToDelete)}
+                </Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDeleteConfirm} 
+            color="error" 
+            variant="contained"
+            disabled={deleting}
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Print Dialog */}
       <Dialog open={printDialogOpen} onClose={() => setPrintDialogOpen(false)} maxWidth="sm" fullWidth>
@@ -1233,6 +1322,10 @@ function PrintView({ activities, selectedDate }) {
         return 'Scheduled';
       case 'task_created':
         return 'Task/Project Created';
+      case 'project_created':
+        return 'Project Created';
+      case 'project_updated':
+        return 'Project Updated';
       case 'task_completed':
         return 'Task Completed';
       case 'project_note_added':

@@ -30,6 +30,7 @@ const activitySchema = new mongoose.Schema({
       'task_completed',
       'project_created',
       'project_note_added',
+      'project_updated',
       'takeoff_complete'
     ]
   },

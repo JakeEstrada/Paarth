@@ -106,6 +106,7 @@ async function createTask(req, res) {
         customerId = job.customerId;
       }
       
+      // Build activity note with title and description
       const activityNote = task.description 
         ? `${task.title} - ${task.description}`
         : task.title;
@@ -124,10 +125,11 @@ async function createTask(req, res) {
       await job.save();
       
       // Log activity - check if it's a project or task
+      // Include full description in the activity note
       const activityType = task.isProject ? 'project_created' : 'task_created';
       const activityNoteText = task.isProject 
-        ? `Project added: ${activityNote}`
-        : `Change order/task added: ${activityNote}`;
+        ? (task.description ? `Project added: ${task.title} - ${task.description}` : `Project added: ${task.title}`)
+        : (task.description ? `Change order/task added: ${task.title} - ${task.description}` : `Change order/task added: ${task.title}`);
       
       if (customerId) {
         try {
@@ -153,42 +155,35 @@ async function createTask(req, res) {
       }
     } else {
       // Log activity for standalone tasks/projects (not associated with a job)
-      // If no customerId provided, try to get a default customer
-      let activityCustomerId = customerId;
-      if (!activityCustomerId) {
-        const Customer = require('../models/Customer');
-        const defaultCustomer = await Customer.findOne().sort({ createdAt: 1 }); // Get first customer
-        if (defaultCustomer) {
-          activityCustomerId = defaultCustomer._id;
-          // Also update the task with this customerId for consistency
-          task.customerId = activityCustomerId;
-          await task.save();
-        }
-      }
-      
-      if (activityCustomerId) {
-        const activityNote = task.isProject 
-          ? `Project created: ${task.title}`
-          : `Task created: ${task.title}`;
+      // Only create activity if customerId is provided - don't assign default customer
+      if (customerId) {
+        // Include description in activity note if it exists
+        const activityNote = task.description 
+          ? `${task.title} - ${task.description}`
+          : task.title;
+        const activityNoteText = task.isProject 
+          ? `Project created: ${activityNote}`
+          : `Task created: ${activityNote}`;
         
         try {
           const activity = await Activity.create({
             type: task.isProject ? 'project_created' : 'task_created',
             taskId: task._id,
-            customerId: activityCustomerId,
-            note: activityNote,
+            customerId: customerId,
+            note: activityNoteText,
             createdBy: createdBy
           });
           console.log(`✅ Activity created for standalone ${task.isProject ? 'project' : 'task'} "${task.title}": ${activity._id}`);
         } catch (activityError) {
           console.error('❌ Error creating activity for standalone task:', activityError);
           console.error('   Task ID:', task._id);
-          console.error('   Customer ID:', activityCustomerId);
+          console.error('   Customer ID:', customerId);
           console.error('   Error details:', activityError.message);
           // Don't fail the request if activity logging fails
         }
       } else {
-        console.warn(`⚠️  Could not create activity for standalone ${task.isProject ? 'project' : 'task'} "${task.title}": No customerId available and no default customer found`);
+        // Don't create activity if no customerId - standalone tasks without customers won't show in activity feed
+        console.log(`ℹ️  Skipping activity creation for standalone ${task.isProject ? 'project' : 'task'} "${task.title}": No customerId provided`);
       }
     }
     
@@ -216,8 +211,54 @@ async function updateTask(req, res) {
       return res.status(404).json({ error: 'Task not found' });
     }
     
+    // Store original values to detect changes
+    const originalTitle = task.title;
+    const originalDescription = task.description;
+    
     Object.assign(task, req.body);
     await task.save();
+    
+    // Log activity if this is a project and fields were updated
+    if (task.isProject) {
+      const Customer = require('../models/Customer');
+      let customerId = task.customerId;
+      
+      // If no customerId, try to get it from the job
+      if (!customerId && task.jobId) {
+        const Job = require('../models/Job');
+        const job = await Job.findById(task.jobId);
+        if (job) {
+          customerId = job.customerId;
+        }
+      }
+      
+      // Only create activity if customerId is available and something changed
+      if (customerId && (task.title !== originalTitle || task.description !== originalDescription)) {
+        try {
+          const changes = [];
+          if (task.title !== originalTitle) {
+            changes.push(`title: "${originalTitle}" → "${task.title}"`);
+          }
+          if (task.description !== originalDescription) {
+            changes.push(`description updated`);
+          }
+          
+          const activityNote = `Project "${task.title}" updated: ${changes.join(', ')}`;
+          
+          await Activity.create({
+            type: 'project_updated',
+            taskId: task._id,
+            jobId: task.jobId || undefined,
+            customerId: customerId,
+            note: activityNote,
+            createdBy: req.user?._id || task.createdBy
+          });
+        } catch (activityError) {
+          console.error('Error creating activity for project update:', activityError);
+          // Don't fail the request if activity logging fails
+        }
+      }
+    }
     
     await task.populate('assignedTo', 'name email');
     await task.populate('completedBy', 'name email');
@@ -246,19 +287,43 @@ async function completeTask(req, res) {
     task.completedBy = req.user?._id || task.createdBy;
     await task.save();
     
-    // Log activity if job exists (but not for projects - projects are separate)
-    if (task.jobId && task.customerId && !task.isProject) {
-      const activityNote = task.description 
-        ? `${task.title} - ${task.description}`
-        : task.title;
-      
-      await Activity.create({
-        type: 'task_completed',
-        jobId: task.jobId,
-        customerId: task.customerId,
-        note: `Change order/task completed: ${activityNote}`,
-        createdBy: req.user?._id || task.createdBy
-      });
+    // Log activity for task/project completion
+    const Customer = require('../models/Customer');
+    let customerId = task.customerId;
+    
+    // If no customerId, try to get it from the job
+    if (!customerId && task.jobId) {
+      const Job = require('../models/Job');
+      const job = await Job.findById(task.jobId);
+      if (job) {
+        customerId = job.customerId;
+      }
+    }
+    
+    // Only create activity if customerId is available
+    if (customerId) {
+      try {
+        const activityNote = task.description 
+          ? `${task.title} - ${task.description}`
+          : task.title;
+        
+        const activityType = task.isProject ? 'task_completed' : 'task_completed';
+        const activityNoteText = task.isProject
+          ? `Project completed: ${activityNote}`
+          : `Change order/task completed: ${activityNote}`;
+        
+        await Activity.create({
+          type: activityType,
+          taskId: task._id,
+          jobId: task.jobId || undefined,
+          customerId: customerId,
+          note: activityNoteText,
+          createdBy: req.user?._id || task.createdBy
+        });
+      } catch (activityError) {
+        console.error('Error creating activity for task completion:', activityError);
+        // Don't fail the request if activity logging fails
+      }
     }
     
     await task.populate('assignedTo', 'name email');
@@ -655,6 +720,40 @@ async function addProjectUpdate(req, res) {
     });
     
     await task.save();
+    
+    // Log activity for project update
+    const Customer = require('../models/Customer');
+    let customerId = task.customerId;
+    
+    // If no customerId, try to get it from the job
+    if (!customerId && task.jobId) {
+      const Job = require('../models/Job');
+      const job = await Job.findById(task.jobId);
+      if (job) {
+        customerId = job.customerId;
+      }
+    }
+    
+    // Only create activity if customerId is available
+    if (customerId) {
+      try {
+        const activityNote = task.description 
+          ? `Project "${task.title}" updated: ${content.trim()}`
+          : `Project "${task.title}" updated: ${content.trim()}`;
+        
+        await Activity.create({
+          type: 'project_updated',
+          taskId: task._id,
+          jobId: task.jobId || undefined,
+          customerId: customerId,
+          note: activityNote,
+          createdBy: createdBy
+        });
+      } catch (activityError) {
+        console.error('Error creating activity for project update:', activityError);
+        // Don't fail the request if activity logging fails
+      }
+    }
     
     await task.populate('updates.createdBy', 'name email');
     
