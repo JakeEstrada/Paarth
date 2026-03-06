@@ -5,7 +5,7 @@ const Activity = require('../models/Activity');
 // Get all jobs
 async function getJobs(req, res) {
   try {
-    const { stage, assignedTo, search, page = 1, limit = 100 } = req.query;
+    const { stage, assignedTo, search, customerId, page = 1, limit = 100 } = req.query;
     
     let query = { 
       isArchived: { $ne: true }, // Matches false, null, or missing field
@@ -14,6 +14,7 @@ async function getJobs(req, res) {
     
     if (stage) query.stage = stage;
     if (assignedTo) query.assignedTo = assignedTo;
+    if (customerId) query.customerId = customerId;
     if (search) query.title = { $regex: search, $options: 'i' };
     
     const jobs = await Job.find(query)

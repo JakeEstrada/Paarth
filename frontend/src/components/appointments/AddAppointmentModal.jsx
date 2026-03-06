@@ -9,6 +9,11 @@ import {
   Box,
   Typography,
   Grid,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  CircularProgress,
 } from '@mui/material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -37,6 +42,56 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
   const [date, setDate] = useState(getDefaultDate());
   const [time, setTime] = useState(getDefaultTime());
   const [loading, setLoading] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [selectedJobId, setSelectedJobId] = useState('');
+  const [customers, setCustomers] = useState([]);
+  const [jobs, setJobs] = useState([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+
+  // Fetch customers
+  const fetchCustomers = async () => {
+    try {
+      setLoadingCustomers(true);
+      const response = await axios.get(`${API_URL}/customers?limit=1000`);
+      setCustomers(response.data.customers || response.data || []);
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+      toast.error('Failed to load customers');
+    } finally {
+      setLoadingCustomers(false);
+    }
+  };
+
+  // Fetch jobs for selected customer
+  const fetchJobsForCustomer = async (customerId) => {
+    if (!customerId) {
+      setJobs([]);
+      setSelectedJobId('');
+      return;
+    }
+
+    try {
+      setLoadingJobs(true);
+      const response = await axios.get(`${API_URL}/jobs?customerId=${customerId}`);
+      const jobsData = response.data.jobs || response.data || [];
+      setJobs(jobsData);
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+      toast.error('Failed to load jobs');
+      setJobs([]);
+    } finally {
+      setLoadingJobs(false);
+    }
+  };
+
+  // Handle customer selection change
+  const handleCustomerChange = (event) => {
+    const customerId = event.target.value;
+    setSelectedCustomerId(customerId);
+    setSelectedJobId(''); // Reset job selection when customer changes
+    fetchJobsForCustomer(customerId);
+  };
 
   // Load an existing appointment when editing
   const loadAppointment = async () => {
@@ -49,6 +104,18 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
 
       setTitle(appt.title || '');
       setDescription(appt.reason || '');
+
+      // Set customer and job if they exist
+      const customerId = appt.customerId?._id || appt.customerId || '';
+      const jobId = appt.jobId?._id || appt.jobId || '';
+      
+      setSelectedCustomerId(customerId);
+      setSelectedJobId(jobId);
+
+      // If customer is set, fetch their jobs
+      if (customerId) {
+        await fetchJobsForCustomer(customerId);
+      }
 
       // Convert stored Date to yyyy-MM-dd for input
       const apptDate = appt.date ? new Date(appt.date) : new Date();
@@ -136,12 +203,25 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
         time: timeFormatted,
       };
 
-      // When creating, set status and job/customer linkage
+      // Set customer and job if selected
+      if (selectedCustomerId) {
+        appointmentData.customerId = selectedCustomerId;
+      } else {
+        appointmentData.customerId = null;
+      }
+
+      if (selectedJobId) {
+        appointmentData.jobId = selectedJobId;
+      } else {
+        appointmentData.jobId = null;
+      }
+
+      // When creating, set status
       if (!isEditMode) {
         appointmentData.status = 'scheduled';
 
-        // If job is provided, link the appointment to the job
-        if (job && job._id) {
+        // If job prop is provided (from job modal), use it as default
+        if (job && job._id && !selectedJobId) {
           appointmentData.jobId = job._id;
           if (job.customerId) {
             appointmentData.customerId = job.customerId._id || job.customerId;
@@ -162,6 +242,9 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
       setDescription('');
       setDate(getDefaultDate());
       setTime(getDefaultTime());
+      setSelectedCustomerId('');
+      setSelectedJobId('');
+      setJobs([]);
       
       onSuccess?.();
       onClose();
@@ -177,6 +260,9 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
   useEffect(() => {
     if (!open) return;
 
+    // Fetch customers when modal opens
+    fetchCustomers();
+
     if (isEditMode) {
       loadAppointment();
     } else {
@@ -184,6 +270,20 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
       setDescription('');
       setDate(getDefaultDate());
       setTime(getDefaultTime());
+      setSelectedCustomerId('');
+      setSelectedJobId('');
+      setJobs([]);
+
+      // If job prop is provided, set it as default
+      if (job && job._id) {
+        const customerId = job.customerId?._id || job.customerId;
+        if (customerId) {
+          setSelectedCustomerId(customerId);
+          fetchJobsForCustomer(customerId).then(() => {
+            setSelectedJobId(job._id);
+          });
+        }
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, appointmentId]);
@@ -194,6 +294,9 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
       setDescription('');
       setDate(getDefaultDate());
       setTime(getDefaultTime());
+      setSelectedCustomerId('');
+      setSelectedJobId('');
+      setJobs([]);
       onClose();
     }
   };
@@ -258,6 +361,55 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
                 />
               </Grid>
             </Grid>
+
+            <FormControl fullWidth>
+              <InputLabel>Customer (Optional)</InputLabel>
+              <Select
+                value={selectedCustomerId}
+                onChange={handleCustomerChange}
+                label="Customer (Optional)"
+                disabled={loadingCustomers}
+              >
+                <MenuItem value="">
+                  <em>None</em>
+                </MenuItem>
+                {customers.map((customer) => (
+                  <MenuItem key={customer._id} value={customer._id}>
+                    {customer.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {selectedCustomerId && (
+              <FormControl fullWidth>
+                <InputLabel>Job (Optional)</InputLabel>
+                <Select
+                  value={selectedJobId}
+                  onChange={(e) => setSelectedJobId(e.target.value)}
+                  label="Job (Optional)"
+                  disabled={loadingJobs}
+                >
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  {loadingJobs ? (
+                    <MenuItem disabled>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={16} />
+                        <Typography variant="body2">Loading jobs...</Typography>
+                      </Box>
+                    </MenuItem>
+                  ) : (
+                    jobs.map((job) => (
+                      <MenuItem key={job._id} value={job._id}>
+                        {job.title} {job.description ? `| ${job.description}` : ''}
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+              </FormControl>
+            )}
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
