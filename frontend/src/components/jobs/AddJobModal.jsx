@@ -35,6 +35,7 @@ const SOURCE_OPTIONS = [
 function AddJobModal({ open, onClose, onJobCreated }) {
   const [formData, setFormData] = useState({
     title: '',
+    description: '',
     customerId: null,
     customerName: '',
     customerPhone: '',
@@ -59,6 +60,7 @@ function AddJobModal({ open, onClose, onJobCreated }) {
       // Reset form when modal opens
       setFormData({
         title: '',
+        description: '',
         customerId: null,
         customerName: '',
         customerPhone: '',
@@ -259,6 +261,7 @@ function AddJobModal({ open, onClose, onJobCreated }) {
       // Create the job
       const jobData = {
         title: formData.title.trim(),
+        description: formData.description.trim() || '',
         customerId: customerId,
         stage: 'ESTIMATE_IN_PROGRESS',
         source: formData.source,
@@ -322,6 +325,16 @@ function AddJobModal({ open, onClose, onJobCreated }) {
             helperText={errors.title}
             fullWidth
             autoFocus
+          />
+
+          <TextField
+            label="Description"
+            value={formData.description}
+            onChange={(e) => handleChange('description', e.target.value)}
+            fullWidth
+            multiline
+            rows={2}
+            placeholder="Add a short description to help identify this job..."
           />
 
           <Autocomplete

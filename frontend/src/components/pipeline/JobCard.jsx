@@ -108,24 +108,50 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
       }}
     >
       <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-        <Typography
-          variant="body2"
+        <Box>
+          <Typography
+            variant="body2"
             sx={{
               fontSize: '0.875rem',
               fontWeight: 500,
               color: theme.palette.text.primary,
               lineHeight: 1.4,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
+              display: 'inline',
               mb: (job.stage === 'ESTIMATE_SENT' || job.stage === 'ESTIMATE_IN_PROGRESS') && daysSinceSent !== null ? 0.5 : 0,
             }}
-          title={job.title}
-        >
-          {truncateTitle(job.title, 50)}
-        </Typography>
+            title={job.title}
+          >
+            {truncateTitle(job.title, 50)}
+          </Typography>
+          {job.description && (
+            <>
+              <Typography 
+                component="span" 
+                sx={{ 
+                  mx: 0.75, 
+                  color: theme.palette.text.secondary,
+                  fontSize: '0.75rem'
+                }}
+              >
+                |
+              </Typography>
+              <Typography
+                component="span"
+                variant="body2"
+                sx={{
+                  fontSize: '0.75rem',
+                  color: theme.palette.text.secondary,
+                  fontStyle: 'italic',
+                  fontWeight: 300,
+                  lineHeight: 1.4,
+                }}
+                title={job.description}
+              >
+                {truncateTitle(job.description, 30)}
+              </Typography>
+            </>
+          )}
+        </Box>
         
         {((job.stage === 'ESTIMATE_SENT' || job.stage === 'ESTIMATE_IN_PROGRESS') && daysSinceSent !== null) && (
           <Box sx={{ mt: 0.5 }}>

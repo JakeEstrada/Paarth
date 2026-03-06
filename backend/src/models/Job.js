@@ -11,6 +11,11 @@ const jobSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  description: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   stage: {
     type: String,
     enum: [

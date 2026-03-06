@@ -33,7 +33,6 @@ import {
   Cancel as CancelIcon,
   Delete as DeleteIcon,
   Archive as ArchiveIcon,
-  ArrowForward as ArrowForwardIcon,
   SwapHoriz as SwapHorizIcon,
   CloudUpload as CloudUploadIcon,
   PictureAsPdf as PictureAsPdfIcon,
@@ -265,6 +264,7 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
       setSaving(true);
       const updates = {
         title: editedJob.title,
+        description: editedJob.description || '',
         valueEstimated: editedJob.valueEstimated,
         valueContracted: editedJob.valueContracted,
         source: editedJob.source,
@@ -330,15 +330,6 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleMoveToNextStage = async () => {
-    const nextStage = getNextStage(job.stage);
-    if (!nextStage) {
-      toast.error('Already at the final stage');
-      return;
-    }
-    await handleMoveStage(nextStage);
   };
 
   const handleMoveStage = async (toStage) => {
@@ -412,18 +403,52 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Box sx={{ flex: 1 }}>
             {isEditing ? (
-              <TextField
-                fullWidth
-                value={editedJob?.title || ''}
-                onChange={(e) => handleFieldChange('title', e.target.value)}
-                variant="outlined"
-                size="small"
-                sx={{ mb: 1 }}
-              />
+              <>
+                <TextField
+                  fullWidth
+                  value={editedJob?.title || ''}
+                  onChange={(e) => handleFieldChange('title', e.target.value)}
+                  variant="outlined"
+                  size="small"
+                  label="Job Name"
+                  sx={{ mb: 1 }}
+                />
+                <TextField
+                  fullWidth
+                  value={editedJob?.description || ''}
+                  onChange={(e) => handleFieldChange('description', e.target.value)}
+                  variant="outlined"
+                  size="small"
+                  label="Description"
+                  multiline
+                  rows={2}
+                  placeholder="Add a short description to help identify this job..."
+                />
+              </>
             ) : (
-              <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
-                {job.title}
-              </Typography>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5, display: 'inline' }}>
+                  {job.title}
+                </Typography>
+                {job.description && (
+                  <>
+                    <Typography component="span" sx={{ mx: 1, color: 'text.secondary' }}>
+                      |
+                    </Typography>
+                    <Typography 
+                      component="span" 
+                      variant="body2" 
+                      sx={{ 
+                        color: 'text.secondary',
+                        fontStyle: 'italic',
+                        fontWeight: 300
+                      }}
+                    >
+                      {job.description}
+                    </Typography>
+                  </>
+                )}
+              </Box>
             )}
             <Typography variant="body2" color="text.secondary">
               {job.customerId?.name || 'Unknown Customer'}
@@ -506,6 +531,37 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
 
         {activeTab === 0 && (
           <Grid container spacing={3}>
+            {/* Estimated Value - At the top */}
+            <Grid item xs={12} sm={6}>
+              <Paper sx={{ p: 2, height: '100%' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <MoneyIcon sx={{ mr: 1, color: 'success.main' }} />
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Estimated Value
+                  </Typography>
+                </Box>
+                {isEditing ? (
+                  <TextField
+                    type="number"
+                    value={editedJob?.valueEstimated || 0}
+                    onChange={(e) => handleFieldChange('valueEstimated', parseFloat(e.target.value) || 0)}
+                    variant="outlined"
+                    size="small"
+                    fullWidth
+                    sx={{ mt: 1 }}
+                    InputProps={{
+                      startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>,
+                    }}
+                  />
+                ) : (
+                  <Typography variant="h5" sx={{ color: 'success.main', fontWeight: 600, mt: 1 }}>
+                    {formatCurrency(job.valueEstimated)}
+                  </Typography>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* Current Stage */}
             <Grid item xs={12} sm={6}>
               <Paper sx={{ p: 2, height: '100%' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -523,21 +579,6 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
                 {/* Stage Movement Controls */}
                 {!job?.isArchived && !job?.isDeadEstimate && (
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 2 }}>
-                    {/* Move to Next Stage Button */}
-                    {getNextStage(job.stage) && (
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<ArrowForwardIcon />}
-                        onClick={handleMoveToNextStage}
-                        disabled={movingStage}
-                        fullWidth
-                        sx={{ textTransform: 'none' }}
-                      >
-                        Move to Next Stage
-                      </Button>
-                    )}
-                    
                     {/* Move to Any Stage Dropdown */}
                     <FormControl fullWidth size="small">
                       <InputLabel>Move to Stage</InputLabel>
@@ -573,31 +614,91 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
               </Paper>
             </Grid>
 
-            <Grid item xs={12} sm={6}>
-              <Paper sx={{ p: 2, height: '100%' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <MoneyIcon sx={{ mr: 1, color: 'success.main' }} />
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Estimated Value
-                  </Typography>
+            {/* Recent Activity - More prominent */}
+            <Grid item xs={12}>
+              <Paper sx={{ p: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <DescriptionIcon sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      Recent Activity
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<DescriptionIcon />}
+                      onClick={() => setAddNoteOpen(true)}
+                      sx={{ borderRadius: '8px', textTransform: 'none' }}
+                    >
+                      Add Note
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<AssignmentIcon />}
+                      onClick={() => setAddTaskOpen(true)}
+                      sx={{ borderRadius: '8px', textTransform: 'none' }}
+                    >
+                      Add Task
+                    </Button>
+                  </Box>
                 </Box>
-                {isEditing ? (
-                  <TextField
-                    type="number"
-                    value={editedJob?.valueEstimated || 0}
-                    onChange={(e) => handleFieldChange('valueEstimated', parseFloat(e.target.value) || 0)}
-                    variant="outlined"
-                    size="small"
-                    fullWidth
-                    sx={{ mt: 1 }}
-                    InputProps={{
-                      startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>,
-                    }}
-                  />
+                
+                {job.notes && job.notes.length > 0 ? (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: '400px', overflowY: 'auto' }}>
+                    {[...job.notes]
+                      .sort((a, b) => {
+                        const dateA = new Date(a.createdAt || 0);
+                        const dateB = new Date(b.createdAt || 0);
+                        return dateB - dateA; // Descending order (newest first)
+                      })
+                      .slice(0, 10) // Show only last 10 activities
+                      .map((note, index) => (
+                        <Box 
+                          key={index} 
+                          sx={{ 
+                            p: 1.5, 
+                            borderRadius: 1, 
+                            bgcolor: 'action.hover',
+                            borderLeft: '3px solid',
+                            borderColor: note.isStageChange ? 'primary.main' : (note.isAppointment ? 'warning.main' : 'divider')
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                              {note.createdBy?.name || 'Unknown'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {formatDateTime(note.createdAt)}
+                            </Typography>
+                          </Box>
+                          <Typography 
+                            variant="body2"
+                            sx={{
+                              color: note.isStageChange ? 'primary.main' : (note.isAppointment ? 'warning.main' : 'text.primary'),
+                              fontStyle: (note.isStageChange || note.isAppointment) ? 'italic' : 'normal',
+                              fontWeight: note.isStageChange ? 500 : 'normal'
+                            }}
+                          >
+                            {note.content}
+                          </Typography>
+                        </Box>
+                      ))}
+                    {job.notes.length > 10 && (
+                      <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', mt: 1 }}>
+                        Showing 10 most recent. View all in Notes tab.
+                      </Typography>
+                    )}
+                  </Box>
                 ) : (
-                  <Typography variant="h5" sx={{ color: 'success.main', fontWeight: 600, mt: 1 }}>
-                    {formatCurrency(job.valueEstimated)}
-                  </Typography>
+                  <Box sx={{ textAlign: 'center', py: 3 }}>
+                    <DescriptionIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
+                    <Typography variant="body2" color="text.secondary">
+                      No activity yet. Add a note or task to get started.
+                    </Typography>
+                  </Box>
                 )}
               </Paper>
             </Grid>
