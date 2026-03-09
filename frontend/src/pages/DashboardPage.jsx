@@ -288,6 +288,8 @@ function DashboardPage() {
         return 'Job Created';
       case 'job_updated':
         return 'Job Updated';
+      case 'job_archived':
+        return 'Job Archived';
       case 'file_uploaded':
         return 'File Uploaded';
       case 'file_deleted':
@@ -484,6 +486,7 @@ function DashboardPage() {
         'note': 'Note',
         'job_created': 'Job Created',
         'job_updated': 'Job Updated',
+        'job_archived': 'Job Archived',
         'file_uploaded': 'File Uploaded',
         'file_deleted': 'File Deleted',
         'meeting': 'Scheduled',
@@ -1430,6 +1433,8 @@ function PrintView({ activities, selectedDate }) {
         return 'Job Created';
       case 'job_updated':
         return 'Job Updated';
+      case 'job_archived':
+        return 'Job Archived';
       case 'file_uploaded':
         return 'File Uploaded';
       case 'file_deleted':

@@ -957,7 +957,7 @@ async function archiveJob(req, res) {
     job.archivedAt = archiveDate;
     
     // Handle createdBy for note and activity
-    let createdBy = req.user?._id || job.createdBy;
+    let createdBy = req.user?._id || job.archivedBy || job.createdBy;
     if (!createdBy) {
       const defaultUser = await User.findOne({ isActive: true });
       if (defaultUser) {
@@ -990,14 +990,15 @@ async function archiveJob(req, res) {
     
     await job.save();
     
-    // Log activity with timestamp
-    if (createdBy) {
+    // Always log archive to recent activity (use job.createdBy if we still have no user)
+    const activityCreatedBy = createdBy || job.createdBy;
+    if (activityCreatedBy) {
       await Activity.create({
         type: 'job_archived',
         jobId: job._id,
         customerId: job.customerId,
-        note: `Job manually archived on ${timestamp}`,
-        createdBy: createdBy
+        note: `Job archived on ${timestamp}`,
+        createdBy: activityCreatedBy
       });
     }
     
