@@ -27,7 +27,7 @@ async function getCustomerActivities(req, res) {
   }
 }
 
-// Create manual activity (note, call, email, meeting)
+// Create manual activity attached to a specific job (note, call, email, meeting)
 async function createActivity(req, res) {
   try {
     const Job = require('../models/Job');
@@ -50,6 +50,67 @@ async function createActivity(req, res) {
     
     res.status(201).json(activity);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// Create a general/manual activity that can optionally stand alone
+// (e.g. "08:30 worked on Wells Fargo billing - no job")
+async function createManualActivity(req, res) {
+  try {
+    const User = require('../models/User');
+    const Job = require('../models/Job');
+
+    const { type, note, createdAt, jobId, customerId } = req.body;
+
+    if (!note || !note.trim()) {
+      return res.status(400).json({ error: 'Activity note is required' });
+    }
+
+    // Resolve createdBy (prefer authenticated user, fall back to any active user)
+    let createdBy = req.user?._id || req.body.createdBy;
+    if (!createdBy) {
+      const defaultUser = await User.findOne({ isActive: true });
+      if (!defaultUser) {
+        return res.status(400).json({ error: 'No user available to attribute activity to' });
+      }
+      createdBy = defaultUser._id;
+    }
+
+    const activityData = {
+      type: type || 'manual_entry',
+      note: note.trim(),
+      createdBy,
+    };
+
+    // Optionally associate with a job and/or customer
+    if (jobId) {
+      const job = await Job.findById(jobId);
+      if (job) {
+        activityData.jobId = job._id;
+        activityData.customerId = job.customerId;
+      }
+    } else if (customerId) {
+      activityData.customerId = customerId;
+    }
+
+    // Allow overriding createdAt so you can log "at 08:30" style entries
+    if (createdAt) {
+      const customDate = new Date(createdAt);
+      if (!isNaN(customDate.getTime())) {
+        activityData.createdAt = customDate;
+      }
+    }
+
+    const activity = await Activity.create(activityData);
+
+    await activity.populate('createdBy', 'name email');
+    await activity.populate('customerId', 'name');
+    await activity.populate('jobId', 'title');
+
+    res.status(201).json(activity);
+  } catch (error) {
+    console.error('Error creating manual activity:', error);
     res.status(500).json({ error: error.message });
   }
 }
@@ -178,6 +239,7 @@ module.exports = {
   getJobActivities,
   getCustomerActivities,
   createActivity,
+  createManualActivity,
   getRecentActivities,
   getActivitiesByDateRange,
   deleteActivity,

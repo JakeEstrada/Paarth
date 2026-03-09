@@ -5,6 +5,7 @@ const {
   getJobActivities,
   getCustomerActivities,
   createActivity,
+  createManualActivity,
   getRecentActivities,
   getActivitiesByDateRange,
   deleteActivity,
@@ -18,6 +19,7 @@ router.get('/date-range', getActivitiesByDateRange);
 router.get('/job/:jobId', getJobActivities);
 router.get('/customer/:customerId', getCustomerActivities);
 router.post('/job/:jobId', createActivity);
+router.post('/manual', createManualActivity);
 router.post('/payroll/print', logPayrollPrint);
 router.delete('/:id', deleteActivity);
 

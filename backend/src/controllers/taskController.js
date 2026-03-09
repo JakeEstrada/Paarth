@@ -161,37 +161,34 @@ async function createTask(req, res) {
       }
     } else {
       // Log activity for standalone tasks/projects (not associated with a job)
-      // Only create activity if customerId is explicitly provided - don't assign default customer
-      if (customerId) {
-        // Include description in activity note if it exists
-        const activityNote = task.description 
-          ? `${task.title} - ${task.description}`
-          : task.title;
-        const activityNoteText = task.isProject 
-          ? `Project created: ${activityNote}`
-          : `Task created: ${activityNote}`;
-        
-        try {
-          const activity = await Activity.create({
-            type: task.isProject ? 'project_created' : 'task_created',
-            taskId: task._id,
-            customerId: customerId,
-            note: activityNoteText,
-            createdBy: createdBy
-          });
-          console.log(`✅ Activity created for standalone ${task.isProject ? 'project' : 'task'} "${task.title}": ${activity._id}`);
-        } catch (activityError) {
-          console.error('❌ Error creating activity for standalone task:', activityError);
-          console.error('   Task ID:', task._id);
-          console.error('   Task Title:', task.title);
-          console.error('   Customer ID:', customerId);
-          console.error('   Created By:', createdBy);
-          console.error('   Error details:', activityError.message);
-          // Don't fail the request if activity logging fails
-        }
-      } else {
-        // Don't create activity if no customerId - standalone tasks without customers won't show in activity feed
-        console.log(`ℹ️  Skipping activity creation for standalone ${task.isProject ? 'project' : 'task'} "${task.title}": No customerId provided`);
+      // Even if there is no customer, we still want them to show up in the
+      // global "Recent Activity" feed on the dashboard.
+      // Include description in activity note if it exists
+      const activityNote = task.description 
+        ? `${task.title} - ${task.description}`
+        : task.title;
+      const activityNoteText = task.isProject 
+        ? `Project created: ${activityNote}`
+        : `Task created: ${activityNote}`;
+      
+      try {
+        const activity = await Activity.create({
+          type: task.isProject ? 'project_created' : 'task_created',
+          taskId: task._id,
+          // customerId is optional here – may be undefined for personal/admin tasks
+          customerId: customerId || null,
+          note: activityNoteText,
+          createdBy: createdBy
+        });
+        console.log(`✅ Activity created for standalone ${task.isProject ? 'project' : 'task'} "${task.title}": ${activity._id}`);
+      } catch (activityError) {
+        console.error('❌ Error creating activity for standalone task:', activityError);
+        console.error('   Task ID:', task._id);
+        console.error('   Task Title:', task.title);
+        console.error('   Customer ID:', customerId);
+        console.error('   Created By:', createdBy);
+        console.error('   Error details:', activityError.message);
+        // Don't fail the request if activity logging fails
       }
     }
     

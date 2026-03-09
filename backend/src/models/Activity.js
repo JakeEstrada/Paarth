@@ -37,9 +37,15 @@ const activitySchema = new mongoose.Schema({
       'project_updated',
       'project_deleted',
       'payroll_printed',
-      'takeoff_complete'
+      'takeoff_complete',
+      // General / finance
+      'bill_created',
+      'bill_updated',
+      'bill_deleted',
+      // Manual, free‑form timeline entries
+      'manual_entry'
     ]
-  },
+  }, 
   
   jobId: {
     type: mongoose.Schema.Types.ObjectId,

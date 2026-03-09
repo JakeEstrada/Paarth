@@ -66,6 +66,9 @@ function DashboardPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [activityToDelete, setActivityToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [manualActivityTime, setManualActivityTime] = useState('');
+  const [manualActivityNote, setManualActivityNote] = useState('');
+  const [savingManualActivity, setSavingManualActivity] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -169,6 +172,50 @@ function DashboardPage() {
       toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleManualActivitySubmit = async (event) => {
+    event.preventDefault();
+    if (!manualActivityNote.trim()) {
+      toast.error('Please enter what you worked on.');
+      return;
+    }
+
+    try {
+      setSavingManualActivity(true);
+
+      let createdAt;
+      if (manualActivityTime) {
+        // Use today's date with the supplied time (HH:mm)
+        const now = new Date();
+        const [hours, minutes] = manualActivityTime.split(':');
+        const customDate = new Date(now);
+        customDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+        createdAt = customDate.toISOString();
+      }
+
+      const payload = {
+        type: 'manual_entry',
+        note: manualActivityNote.trim(),
+      };
+
+      if (createdAt) {
+        payload.createdAt = createdAt;
+      }
+
+      const response = await axios.post(`${API_URL}/activities/manual`, payload);
+
+      // Optimistically prepend the new activity into the feed
+      setActivities(prev => [response.data, ...prev]);
+      setManualActivityNote('');
+      setManualActivityTime('');
+      toast.success('Activity added to timeline');
+    } catch (error) {
+      console.error('Error creating manual activity:', error);
+      toast.error('Failed to add activity');
+    } finally {
+      setSavingManualActivity(false);
     }
   };
 
@@ -1108,6 +1155,45 @@ function DashboardPage() {
                 size="small"
               >
                 Print Activity
+              </Button>
+            </Box>
+
+            {/* Quick manual activity entry */}
+            <Box
+              component="form"
+              onSubmit={handleManualActivitySubmit}
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 2,
+                mb: 2,
+                alignItems: 'center',
+              }}
+            >
+              <TextField
+                label="Time"
+                type="time"
+                size="small"
+                value={manualActivityTime}
+                onChange={(e) => setManualActivityTime(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ width: 140 }}
+              />
+              <TextField
+                label="Quick activity note"
+                placeholder='e.g. "8:30 worked on Wells Fargo stuff (job – no name)"'
+                size="small"
+                value={manualActivityNote}
+                onChange={(e) => setManualActivityNote(e.target.value)}
+                sx={{ flexGrow: 1, minWidth: 220 }}
+              />
+              <Button
+                type="submit"
+                variant="contained"
+                size="small"
+                disabled={savingManualActivity}
+              >
+                Add to Activity
               </Button>
             </Box>
             
