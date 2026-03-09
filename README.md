@@ -5,6 +5,7 @@ A comprehensive Customer Relationship Management (CRM) and project management sy
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Engineering Highlights](#engineering-highlights)
 - [Architecture](#architecture)
 - [Use Cases](#use-cases)
 - [Features](#features)
@@ -24,7 +25,7 @@ A comprehensive Customer Relationship Management (CRM) and project management sy
 
 ## 🎯 Overview
 
-Paarth is a full-stack CRM solution built to streamline operations for a custom woodworking business. It provides end-to-end management of:
+Paarth is a full-stack CRM solution I built to streamline operations for a custom woodworking business. It provides end-to-end management of:
 
 - **Customer Relationships**: Centralized customer database with multiple contact methods and addresses
 - **Sales Pipeline**: Visual kanban board tracking jobs through 13 distinct stages from appointment to final payment
@@ -35,6 +36,38 @@ Paarth is a full-stack CRM solution built to streamline operations for a custom 
 - **Activity Logging**: Comprehensive audit trail of all customer and job interactions
 
 The system is designed with a modern, responsive UI built on Material-UI and a robust REST API backend using Express and MongoDB.
+
+---
+
+## 💡 Engineering Highlights
+
+This project is designed to showcase pragmatic, real-world problem solving as well as clean full‑stack architecture.
+
+- **Domain modelling for a complex sales pipeline**
+  - Designed MongoDB/Mongoose models for customers, jobs, tasks, activities, files, and payroll entries with enums, validation, and indexes.
+  - Encoded a 13‑stage job pipeline (appointments → sales → readiness → execution) with soft‑delete style archiving and automatic movement of "dead estimates" after inactivity.
+
+- **Rich audit logging system**
+  - Implemented an `Activity` model with 20+ event types (e.g. `stage_change`, `estimate_sent`, `contract_signed`, `job_scheduled`, `task_completed`, `file_uploaded`).
+  - Persist detailed metadata per event (stage transitions, value changes, calendar sync status, file references, etc.) so any job or customer’s history can be reconstructed from the log.
+  - Recently refined the activity log to always display the acting user’s name for clearer attribution across the UI.
+
+- **Scheduling engine with Google Calendar integration**
+  - Built calendar scheduling for jobs with recurrence rules (daily/weekly/monthly/yearly) and crew notes.
+  - Integrated with Google Calendar via OAuth 2.0, mapping jobs to calendar events and storing `googleEventId` plus sync status for future updates/deletion.
+  - Hardened the integration with explicit error states and clear configuration via environment variables.
+
+- **Task & priority system with urgent workflows**
+  - Implemented a unified task model that can optionally attach to jobs and customers, with typed priorities and categories (e.g. follow‑up, schedule_install).
+  - Added an explicit **urgent** flag that surfaces visually in the UI so critical follow‑ups can’t be missed.
+
+- **Payroll and weighted overtime calculations**
+  - Built a payroll page that derives total hours from clock‑in/out times and breaks, tracks travel miles, and aggregates receipts.
+  - Implemented weighted overtime calculations (1.5x for hours over 40/week) and iterated on the logic to fix subtle edge‑cases in how weighted hours are computed.
+
+- **Maintainable, layered architecture**
+  - Separated concerns into controllers, models, routes, middleware, and utility modules on the backend; composed small, reusable components and hooks on the frontend.
+  - Chose RESTful APIs with clear resource boundaries and consistent response shapes, making it easy to extend the system with new features (e.g. developer tasks, archive views).
 
 ---
 
@@ -1532,6 +1565,12 @@ For issues or questions, please [create an issue](link-to-issues) or contact the
 
 ## 🔄 Version History
 
+- **v1.1.0** (2026-03-08): Enhancements and fixes
+  - Added explicit **urgent** flag and visual emphasis for high-priority tasks
+  - Improved appointment flow to explicitly select an existing customer when scheduling
+  - Activity log entries now display the acting user's name for clearer attribution
+  - Corrected weighted-hours and overtime calculations in the payroll section
+
 - **v1.0.0**: Initial release with core CRM functionality
   - Sales pipeline management
   - Customer management
@@ -1558,4 +1597,4 @@ Potential features for future releases:
 
 ---
 
-*Last updated: [Current Date]*
+*Last updated: March 8, 2026*
