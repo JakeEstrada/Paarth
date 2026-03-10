@@ -705,34 +705,26 @@ async function addProjectNote(req, res) {
     
     await task.save();
     
-    // Log activity for project note
-    const Customer = require('../models/Customer');
+    // Resolve customerId for activity (project may have none)
     let customerId = task.customerId;
-    
-    // If no customerId, try to get it from the job
     if (!customerId && task.jobId) {
       const Job = require('../models/Job');
       const job = await Job.findById(task.jobId);
-      if (job) {
-        customerId = job.customerId;
-      }
+      if (job) customerId = job.customerId;
     }
     
-    // Only create activity if customerId is available - don't assign default customer
-    if (customerId) {
-      try {
-        await Activity.create({
-          type: 'project_note_added',
-          taskId: task._id,
-          jobId: task.jobId || undefined,
-          customerId: customerId,
-          note: `Note added to project "${task.title}": ${content.trim()}`,
-          createdBy: createdBy
-        });
-      } catch (activityError) {
-        console.error('Error creating activity for project note:', activityError);
-        // Don't fail the request if activity logging fails
-      }
+    // Log activity so it shows in recent activity (with or without customer)
+    try {
+      await Activity.create({
+        type: 'project_note_added',
+        taskId: task._id,
+        jobId: task.jobId || undefined,
+        customerId: customerId || undefined,
+        note: `Note added to project "${task.title}": ${content.trim()}`,
+        createdBy: createdBy
+      });
+    } catch (activityError) {
+      console.error('Error creating activity for project note:', activityError);
     }
     
     await task.populate('notes.createdBy', 'name email');
@@ -785,42 +777,27 @@ async function addProjectUpdate(req, res) {
     
     await task.save();
     
-    // Log activity for project update
-    const Customer = require('../models/Customer');
+    // Resolve customerId for activity (project may have none)
     let customerId = task.customerId;
-    
-    // If no customerId, try to get it from the job
     if (!customerId && task.jobId) {
       const Job = require('../models/Job');
       const job = await Job.findById(task.jobId);
-      if (job) {
-        customerId = job.customerId;
-      }
+      if (job) customerId = job.customerId;
     }
     
-    // Only create activity if customerId is available - don't assign default customer
-    if (customerId) {
-      try {
-        const activityNote = `Project "${task.title}" updated: ${content.trim()}`;
-        
-        const activity = await Activity.create({
-          type: 'project_updated',
-          taskId: task._id,
-          jobId: task.jobId || undefined,
-          customerId: customerId,
-          note: activityNote,
-          createdBy: createdBy
-        });
-        console.log(`✅ Activity created for project update "${task.title}": ${activity._id}`);
-      } catch (activityError) {
-        console.error('❌ Error creating activity for project update:', activityError);
-        console.error('   Task ID:', task._id);
-        console.error('   Customer ID:', customerId);
-        console.error('   Error details:', activityError.message);
-        // Don't fail the request if activity logging fails
-      }
-    } else {
-      console.warn(`⚠️  Cannot create activity for project update "${task.title}": No customerId available`);
+    // Always log activity so it shows in recent activity (with or without customer)
+    try {
+      const activityNote = `Project "${task.title}" updated: ${content.trim()}`;
+      await Activity.create({
+        type: 'project_updated',
+        taskId: task._id,
+        jobId: task.jobId || undefined,
+        customerId: customerId || undefined,
+        note: activityNote,
+        createdBy: createdBy
+      });
+    } catch (activityError) {
+      console.error('Error creating activity for project update:', activityError);
     }
     
     await task.populate('updates.createdBy', 'name email');

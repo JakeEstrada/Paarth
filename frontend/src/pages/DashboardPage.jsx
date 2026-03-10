@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Container,
@@ -69,6 +69,7 @@ function DashboardPage() {
   const [manualActivityTime, setManualActivityTime] = useState('');
   const [manualActivityNote, setManualActivityNote] = useState('');
   const [savingManualActivity, setSavingManualActivity] = useState(false);
+  const isInitialLoad = useRef(true);
 
   useEffect(() => {
     // Load dashboard data once on mount; no auto-refresh to avoid
@@ -78,7 +79,12 @@ function DashboardPage() {
 
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
+      // Only show full-page loading on first load; background refetches keep
+      // existing content mounted so scroll position is preserved.
+      if (isInitialLoad.current) {
+        setLoading(true);
+        isInitialLoad.current = false;
+      }
       
       // Fetch all data in parallel
       const [jobsRes, appointmentsRes, tasksRes, customersRes, activitiesRes] = await Promise.all([
