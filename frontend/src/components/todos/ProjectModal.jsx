@@ -52,7 +52,6 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
   const [projectTasks, setProjectTasks] = useState([]);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
-  const [newTaskDueDate, setNewTaskDueDate] = useState('');
   const [newTaskUrgent, setNewTaskUrgent] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
 
@@ -69,7 +68,6 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
       setProjectTasks([]);
       setNewTaskTitle('');
       setNewTaskDescription('');
-      setNewTaskDueDate('');
       setNewTaskUrgent(false);
     }
   }, [open, projectId]);
@@ -167,12 +165,10 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
         customerId: project.customerId?._id || project.customerId,
         title: newTaskTitle.trim(),
         description: newTaskDescription.trim() || undefined,
-        dueDate: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : undefined,
         isUrgent: newTaskUrgent,
       });
       setNewTaskTitle('');
       setNewTaskDescription('');
-      setNewTaskDueDate('');
       setNewTaskUrgent(false);
       await fetchProjectTasks();
       toast.success('Task added to project');
@@ -595,15 +591,6 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                     rows={1}
                   />
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
-                    <TextField
-                      size="small"
-                      type="date"
-                      label="Due date"
-                      value={newTaskDueDate}
-                      onChange={(e) => setNewTaskDueDate(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                      sx={{ width: 160 }}
-                    />
                     <FormControlLabel
                       control={
                         <Checkbox
@@ -676,11 +663,6 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                         <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
                           {task.isUrgent && (
                             <Chip size="small" label="Urgent" color="error" sx={{ height: 20, fontSize: '0.7rem' }} />
-                          )}
-                          {task.dueDate && (
-                            <Typography variant="caption" color={new Date(task.dueDate) < new Date() ? 'error.main' : 'text.secondary'}>
-                              Due: {format(new Date(task.dueDate), 'MMM dd, yyyy')}
-                            </Typography>
                           )}
                         </Box>
                       </Box>
