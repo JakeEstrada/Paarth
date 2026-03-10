@@ -14,6 +14,7 @@ const {
   getCompletedTasks,
   convertTaskToProject,
   getProjectDetails,
+  getProjectTasks,
   addProjectNote,
   addProjectUpdate
 } = require('../controllers/taskController');
@@ -36,6 +37,7 @@ router.delete('/:id', deleteTask);                // Delete task
 
 // Project routes
 router.post('/:id/convert-to-project', convertTaskToProject);  // Convert task to project
+router.get('/:id/project/tasks', getProjectTasks);             // Get tasks belonging to this project (must be before /:id/project)
 router.get('/:id/project', getProjectDetails);                 // Get project details
 router.post('/:id/project/note', addProjectNote);              // Add note to project
 router.post('/:id/project/update', addProjectUpdate);          // Add update to project

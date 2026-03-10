@@ -9,6 +9,11 @@ const taskSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Customer'
   },
+  // When set, this task belongs to a project (the project is also a Task with isProject: true)
+  projectTaskId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Task'
+  },
   title: {
     type: String,
     required: true,
@@ -104,6 +109,7 @@ const taskSchema = new mongoose.Schema({
 
 // Indexes for querying
 taskSchema.index({ jobId: 1, completedAt: 1 });
+taskSchema.index({ projectTaskId: 1, completedAt: 1 });
 taskSchema.index({ assignedTo: 1, completedAt: 1, dueDate: 1 });
 taskSchema.index({ dueDate: 1 });
 taskSchema.index({ isProject: 1, completedAt: 1 });

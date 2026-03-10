@@ -49,8 +49,20 @@ async function createTask(req, res) {
     let customerId = req.body.customerId;
     let jobId = req.body.jobId;
     let job = null;
+    let projectTaskId = req.body.projectTaskId || undefined;
+    let parentProject = null;
     
-    if (jobId) {
+    // If adding a task to a project, load the project and inherit job/customer/assignedTo
+    if (projectTaskId) {
+      parentProject = await Task.findOne({ _id: projectTaskId, isProject: true });
+      if (!parentProject) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      jobId = parentProject.jobId || jobId;
+      customerId = parentProject.customerId || customerId;
+    }
+    
+    if (jobId && !parentProject) {
       job = await Job.findById(jobId);
       if (!job) {
         return res.status(404).json({ error: 'Job not found' });
@@ -70,16 +82,22 @@ async function createTask(req, res) {
     }
     
     // Handle assignedTo - use createdBy if not provided
-    let assignedTo = req.body.assignedTo || createdBy;
+    let assignedTo = req.body.assignedTo || (parentProject && parentProject.assignedTo) || createdBy;
     
     // Initialize notes and updates arrays if creating a project
     const taskData = {
       ...req.body,
       jobId: jobId || undefined,
       customerId: customerId || undefined,
+      projectTaskId: projectTaskId || undefined,
       assignedTo: assignedTo,
       createdBy: createdBy
     };
+    
+    // When adding a task to a project, ensure it's not marked as a project itself
+    if (projectTaskId) {
+      taskData.isProject = false;
+    }
     
     // If creating a project, initialize notes and updates arrays
     if (req.body.isProject) {
@@ -663,6 +681,27 @@ async function getProjectDetails(req, res) {
   }
 }
 
+// Get tasks belonging to a project (for display inside ProjectModal)
+async function getProjectTasks(req, res) {
+  try {
+    const projectId = req.params.id;
+    const project = await Task.findOne({ _id: projectId, isProject: true });
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const tasks = await Task.find({ projectTaskId: projectId })
+      .populate('assignedTo', 'name email')
+      .populate('completedBy', 'name email')
+      .populate('createdBy', 'name email')
+      .sort({ isUrgent: -1, dueDate: 1, createdAt: 1 });
+
+    res.json(tasks);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 // Add a note to a project
 async function addProjectNote(req, res) {
   try {
@@ -821,6 +860,7 @@ module.exports = {
   getCompletedTasks,
   convertTaskToProject,
   getProjectDetails,
+  getProjectTasks,
   addProjectNote,
   addProjectUpdate
 };

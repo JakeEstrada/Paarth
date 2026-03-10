@@ -14,6 +14,8 @@ import {
   CircularProgress,
   Paper,
   Avatar,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -27,6 +29,7 @@ import {
   Image as ImageIcon,
   CheckCircle as CheckCircleIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
+  PriorityHigh as PriorityHighIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -46,16 +49,28 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [uncompleting, setUncompleting] = useState(false);
+  const [projectTasks, setProjectTasks] = useState([]);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDescription, setNewTaskDescription] = useState('');
+  const [newTaskDueDate, setNewTaskDueDate] = useState('');
+  const [newTaskUrgent, setNewTaskUrgent] = useState(false);
+  const [addingTask, setAddingTask] = useState(false);
 
   useEffect(() => {
     if (open && projectId) {
       fetchProjectDetails();
       fetchFiles();
+      fetchProjectTasks();
     } else {
       setProject(null);
       setNewNote('');
       setNewUpdate('');
       setFiles([]);
+      setProjectTasks([]);
+      setNewTaskTitle('');
+      setNewTaskDescription('');
+      setNewTaskDueDate('');
+      setNewTaskUrgent(false);
     }
   }, [open, projectId]);
 
@@ -125,6 +140,75 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
       setFiles(response.data || []);
     } catch (error) {
       console.error('Error fetching files:', error);
+    }
+  };
+
+  const fetchProjectTasks = async () => {
+    if (!projectId) return;
+    try {
+      const response = await axios.get(`${API_URL}/tasks/${projectId}/project/tasks`);
+      setProjectTasks(response.data || []);
+    } catch (error) {
+      console.error('Error fetching project tasks:', error);
+    }
+  };
+
+  const handleAddTask = async () => {
+    if (!newTaskTitle.trim()) {
+      toast.error('Please enter a task title');
+      return;
+    }
+    if (!project) return;
+    try {
+      setAddingTask(true);
+      await axios.post(`${API_URL}/tasks`, {
+        projectTaskId: projectId,
+        jobId: project.jobId?._id || project.jobId,
+        customerId: project.customerId?._id || project.customerId,
+        title: newTaskTitle.trim(),
+        description: newTaskDescription.trim() || undefined,
+        dueDate: newTaskDueDate ? new Date(newTaskDueDate).toISOString() : undefined,
+        isUrgent: newTaskUrgent,
+      });
+      setNewTaskTitle('');
+      setNewTaskDescription('');
+      setNewTaskDueDate('');
+      setNewTaskUrgent(false);
+      await fetchProjectTasks();
+      toast.success('Task added to project');
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error adding task:', error);
+      toast.error(error.response?.data?.error || 'Failed to add task');
+    } finally {
+      setAddingTask(false);
+    }
+  };
+
+  const handleCompleteProjectTask = async (taskId, e) => {
+    e?.stopPropagation();
+    try {
+      await axios.post(`${API_URL}/tasks/${taskId}/complete`);
+      toast.success('Task completed');
+      await fetchProjectTasks();
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error completing task:', error);
+      toast.error('Failed to complete task');
+    }
+  };
+
+  const handleDeleteProjectTask = async (taskId, e) => {
+    e?.stopPropagation();
+    if (!window.confirm('Delete this task?')) return;
+    try {
+      await axios.delete(`${API_URL}/tasks/${taskId}`);
+      toast.success('Task deleted');
+      await fetchProjectTasks();
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      toast.error('Failed to delete task');
     }
   };
 
@@ -476,6 +560,141 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                   No updates yet
+                </Typography>
+              )}
+            </Box>
+
+            <Divider />
+
+            {/* Tasks Section */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 2 }}>
+                TASKS ({projectTasks.length})
+              </Typography>
+
+              {/* Add Task */}
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: 'background.default' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  New task (shows in Pipeline todos and Tasks page)
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  <TextField
+                    size="small"
+                    placeholder="Task title"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    fullWidth
+                  />
+                  <TextField
+                    size="small"
+                    placeholder="Description (optional)"
+                    value={newTaskDescription}
+                    onChange={(e) => setNewTaskDescription(e.target.value)}
+                    fullWidth
+                    multiline
+                    rows={1}
+                  />
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+                    <TextField
+                      size="small"
+                      type="date"
+                      label="Due date"
+                      value={newTaskDueDate}
+                      onChange={(e) => setNewTaskDueDate(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      sx={{ width: 160 }}
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={newTaskUrgent}
+                          onChange={(e) => setNewTaskUrgent(e.target.checked)}
+                          size="small"
+                          color="error"
+                        />
+                      }
+                      label={<Typography variant="body2">Urgent</Typography>}
+                    />
+                    <Button
+                      variant="contained"
+                      size="small"
+                      startIcon={addingTask ? <CircularProgress size={16} /> : <AddIcon />}
+                      onClick={handleAddTask}
+                      disabled={addingTask || !newTaskTitle.trim()}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Add Task
+                    </Button>
+                  </Box>
+                </Box>
+              </Paper>
+
+              {/* Project Tasks List */}
+              {projectTasks.length > 0 ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {projectTasks.map((task) => (
+                    <Paper
+                      key={task._id}
+                      sx={{
+                        p: 1.5,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        backgroundColor: 'background.default',
+                        borderLeft: task.isUrgent ? '3px solid' : '3px solid #4CAF50',
+                        borderColor: task.isUrgent ? 'error.main' : undefined,
+                      }}
+                    >
+                      <IconButton
+                        size="small"
+                        onClick={(e) => handleCompleteProjectTask(task._id, e)}
+                        sx={{ p: 0.5 }}
+                        disabled={!!task.completedAt}
+                      >
+                        {task.completedAt ? (
+                          <CheckCircleIcon sx={{ color: 'success.main', fontSize: 22 }} />
+                        ) : (
+                          <RadioButtonUncheckedIcon sx={{ fontSize: 22 }} />
+                        )}
+                      </IconButton>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 500,
+                            textDecoration: task.completedAt ? 'line-through' : 'none',
+                            color: task.completedAt ? 'text.secondary' : 'text.primary',
+                          }}
+                        >
+                          {task.title}
+                        </Typography>
+                        {task.description && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {task.description}
+                          </Typography>
+                        )}
+                        <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+                          {task.isUrgent && (
+                            <Chip size="small" label="Urgent" color="error" sx={{ height: 20, fontSize: '0.7rem' }} />
+                          )}
+                          {task.dueDate && (
+                            <Typography variant="caption" color={new Date(task.dueDate) < new Date() ? 'error.main' : 'text.secondary'}>
+                              Due: {format(new Date(task.dueDate), 'MMM dd, yyyy')}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                      {!task.completedAt && (
+                        <IconButton size="small" onClick={(e) => handleDeleteProjectTask(task._id, e)} sx={{ color: 'error.main' }}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </Paper>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  No tasks yet. Add one above.
                 </Typography>
               )}
             </Box>
