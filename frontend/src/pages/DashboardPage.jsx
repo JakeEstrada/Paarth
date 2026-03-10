@@ -71,23 +71,9 @@ function DashboardPage() {
   const [savingManualActivity, setSavingManualActivity] = useState(false);
 
   useEffect(() => {
+    // Load dashboard data once on mount; no auto-refresh to avoid
+    // scrolling the page back to the top while you're reading.
     fetchDashboardData();
-    
-    // Refresh activities periodically (every 30 seconds) and on window focus
-    const refreshInterval = setInterval(() => {
-      fetchDashboardData();
-    }, 30000); // Refresh every 30 seconds
-    
-    const handleFocus = () => {
-      fetchDashboardData();
-    };
-    
-    window.addEventListener('focus', handleFocus);
-    
-    return () => {
-      clearInterval(refreshInterval);
-      window.removeEventListener('focus', handleFocus);
-    };
   }, []);
 
   const fetchDashboardData = async () => {
