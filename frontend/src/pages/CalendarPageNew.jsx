@@ -24,6 +24,7 @@ import {
   ListItemText,
   useTheme,
   useMediaQuery,
+  Autocomplete,
 } from '@mui/material';
 import {
   ChevronLeft as ChevronLeftIcon,
@@ -36,16 +37,18 @@ import {
   DragIndicator as DragIndicatorIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
+  Person as PersonIcon,
 } from '@mui/icons-material';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, startOfWeek, endOfWeek, isSameDay, addDays } from 'date-fns';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import JobDetailModal from '../components/jobs/JobDetailModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-// Installer order - fixed priority list
-const INSTALLER_ORDER = [
+// Default installer order used for calendar lanes and suggestions
+const DEFAULT_INSTALLER_ORDER = [
   'Nick',
   'Walter',
   'Ed',
@@ -55,7 +58,7 @@ const INSTALLER_ORDER = [
 ];
 
 // Event creation/edit modal
-function EventModal({ open, onClose, selectedDate, job, onSave }) {
+function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, installerOptions = [] }) {
   const [formData, setFormData] = useState({
     title: '',
     startDate: '',
@@ -80,7 +83,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
       const dateStr = format(date, 'yyyy-MM-dd');
       
       setFormData({
-        title: job?.title || '',
+        title: job?.schedule?.title || job?.title || '',
         startDate: dateStr,
         startTime: '09:00',
         endDate: job?.schedule?.endDate ? format(new Date(job.schedule.endDate), 'yyyy-MM-dd') : dateStr,
@@ -128,7 +131,6 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
           : new Date(formData.endDate + 'T' + formData.endTime);
 
         await axios.patch(`${API_URL}/jobs/${formData.jobId}`, {
-          title: formData.title,
           schedule: {
             startDate: startDateTime.toISOString(),
             endDate: endDateTime.toISOString(),
@@ -145,17 +147,17 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
 
         toast.success('Job scheduled successfully');
 
-        // Sync to Google Calendar (recurrence is handled in backend)
+        // Sync to Google Calendar (optional; do not block on failure)
         try {
           await axios.post(`${API_URL}/calendar/jobs/${formData.jobId}/sync`);
         } catch (calendarError) {
-          // Don't fail if Google Calendar sync fails
-          console.warn('Google Calendar sync failed:', calendarError);
-          const errorMessage = calendarError.response?.data?.error || calendarError.message;
-          if (errorMessage.includes('not configured') || errorMessage.includes('503')) {
-            toast('Google Calendar not configured', { icon: 'ℹ️' });
+          const status = calendarError.response?.status;
+          const data = calendarError.response?.data;
+          const msg = (data && (data.error || data.message)) || calendarError.message;
+          if (status === 503 || (typeof msg === 'string' && (msg.includes('not configured') || msg.includes('sync failed')))) {
+            toast('Saved. Google Calendar sync skipped.', { icon: 'ℹ️' });
           } else {
-            toast.error(`Calendar sync failed: ${errorMessage}`, { duration: 4000 });
+            toast('Saved. Google Calendar sync failed.', { icon: 'ℹ️' });
           }
         }
       } else {
@@ -193,7 +195,24 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
         }
       }}
     >
-      <DialogTitle>{job ? 'Edit Event' : 'Create Event'}</DialogTitle>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+        <span>{job ? 'Edit Event' : 'Create Event'}</span>
+        {(job || formData.jobId) && onViewJob && (
+          <Button
+            size="small"
+            startIcon={<PersonIcon />}
+            onClick={() => {
+              const id = formData.jobId || job?._id;
+              if (id) {
+                onViewJob(id);
+                onClose();
+              }
+            }}
+          >
+            View job
+          </Button>
+        )}
+      </DialogTitle>
       <DialogContent sx={{ px: { xs: 2, sm: 3 } }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
           <TextField
@@ -213,7 +232,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
                 setFormData({ 
                   ...formData, 
                   jobId: e.target.value || null,
-                  title: selectedJob?.title || formData.title,
+                  title: selectedJob?.schedule?.title || selectedJob?.title || formData.title,
                   color: selectedJob?.color || formData.color,
                 });
               }}
@@ -228,21 +247,25 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
             </Select>
           </FormControl>
 
-          <FormControl fullWidth>
-            <InputLabel>Installer</InputLabel>
-            <Select
-              value={formData.installer}
-              onChange={(e) => setFormData({ ...formData, installer: e.target.value })}
-              label="Installer"
-            >
-              <MenuItem value="">None</MenuItem>
-              {INSTALLER_ORDER.map((installer) => (
-                <MenuItem key={installer} value={installer}>
-                  {installer}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            freeSolo
+            options={installerOptions}
+            value={formData.installer || ''}
+            onChange={(_, newValue) => {
+              setFormData({ ...formData, installer: newValue || '' });
+            }}
+            inputValue={formData.installer || ''}
+            onInputChange={(_, newInputValue) => {
+              setFormData({ ...formData, installer: newInputValue || '' });
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Installer"
+                fullWidth
+              />
+            )}
+          />
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <input
@@ -385,7 +408,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
           </Box>
         </Box>
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
         {job && (
           <Button 
             onClick={async () => {
@@ -437,7 +460,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave }) {
 }
 
 // Calendar Day Component
-function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete }) {
+function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete, onViewJob, installerOrder }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [contextMenu, setContextMenu] = useState(null);
@@ -456,19 +479,42 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
     return dateStr >= startStr && dateStr <= endStr;
   })
   // Keep rows visually aligned across days by installer “lane”
-  // 1. For each installer in INSTALLER_ORDER, pick at most one event for that lane.
-  const laneEvents = INSTALLER_ORDER.map((installer) => {
+  // We support up to 5 horizontal “sections” per day:
+  // 4 dedicated installer lanes + 1 “Other” lane.
+  const primaryInstallers = installerOrder.slice(0, 4);
+  const laneInstallers = [...primaryInstallers, '__OTHER__']; // 5th lane for everything else
+
+  // 1. For each lane, pick at most one event for that lane.
+  const laneEvents = laneInstallers.map((installerKey) => {
+    if (installerKey === '__OTHER__') {
+      // First event whose installer is NOT one of the primary installers
+      const match = eventsForDate.find((e) => {
+        const name = e.schedule?.installer || '';
+        return !primaryInstallers.includes(name);
+      });
+      return match || null;
+    }
     const match = eventsForDate.find(
-      (e) => (e.schedule?.installer || '') === installer
+      (e) => (e.schedule?.installer || '') === installerKey
     );
     return match || null;
   });
 
-  // 2. Any remaining events (installer not in INSTALLER_ORDER) get rendered after the lanes.
-  const otherEvents = eventsForDate.filter((e) => {
-    const installer = e.schedule?.installer || '';
-    return !INSTALLER_ORDER.includes(installer);
-  });
+  // 2. Count any remaining “other” events for a small "+N more" indicator in the bottom lane.
+  const extraOtherEventsCount = eventsForDate.filter((e) => {
+    const name = e.schedule?.installer || '';
+    const isPrimary = primaryInstallers.includes(name);
+    // Exclude the one already shown in the OTHER lane (if any)
+    const isInOtherLane =
+      !isPrimary &&
+      laneEvents.some(
+        (evt, idx) =>
+          idx === laneInstallers.length - 1 &&
+          evt &&
+          evt._id === e._id
+      );
+    return !isPrimary && !isInOtherLane;
+  }).length;
 
   const handleContextMenu = (e, event) => {
     e.preventDefault();
@@ -528,7 +574,8 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
             fontWeight: isToday(date) ? 700 : 500,
             color: isToday(date) ? 'primary.main' : isCurrentMonth ? 'text.primary' : 'text.secondary',
             mb: 0.5,
-            fontSize: { xs: '0.75rem', sm: '0.875rem' },
+            flexShrink: 0,
+            fontSize: { xs: '0.8rem', sm: '0.9rem' },
           }}
         >
           {format(date, 'd')}
@@ -537,94 +584,66 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
         <Box sx={{ 
           display: 'flex', 
           flexDirection: 'column', 
-          gap: { xs: 0.25, sm: 0.5 },
           position: 'relative',
           flex: 1,
           overflow: 'hidden',
           minHeight: 0,
         }}>
-          {/* Fixed “lanes” per installer so rows line up across days */}
-          {laneEvents.map((event, index) =>
-            event ? (
-              <Chip
-                key={event._id}
-                label={event.title}
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEventClick(event);
-                }}
-                onContextMenu={(e) => handleContextMenu(e, event)}
-                sx={{
-                  fontSize: { xs: '0.65rem', sm: '0.7rem' },
-                  height: { xs: 20, sm: 22 },
-                  backgroundColor: event.color || '#1976D2',
-                  color: 'white',
-                  flexShrink: 0,
-                  '& .MuiChip-label': {
-                    px: { xs: 0.75, sm: 1 },
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  },
-                  '&:hover': {
-                    opacity: 0.8,
-                    transform: 'scale(1.05)',
-                  },
-                }}
-              />
-            ) : (
-              // Invisible spacer to keep lane height consistent when no event for that installer on this day
-              <Box
-                key={`spacer-${index}`}
-                sx={{
-                  height: { xs: 20, sm: 22 },
-                  flexShrink: 0,
-                }}
-              />
-            )
-          )}
-
-          {/* Render any extra events (installers not in INSTALLER_ORDER) below the fixed lanes */}
-          {otherEvents.map((event) => (
-            <Chip
-              key={event._id}
-              label={event.title}
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEventClick(event);
-              }}
-              onContextMenu={(e) => handleContextMenu(e, event)}
+          {/* Fixed 5 “lanes” (4 installers + 1 other) so rows line up across days */}
+          {laneEvents.map((event, index) => (
+            <Box
+              key={event?._id || `lane-${index}`}
               sx={{
-                fontSize: { xs: '0.65rem', sm: '0.7rem' },
-                height: { xs: 20, sm: 22 },
-                backgroundColor: event.color || '#1976D2',
-                color: 'white',
-                flexShrink: 0,
-                '& .MuiChip-label': {
-                  px: { xs: 0.75, sm: 1 },
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                },
-                '&:hover': {
-                  opacity: 0.8,
-                  transform: 'scale(1.05)',
-                },
+                flex: 1,
+                minHeight: 0,
+                minWidth: 0,
+                display: 'flex',
+                alignItems: 'center',
+                overflow: 'hidden',
               }}
-            />
+            >
+              {event && (
+                <Chip
+                  label={[event.schedule?.title || event.title, event.schedule?.installer].filter(Boolean).join(' | ')}
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEventClick(event);
+                  }}
+                  onContextMenu={(e) => handleContextMenu(e, event)}
+                  sx={{
+                    fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                    height: { xs: 22, sm: 24 },
+                    maxWidth: '100%',
+                    backgroundColor: event.color || '#1976D2',
+                    color: 'white',
+                    flexShrink: 1,
+                    minWidth: 0,
+                    '& .MuiChip-label': {
+                      px: { xs: 0.75, sm: 1 },
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    },
+                    '&:hover': {
+                      opacity: 0.8,
+                      transform: 'scale(1.05)',
+                    },
+                  }}
+                />
+              )}
+              {/* In the bottom lane, show a small "+N more" if there are extra “other” events */}
+              {index === laneEvents.length - 1 && extraOtherEventsCount > 0 && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ ml: 0.5, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}
+                >
+                  +{extraOtherEventsCount} more
+                </Typography>
+              )}
+            </Box>
           ))}
-
-          {/* “+ more” indicator if we ever exceed the visual limit (mainly for very small screens) */}
-          {(laneEvents.filter(Boolean).length + otherEvents.length) > (isMobile ? 3 : 10) && (
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
-              +
-              {(laneEvents.filter(Boolean).length + otherEvents.length) -
-                (isMobile ? 3 : 10)}{' '}
-              more
-            </Typography>
-          )}
         </Box>
       </Paper>
       
@@ -640,6 +659,19 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
               : undefined
           }
         >
+          {onViewJob && contextMenuEvent?._id && (
+            <MenuItem
+              onClick={() => {
+                onViewJob(contextMenuEvent._id);
+                handleCloseContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <PersonIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>View job</ListItemText>
+            </MenuItem>
+          )}
           <MenuItem onClick={handleDelete}>
             <ListItemIcon>
               <DeleteIcon fontSize="small" />
@@ -653,7 +685,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
 }
 
 // Bench Job Card Component
-function BenchJobCard({ job, onJobClick }) {
+function BenchJobCard({ job, onJobClick, onViewJob }) {
   const jobTotal = job.valueEstimated || job.valueTotal || 0;
   const defaultDuration = Math.max(1, Math.floor(jobTotal / 2000));
 
@@ -673,19 +705,36 @@ function BenchJobCard({ job, onJobClick }) {
       }}
     >
       <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
-        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', mb: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {job.title}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-          {defaultDuration} days
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', mb: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {job.title}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+              {defaultDuration} days
+            </Typography>
+          </Box>
+          {onViewJob && (
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewJob(job._id);
+              }}
+              title="View job (customer & details)"
+              sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
+            >
+              <PersonIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          )}
+        </Box>
       </CardContent>
     </Card>
   );
 }
 
 // Scheduled Job Card Component (with green checkmark)
-function ScheduledJobCard({ job, onJobClick, onJobDelete }) {
+function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob }) {
   const jobTotal = job.valueEstimated || job.valueTotal || 0;
   const defaultDuration = Math.max(1, Math.floor(jobTotal / 2000));
 
@@ -717,6 +766,19 @@ function ScheduledJobCard({ job, onJobClick, onJobDelete }) {
               {defaultDuration} days
             </Typography>
           </Box>
+          {onViewJob && (
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewJob(job._id);
+              }}
+              title="View job (customer & details)"
+              sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
+            >
+              <PersonIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          )}
           {onJobDelete && (
             <IconButton
               size="small"
@@ -752,9 +814,11 @@ function CalendarPageNew() {
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
+  const [jobIdForDetailModal, setJobIdForDetailModal] = useState(null);
   const [benchHeight, setBenchHeight] = useState(250);
   const [isResizing, setIsResizing] = useState(false);
   const [isBenchMinimized, setIsBenchMinimized] = useState(false);
+  const [installerOrder, setInstallerOrder] = useState(DEFAULT_INSTALLER_ORDER);
 
   useEffect(() => {
     fetchJobs();
@@ -783,6 +847,16 @@ function CalendarPageNew() {
       
       setBenchJobs(bench);
       setScheduledJobs(scheduled);
+
+      // Update installer order based on any installers used in jobs
+      const installerSet = new Set(DEFAULT_INSTALLER_ORDER);
+      [...bench, ...scheduled].forEach(job => {
+        const name = job.schedule?.installer;
+        if (name && typeof name === 'string') {
+          installerSet.add(name);
+        }
+      });
+      setInstallerOrder(Array.from(installerSet));
     } catch (error) {
       console.error('Error fetching jobs:', error);
       toast.error('Failed to load jobs');
@@ -883,7 +957,7 @@ function CalendarPageNew() {
     const calendarDays = getCalendarDaysForMonth(monthDate);
     
     return (
-      <Box key={monthIndex} sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <Box key={monthIndex} sx={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {/* Month Header - hide on mobile since it's in the main header */}
         {!isMobile && (
           <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, textAlign: 'center', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
@@ -909,26 +983,32 @@ function CalendarPageNew() {
           ))}
         </Box>
 
-        {/* Calendar Days Grid */}
+        {/* Calendar Days Grid - square day cells (aspect-ratio 1); content scrolls */}
         <Box sx={{ 
           display: 'grid', 
-          gridTemplateColumns: 'repeat(7, 1fr)', 
-          flex: 1,
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gridAutoRows: 'auto',
           gap: 0,
+          minHeight: 0,
           '& > *': {
-            minHeight: { xs: 90, sm: 110 }, // allow rows to grow to fit events
+            minWidth: 0,
+            aspectRatio: '1',
           }
         }}>
           {calendarDays.map((date, index) => (
-            <CalendarDay
-              key={index}
-              date={date}
-              isCurrentMonth={isSameMonth(date, monthDate)}
-              events={scheduledJobs}
-              onDayClick={handleDayClick}
-              onEventClick={handleEventClick}
-              onEventDelete={handleEventDelete}
-            />
+            <Box key={index} sx={{ width: '100%', minWidth: 0, aspectRatio: '1', display: 'block' }}>
+              <CalendarDay
+                key={index}
+                date={date}
+                isCurrentMonth={isSameMonth(date, monthDate)}
+                events={scheduledJobs}
+                onDayClick={handleDayClick}
+                onEventClick={handleEventClick}
+                onEventDelete={handleEventDelete}
+                onViewJob={(id) => setJobIdForDetailModal(id)}
+                installerOrder={installerOrder}
+              />
+            </Box>
           ))}
         </Box>
       </Box>
@@ -1173,6 +1253,7 @@ function CalendarPageNew() {
                       setSelectedDate(new Date());
                       setEventModalOpen(true);
                     }}
+                    onViewJob={(id) => setJobIdForDetailModal(id)}
                   />
                 ))
               )}
@@ -1214,6 +1295,7 @@ function CalendarPageNew() {
                       setEventModalOpen(true);
                     }}
                     onJobDelete={handleEventDelete}
+                    onViewJob={(id) => setJobIdForDetailModal(id)}
                   />
                 ))
               )}
@@ -1234,6 +1316,24 @@ function CalendarPageNew() {
         selectedDate={selectedDate}
         job={selectedJob}
         onSave={fetchJobs}
+        onViewJob={(id) => setJobIdForDetailModal(id)}
+        installerOptions={installerOrder}
+      />
+
+      {/* Job detail modal (customer, files, etc.) */}
+      <JobDetailModal
+        jobId={jobIdForDetailModal}
+        open={!!jobIdForDetailModal}
+        onClose={() => setJobIdForDetailModal(null)}
+        onJobUpdate={async (jobId, updates) => { await fetchJobs(); }}
+        onJobDelete={(jobId) => {
+          setJobIdForDetailModal(null);
+          fetchJobs();
+        }}
+        onJobArchive={(jobId) => {
+          setJobIdForDetailModal(null);
+          fetchJobs();
+        }}
       />
     </Box>
   );

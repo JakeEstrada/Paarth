@@ -34,8 +34,9 @@ function getCalendarClient() {
 
 // Sync job to Google Calendar
 async function syncJobToCalendar(req, res) {
+  let jobId;
   try {
-    const { jobId } = req.params;
+    jobId = req.params.jobId;
     const job = await Job.findById(jobId)
       .populate('customerId', 'name primaryPhone primaryEmail');
 
@@ -67,7 +68,7 @@ async function syncJobToCalendar(req, res) {
     const recurrence = job.schedule?.recurrence;
     
     const event = {
-      summary: job.title,
+      summary: job.schedule?.title || job.title,
       description: `Customer: ${job.customerId?.name || 'Unknown'}\nValue: $${job.valueEstimated || 0}`,
       start: {
         date: formatDateForCalendar(startDate),
@@ -110,54 +111,47 @@ async function syncJobToCalendar(req, res) {
         job.calendar.lastSyncedAt = new Date();
         await job.save();
 
-        res.json({ 
+        return res.json({ 
           message: 'Job synced to Google Calendar',
           eventId: updatedEvent.data.id,
           event: updatedEvent.data
         });
-      } catch (error) {
-        // If event doesn't exist, create a new one
-        if (error.code === 404) {
+      } catch (err) {
+        if (err.code === 404) {
           return createNewCalendarEvent(job, event, calendar, res);
         }
-        // If unauthorized, return 401 instead of 500
-        if (error.code === 401 || error.code === 403) {
+        if (err.code === 401 || err.code === 403) {
           return res.status(401).json({ 
             error: 'Google Calendar authentication failed',
             message: 'Please re-authenticate with Google Calendar'
           });
         }
-        throw error;
+        throw err;
       }
-    } else {
-      return createNewCalendarEvent(job, event, calendar, res);
     }
+    return createNewCalendarEvent(job, event, calendar, res);
   } catch (error) {
     console.error('Error syncing to Google Calendar:', error);
-    console.error('Error details:', {
-      code: error.code,
-      message: error.message,
-      response: error.response?.data
-    });
+    const code = error.code ?? error.response?.data?.error?.code;
+    const message = error.message || (error.response?.data && (error.response.data.message || error.response.data.error)) || 'Google Calendar sync failed';
     
-    // Handle specific error codes
-    if (error.code === 401 || error.code === 403) {
+    if (code === 401 || code === 403) {
       return res.status(401).json({ 
         error: 'Google Calendar authentication failed',
         message: 'Please re-authenticate with Google Calendar'
       });
     }
-    
-    if (error.code === 404) {
+    if (code === 404) {
       return res.status(404).json({ 
         error: 'Calendar event not found',
         message: 'The calendar event may have been deleted'
       });
     }
     
-    res.status(500).json({ 
-      error: error.message || 'Failed to sync with Google Calendar',
-      code: error.code
+    // Always return JSON 503 so the app can show a friendly message; job is already saved
+    return res.status(503).json({ 
+      error: 'Google Calendar sync failed',
+      message: String(message)
     });
   }
 }
@@ -203,7 +197,12 @@ async function createNewCalendarEvent(job, event, calendar, res) {
       event: createdEvent.data
     });
   } catch (error) {
-    throw error;
+    console.error('Error creating Google Calendar event:', error);
+    const message = error.message || (error.response?.data && (error.response.data.message || error.response.data.error)) || 'Google Calendar sync failed';
+    return res.status(503).json({ 
+      error: 'Google Calendar sync failed',
+      message: String(message)
+    });
   }
 }
 

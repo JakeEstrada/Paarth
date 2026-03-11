@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, Typography, Box, Chip, useTheme } from '@mui/material';
+import { Card, CardContent, Typography, Box, Chip, IconButton, Tooltip, useTheme } from '@mui/material';
+import { Person as PersonIcon } from '@mui/icons-material';
 
 function JobCard({ job, onClick, onContextMenu, canModify = true }) {
   const theme = useTheme();
@@ -108,7 +109,8 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
       }}
     >
       <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-        <Box>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography
             variant="body2"
             sx={{
@@ -151,7 +153,28 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
               </Typography>
             </>
           )}
-        </Box>
+          </Box>
+        <Tooltip title="View job (customer & details)">
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onClick) onClick();
+            }}
+            sx={{
+              flexShrink: 0,
+              p: 0.25,
+              color: theme.palette.text.secondary,
+              '&:hover': {
+                color: theme.palette.primary.main,
+                backgroundColor: theme.palette.action.hover,
+              },
+            }}
+          >
+            <PersonIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
+      </Box>
         
         {(job.stage === 'ESTIMATE_SENT' && daysSinceSent !== null) && (
           <Box sx={{ mt: 0.5 }}>
