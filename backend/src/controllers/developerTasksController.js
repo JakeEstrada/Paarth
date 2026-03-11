@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const Activity = require('../models/Activity');
+const User = require('../models/User');
 
 const TASKS_FILE = path.join(__dirname, '../../developer-tasks.json');
 
@@ -46,6 +48,13 @@ function writeTasks(tasks) {
   }
 }
 
+// Helper to resolve a User ID for activity logging
+async function getActivityUserId(req) {
+  if (req.user?._id) return req.user._id;
+  const defaultUser = await User.findOne({ isActive: true });
+  return defaultUser ? defaultUser._id : null;
+}
+
 // Get all developer tasks
 async function getDeveloperTasks(req, res) {
   try {
@@ -80,6 +89,20 @@ async function createDeveloperTask(req, res) {
       return res.status(500).json({ error: 'Failed to save task to file' });
     }
 
+    // Log developer task creation to Activity / Recent Activity
+    try {
+      const createdBy = await getActivityUserId(req);
+      if (createdBy) {
+        await Activity.create({
+          type: 'developer_task_created',
+          note: `[Dev Task] ${newTask.title}${newTask.description ? ` - ${newTask.description}` : ''}`,
+          createdBy,
+        });
+      }
+    } catch (activityError) {
+      console.error('Error logging developer_task_created activity:', activityError);
+    }
+
     res.status(201).json(newTask);
   } catch (error) {
     console.error('Error creating developer task:', error);
@@ -100,6 +123,8 @@ async function updateDeveloperTask(req, res) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
+    const originalTask = { ...tasks[taskIndex] };
+    
     if (title !== undefined) {
       tasks[taskIndex].title = title.trim();
     }
@@ -115,7 +140,35 @@ async function updateDeveloperTask(req, res) {
       return res.status(500).json({ error: 'Failed to save task to file' });
     }
 
-    res.json(tasks[taskIndex]);
+    const updatedTask = tasks[taskIndex];
+
+    // Log developer task update / completion
+    try {
+      const createdBy = await getActivityUserId(req);
+      if (createdBy) {
+        // Completion toggle
+        if (completed !== undefined && completed && !originalTask.completed) {
+          await Activity.create({
+            type: 'developer_task_completed',
+            note: `[Dev Task] Completed: ${updatedTask.title}`,
+            createdBy,
+          });
+        } else if (
+          (title !== undefined && title.trim() !== originalTask.title) ||
+          (description !== undefined && description.trim() !== originalTask.description)
+        ) {
+          await Activity.create({
+            type: 'developer_task_updated',
+            note: `[Dev Task] Updated: ${updatedTask.title}`,
+            createdBy,
+          });
+        }
+      }
+    } catch (activityError) {
+      console.error('Error logging developer task update activity:', activityError);
+    }
+
+    res.json(updatedTask);
   } catch (error) {
     console.error('Error updating developer task:', error);
     res.status(500).json({ error: error.message });
@@ -128,15 +181,30 @@ async function deleteDeveloperTask(req, res) {
     const { id } = req.params;
 
     const tasks = readTasks();
+    const taskToDelete = tasks.find((task) => task.id === id);
     const filteredTasks = tasks.filter((task) => task.id !== id);
 
-    if (tasks.length === filteredTasks.length) {
+    if (!taskToDelete) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
     const writeSuccess = writeTasks(filteredTasks);
     if (!writeSuccess) {
       return res.status(500).json({ error: 'Failed to save task deletion to file' });
+    }
+
+    // Log developer task deletion
+    try {
+      const createdBy = await getActivityUserId(req);
+      if (createdBy) {
+        await Activity.create({
+          type: 'developer_task_deleted',
+          note: `[Dev Task] Deleted: ${taskToDelete.title}`,
+          createdBy,
+        });
+      }
+    } catch (activityError) {
+      console.error('Error logging developer_task_deleted activity:', activityError);
     }
 
     res.json({ message: 'Task deleted successfully' });

@@ -42,6 +42,11 @@ const activitySchema = new mongoose.Schema({
       'bill_created',
       'bill_updated',
       'bill_deleted',
+      // Developer tasks (file-based, but logged here)
+      'developer_task_created',
+      'developer_task_updated',
+      'developer_task_completed',
+      'developer_task_deleted',
       // Manual, free‑form timeline entries
       'manual_entry'
     ]

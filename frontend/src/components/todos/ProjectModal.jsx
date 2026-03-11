@@ -408,15 +408,6 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                   variant="outlined"
                 />
               )}
-              {project.dueDate && (
-                <Chip
-                  label={`Due: ${format(new Date(project.dueDate), 'MMM dd, yyyy')}`}
-                  size="small"
-                  sx={{ mt: 1, ml: 1 }}
-                  color={new Date(project.dueDate) < new Date() ? 'error' : 'default'}
-                  variant="outlined"
-                />
-              )}
             </Box>
 
             <Divider />

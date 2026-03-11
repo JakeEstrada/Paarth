@@ -426,6 +426,11 @@ function DashboardPage() {
       'deposit_received': 'success',
       'payment_received': 'success',
       'calendar_sync': 'info',
+      // Developer tasks
+      'developer_task_created': 'info',
+      'developer_task_updated': 'info',
+      'developer_task_completed': 'success',
+      'developer_task_deleted': 'error',
     };
     return colorMap[type] || 'default';
   };
@@ -494,6 +499,10 @@ function DashboardPage() {
         'task_completed': 'Task Completed',
         'project_note_added': 'Project Note Added',
         'payroll_printed': 'Payroll Printed',
+        'developer_task_created': 'Developer Task',
+        'developer_task_updated': 'Developer Task',
+        'developer_task_completed': 'Developer Task Completed',
+        'developer_task_deleted': 'Developer Task Deleted',
       };
       return titles[type] || type?.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) || 'Activity';
     };
@@ -1456,6 +1465,13 @@ function PrintView({ activities, selectedDate }) {
         return 'Project Note Added';
       case 'payroll_printed':
         return 'Payroll Printed';
+      case 'developer_task_created':
+      case 'developer_task_updated':
+        return 'Developer Task';
+      case 'developer_task_completed':
+        return 'Developer Task Completed';
+      case 'developer_task_deleted':
+        return 'Developer Task Deleted';
       default:
         return activity.type?.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) || 'Activity';
     }
