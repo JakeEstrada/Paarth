@@ -115,6 +115,18 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
     }
   };
 
+  // Fuzzy match: every character of `query` appears in order in `str` (case-insensitive)
+  const fuzzyMatch = (query, str) => {
+    if (!query || !str) return true;
+    const q = query.toLowerCase().trim();
+    const s = String(str).toLowerCase();
+    let i = 0;
+    for (let j = 0; j < s.length && i < q.length; j++) {
+      if (s[j] === q[i]) i++;
+    }
+    return i === q.length;
+  };
+
   const handleSubmit = async () => {
     if (!formData.title.trim()) {
       toast.error('Please enter a title');
@@ -226,29 +238,29 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
             required
           />
 
-          <FormControl fullWidth>
-            <InputLabel>Job (Optional)</InputLabel>
-            <Select
-              value={formData.jobId || ''}
-              onChange={(e) => {
-                const selectedJob = availableJobs.find(j => j._id === e.target.value);
-                setFormData({ 
-                  ...formData, 
-                  jobId: e.target.value || null,
-                  title: selectedJob?.schedule?.title || selectedJob?.title || formData.title,
-                  color: selectedJob?.color || formData.color,
-                });
-              }}
-              label="Job (Optional)"
-            >
-              <MenuItem value="">None</MenuItem>
-              {availableJobs.map((j) => (
-                <MenuItem key={j._id} value={j._id}>
-                  {j.title} - {j.customerId?.name || 'Unknown'}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            options={availableJobs}
+            value={availableJobs.find(j => j._id === formData.jobId) || null}
+            onChange={(_, newValue) => {
+              const selectedJob = newValue;
+              setFormData({
+                ...formData,
+                jobId: selectedJob?._id || null,
+                title: selectedJob?.schedule?.title || selectedJob?.title || formData.title,
+                color: selectedJob?.color || formData.color,
+              });
+            }}
+            getOptionLabel={(j) => (j && j.title) ? `${j.title} - ${j.customerId?.name || 'Unknown'}` : ''}
+            filterOptions={(options, { inputValue }) => {
+              const q = inputValue.trim();
+              if (!q) return options;
+              return options.filter(j => fuzzyMatch(q, `${j.title} ${j.customerId?.name || ''}`));
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Job (Optional)" placeholder="Type to search jobs..." />
+            )}
+            isOptionEqualToValue={(option, value) => option?._id === value?._id}
+          />
 
           <Autocomplete
             freeSolo
@@ -695,24 +707,25 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
 }
 
 // Bench Job Card Component
-function BenchJobCard({ job, onJobClick, onViewJob }) {
+function BenchJobCard({ job, onJobClick, onViewJob, onRemoveFromBench }) {
   const jobTotal = job.valueEstimated || job.valueTotal || 0;
   const defaultDuration = Math.max(1, Math.floor(jobTotal / 2000));
 
   return (
     <Card
-      onClick={() => onJobClick(job)}
       sx={{
         cursor: 'pointer',
         borderLeft: `4px solid ${job.color || '#1976D2'}`,
         minWidth: 150,
         maxWidth: 180,
+        position: 'relative',
         '&:hover': {
           boxShadow: 2,
           transform: 'translateY(-1px)',
           transition: 'all 0.2s',
         },
       }}
+      onClick={() => onJobClick(job)}
     >
       <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -735,6 +748,19 @@ function BenchJobCard({ job, onJobClick, onViewJob }) {
               sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
             >
               <PersonIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          )}
+          {onRemoveFromBench && (
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemoveFromBench(job);
+              }}
+              title="Remove from bench (move to dead estimates)"
+              sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+            >
+              <DeleteIcon sx={{ fontSize: 18 }} />
             </IconButton>
           )}
         </Box>
@@ -939,7 +965,7 @@ function CalendarPageNew() {
       toast.error('You do not have permission to modify calendar events');
       return;
     }
-    
+
     if (!window.confirm(`Are you sure you want to remove "${job.title}" from the calendar?`)) {
       return;
     }
@@ -965,6 +991,20 @@ function CalendarPageNew() {
     } catch (error) {
       console.error('Error removing job from calendar:', error);
       toast.error('Failed to remove job from calendar');
+    }
+  };
+
+  const handleRemoveFromBench = async (job) => {
+    if (!window.confirm(`Remove "${job.title}" from the bench? It will be moved to dead estimates.`)) {
+      return;
+    }
+    try {
+      await axios.post(`${API_URL}/jobs/${job._id}/move-to-dead-estimates`);
+      toast.success('Job removed from bench');
+      await fetchJobs();
+    } catch (error) {
+      console.error('Error removing job from bench:', error);
+      toast.error('Failed to remove job from bench');
     }
   };
 
@@ -1310,6 +1350,7 @@ function CalendarPageNew() {
                       setEventModalOpen(true);
                     }}
                     onViewJob={(id) => setJobIdForDetailModal(id)}
+                    onRemoveFromBench={handleRemoveFromBench}
                   />
                 ))
               )}
