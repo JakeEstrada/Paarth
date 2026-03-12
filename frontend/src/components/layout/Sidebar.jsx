@@ -36,7 +36,7 @@ const menuItems = [
   { text: 'Pipeline', icon: <PipelineIcon />, path: '/pipeline' },
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
-  { text: 'Tasks / Projects', icon: <TasksIcon />, path: '/tasks' },
+  { text: 'Projects / Tasks', icon: <TasksIcon />, path: '/tasks' },
   { text: 'Documents', icon: <DocumentsIcon />, path: '/documents' },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
   { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },

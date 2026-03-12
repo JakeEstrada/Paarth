@@ -39,7 +39,7 @@ function TasksPage() {
   const [editTodoOpen, setEditTodoOpen] = useState(false);
   const [editingTodo, setEditingTodo] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [tabValue, setTabValue] = useState(0); // 0 = Tasks, 1 = Projects
+  const [tabValue, setTabValue] = useState(0); // 0 = Projects, 1 = Tasks
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
@@ -137,7 +137,7 @@ function TasksPage() {
   };
 
   const handleAddClick = () => {
-    if (tabValue === 1) {
+    if (tabValue === 0) {
       // Creating a new project
       setIsCreatingProject(true);
       setAddTodoOpen(true);
@@ -178,13 +178,13 @@ function TasksPage() {
     );
   }
 
-  const currentItems = tabValue === 0 ? todos : projects;
+  const currentItems = tabValue === 0 ? projects : todos;
 
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" sx={{ fontWeight: 600 }}>
-          {tabValue === 0 ? 'Tasks' : 'Projects'}
+          {tabValue === 0 ? 'Projects' : 'Tasks'}
         </Typography>
         <Button
           variant="contained"
@@ -195,7 +195,7 @@ function TasksPage() {
             textTransform: 'none',
           }}
         >
-          {tabValue === 0 ? 'Add Task' : 'Add Project'}
+          {tabValue === 0 ? 'Add Project' : 'Add Task'}
         </Button>
       </Box>
 
@@ -205,17 +205,17 @@ function TasksPage() {
           <Tab 
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography>Tasks</Typography>
-                <Chip label={todos.length} size="small" sx={{ height: 20 }} />
+                <FolderIcon fontSize="small" />
+                <Typography>Projects</Typography>
+                <Chip label={projects.length} size="small" sx={{ height: 20 }} />
               </Box>
             } 
           />
           <Tab 
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <FolderIcon fontSize="small" />
-                <Typography>Projects</Typography>
-                <Chip label={projects.length} size="small" sx={{ height: 20 }} />
+                <Typography>Tasks</Typography>
+                <Chip label={todos.length} size="small" sx={{ height: 20 }} />
               </Box>
             } 
           />
@@ -225,7 +225,7 @@ function TasksPage() {
       {currentItems.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="body2" color="text.secondary">
-            {tabValue === 0 ? 'No tasks' : 'No projects'}
+            {tabValue === 0 ? 'No projects' : 'No tasks'}
           </Typography>
         </Paper>
       ) : (

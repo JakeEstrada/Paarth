@@ -893,99 +893,174 @@ function DashboardPage() {
         </Grid>
       </Grid>
 
-      {/* Secondary stats - row 2 */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={6} sm={4} md={2}>
-          <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%' }} elevation={0} variant="outlined">
-            <PeopleIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              {stats.totalCustomers}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              Customers
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={6} sm={4} md={2}>
-          <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%' }} elevation={0} variant="outlined">
-            <CalendarIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              {stats.upcomingAppointments.length}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              Upcoming
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={6} sm={4} md={2}>
-          <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%' }} elevation={0} variant="outlined">
-            <TasksIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              {stats.pendingTasks.length}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              Pending Tasks
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={6} sm={4} md={2}>
-          <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%', borderColor: stats.urgentTasks.length > 0 ? 'error.main' : undefined }} elevation={0} variant="outlined">
-            <WarningIcon sx={{ fontSize: 28, color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.secondary', mb: 0.5 }} />
-            <Typography variant="h6" sx={{ fontWeight: 600, color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.primary' }}>
-              {stats.urgentTasks.length}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              Urgent
-            </Typography>
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Panels - Jobs by Stage, Appointments, Pending Tasks, Urgent Tasks */}
-      <Grid container spacing={2} sx={{ mb: 0 }}>
-        {/* Jobs by Stage */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                Jobs by Stage
-              </Typography>
-              <Button size="small" onClick={() => navigate('/pipeline')} sx={{ textTransform: 'none' }}>
-                View pipeline
-              </Button>
-            </Box>
-            {Object.keys(stats.jobsByStage).length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                No active jobs
-              </Typography>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {Object.entries(stats.jobsByStage)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([stage, count]) => (
-                    <Box key={stage} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.75 }}>
-                      <Typography variant="body2" sx={{ flex: 1 }}>
-                        {getStageLabel(stage)}
-                      </Typography>
-                      <Chip label={count} color="primary" size="small" sx={{ fontWeight: 600 }} />
-                    </Box>
-                  ))}
-              </Box>
-            )}
-          </Paper>
+      {/* Secondary stats + panels layout */}
+      <Grid container spacing={2} sx={{ mb: 0, alignItems: 'stretch' }}>
+        {/* Left column: small tiles stacked vertically */}
+        <Grid item xs={12} md={3} lg={3}>
+          <Grid container spacing={2} direction="column">
+            <Grid item>
+              <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2 }} elevation={0} variant="outlined">
+                <PeopleIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {stats.totalCustomers}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                  Customers
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item>
+              <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2 }} elevation={0} variant="outlined">
+                <CalendarIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {stats.upcomingAppointments.length}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                  Upcoming
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item>
+              <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2 }} elevation={0} variant="outlined">
+                <TasksIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {stats.pendingTasks.length}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                  Pending Tasks
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item>
+              <Paper
+                sx={{
+                  p: 2,
+                  textAlign: 'center',
+                  borderRadius: 2,
+                  borderColor: stats.urgentTasks.length > 0 ? 'error.main' : undefined,
+                }}
+                elevation={0}
+                variant="outlined"
+              >
+                <WarningIcon
+                  sx={{
+                    fontSize: 28,
+                    color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.secondary',
+                    mb: 0.5,
+                  }}
+                />
+                <Typography
+                  variant="h6"
+                  sx={{ fontWeight: 600, color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.primary' }}
+                >
+                  {stats.urgentTasks.length}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                  Urgent
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
         </Grid>
 
-        {/* Upcoming Appointments */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                Upcoming Appointments
-              </Typography>
-              <Button size="small" onClick={() => navigate('/calendar')} sx={{ textTransform: 'none' }}>
-                View calendar
-              </Button>
-            </Box>
+        {/* Right column: panels spanning remaining width */}
+        <Grid item xs={12} md={9} lg={9} sx={{ display: 'flex' }}>
+          <Grid container spacing={2} sx={{ flex: 1, alignContent: 'stretch' }}>
+            {/* Jobs by Stage */}
+            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    Jobs by Stage
+                  </Typography>
+                  <Button size="small" onClick={() => navigate('/pipeline')} sx={{ textTransform: 'none' }}>
+                    View pipeline
+                  </Button>
+                </Box>
+                {Object.keys(stats.jobsByStage).length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+                    No active jobs
+                  </Typography>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {Object.entries(stats.jobsByStage)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([stage, count]) => (
+                        <Box
+                          key={stage}
+                          sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.75 }}
+                        >
+                          <Typography variant="body2" sx={{ flex: 1 }}>
+                            {getStageLabel(stage)}
+                          </Typography>
+                          <Chip label={count} color="primary" size="small" sx={{ fontWeight: 600 }} />
+                        </Box>
+                      ))}
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* Pending Tasks panel */}
+            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    Pending Tasks
+                  </Typography>
+                  <Button size="small" onClick={() => navigate('/tasks')} sx={{ textTransform: 'none' }}>
+                    View all
+                  </Button>
+                </Box>
+                {stats.pendingTasks.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+                    No pending tasks
+                  </Typography>
+                ) : (
+                  <List>
+                    {stats.pendingTasks.map((task, index) => (
+                      <Box key={task._id || index}>
+                        <ListItem>
+                          <ListItemIcon>
+                            <TasksIcon color="primary" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={task.title}
+                            secondary={
+                              <Box sx={{ mt: 0.5 }}>
+                                {task.dueDate && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Due: {formatDate(task.dueDate)}
+                                  </Typography>
+                                )}
+                                {task.assignedTo?.name && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                    Assigned to: {task.assignedTo.name}
+                                  </Typography>
+                                )}
+                              </Box>
+                            }
+                          />
+                        </ListItem>
+                        {index < stats.pendingTasks.length - 1 && <Divider />}
+                      </Box>
+                    ))}
+                  </List>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* Upcoming Appointments - full width under panels */}
+            <Grid item xs={12} sx={{ display: 'flex' }}>
+              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    Upcoming Appointments
+                  </Typography>
+                  <Button size="small" onClick={() => navigate('/calendar')} sx={{ textTransform: 'none' }}>
+                    View calendar
+                  </Button>
+                </Box>
                 {stats.upcomingAppointments.length === 0 ? (
                   <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
                     No upcoming appointments
@@ -1035,104 +1110,8 @@ function DashboardPage() {
                 )}
               </Paper>
             </Grid>
-
-            {/* Pending Tasks */}
-            <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Pending Tasks
-                  </Typography>
-                  <Button size="small" onClick={() => navigate('/tasks')} sx={{ textTransform: 'none' }}>
-                    View all
-                  </Button>
-                </Box>
-                {stats.pendingTasks.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                    No pending tasks
-                  </Typography>
-                ) : (
-                  <List>
-                    {stats.pendingTasks.map((task, index) => (
-                      <Box key={task._id || index}>
-                        <ListItem>
-                          <ListItemIcon>
-                            <TasksIcon color="primary" />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={task.title}
-                            secondary={
-                              <Box sx={{ mt: 0.5 }}>
-                                {task.dueDate && (
-                                  <Typography variant="caption" color="text.secondary">
-                                    Due: {formatDate(task.dueDate)}
-                                  </Typography>
-                                )}
-                                {task.assignedTo?.name && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                    Assigned to: {task.assignedTo.name}
-                                  </Typography>
-                                )}
-                              </Box>
-                            }
-                          />
-                        </ListItem>
-                        {index < stats.pendingTasks.length - 1 && <Divider />}
-                      </Box>
-                    ))}
-                  </List>
-                )}
-              </Paper>
-            </Grid>
-
-            {/* Urgent Tasks */}
-            <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2, borderColor: stats.urgentTasks.length > 0 ? 'error.main' : undefined }} elevation={0} variant="outlined">
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600, color: stats.urgentTasks.length > 0 ? 'error.main' : 'inherit' }}>
-                    Urgent Tasks
-                  </Typography>
-                  <Button size="small" onClick={() => navigate('/tasks')} sx={{ textTransform: 'none' }}>
-                    View all
-                  </Button>
-                </Box>
-                {stats.urgentTasks.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                    No urgent tasks
-                  </Typography>
-                ) : (
-                  <List>
-                    {stats.urgentTasks.map((task, index) => (
-                      <Box key={task._id || index}>
-                        <ListItem>
-                          <ListItemIcon>
-                            <WarningIcon color="error" />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={task.title}
-                            secondary={
-                              <Box sx={{ mt: 0.5 }}>
-                                {task.dueDate && (
-                                  <Typography variant="caption" color="text.secondary">
-                                    Due: {formatDate(task.dueDate)}
-                                  </Typography>
-                                )}
-                                {task.assignedTo?.name && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                    Assigned to: {task.assignedTo.name}
-                                  </Typography>
-                                )}
-                              </Box>
-                            }
-                          />
-                        </ListItem>
-                        {index < stats.urgentTasks.length - 1 && <Divider />}
-                      </Box>
-                    ))}
-                  </List>
-                )}
-              </Paper>
-            </Grid>
+          </Grid>
+        </Grid>
       </Grid>
       </Paper>
 
