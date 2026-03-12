@@ -89,7 +89,7 @@ function DashboardPage() {
       // Fetch all data in parallel
       const [jobsRes, appointmentsRes, tasksRes, customersRes, activitiesRes] = await Promise.all([
         axios.get(`${API_URL}/jobs`),
-        axios.get(`${API_URL}/appointments?status=pending&limit=5`),
+        axios.get(`${API_URL}/appointments?status=scheduled&limit=50`),
         axios.get(`${API_URL}/tasks`),
         axios.get(`${API_URL}/customers?limit=1`),
         axios.get(`${API_URL}/activities/recent?limit=100`).catch(() => ({ data: [] })),
@@ -98,7 +98,8 @@ function DashboardPage() {
       const jobs = jobsRes.data.jobs || jobsRes.data || [];
       const appointments = appointmentsRes.data.appointments || appointmentsRes.data || [];
       const tasks = tasksRes.data.tasks || tasksRes.data || [];
-      const customers = customersRes.data.customers || customersRes.data || [];
+      const customersResData = customersRes.data;
+      const customerTotal = customersResData?.total ?? (Array.isArray(customersResData?.customers) ? customersResData.customers.length : 0);
       const allActivities = activitiesRes.data || [];
 
       // Filter out archived and dead estimates
@@ -119,16 +120,25 @@ function DashboardPage() {
         jobsByStage[job.stage] = (jobsByStage[job.stage] || 0) + 1;
       });
 
-      // Upcoming appointments (next 7 days)
+      // Upcoming appointments: scheduled, date in next 7 days (use date field; model has date + time)
       const now = new Date();
-      const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const nextWeekEnd = new Date(todayStart.getTime() + 8 * 24 * 60 * 60 * 1000);
       const upcomingAppointments = appointments
         .filter(apt => {
-          if (!apt.dateTime) return false;
-          const aptDate = parseISO(apt.dateTime);
-          return aptDate >= now && aptDate <= nextWeek;
+          if (!apt.date) return false;
+          const aptDate = new Date(apt.date);
+          const aptDayStart = new Date(aptDate.getFullYear(), aptDate.getMonth(), aptDate.getDate(), 0, 0, 0, 0);
+          return aptDayStart >= todayStart && aptDayStart < nextWeekEnd;
         })
-        .sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime))
+        .sort((a, b) => {
+          const dA = new Date(a.date);
+          const dB = new Date(b.date);
+          if (dA.getTime() !== dB.getTime()) return dA - dB;
+          const tA = (a.time || '').toLowerCase();
+          const tB = (b.time || '').toLowerCase();
+          return tA.localeCompare(tB);
+        })
         .slice(0, 5);
 
       // Tasks
@@ -156,7 +166,7 @@ function DashboardPage() {
         upcomingAppointments,
         pendingTasks,
         overdueTasks,
-        totalCustomers: customers.length || 0,
+        totalCustomers: customerTotal,
       });
       setActivities(sortedActivities);
     } catch (error) {
@@ -785,218 +795,184 @@ function DashboardPage() {
   }
 
   return (
-    <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 3, md: 4 }, px: { xs: 1, sm: 2 } }}>
+    <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 3 }, px: { xs: 1.5, sm: 2 } }}>
       {/* Header */}
-      <Box sx={{ mb: { xs: 2, sm: 3, md: 4 } }}>
-        <Typography variant="h4" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+      <Box sx={{ mb: { xs: 2, sm: 3 } }}>
+        <Typography variant="h4" sx={{ fontWeight: 600, fontSize: { xs: '1.35rem', sm: '1.75rem' } }}>
           Dashboard
         </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-          Overview of your business at a glance
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          Overview of your pipeline and activity
         </Typography>
       </Box>
 
-      {/* Dashboard Content */}
-      <Grid container spacing={{ xs: 2, sm: 3 }}>
-        {/* Left Side - Original Dashboard */}
-        <Grid item xs={12} lg={8}>
-          {/* Key Metrics Cards */}
-          <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ mb: { xs: 2, sm: 3, md: 4 } }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ 
-                height: '100%', 
-                background: theme.palette.mode === 'dark' 
-                  ? 'linear-gradient(135deg, #424242 0%, #616161 100%)'
-                  : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
-                color: 'white' 
-              }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Box>
-                      <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
-                        Active Jobs
-                      </Typography>
-                      <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        {stats.activeJobs}
-                      </Typography>
-                    </Box>
-                    <JobsIcon sx={{ fontSize: 48, opacity: 0.8 }} />
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ 
-                height: '100%', 
-                background: theme.palette.mode === 'dark'
-                  ? 'linear-gradient(135deg, #424242 0%, #616161 100%)'
-                  : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', 
-                color: 'white' 
-              }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Box>
-                      <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
-                        Total Pipeline
-                      </Typography>
-                      <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        {formatCurrency(stats.totalRevenue)}
-                      </Typography>
-                    </Box>
-                    <MoneyIcon sx={{ fontSize: 48, opacity: 0.8 }} />
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ 
-                height: '100%', 
-                background: theme.palette.mode === 'dark'
-                  ? 'linear-gradient(135deg, #424242 0%, #616161 100%)'
-                  : 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', 
-                color: 'white' 
-              }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Box>
-                      <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
-                        Contracted
-                      </Typography>
-                      <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        {formatCurrency(stats.contractedRevenue)}
-                      </Typography>
-                    </Box>
-                    <CheckCircleIcon sx={{ fontSize: 48, opacity: 0.8 }} />
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ 
-                height: '100%', 
-                background: theme.palette.mode === 'dark'
-                  ? 'linear-gradient(135deg, #424242 0%, #616161 100%)'
-                  : 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', 
-                color: 'white' 
-              }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Box>
-                      <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
-                        Potential
-                      </Typography>
-                      <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        {formatCurrency(stats.potentialRevenue)}
-                      </Typography>
-                    </Box>
-                    <TrendingUpIcon sx={{ fontSize: 48, opacity: 0.8 }} />
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-          {/* Secondary Stats */}
-          <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ mb: { xs: 2, sm: 3, md: 4 } }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <PeopleIcon sx={{ fontSize: 32, color: 'primary.main', mb: 1 }} />
-                <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                  {stats.totalCustomers}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Customers
-                </Typography>
-              </Paper>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <CalendarIcon sx={{ fontSize: 32, color: 'primary.main', mb: 1 }} />
-                <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                  {stats.upcomingAppointments.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Upcoming Appointments
-                </Typography>
-              </Paper>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <TasksIcon sx={{ fontSize: 32, color: 'primary.main', mb: 1 }} />
-                <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                  {stats.pendingTasks.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Pending Tasks
-                </Typography>
-              </Paper>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <WarningIcon sx={{ fontSize: 32, color: 'error.main', mb: 1 }} />
-                <Typography variant="h5" sx={{ fontWeight: 600, color: 'error.main' }}>
-                  {stats.overdueTasks.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Overdue Tasks
-                </Typography>
-              </Paper>
-            </Grid>
-          </Grid>
-
-          {/* Main Content Grid */}
-          <Grid container spacing={{ xs: 2, sm: 3 }}>
-            {/* Jobs by Stage */}
-            <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 3, height: '100%' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Jobs by Stage
+      {/* Key metrics - single row of cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={6} sm={6} md={3}>
+          <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 1 }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                    Active Jobs
                   </Typography>
-                  <Button size="small" onClick={() => navigate('/pipeline')}>
-                    View All
-                  </Button>
+                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                    {stats.activeJobs}
+                  </Typography>
                 </Box>
-                {Object.keys(stats.jobsByStage).length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-                    No active jobs
+                <JobsIcon sx={{ fontSize: 36, color: 'primary.main', opacity: 0.7 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={6} sm={6} md={3}>
+          <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 1 }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                    Pipeline Value
                   </Typography>
-                ) : (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                    {Object.entries(stats.jobsByStage)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([stage, count]) => (
-                        <Box key={stage} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 1 }}>
-                          <Typography variant="body2" sx={{ flex: 1 }}>
-                            {getStageLabel(stage)}
-                          </Typography>
-                          <Chip label={count} color="primary" size="small" />
-                        </Box>
-                      ))}
-                  </Box>
-                )}
-              </Paper>
-            </Grid>
-
-            {/* Upcoming Appointments */}
-            <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 3, height: '100%' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Upcoming Appointments
+                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                    {formatCurrency(stats.totalRevenue)}
                   </Typography>
-                  <Button size="small" onClick={() => navigate('/calendar')}>
-                    View Calendar
-                  </Button>
                 </Box>
+                <MoneyIcon sx={{ fontSize: 36, color: 'primary.main', opacity: 0.7 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={6} sm={6} md={3}>
+          <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 1 }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                    Contracted
+                  </Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                    {formatCurrency(stats.contractedRevenue)}
+                  </Typography>
+                </Box>
+                <CheckCircleIcon sx={{ fontSize: 36, color: 'success.main', opacity: 0.7 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={6} sm={6} md={3}>
+          <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 1 }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                    Potential
+                  </Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                    {formatCurrency(stats.potentialRevenue)}
+                  </Typography>
+                </Box>
+                <TrendingUpIcon sx={{ fontSize: 36, color: 'info.main', opacity: 0.7 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Secondary stats + quick links */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={6} sm={4} md={2}>
+          <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%' }} elevation={0} variant="outlined">
+            <PeopleIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              {stats.totalCustomers}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              Customers
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={6} sm={4} md={2}>
+          <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%' }} elevation={0} variant="outlined">
+            <CalendarIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              {stats.upcomingAppointments.length}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              Upcoming
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={6} sm={4} md={2}>
+          <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%' }} elevation={0} variant="outlined">
+            <TasksIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              {stats.pendingTasks.length}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              Pending Tasks
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={6} sm={4} md={2}>
+          <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%', borderColor: stats.overdueTasks.length > 0 ? 'error.main' : undefined }} elevation={0} variant="outlined">
+            <WarningIcon sx={{ fontSize: 28, color: stats.overdueTasks.length > 0 ? 'error.main' : 'text.secondary', mb: 0.5 }} />
+            <Typography variant="h6" sx={{ fontWeight: 600, color: stats.overdueTasks.length > 0 ? 'error.main' : 'text.primary' }}>
+              {stats.overdueTasks.length}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              Overdue
+            </Typography>
+          </Paper>
+        </Grid>
+      </Grid>
+
+      {/* Main Content Grid */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {/* Jobs by Stage */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                Jobs by Stage
+              </Typography>
+              <Button size="small" onClick={() => navigate('/pipeline')} sx={{ textTransform: 'none' }}>
+                View pipeline
+              </Button>
+            </Box>
+            {Object.keys(stats.jobsByStage).length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+                No active jobs
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {Object.entries(stats.jobsByStage)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([stage, count]) => (
+                    <Box key={stage} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.75 }}>
+                      <Typography variant="body2" sx={{ flex: 1 }}>
+                        {getStageLabel(stage)}
+                      </Typography>
+                      <Chip label={count} color="primary" size="small" sx={{ fontWeight: 600 }} />
+                    </Box>
+                  ))}
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+
+        {/* Upcoming Appointments */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                Upcoming Appointments
+              </Typography>
+              <Button size="small" onClick={() => navigate('/calendar')} sx={{ textTransform: 'none' }}>
+                View calendar
+              </Button>
+            </Box>
                 {stats.upcomingAppointments.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
                     No upcoming appointments
                   </Typography>
                 ) : (
@@ -1011,10 +987,10 @@ function DashboardPage() {
                             primary={
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                                 <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                                  {apt.jobId?.title || apt.customerId?.name || 'Appointment'}
+                                  {apt.jobId?.title || apt.customerId?.name || apt.title || 'Appointment'}
                                 </Typography>
                                 <Chip
-                                  label={`${formatDate(apt.dateTime)} ${formatTime(apt.dateTime)}`}
+                                  label={`${formatDate(apt.date)}${apt.time ? ` ${apt.time}` : ''}`}
                                   size="small"
                                   color="primary"
                                   variant="outlined"
@@ -1047,17 +1023,17 @@ function DashboardPage() {
 
             {/* Pending Tasks */}
             <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 3, height: '100%' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                     Pending Tasks
                   </Typography>
-                  <Button size="small" onClick={() => navigate('/tasks')}>
-                    View All
+                  <Button size="small" onClick={() => navigate('/tasks')} sx={{ textTransform: 'none' }}>
+                    View all
                   </Button>
                 </Box>
                 {stats.pendingTasks.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
                     No pending tasks
                   </Typography>
                 ) : (
@@ -1096,18 +1072,18 @@ function DashboardPage() {
 
             {/* Overdue Tasks */}
             <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 3, height: '100%', border: stats.overdueTasks.length > 0 ? '2px solid' : 'none', borderColor: 'error.main' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 600, color: stats.overdueTasks.length > 0 ? 'error.main' : 'inherit' }}>
+              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2, borderColor: stats.overdueTasks.length > 0 ? 'error.main' : undefined }} elevation={0} variant="outlined">
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, color: stats.overdueTasks.length > 0 ? 'error.main' : 'inherit' }}>
                     Overdue Tasks
                   </Typography>
-                  <Button size="small" onClick={() => navigate('/tasks')}>
-                    View All
+                  <Button size="small" onClick={() => navigate('/tasks')} sx={{ textTransform: 'none' }}>
+                    View all
                   </Button>
                 </Box>
                 {stats.overdueTasks.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-                    No overdue tasks 🎉
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+                    No overdue tasks
                   </Typography>
                 ) : (
                   <List>
@@ -1142,38 +1118,40 @@ function DashboardPage() {
                 )}
               </Paper>
             </Grid>
-          </Grid>
-        </Grid>
+      </Grid>
 
-        {/* Full Width Activity Feed */}
-        <Grid item xs={12}>
-          <Paper sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Recent Activity
-              </Typography>
-              <Button
-                variant="outlined"
-                startIcon={<PrintIcon />}
-                onClick={() => setPrintDialogOpen(true)}
-                size="small"
-              >
-                Print Activity
-              </Button>
-            </Box>
+      {/* Recent Activity - full width */}
+      <Paper sx={{ p: 2.5, borderRadius: 2 }} elevation={0} variant="outlined">
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Recent Activity
+          </Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<PrintIcon />}
+            onClick={() => setPrintDialogOpen(true)}
+            sx={{ textTransform: 'none' }}
+          >
+            Print activity
+          </Button>
+        </Box>
 
-            {/* Quick manual activity entry */}
-            <Box
-              component="form"
-              onSubmit={handleManualActivitySubmit}
-              sx={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 2,
-                mb: 2,
-                alignItems: 'center',
-              }}
-            >
+        {/* Quick manual activity entry */}
+        <Box
+          component="form"
+          onSubmit={handleManualActivitySubmit}
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1.5,
+            mb: 2,
+            alignItems: 'center',
+            p: 1.5,
+            borderRadius: 1,
+            bgcolor: theme.palette.mode === 'dark' ? 'action.hover' : 'grey.50',
+          }}
+        >
               <TextField
                 label="Time"
                 type="time"
@@ -1196,18 +1174,19 @@ function DashboardPage() {
                 variant="contained"
                 size="small"
                 disabled={savingManualActivity}
+                sx={{ textTransform: 'none' }}
               >
                 Add to Activity
               </Button>
-            </Box>
-            
-            {sortedActivities.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-                No recent activity
-              </Typography>
-            ) : (
-              <Box>
-                {sortedActivities.slice(0, 50).map((activity, idx) => {
+        </Box>
+
+        {sortedActivities.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+            No recent activity
+          </Typography>
+        ) : (
+          <Box>
+            {sortedActivities.slice(0, 50).map((activity, idx) => {
                   const title = getActivityTitle(activity);
                   const description = getActivityDescription(activity);
                   const timeShort = formatActivityTime(activity.createdAt);
@@ -1310,11 +1289,9 @@ function DashboardPage() {
                     </Box>
                   );
                 })}
-              </Box>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
+          </Box>
+        )}
+      </Paper>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmOpen} onClose={handleDeleteCancel}>
