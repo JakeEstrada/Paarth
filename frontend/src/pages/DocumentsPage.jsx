@@ -41,6 +41,9 @@ function DocumentsPage() {
   const [documentToDelete, setDocumentToDelete] = useState(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewingDocument, setViewingDocument] = useState(null);
+  const [editDescriptionOpen, setEditDescriptionOpen] = useState(false);
+  const [documentToEdit, setDocumentToEdit] = useState(null);
+  const [descriptionInput, setDescriptionInput] = useState('');
 
   useEffect(() => {
     fetchDocuments();
@@ -182,6 +185,30 @@ function DocumentsPage() {
     setViewDialogOpen(true);
   };
 
+  const handleEditDescription = (doc) => {
+    setDocumentToEdit(doc);
+    setDescriptionInput(doc.description || '');
+    setEditDescriptionOpen(true);
+  };
+
+  const handleSaveDescription = async () => {
+    if (!documentToEdit) return;
+    
+    try {
+      await axios.patch(`${API_URL}/files/${documentToEdit._id}`, {
+        description: descriptionInput,
+      });
+      toast.success('Description updated');
+      setEditDescriptionOpen(false);
+      setDocumentToEdit(null);
+      setDescriptionInput('');
+      await fetchDocuments();
+    } catch (error) {
+      console.error('Error updating description:', error);
+      toast.error('Failed to update description');
+    }
+  };
+
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -195,7 +222,8 @@ function DocumentsPage() {
     const search = searchTerm.toLowerCase();
     return (
       doc.originalName?.toLowerCase().includes(search) ||
-      doc.filename?.toLowerCase().includes(search)
+      doc.filename?.toLowerCase().includes(search) ||
+      doc.description?.toLowerCase().includes(search)
     );
   });
 
@@ -331,9 +359,14 @@ function DocumentsPage() {
                     >
                       {doc.originalName}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                       {formatFileSize(doc.size)}
                     </Typography>
+                    {doc.description && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }} noWrap title={doc.description}>
+                        {doc.description}
+                      </Typography>
+                    )}
                   </Box>
                 </Box>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
@@ -345,6 +378,14 @@ function DocumentsPage() {
                     onClick={() => handleView(doc)}
                     sx={{ color: 'primary.main' }}
                     title="View"
+                  >
+                    <DescriptionIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleEditDescription(doc)}
+                    sx={{ color: 'primary.main' }}
+                    title="Edit description"
                   >
                     <DescriptionIcon fontSize="small" />
                   </IconButton>
@@ -429,6 +470,30 @@ function DocumentsPage() {
             />
           )}
         </DialogContent>
+      </Dialog>
+
+      {/* Edit Description Dialog */}
+      <Dialog open={editDescriptionOpen} onClose={() => setEditDescriptionOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Description</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            {documentToEdit?.originalName}
+          </Typography>
+          <TextField
+            fullWidth
+            label="Description"
+            multiline
+            minRows={3}
+            value={descriptionInput}
+            onChange={(e) => setDescriptionInput(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDescriptionOpen(false)}>Cancel</Button>
+          <Button onClick={handleSaveDescription} variant="contained">
+            Save
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

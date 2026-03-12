@@ -119,7 +119,6 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
               color: theme.palette.text.primary,
               lineHeight: 1.4,
               display: 'inline',
-              mb: job.stage === 'ESTIMATE_SENT' && daysSinceSent !== null ? 0.5 : 0,
             }}
             title={job.title}
           >
@@ -176,22 +175,6 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
         </Tooltip>
       </Box>
         
-        {(job.stage === 'ESTIMATE_SENT' && daysSinceSent !== null) && (
-          <Box sx={{ mt: 0.5 }}>
-            <Chip
-              label={`${daysSinceSent} day${daysSinceSent !== 1 ? 's' : ''} ago`}
-              size="small"
-              sx={{
-                height: 20,
-                fontSize: '0.7rem',
-                fontWeight: 600,
-                backgroundColor: getTimerColor() + '15',
-                color: getTimerColor(),
-                border: `1px solid ${getTimerColor()}40`,
-              }}
-            />
-          </Box>
-        )}
       </CardContent>
     </Card>
   );

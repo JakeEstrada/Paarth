@@ -108,6 +108,10 @@ function LoginPage() {
               '& .MuiOutlinedInput-root': {
                 borderRadius: 1,
               },
+              '& input:-webkit-autofill, & input:-webkit-autofill:focus, & input:-webkit-autofill:hover': {
+                WebkitBoxShadow: `0 0 0 100px ${theme.palette.background.paper} inset`,
+                WebkitTextFillColor: theme.palette.text.primary,
+              },
             }}
           />
 
@@ -143,6 +147,10 @@ function LoginPage() {
               mb: 3,
               '& .MuiOutlinedInput-root': {
                 borderRadius: 1,
+              },
+              '& input:-webkit-autofill, & input:-webkit-autofill:focus, & input:-webkit-autofill:hover': {
+                WebkitBoxShadow: `0 0 0 100px ${theme.palette.background.paper} inset`,
+                WebkitTextFillColor: theme.palette.text.primary,
               },
             }}
           />

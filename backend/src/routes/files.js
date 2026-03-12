@@ -9,7 +9,8 @@ const {
   getDocuments,
   downloadFile,
   getFile,
-  deleteFile
+  deleteFile,
+  updateFile,
 } = require('../controllers/fileController');
 
 //router.use(requireAuth);
@@ -21,6 +22,7 @@ router.get('/job/:jobId', getJobFiles);
 router.get('/task/:taskId', getTaskFiles);
 router.get('/:id/download', downloadFile);
 router.get('/:id', getFile);
+router.patch('/:id', updateFile);
 router.delete('/:id', deleteFile);
 
 module.exports = router;

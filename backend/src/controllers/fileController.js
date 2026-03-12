@@ -402,7 +402,8 @@ async function uploadDocument(req, res) {
       path: filePath,
       s3Key: s3Key,
       fileType: fileType,
-      uploadedBy: createdBy
+      uploadedBy: createdBy,
+      description: req.body.description ? String(req.body.description).trim() : undefined,
     });
 
     await file.save();
@@ -471,6 +472,29 @@ async function getFile(req, res) {
   } catch (error) {
     console.error('Error getting file:', error);
     res.status(500).json({ error: error.message || 'Failed to retrieve file' });
+  }
+}
+
+// Update file (e.g., description)
+async function updateFile(req, res) {
+  try {
+    const update = {};
+    if (req.body.description !== undefined) {
+      update.description = req.body.description ? String(req.body.description).trim() : '';
+    }
+
+    const file = await File.findByIdAndUpdate(req.params.id, update, {
+      new: true,
+      runValidators: true,
+    }).populate('uploadedBy', 'name email');
+
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    res.json(file);
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to update file' });
   }
 }
 
@@ -550,6 +574,7 @@ module.exports = {
   getDocuments,
   downloadFile,
   getFile,
-  deleteFile
+  deleteFile,
+  updateFile,
 };
 

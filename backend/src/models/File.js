@@ -32,6 +32,11 @@ const fileSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  description: {
+    type: String,
+    required: false,
+    trim: true,
+  },
   path: {
     type: String,
     required: true
