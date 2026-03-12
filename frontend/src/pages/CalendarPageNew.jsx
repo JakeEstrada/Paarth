@@ -735,11 +735,46 @@ function BenchJobCard({ job, onJobClick, onViewJob, onRemoveFromBench }) {
       <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', mb: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                mb: 0.25,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={job.title}
+            >
               {job.title}
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-              {defaultDuration} days
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                fontSize: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.75,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+              }}
+            >
+              <Box
+                component="span"
+                sx={{
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {job.customerId?.name || 'Unknown'}
+              </Box>
+              <Box component="span" sx={{ flexShrink: 0, opacity: 0.8 }}>
+                | {defaultDuration} days
+              </Box>
             </Typography>
           </Box>
           {onViewJob && (

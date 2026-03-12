@@ -297,9 +297,9 @@ function TasksPage() {
                     variant="body1" 
                     sx={{ 
                       fontWeight: isUrgent ? 600 : 500, 
-                      color: '#263238',
+                      color: (theme) => theme.palette.mode === 'dark' ? '#ECEFF1' : '#263238',
                       textDecoration: item.completedAt ? 'line-through' : 'none',
-                      opacity: item.completedAt ? 0.6 : 1,
+                      opacity: item.completedAt ? 0.7 : 1,
                     }}
                   >
                     {item.title}
