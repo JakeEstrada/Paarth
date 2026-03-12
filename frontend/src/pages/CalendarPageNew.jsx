@@ -54,10 +54,10 @@ const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
 // Default installer order used for calendar lanes and suggestions
 const DEFAULT_INSTALLER_ORDER = [
   'Nick',
-  'Walter',
   'Ed',
-  'Moris',
   'Eder',
+  'Daniel',
+  'Moris',
   'Hayden'
 ];
 
@@ -531,15 +531,10 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
   const extraOtherEventsCount = eventsForDate.filter((e) => {
     const name = e.schedule?.installer || '';
     const isPrimary = primaryInstallers.includes(name);
-    // Exclude the one already shown in the OTHER lane (if any)
     const isInOtherLane =
       !isPrimary &&
-      laneEvents.some(
-        (evt, idx) =>
-          idx === laneInstallers.length - 1 &&
-          evt &&
-          evt._id === e._id
-      );
+      laneEvents[laneEvents.length - 1] &&
+      laneEvents[laneEvents.length - 1]._id === e._id;
     return !isPrimary && !isInOtherLane;
   }).length;
 
@@ -575,7 +570,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
         sx={{
           width: '100%',
           height: '100%',
-          p: { xs: 0.5, sm: 1 },
+          p: 0.5,
           border: `1px solid ${theme.palette.divider}`,
           backgroundColor: isCurrentMonth 
             ? theme.palette.background.paper 
@@ -607,8 +602,8 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           sx={{
             fontWeight: isToday(date) ? 700 : 500,
             color: isToday(date) ? 'primary.main' : isCurrentMonth ? 'text.primary' : 'text.secondary',
-            mb: 0.5,
             flexShrink: 0,
+            lineHeight: 1.2,
             fontSize: { xs: '0.8rem', sm: '0.9rem' },
           }}
         >
@@ -618,22 +613,23 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
         <Box sx={{ 
           display: 'flex', 
           flexDirection: 'column', 
-          position: 'relative',
           flex: 1,
           overflow: 'hidden',
           minHeight: 0,
+          gap: 0,
+          justifyContent: 'flex-start',
         }}>
-          {/* Fixed 5 “lanes” (4 installers + 1 other) so rows line up across days */}
           {laneEvents.map((event, index) => (
             <Box
               key={event?._id || `lane-${index}`}
               sx={{
-                flex: 1,
+                flex: '1 1 0',
                 minHeight: 0,
                 minWidth: 0,
                 display: 'flex',
                 alignItems: 'center',
                 overflow: 'hidden',
+                justifyContent: 'flex-start',
               }}
             >
               {event && (
@@ -646,33 +642,30 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                   }}
                   onContextMenu={(e) => handleContextMenu(e, event)}
                   sx={{
-                    fontSize: { xs: '0.7rem', sm: '0.8rem' },
-                    height: { xs: 22, sm: 24 },
+                    fontSize: { xs: '0.8rem', sm: '0.85rem' },
+                    height: 20,
+                    maxHeight: '100%',
                     maxWidth: '100%',
                     backgroundColor: event.color || '#1976D2',
                     color: 'white',
                     flexShrink: 1,
                     minWidth: 0,
+                    overflow: 'hidden',
+                    '&.MuiChip-root': { py: 0, px: 0 },
                     '& .MuiChip-label': {
-                      px: { xs: 0.75, sm: 1 },
+                      px: 0.75,
+                      py: 0,
+                      lineHeight: 1.25,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
                     },
-                    '&:hover': {
-                      opacity: 0.8,
-                      transform: 'scale(1.05)',
-                    },
+                    '&:hover': { opacity: 0.8 },
                   }}
                 />
               )}
-              {/* In the bottom lane, show a small "+N more" if there are extra “other” events */}
               {index === laneEvents.length - 1 && extraOtherEventsCount > 0 && (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ ml: 0.5, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}
-                >
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 0.25, fontSize: '0.6rem', flexShrink: 0 }}>
                   +{extraOtherEventsCount} more
                 </Typography>
               )}
@@ -1080,7 +1073,7 @@ function CalendarPageNew() {
       <Box key={monthIndex} sx={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {/* Month Header - hide on mobile since it's in the main header */}
         {!isMobile && (
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, textAlign: 'center', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5, textAlign: 'center', fontSize: { xs: '1rem', sm: '1.15rem' } }}>
             {format(monthDate, 'MMMM yyyy')}
           </Typography>
         )}
@@ -1091,14 +1084,14 @@ function CalendarPageNew() {
             <Paper
               key={dayIndex}
               sx={{
-                p: { xs: 0.5, sm: 1 },
+                p: 0.5,
                 textAlign: 'center',
                 backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
                 border: `1px solid ${theme.palette.divider}`,
                 fontWeight: 600,
               }}
             >
-              <Typography variant="body2" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
+              <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.8rem' }, lineHeight: 1.2 }}>
                 {isMobile ? WEEKDAY_LABELS[dayIndex].substring(0, 1) : WEEKDAY_LABELS[dayIndex].substring(0, 3)}
               </Typography>
             </Paper>
@@ -1144,7 +1137,7 @@ function CalendarPageNew() {
         <CircularProgress />
       </Box>
     ) : (
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 3 } }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 1, sm: 1.5 } }}>
         {months.map((monthDate, index) => renderMonth(monthDate, index))}
       </Box>
     );
@@ -1464,7 +1457,7 @@ function CalendarPageNew() {
           >
             {renderBenchPanelContent('top')}
           </Box>
-          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 }, minHeight: 0 }}>
+          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 0.5, sm: 1 }, minHeight: 0 }}>
             {renderCalendarContent()}
           </Box>
         </>
@@ -1472,7 +1465,7 @@ function CalendarPageNew() {
 
       {benchPosition === 'right' && (
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
-          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 }, minWidth: 0 }}>
+          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 0.5, sm: 1 }, minWidth: 0 }}>
             {renderCalendarContent()}
           </Box>
           <Box
@@ -1496,7 +1489,7 @@ function CalendarPageNew() {
 
       {benchPosition === 'bottom' && (
         <>
-          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 }, minHeight: 0 }}>
+          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 0.5, sm: 1 }, minHeight: 0 }}>
             {renderCalendarContent()}
           </Box>
           {/* Bench at bottom - resizable */}
