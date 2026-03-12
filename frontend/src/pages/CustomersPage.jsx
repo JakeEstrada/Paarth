@@ -31,7 +31,6 @@ import {
 import {
   Search as SearchIcon,
   Delete as DeleteIcon,
-  Upload as UploadIcon,
   Add as AddIcon,
   Phone as PhoneIcon,
   Email as EmailIcon,
@@ -57,8 +56,6 @@ function CustomersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState(null);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [sortField, setSortField] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -531,25 +528,6 @@ function CustomersPage() {
     return addresses;
   };
 
-  // Handle CSV upload
-  const handleUploadCSV = async () => {
-    try {
-      setUploading(true);
-      const response = await axios.post(`${API_URL}/customers/upload-csv`);
-      toast.success(`Successfully imported ${response.data.imported} customers`);
-      if (response.data.errors > 0) {
-        toast.error(`${response.data.errors} rows had errors`);
-      }
-      setUploadDialogOpen(false);
-      fetchCustomers();
-    } catch (error) {
-      console.error('Error uploading CSV:', error);
-      toast.error(error.response?.data?.error || 'Failed to upload CSV');
-    } finally {
-      setUploading(false);
-    }
-  };
-
   // Open notes dialog
   const handleOpenNotesDialog = (customer, e) => {
     e.stopPropagation();
@@ -594,9 +572,9 @@ function CustomersPage() {
   return (
     <Box sx={{ p: { xs: 1, sm: 2, md: 3 } }}>
       {/* Header */}
-      <Box sx={{ 
+      <Box sx={{
         display: 'flex', 
-        flexDirection: { xs: 'column', sm: 'row' },
+        flexDirection: { xs: 'column', sm: 'row' }, 
         justifyContent: 'space-between', 
         alignItems: { xs: 'stretch', sm: 'center' },
         mb: { xs: 2, sm: 3 },
@@ -606,14 +584,6 @@ function CustomersPage() {
           Customers
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
-          <Button
-            variant="outlined"
-            startIcon={<UploadIcon />}
-            onClick={() => setUploadDialogOpen(true)}
-            sx={{ borderRadius: '8px', textTransform: 'none' }}
-          >
-            Upload CSV
-          </Button>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -813,33 +783,6 @@ function CustomersPage() {
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleDeleteConfirm} color="error" variant="contained">
             Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Upload CSV Dialog */}
-      <Dialog open={uploadDialogOpen} onClose={() => setUploadDialogOpen(false)}>
-        <DialogTitle>Upload CSV</DialogTitle>
-        <DialogContent>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            This will import customers from the <code>Contact_list_processed.CSV</code> file in the backend folder.
-            Existing customers with matching email or phone will be updated.
-          </Alert>
-          <Typography variant="body2" color="text.secondary">
-            The CSV should have columns: Name, Phone, Email, Address List
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUploadDialogOpen(false)} disabled={uploading}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleUploadCSV}
-            variant="contained"
-            disabled={uploading}
-            startIcon={uploading ? <CircularProgress size={16} /> : <UploadIcon />}
-          >
-            {uploading ? 'Uploading...' : 'Upload'}
           </Button>
         </DialogActions>
       </Dialog>
