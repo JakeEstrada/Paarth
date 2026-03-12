@@ -49,6 +49,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
+const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
 
 // Default installer order used for calendar lanes and suggestions
 const DEFAULT_INSTALLER_ORDER = [
@@ -867,6 +868,21 @@ function CalendarPageNew() {
   const [isBenchMinimized, setIsBenchMinimized] = useState(false);
   const [installerOrder, setInstallerOrder] = useState(DEFAULT_INSTALLER_ORDER);
 
+  const [benchPosition, setBenchPosition] = useState(() => {
+    try {
+      const stored = localStorage.getItem(CALENDAR_BENCH_POSITION_KEY);
+      if (stored === 'top' || stored === 'right' || stored === 'bottom') return stored;
+    } catch (_) {}
+    return 'bottom';
+  });
+  const [benchWidth, setBenchWidth] = useState(320);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CALENDAR_BENCH_POSITION_KEY, benchPosition);
+    } catch (_) {}
+  }, [benchPosition]);
+
   const [hiddenWeekdays, setHiddenWeekdays] = useState(() => {
     try {
       const stored = localStorage.getItem(CALENDAR_HIDDEN_WEEKDAYS_KEY);
@@ -1122,6 +1138,240 @@ function CalendarPageNew() {
     );
   };
 
+  const renderCalendarContent = () =>
+    loading ? (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+        <CircularProgress />
+      </Box>
+    ) : (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 3 } }}>
+        {months.map((monthDate, index) => renderMonth(monthDate, index))}
+      </Box>
+    );
+
+  const renderBenchPanelContent = (placement) => {
+    const isVertical = placement !== 'right';
+    const resizeEdge = placement === 'top' ? 'bottom' : placement === 'bottom' ? 'top' : 'left';
+    return (
+      <>
+        {/* Minimize/Expand Button */}
+        <Box
+          sx={{
+            position: 'absolute',
+            ...(placement === 'right'
+              ? { top: isBenchMinimized ? 0 : 4, right: 4 }
+              : { top: isBenchMinimized ? 0 : -3, right: 8 }),
+            zIndex: 20,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+          }}
+        >
+          <IconButton
+            onClick={() => {
+              setIsBenchMinimized(!isBenchMinimized);
+              if (!isBenchMinimized && benchHeight < 150) setBenchHeight(250);
+            }}
+            size="small"
+            sx={{
+              backgroundColor: theme.palette.background.paper,
+              border: `1px solid ${theme.palette.divider}`,
+              '&:hover': {
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
+              },
+            }}
+            title={isBenchMinimized ? 'Expand Bench' : 'Minimize Bench'}
+          >
+            {isBenchMinimized ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+          </IconButton>
+        </Box>
+
+        {/* Resize Handle - vertical (top/bottom) or horizontal (right) */}
+        {!isBenchMinimized && isVertical && (
+          <Box
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsResizing(true);
+              const startY = e.clientY;
+              const startHeight = benchHeight;
+              const handleMouseMove = (moveEvent) => {
+                moveEvent.preventDefault();
+                const deltaY = placement === 'bottom' ? startY - moveEvent.clientY : moveEvent.clientY - startY;
+                const newHeight = Math.max(150, Math.min(600, startHeight + deltaY));
+                setBenchHeight(newHeight);
+              };
+              const handleMouseUp = () => {
+                setIsResizing(false);
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+              };
+              document.addEventListener('mousemove', handleMouseMove);
+              document.addEventListener('mouseup', handleMouseUp);
+            }}
+            sx={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              ...(resizeEdge === 'top' ? { top: -3, height: '16px' } : { bottom: -3, height: '16px' }),
+              cursor: 'ns-resize',
+              backgroundColor: 'transparent',
+              zIndex: 10,
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '40px',
+                  height: '4px',
+                  backgroundColor: '#999',
+                  borderRadius: '2px',
+                },
+              },
+            }}
+          />
+        )}
+
+        {!isBenchMinimized && placement === 'right' && (
+          <Box
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const startX = e.clientX;
+              const startWidth = benchWidth;
+              const handleMouseMove = (moveEvent) => {
+                moveEvent.preventDefault();
+                const deltaX = startX - moveEvent.clientX;
+                const newWidth = Math.max(280, Math.min(600, startWidth + deltaX));
+                setBenchWidth(newWidth);
+              };
+              const handleMouseUp = () => {
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+              };
+              document.addEventListener('mousemove', handleMouseMove);
+              document.addEventListener('mouseup', handleMouseUp);
+            }}
+            sx={{
+              position: 'absolute',
+              left: -3,
+              top: 0,
+              bottom: 0,
+              width: '16px',
+              cursor: 'ew-resize',
+              backgroundColor: 'transparent',
+              zIndex: 10,
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '4px',
+                  height: '40px',
+                  backgroundColor: '#999',
+                  borderRadius: '2px',
+                },
+              },
+            }}
+          />
+        )}
+
+        {isBenchMinimized ? (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              px: { xs: 1, sm: 2 },
+              py: 1,
+              height: '100%',
+              cursor: 'pointer',
+              '&:hover': {
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
+              },
+            }}
+            onClick={() => setIsBenchMinimized(false)}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+              Bench ({benchJobs.length}) • Scheduled ({scheduledJobs.length})
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
+              Tap to expand
+            </Typography>
+          </Box>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: placement === 'right' ? 'column' : { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 }, height: '100%', mt: 1, flexWrap: placement === 'right' ? 'nowrap' : undefined }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                Bench ({benchJobs.length})
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                Jobs ready to schedule. Click to schedule on calendar.
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
+                {benchJobs.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">No jobs on bench</Typography>
+                ) : (
+                  benchJobs.map((job) => (
+                    <BenchJobCard
+                      key={job._id}
+                      job={job}
+                      onJobClick={(j) => {
+                        if (!canModifyCalendar()) { toast.error('You do not have permission to modify calendar events'); return; }
+                        setSelectedJob(j); setSelectedDate(new Date()); setEventModalOpen(true);
+                      }}
+                      onViewJob={(id) => setJobIdForDetailModal(id)}
+                      onRemoveFromBench={handleRemoveFromBench}
+                    />
+                  ))
+                )}
+              </Box>
+            </Box>
+            <Box sx={{
+              flex: 1,
+              minWidth: 0,
+              borderLeft: placement === 'right' ? 'none' : { xs: 'none', md: '1px solid #e0e0e0' },
+              borderTop: placement === 'right' ? '1px solid #e0e0e0' : { xs: '1px solid #e0e0e0', md: 'none' },
+              pl: { xs: 0, md: placement === 'right' ? 0 : 3 },
+              pt: { xs: 2, md: 0 },
+            }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                Scheduled ({scheduledJobs.length})
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                Jobs with scheduled dates. Click to edit.
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
+                {scheduledJobs.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">No scheduled jobs</Typography>
+                ) : (
+                  scheduledJobs.map((job) => (
+                    <ScheduledJobCard
+                      key={job._id}
+                      job={job}
+                      onJobClick={(j) => {
+                        if (!canModifyCalendar()) { toast.error('You do not have permission to modify calendar events'); return; }
+                        setSelectedJob(j); setSelectedDate(j.schedule?.startDate ? new Date(j.schedule.startDate) : new Date()); setEventModalOpen(true);
+                      }}
+                      onJobDelete={handleEventDelete}
+                      onViewJob={(id) => setJobIdForDetailModal(id)}
+                    />
+                  ))
+                )}
+              </Box>
+            </Box>
+          </Box>
+        )}
+      </>
+    );
+  };
+
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
@@ -1180,238 +1430,94 @@ function CalendarPageNew() {
             Create Event
           </Button>
         )}
+        <FormControl size="small" sx={{ minWidth: 120, display: { xs: 'none', sm: 'flex' } }}>
+          <InputLabel>Bench position</InputLabel>
+          <Select
+            value={benchPosition}
+            label="Bench position"
+            onChange={(e) => setBenchPosition(e.target.value)}
+          >
+            <MenuItem value="top">Top</MenuItem>
+            <MenuItem value="right">Right</MenuItem>
+            <MenuItem value="bottom">Bottom</MenuItem>
+          </Select>
+        </FormControl>
       </Box>
 
-      {/* Calendar Grid - Three Months Stacked Vertically */}
-      <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 } }}>
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 3 } }}>
-            {months.map((monthDate, index) => renderMonth(monthDate, index))}
-          </Box>
-        )}
-      </Box>
-
-      {/* Bench Footer - Resizable */}
-      <Box
-        sx={{
-          flexShrink: 0,
-          backgroundColor: theme.palette.background.paper,
-          borderTop: `3px solid ${theme.palette.divider}`,
-          p: isBenchMinimized ? 0 : { xs: 1, sm: 2 },
-          height: isBenchMinimized ? '40px' : isMobile ? '200px' : `${benchHeight}px`,
-          overflow: isBenchMinimized ? 'hidden' : 'auto',
-          position: 'relative',
-          display: 'flex',
-          flexDirection: 'column',
-          transition: 'height 0.3s ease, padding 0.3s ease',
-        }}
-      >
-        {/* Minimize/Expand Button */}
-        <Box
-          sx={{
-            position: 'absolute',
-            top: isBenchMinimized ? 0 : -3,
-            right: 8,
-            zIndex: 20,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-          }}
-        >
-          <IconButton
-            onClick={() => {
-              setIsBenchMinimized(!isBenchMinimized);
-              if (!isBenchMinimized) {
-                // Store current height before minimizing
-                // If it's already minimized, restore to default
-                if (benchHeight < 150) {
-                  setBenchHeight(250);
-                }
-              }
-            }}
-            size="small"
+      {/* Main area: layout depends on bench position */}
+      {benchPosition === 'top' && (
+        <>
+          {/* Bench at top */}
+          <Box
             sx={{
+              flexShrink: 0,
               backgroundColor: theme.palette.background.paper,
-              border: `1px solid ${theme.palette.divider}`,
-              '&:hover': {
-                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
-              },
+              borderBottom: `3px solid ${theme.palette.divider}`,
+              p: isBenchMinimized ? 0 : { xs: 1, sm: 2 },
+              height: isBenchMinimized ? '40px' : isMobile ? '200px' : `${benchHeight}px`,
+              overflow: isBenchMinimized ? 'hidden' : 'auto',
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              transition: 'height 0.3s ease, padding 0.3s ease',
             }}
-            title={isBenchMinimized ? 'Expand Bench' : 'Minimize Bench'}
           >
-            {isBenchMinimized ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-          </IconButton>
+            {renderBenchPanelContent('top')}
+          </Box>
+          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 }, minHeight: 0 }}>
+            {renderCalendarContent()}
+          </Box>
+        </>
+      )}
+
+      {benchPosition === 'right' && (
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
+          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 }, minWidth: 0 }}>
+            {renderCalendarContent()}
+          </Box>
+          <Box
+            sx={{
+              flexShrink: 0,
+              width: isBenchMinimized ? 48 : benchWidth,
+              backgroundColor: theme.palette.background.paper,
+              borderLeft: `3px solid ${theme.palette.divider}`,
+              p: isBenchMinimized ? 0 : { xs: 1, sm: 2 },
+              overflow: isBenchMinimized ? 'hidden' : 'auto',
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              transition: 'width 0.3s ease',
+            }}
+          >
+            {renderBenchPanelContent('right')}
+          </Box>
         </Box>
+      )}
 
-        {/* Resize Handle */}
-        {!isBenchMinimized && (
-          <Box
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsResizing(true);
-              const startY = e.clientY;
-              const startHeight = benchHeight;
-              
-              const handleMouseMove = (moveEvent) => {
-                moveEvent.preventDefault();
-                const deltaY = startY - moveEvent.clientY; // Inverted because we're dragging up
-                const newHeight = Math.max(150, Math.min(600, startHeight + deltaY));
-                setBenchHeight(newHeight);
-              };
-              
-              const handleMouseUp = () => {
-                setIsResizing(false);
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
-              };
-              
-              document.addEventListener('mousemove', handleMouseMove);
-              document.addEventListener('mouseup', handleMouseUp);
-            }}
-            sx={{
-              position: 'absolute',
-              top: -3,
-              left: 0,
-              right: 0,
-              height: '16px',
-              cursor: 'ns-resize',
-              backgroundColor: 'transparent',
-              zIndex: 10,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              '&:hover': {
-                backgroundColor: 'rgba(0, 0, 0, 0.05)',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  width: '40px',
-                  height: '4px',
-                  backgroundColor: '#999',
-                  borderRadius: '2px',
-                },
-              },
-              '&:active': {
-                backgroundColor: 'rgba(0, 0, 0, 0.1)',
-              },
-              transition: 'background-color 0.2s',
-            }}
-          />
-        )}
-
-        {/* Minimized View */}
-        {isBenchMinimized ? (
+      {benchPosition === 'bottom' && (
+        <>
+          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 }, minHeight: 0 }}>
+            {renderCalendarContent()}
+          </Box>
+          {/* Bench at bottom - resizable */}
           <Box
             sx={{
+              flexShrink: 0,
+              backgroundColor: theme.palette.background.paper,
+              borderTop: `3px solid ${theme.palette.divider}`,
+              p: isBenchMinimized ? 0 : { xs: 1, sm: 2 },
+              height: isBenchMinimized ? '40px' : isMobile ? '200px' : `${benchHeight}px`,
+              overflow: isBenchMinimized ? 'hidden' : 'auto',
+              position: 'relative',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              px: { xs: 1, sm: 2 },
-              py: 1,
-              height: '100%',
-              cursor: 'pointer',
-              '&:hover': {
-                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
-              },
+              flexDirection: 'column',
+              transition: 'height 0.3s ease, padding 0.3s ease',
             }}
-            onClick={() => setIsBenchMinimized(false)}
           >
-            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-              Bench ({benchJobs.length}) • Scheduled ({scheduledJobs.length})
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-              Tap to expand
-            </Typography>
+            {renderBenchPanelContent('bottom')}
           </Box>
-        ) : (
-          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 }, height: '100%', mt: 1 }}>
-          {/* Bench Jobs - Need to Schedule */}
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-              Bench ({benchJobs.length})
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-              Jobs ready to schedule. Click to schedule on calendar.
-            </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
-              {benchJobs.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  No jobs on bench
-                </Typography>
-              ) : (
-                benchJobs.map((job) => (
-                  <BenchJobCard
-                    key={job._id}
-                    job={job}
-                    onJobClick={(job) => {
-                      if (!canModifyCalendar()) {
-                        toast.error('You do not have permission to modify calendar events');
-                        return;
-                      }
-                      setSelectedJob(job);
-                      setSelectedDate(new Date());
-                      setEventModalOpen(true);
-                    }}
-                    onViewJob={(id) => setJobIdForDetailModal(id)}
-                    onRemoveFromBench={handleRemoveFromBench}
-                  />
-                ))
-              )}
-            </Box>
-          </Box>
-
-          {/* Scheduled Jobs - With Green Checkmark */}
-          <Box sx={{ 
-            flex: 1, 
-            minWidth: 0, 
-            borderLeft: { xs: 'none', md: '1px solid #e0e0e0' },
-            borderTop: { xs: '1px solid #e0e0e0', md: 'none' },
-            pl: { xs: 0, md: 3 },
-            pt: { xs: 2, md: 0 }
-          }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-              Scheduled ({scheduledJobs.length})
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-              Jobs with scheduled dates. Click to edit.
-            </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
-              {scheduledJobs.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  No scheduled jobs
-                </Typography>
-              ) : (
-                scheduledJobs.map((job) => (
-                  <ScheduledJobCard
-                    key={job._id}
-                    job={job}
-                    onJobClick={(job) => {
-                      if (!canModifyCalendar()) {
-                        toast.error('You do not have permission to modify calendar events');
-                        return;
-                      }
-                      setSelectedJob(job);
-                      setSelectedDate(job.schedule?.startDate ? new Date(job.schedule.startDate) : new Date());
-                      setEventModalOpen(true);
-                    }}
-                    onJobDelete={handleEventDelete}
-                    onViewJob={(id) => setJobIdForDetailModal(id)}
-                  />
-                ))
-              )}
-            </Box>
-          </Box>
-          </Box>
-        )}
-      </Box>
+        </>
+      )}
 
       {/* Event Modal */}
       <EventModal

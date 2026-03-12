@@ -57,7 +57,7 @@ function DashboardPage() {
     jobsByStage: {},
     upcomingAppointments: [],
     pendingTasks: [],
-    overdueTasks: [],
+    urgentTasks: [],
     totalCustomers: 0,
   });
   const [activities, setActivities] = useState([]);
@@ -143,11 +143,7 @@ function DashboardPage() {
 
       // Tasks
       const pendingTasks = tasks.filter(task => !task.completedAt).slice(0, 5);
-      const overdueTasks = tasks.filter(task => {
-        if (task.completedAt) return false;
-        if (!task.dueDate) return false;
-        return parseISO(task.dueDate) < now;
-      }).slice(0, 5);
+      const urgentTasks = tasks.filter(task => !task.completedAt && !!task.isUrgent).slice(0, 5);
 
       // Sort activities by date (most recent first)
       const sortedActivities = [...allActivities].sort((a, b) => {
@@ -165,7 +161,7 @@ function DashboardPage() {
         jobsByStage,
         upcomingAppointments,
         pendingTasks,
-        overdueTasks,
+        urgentTasks,
         totalCustomers: customerTotal,
       });
       setActivities(sortedActivities);
@@ -797,17 +793,36 @@ function DashboardPage() {
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 3 }, px: { xs: 1.5, sm: 2 } }}>
       {/* Header */}
-      <Box sx={{ mb: { xs: 2, sm: 3 } }}>
-        <Typography variant="h4" sx={{ fontWeight: 600, fontSize: { xs: '1.35rem', sm: '1.75rem' }, mb: 1 }}>
+      <Box sx={{ mb: { xs: 3, sm: 4 }, pt: { xs: 0.5, sm: 1 } }}>
+        <Typography
+          variant="h4"
+          sx={{
+            fontWeight: 600,
+            fontSize: { xs: '1.75rem', sm: '2.25rem' },
+            lineHeight: 1.3,
+            mb: 2,
+          }}
+        >
           Dashboard
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
+        <Typography
+          variant="body1"
+          color="text.secondary"
+          sx={{
+            fontSize: { xs: '0.95rem', sm: '1.05rem' },
+            lineHeight: 1.5,
+            mt: 0.5,
+            display: 'block',
+          }}
+        >
           Overview of your pipeline and activity
         </Typography>
       </Box>
 
-      {/* Key metrics - single row of cards */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
+      {/* Single boxed section: all metrics + panels */}
+      <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2, mb: 3 }} elevation={0} variant="outlined">
+        {/* Key metrics - row 1 */}
+        <Grid container spacing={2} sx={{ mb: 2 }}>
         <Grid item xs={6} sm={6} md={3}>
           <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 1 }}>
             <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
@@ -878,7 +893,7 @@ function DashboardPage() {
         </Grid>
       </Grid>
 
-      {/* Secondary stats + quick links */}
+      {/* Secondary stats - row 2 */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={6} sm={4} md={2}>
           <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%' }} elevation={0} variant="outlined">
@@ -914,20 +929,20 @@ function DashboardPage() {
           </Paper>
         </Grid>
         <Grid item xs={6} sm={4} md={2}>
-          <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%', borderColor: stats.overdueTasks.length > 0 ? 'error.main' : undefined }} elevation={0} variant="outlined">
-            <WarningIcon sx={{ fontSize: 28, color: stats.overdueTasks.length > 0 ? 'error.main' : 'text.secondary', mb: 0.5 }} />
-            <Typography variant="h6" sx={{ fontWeight: 600, color: stats.overdueTasks.length > 0 ? 'error.main' : 'text.primary' }}>
-              {stats.overdueTasks.length}
+          <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, height: '100%', borderColor: stats.urgentTasks.length > 0 ? 'error.main' : undefined }} elevation={0} variant="outlined">
+            <WarningIcon sx={{ fontSize: 28, color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.secondary', mb: 0.5 }} />
+            <Typography variant="h6" sx={{ fontWeight: 600, color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.primary' }}>
+              {stats.urgentTasks.length}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              Overdue
+              Urgent
             </Typography>
           </Paper>
         </Grid>
       </Grid>
 
-      {/* Main Content Grid */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
+      {/* Panels - Jobs by Stage, Appointments, Pending Tasks, Urgent Tasks */}
+      <Grid container spacing={2} sx={{ mb: 0 }}>
         {/* Jobs by Stage */}
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
@@ -1070,24 +1085,24 @@ function DashboardPage() {
               </Paper>
             </Grid>
 
-            {/* Overdue Tasks */}
+            {/* Urgent Tasks */}
             <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2, borderColor: stats.overdueTasks.length > 0 ? 'error.main' : undefined }} elevation={0} variant="outlined">
+              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2, borderColor: stats.urgentTasks.length > 0 ? 'error.main' : undefined }} elevation={0} variant="outlined">
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600, color: stats.overdueTasks.length > 0 ? 'error.main' : 'inherit' }}>
-                    Overdue Tasks
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, color: stats.urgentTasks.length > 0 ? 'error.main' : 'inherit' }}>
+                    Urgent Tasks
                   </Typography>
                   <Button size="small" onClick={() => navigate('/tasks')} sx={{ textTransform: 'none' }}>
                     View all
                   </Button>
                 </Box>
-                {stats.overdueTasks.length === 0 ? (
+                {stats.urgentTasks.length === 0 ? (
                   <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                    No overdue tasks
+                    No urgent tasks
                   </Typography>
                 ) : (
                   <List>
-                    {stats.overdueTasks.map((task, index) => (
+                    {stats.urgentTasks.map((task, index) => (
                       <Box key={task._id || index}>
                         <ListItem>
                           <ListItemIcon>
@@ -1098,8 +1113,8 @@ function DashboardPage() {
                             secondary={
                               <Box sx={{ mt: 0.5 }}>
                                 {task.dueDate && (
-                                  <Typography variant="caption" color="error">
-                                    Overdue since: {formatDate(task.dueDate)}
+                                  <Typography variant="caption" color="text.secondary">
+                                    Due: {formatDate(task.dueDate)}
                                   </Typography>
                                 )}
                                 {task.assignedTo?.name && (
@@ -1111,7 +1126,7 @@ function DashboardPage() {
                             }
                           />
                         </ListItem>
-                        {index < stats.overdueTasks.length - 1 && <Divider />}
+                        {index < stats.urgentTasks.length - 1 && <Divider />}
                       </Box>
                     ))}
                   </List>
@@ -1119,6 +1134,7 @@ function DashboardPage() {
               </Paper>
             </Grid>
       </Grid>
+      </Paper>
 
       {/* Recent Activity - full width */}
       <Paper sx={{ p: 2.5, borderRadius: 2 }} elevation={0} variant="outlined">
