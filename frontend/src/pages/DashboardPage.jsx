@@ -798,10 +798,10 @@ function DashboardPage() {
     <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 3 }, px: { xs: 1.5, sm: 2 } }}>
       {/* Header */}
       <Box sx={{ mb: { xs: 2, sm: 3 } }}>
-        <Typography variant="h4" sx={{ fontWeight: 600, fontSize: { xs: '1.35rem', sm: '1.75rem' } }}>
+        <Typography variant="h4" sx={{ fontWeight: 600, fontSize: { xs: '1.35rem', sm: '1.75rem' }, mb: 1 }}>
           Dashboard
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
           Overview of your pipeline and activity
         </Typography>
       </Box>
