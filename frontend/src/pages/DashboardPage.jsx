@@ -1352,9 +1352,7 @@ function DashboardPage() {
         id="print-view"
         sx={{
           display: 'none',
-          '@media print': {
-            display: 'block',
-          },
+          '@media print': { display: 'block' },
         }}
       >
         <PrintView activities={sortedActivities} selectedDate={selectedPrintDate} />

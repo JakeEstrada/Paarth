@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import axios from 'axios';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import {
   Box,
   Paper,
@@ -29,6 +31,7 @@ import {
 } from '@mui/material';
 import {
   Print as PrintIcon,
+  Download as DownloadIcon,
   AccessTime as TimeIcon,
   DirectionsCar as CarIcon,
   Receipt as ReceiptIcon,
@@ -52,6 +55,8 @@ function PayrollPage() {
   const [savedPresets, setSavedPresets] = useState([]);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [presetName, setPresetName] = useState('');
+  const printSummaryRef = useRef(null);
+  const [capturingPdf, setCapturingPdf] = useState(false);
   
   // Work hours - default 6:00 AM - 2:30 PM (600 - 1430)
   const [workHours, setWorkHours] = useState(
@@ -321,6 +326,56 @@ function PayrollPage() {
     window.print();
   };
 
+  const handleDownloadPDF = async () => {
+    if (!printSummaryRef.current) return;
+    setCapturingPdf(true);
+    try {
+      await new Promise((r) => setTimeout(r, 150));
+      const el = printSummaryRef.current;
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgW = pageW;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, imgW, Math.min(imgH, pageH));
+      if (imgH > pageH) {
+        let heightLeft = imgH - pageH;
+        let position = -pageH;
+        while (heightLeft > 0) {
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+          heightLeft -= pageH;
+          position -= pageH;
+        }
+      }
+      const safeName = (employeeName || 'payroll').replace(/[^a-z0-9]/gi, '-');
+      const dateStr = date.replace(/\s/g, '-');
+      pdf.save(`payroll-${safeName}-${dateStr}.pdf`);
+
+      try {
+        await axios.post(`${API_URL}/activities/payroll/print`, {
+          employeeName: employeeName.trim() || 'Unknown',
+          date: date,
+        });
+      } catch (err) {
+        console.error('Error logging payroll download:', err);
+      }
+      toast.success('PDF downloaded');
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      toast.error('Failed to generate PDF');
+    } finally {
+      setCapturingPdf(false);
+    }
+  };
+
   return (
     <>
       {/* Print-specific styles */}
@@ -351,8 +406,26 @@ function PayrollPage() {
       `}</style>
       
       <Box sx={{ p: { xs: 1, sm: 2, md: 4 }, width: '100%', '@media print': { p: 0 } }}>
-        {/* Print Summary - Only visible when printing */}
-        <Box className="print-summary" sx={{ display: 'none', '@media print': { display: 'block', p: 2 } }}>
+        {/* Print Summary - Only visible when printing or when capturing for PDF */}
+        <Box
+          ref={printSummaryRef}
+          className="print-summary"
+          sx={{
+            display: capturingPdf ? 'block' : 'none',
+            '@media print': { display: 'block', p: 2 },
+            ...(capturingPdf && {
+              position: 'fixed',
+              left: 0,
+              top: 0,
+              width: 800,
+              maxWidth: '100%',
+              p: 2,
+              backgroundColor: '#fff',
+              zIndex: 9999,
+              boxShadow: 3,
+            }),
+          }}
+        >
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
           {/* Logo at top left */}
           <Box sx={{ flexShrink: 0 }}>
@@ -566,6 +639,15 @@ function PayrollPage() {
               sx={{ textTransform: 'none', borderRadius: 2 }}
             >
               Print
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<DownloadIcon />}
+              onClick={handleDownloadPDF}
+              disabled={capturingPdf}
+              sx={{ textTransform: 'none', borderRadius: 2 }}
+            >
+              {capturingPdf ? 'Generating…' : 'Download PDF'}
             </Button>
           </Box>
         </Box>
