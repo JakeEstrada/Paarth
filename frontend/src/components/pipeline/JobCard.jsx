@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, Typography, Box, Chip, IconButton, Tooltip, useTheme } from '@mui/material';
-import { Person as PersonIcon } from '@mui/icons-material';
+import { Card, CardContent, Typography, Box, Tooltip, useTheme } from '@mui/material';
 
 function JobCard({ job, onClick, onContextMenu, canModify = true }) {
   const theme = useTheme();
-  const [daysSinceSent, setDaysSinceSent] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const cardRef = useRef(null);
 
@@ -13,47 +11,6 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
     if (!title) return 'Untitled Job';
     if (title.length <= maxLength) return title;
     return title.substring(0, maxLength) + '...';
-  };
-
-  // Calculate days since estimate was sent or job was created (for ESTIMATE_IN_PROGRESS)
-  useEffect(() => {
-    if (job.stage === 'ESTIMATE_SENT' && job.estimate?.sentAt) {
-      const calculateDays = () => {
-        const sentDate = new Date(job.estimate.sentAt);
-        const now = new Date();
-        const diffTime = Math.abs(now - sentDate);
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        setDaysSinceSent(diffDays);
-      };
-
-      calculateDays();
-      // Update every hour
-      const interval = setInterval(calculateDays, 3600000);
-      return () => clearInterval(interval);
-    } else if (job.stage === 'ESTIMATE_IN_PROGRESS') {
-      // Calculate days since job was created or last updated (whichever is more recent)
-      const calculateDays = () => {
-        const startDate = job.updatedAt ? new Date(job.updatedAt) : new Date(job.createdAt);
-        const now = new Date();
-        const diffTime = Math.abs(now - startDate);
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        setDaysSinceSent(diffDays);
-      };
-
-      calculateDays();
-      // Update every hour
-      const interval = setInterval(calculateDays, 3600000);
-      return () => clearInterval(interval);
-    } else {
-      setDaysSinceSent(null);
-    }
-  }, [job.stage, job.estimate?.sentAt, job.createdAt, job.updatedAt]);
-
-  const getTimerColor = () => {
-    if (daysSinceSent === null) return '#546E7A';
-    if (daysSinceSent >= 5) return '#D32F2F'; // Red - should be moved
-    if (daysSinceSent >= 3) return '#F57C00'; // Orange - warning
-    return '#43A047'; // Green - still ok
   };
 
   const handleContextMenu = (e) => {
@@ -82,6 +39,30 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
   const handleDragEnd = () => {
     setIsDragging(false);
   };
+
+  // Determine status dot color based on bench / scheduled state
+  const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
+  const isArchived = !!job.isArchived;
+  const isDeadEstimate = !!job.isDeadEstimate;
+  const hasSchedule = !!job.schedule?.startDate;
+
+  const isBenchJob =
+    readinessStages.includes(job.stage) && !isArchived && !isDeadEstimate;
+  const isScheduledJob =
+    (hasSchedule || job.stage === 'SCHEDULED') && !isArchived && !isDeadEstimate;
+
+  let statusColor = theme.palette.info.main; // default blue
+  let statusLabel = 'Open: not on bench or scheduled yet';
+
+  if (isBenchJob) {
+    statusColor = '#F57C00'; // orange
+    statusLabel =
+      'On bench: job is in a readiness stage and not yet scheduled on the calendar.';
+  } else if (isScheduledJob) {
+    statusColor = theme.palette.success.main; // green
+    statusLabel =
+      'Scheduled: job has scheduled dates or is in the Scheduled stage.';
+  }
 
   return (
     <Card
@@ -153,25 +134,18 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
             </>
           )}
           </Box>
-        <Tooltip title="View job (customer & details)">
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onClick) onClick();
-            }}
+        <Tooltip title={statusLabel}>
+          <Box
             sx={{
               flexShrink: 0,
-              p: 0.25,
-              color: theme.palette.text.secondary,
-              '&:hover': {
-                color: theme.palette.primary.main,
-                backgroundColor: theme.palette.action.hover,
-              },
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              backgroundColor: statusColor,
+              border: `2px solid ${theme.palette.background.paper}`,
+              mt: 0.5,
             }}
-          >
-            <PersonIcon sx={{ fontSize: 18 }} />
-          </IconButton>
+          />
         </Tooltip>
       </Box>
         
