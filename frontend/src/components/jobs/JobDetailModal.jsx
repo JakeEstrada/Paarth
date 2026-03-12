@@ -479,7 +479,6 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
           <Tab label="Overview" />
           <Tab label="Files" />
-          <Tab label="Schedule" />
           <Tab label="Notes" />
         </Tabs>
 
@@ -933,54 +932,6 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
         )}
 
         {activeTab === 2 && (
-          <Box>
-            {job.schedule?.startDate ? (
-              <Grid container spacing={3}>
-                <Grid item xs={12} sm={6}>
-                  <Paper sx={{ p: 2 }}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                      Start Date
-                    </Typography>
-                    <Typography variant="body1">
-                      {formatDate(job.schedule.startDate)}
-                    </Typography>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Paper sx={{ p: 2 }}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                      End Date
-                    </Typography>
-                    <Typography variant="body1">
-                      {formatDate(job.schedule.endDate)}
-                    </Typography>
-                  </Paper>
-                </Grid>
-                {job.schedule.crewNotes && (
-                  <Grid item xs={12}>
-                    <Paper sx={{ p: 2 }}>
-                      <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                        Crew Notes
-                      </Typography>
-                      <Typography variant="body2">
-                        {job.schedule.crewNotes}
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                )}
-              </Grid>
-            ) : (
-              <Paper sx={{ p: 4, textAlign: 'center' }}>
-                <CalendarIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="body1" color="text.secondary">
-                  No schedule has been set yet
-                </Typography>
-              </Paper>
-            )}
-          </Box>
-        )}
-
-        {activeTab === 3 && (
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2 }}>
               <Button
