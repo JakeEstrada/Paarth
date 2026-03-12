@@ -268,24 +268,30 @@ function PayrollPage() {
 
   // Save current hours as a new preset
   const handleSavePreset = () => {
-    if (!presetName.trim()) {
+    const name = presetName.trim();
+    if (!name) {
+      toast.error('Enter a name for this preset');
       return;
     }
 
     const newPreset = {
       id: Date.now().toString(),
-      name: presetName.trim(),
-      hours: [...workHours],
+      name,
+      hours: workHours.map(h => ({ day: h.day, in: h.in, out: h.out, breaks: h.breaks })),
       createdAt: new Date().toISOString(),
     };
 
-    const updatedPresets = [...savedPresets, newPreset];
-    setSavedPresets(updatedPresets);
-    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
-    
-    setPresetName('');
-    setSaveDialogOpen(false);
-    toast.success(`Preset "${newPreset.name}" saved successfully`);
+    try {
+      const updatedPresets = [...savedPresets, newPreset];
+      setSavedPresets(updatedPresets);
+      localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
+      setPresetName('');
+      setSaveDialogOpen(false);
+      toast.success(`Preset "${newPreset.name}" saved`);
+    } catch (err) {
+      console.error('Save preset failed:', err);
+      toast.error('Could not save preset. Try again or check if storage is full.');
+    }
   };
 
   // Delete a saved preset
@@ -545,7 +551,10 @@ function PayrollPage() {
             <Button
               variant="outlined"
               startIcon={<SaveIcon />}
-              onClick={() => setSaveDialogOpen(true)}
+              onClick={() => {
+                setPresetName(prev => prev || `Hours ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`);
+                setSaveDialogOpen(true);
+              }}
               sx={{ textTransform: 'none', borderRadius: 2 }}
             >
               Save Current Hours

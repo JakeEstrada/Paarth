@@ -47,6 +47,9 @@ import JobDetailModal from '../components/jobs/JobDetailModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
+
 // Default installer order used for calendar lanes and suggestions
 const DEFAULT_INSTALLER_ORDER = [
   'Nick',
@@ -460,7 +463,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
 }
 
 // Calendar Day Component
-function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete, onViewJob, installerOrder }) {
+function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete, onViewJob, onDayContextMenu, installerOrder }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [contextMenu, setContextMenu] = useState(null);
@@ -567,6 +570,13 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           },
         }}
         onClick={() => onDayClick(date)}
+        onContextMenu={(e) => {
+          if (onDayContextMenu) {
+            e.preventDefault();
+            e.stopPropagation();
+            onDayContextMenu(date, e);
+          }
+        }}
       >
         <Typography
           variant="body2"
@@ -820,6 +830,24 @@ function CalendarPageNew() {
   const [isBenchMinimized, setIsBenchMinimized] = useState(false);
   const [installerOrder, setInstallerOrder] = useState(DEFAULT_INSTALLER_ORDER);
 
+  const [hiddenWeekdays, setHiddenWeekdays] = useState(() => {
+    try {
+      const stored = localStorage.getItem(CALENDAR_HIDDEN_WEEKDAYS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed.filter((d) => d >= 0 && d <= 6) : [];
+      }
+    } catch (_) {}
+    return [];
+  });
+  const [dayContextMenu, setDayContextMenu] = useState(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CALENDAR_HIDDEN_WEEKDAYS_KEY, JSON.stringify(hiddenWeekdays));
+    } catch (_) {}
+  }, [hiddenWeekdays]);
+
   useEffect(() => {
     fetchJobs();
   }, [currentDate]);
@@ -952,10 +980,35 @@ function CalendarPageNew() {
     setCurrentDate(new Date());
   };
 
+  const visibleWeekdays = useMemo(
+    () => [0, 1, 2, 3, 4, 5, 6].filter((d) => !hiddenWeekdays.includes(d)),
+    [hiddenWeekdays]
+  );
+
+  const handleDayContextMenu = (date, e) => {
+    e.preventDefault();
+    setDayContextMenu({
+      left: e.clientX,
+      top: e.clientY,
+      date,
+    });
+  };
+
+  const handleCloseDayContextMenu = () => setDayContextMenu(null);
+
+  const toggleWeekdayHidden = (weekday) => {
+    setHiddenWeekdays((prev) =>
+      prev.includes(weekday) ? prev.filter((d) => d !== weekday) : [...prev, weekday].sort((a, b) => a - b)
+    );
+    setDayContextMenu(null);
+  };
+
   // Render a single month calendar
   const renderMonth = (monthDate, monthIndex) => {
     const calendarDays = getCalendarDaysForMonth(monthDate);
-    
+    const visibleDays = calendarDays.filter((d) => !hiddenWeekdays.includes(d.getDay()));
+    const columnCount = visibleWeekdays.length;
+
     return (
       <Box key={monthIndex} sx={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {/* Month Header - hide on mobile since it's in the main header */}
@@ -964,12 +1017,12 @@ function CalendarPageNew() {
             {format(monthDate, 'MMMM yyyy')}
           </Typography>
         )}
-        
-        {/* Day Headers */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', mb: 0, gap: 0 }}>
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+
+        {/* Day Headers - only visible weekdays */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${columnCount}, 1fr)`, mb: 0, gap: 0 }}>
+          {visibleWeekdays.map((dayIndex) => (
             <Paper
-              key={day}
+              key={dayIndex}
               sx={{
                 p: { xs: 0.5, sm: 1 },
                 textAlign: 'center',
@@ -978,15 +1031,17 @@ function CalendarPageNew() {
                 fontWeight: 600,
               }}
             >
-              <Typography variant="body2" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>{isMobile ? day.substring(0, 1) : day}</Typography>
+              <Typography variant="body2" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
+                {isMobile ? WEEKDAY_LABELS[dayIndex].substring(0, 1) : WEEKDAY_LABELS[dayIndex].substring(0, 3)}
+              </Typography>
             </Paper>
           ))}
         </Box>
 
-        {/* Calendar Days Grid - square day cells (aspect-ratio 1); content scrolls */}
-        <Box sx={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(7, 1fr)',
+        {/* Calendar Days Grid - only visible weekdays */}
+        <Box sx={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${columnCount}, 1fr)`,
           gridAutoRows: 'auto',
           gap: 0,
           minHeight: 0,
@@ -995,7 +1050,7 @@ function CalendarPageNew() {
             aspectRatio: '1',
           }
         }}>
-          {calendarDays.map((date, index) => (
+          {visibleDays.map((date, index) => (
             <Box key={index} sx={{ width: '100%', minWidth: 0, aspectRatio: '1', display: 'block' }}>
               <CalendarDay
                 key={index}
@@ -1006,6 +1061,7 @@ function CalendarPageNew() {
                 onEventClick={handleEventClick}
                 onEventDelete={handleEventDelete}
                 onViewJob={(id) => setJobIdForDetailModal(id)}
+                onDayContextMenu={handleDayContextMenu}
                 installerOrder={installerOrder}
               />
             </Box>
@@ -1335,6 +1391,31 @@ function CalendarPageNew() {
           fetchJobs();
         }}
       />
+
+      {/* Right-click on a date: hide/show that weekday */}
+      <Menu
+        open={!!dayContextMenu}
+        onClose={handleCloseDayContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          dayContextMenu
+            ? { top: dayContextMenu.top, left: dayContextMenu.left }
+            : undefined
+        }
+      >
+        {dayContextMenu && (() => {
+          const weekday = dayContextMenu.date.getDay();
+          const label = WEEKDAY_LABELS[weekday];
+          const isHidden = hiddenWeekdays.includes(weekday);
+          return (
+            <MenuItem
+              onClick={() => toggleWeekdayHidden(weekday)}
+            >
+              {isHidden ? `Show ${label}s` : `Hide ${label}s`}
+            </MenuItem>
+          );
+        })()}
+      </Menu>
     </Box>
   );
 }
