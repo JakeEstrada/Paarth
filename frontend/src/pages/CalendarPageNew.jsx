@@ -383,6 +383,17 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                 { name: 'Teal', value: '#009688' },
                 { name: 'Pink', value: '#E91E63' },
                 { name: 'Brown', value: '#795548' },
+                { name: 'Navy', value: '#1565C0' },
+                { name: 'Cyan', value: '#00BCD4' },
+                { name: 'Lime', value: '#8BC34A' },
+                { name: 'Amber', value: '#FFC107' },
+                { name: 'Deep Orange', value: '#FF5722' },
+                { name: 'Indigo', value: '#3F51B5' },
+                { name: 'Deep Purple', value: '#673AB7' },
+                { name: 'Blue Grey', value: '#607D8B' },
+                { name: 'Grey', value: '#9E9E9E' },
+                { name: 'Maroon', value: '#880E4F' },
+                { name: 'Forest', value: '#2E7D32' },
               ].map((colorOption) => (
                 <Box
                   key={colorOption.value}
