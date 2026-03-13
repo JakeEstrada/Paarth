@@ -176,11 +176,6 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
             toast('Saved. Google Calendar sync failed.', { icon: 'ℹ️' });
           }
         }
-      } else {
-        // Create a standalone calendar event (could be stored separately)
-        toast.info('Standalone events coming soon');
-      }
-
       onSave();
       onClose();
     } catch (error) {
@@ -212,7 +207,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
       }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-        <span>{job ? 'Edit Event' : 'Create Event'}</span>
+        <span>{job ? 'Edit Event' : 'Schedule Job'}</span>
         {(job || formData.jobId) && onViewJob && (
           <Button
             size="small"
@@ -1443,21 +1438,7 @@ function CalendarPageNew() {
             Today
           </Button>
         </Box>
-        {canModifyCalendar() && (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => {
-              setSelectedDate(new Date());
-              setSelectedJob(null);
-              setEventModalOpen(true);
-            }}
-            size="small"
-            sx={{ width: { xs: '100%', sm: 'auto' } }}
-          >
-            Create Event
-          </Button>
-        )}
+        {/* Standalone event creation removed; calendar now only schedules existing jobs */}
         <FormControl size="small" sx={{ minWidth: 120, display: { xs: 'none', sm: 'flex' } }}>
           <InputLabel>Bench position</InputLabel>
           <Select
