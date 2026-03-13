@@ -901,7 +901,7 @@ function CalendarPageNew() {
       const stored = localStorage.getItem(CALENDAR_BENCH_POSITION_KEY);
       if (stored === 'top' || stored === 'right' || stored === 'bottom') return stored;
     } catch (_) {}
-    return 'bottom';
+    return 'right';
   });
   const [benchWidth, setBenchWidth] = useState(320);
 
