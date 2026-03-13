@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Box, Card, CardContent, Typography, Paper, Button, IconButton, Tooltip, useTheme } from '@mui/material';
-import { Add as AddIcon, Archive as ArchiveIcon } from '@mui/icons-material';
+import { Add as AddIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import JobCard from './JobCard';
@@ -194,7 +194,7 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
                   ${Math.round(value / 1000)}K
                 </Typography>
                 {stageId === 'FINAL_PAYMENT_CLOSED' && completedJobsCount > 0 && onArchiveCompleted && (
-                  <Tooltip title={`Archive ${completedJobsCount} completed job(s)`}>
+                  <Tooltip title={`Close out ${completedJobsCount} completed job(s)`}>
                     <IconButton
                       size="small"
                       onClick={(e) => {
@@ -202,15 +202,15 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
                         onArchiveCompleted();
                       }}
                       sx={{
-                        color: theme.palette.secondary.main,
+                        color: theme.palette.success.main,
                         '&:hover': {
                           backgroundColor: theme.palette.mode === 'dark' 
-                            ? 'rgba(156, 39, 176, 0.2)' 
-                            : 'rgba(156, 39, 176, 0.1)',
+                            ? 'rgba(67, 160, 71, 0.2)' 
+                            : 'rgba(67, 160, 71, 0.1)',
                         },
                       }}
                     >
-                      <ArchiveIcon fontSize="small" />
+                      <CheckCircleIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                 )}

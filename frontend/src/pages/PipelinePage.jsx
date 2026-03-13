@@ -149,7 +149,7 @@ function PipelinePage() {
     try {
       setArchiving(true);
       const response = await axios.post(`${API_URL}/jobs/archive-completed`);
-      toast.success(`Archived ${response.data.archived} completed job(s)`);
+      toast.success(`Closed out ${response.data.archived} completed job(s)`);
       setArchiveDialogOpen(false);
       await fetchJobs(); // Refresh the list
     } catch (error) {
@@ -478,13 +478,13 @@ function PipelinePage() {
           }}
         />
 
-        {/* Archive Completed Jobs Dialog */}
+        {/* Close Out Completed Jobs Dialog */}
         <Dialog open={archiveDialogOpen} onClose={() => !archiving && setArchiveDialogOpen(false)}>
-          <DialogTitle>Archive Completed Jobs</DialogTitle>
+          <DialogTitle>Close Out Completed Jobs</DialogTitle>
           <DialogContent>
             <DialogContentText>
-              Are you sure you want to archive all {completedJobsCount} job(s) in the "Final Payment Closed" stage?
-              These jobs will be moved to the archive and removed from the active pipeline.
+              Are you sure you want to close out all {completedJobsCount} job(s) in the "Final Payment Closed" stage?
+              These jobs will be removed from the active pipeline. You can still see their history on the Completed Jobs page.
             </DialogContentText>
           </DialogContent>
           <DialogActions>
@@ -493,12 +493,12 @@ function PipelinePage() {
             </Button>
             <Button 
               onClick={handleArchiveCompleted} 
-              color="secondary" 
+              color="success" 
               variant="contained"
               disabled={archiving}
               startIcon={<ArchiveIcon />}
             >
-              {archiving ? 'Archiving...' : `Archive ${completedJobsCount} Job(s)`}
+              {archiving ? 'Closing...' : `Close Out ${completedJobsCount} Job(s)`}
             </Button>
           </DialogActions>
         </Dialog>
