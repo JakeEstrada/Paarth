@@ -337,7 +337,6 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
             fullWidth
             size="small"
             label="Search jobs in pipeline"
-            placeholder="Search by job, customer, or stage…"
             value={search}
             onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
             InputProps={{
