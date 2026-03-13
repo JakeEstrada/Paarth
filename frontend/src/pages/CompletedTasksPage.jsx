@@ -256,7 +256,7 @@ function CompletedTasksPage() {
       'CONTRACT_OUT': 'Contract Out',
       'DEPOSIT_PENDING': 'Deposit Pending',
       'JOB_PREP': 'Job Prep',
-      'TAKEOFF_COMPLETE': 'Takeoff Complete',
+      'TAKEOFF_COMPLETE': 'Fabrication',
       'READY_TO_SCHEDULE': 'Ready to Schedule',
       'SCHEDULED': 'Scheduled',
       'IN_PRODUCTION': 'In Production',

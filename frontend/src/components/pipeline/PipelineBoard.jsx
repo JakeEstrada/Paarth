@@ -14,7 +14,7 @@ const STAGE_LABELS = {
   CONTRACT_SIGNED: 'Contract Signed', // Kept for backward compatibility but not shown
   DEPOSIT_PENDING: 'Signed / Deposit Pending',
   JOB_PREP: 'Job Prep',
-  TAKEOFF_COMPLETE: 'Takeoff Complete',
+  TAKEOFF_COMPLETE: 'Fabrication',
   READY_TO_SCHEDULE: 'Ready to Schedule',
   SCHEDULED: 'Scheduled',
   IN_PRODUCTION: 'In Production',

@@ -13,7 +13,7 @@ const STAGE_LABELS = {
     // Job readiness phase
     DEPOSIT_PENDING: 'Signed / Deposit Pending',
     JOB_PREP: 'Job Prep',
-    TAKEOFF_COMPLETE: 'Takeoff Complete',
+    TAKEOFF_COMPLETE: 'Fabrication',
     READY_TO_SCHEDULE: 'Ready to Schedule',
     
     // Execution phase

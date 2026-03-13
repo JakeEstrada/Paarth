@@ -1,3 +1,4 @@
+<restored README content from git>
 # Paarth - San Clemente Woodworking CRM
 
 A comprehensive Customer Relationship Management (CRM) and project management system designed specifically for San Clemente Woodworking. This application helps manage the entire workflow from initial customer contact through project completion, including job tracking, scheduling, customer management, and payroll.
@@ -325,8 +326,8 @@ backend/src/
    - Job in "Job Prep" stage
    - Add notes about materials, measurements, special requirements
 
-2. **Takeoff Complete**
-   - Move to "Takeoff Complete" stage
+2. **Fabrication**
+   - Move to "Fabrication" stage
    - Record takeoff completion date and person
    - Add takeoff notes
 
