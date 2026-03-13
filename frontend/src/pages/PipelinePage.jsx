@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Typography,
@@ -14,11 +14,14 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   Archive as ArchiveIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -61,6 +64,7 @@ function PipelinePage() {
   const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [pipelineSearch, setPipelineSearch] = useState('');
 
   const autoMoveDeadEstimates = async () => {
     try {
@@ -160,8 +164,24 @@ function PipelinePage() {
     }
   };
 
-  // Count jobs in FINAL_PAYMENT_CLOSED stage
-  const completedJobsCount = jobs.filter(
+  // Filtered jobs for pipeline search
+  const filteredJobs = useMemo(() => {
+    const term = pipelineSearch.trim().toLowerCase();
+    if (!term) return jobs;
+    return jobs.filter((job) => {
+      const title = job.title || '';
+      const customerName = job.customerId?.name || '';
+      const stage = job.stage || '';
+      return (
+        title.toLowerCase().includes(term) ||
+        customerName.toLowerCase().includes(term) ||
+        stage.toLowerCase().includes(term)
+      );
+    });
+  }, [jobs, pipelineSearch]);
+
+  // Count jobs in FINAL_PAYMENT_CLOSED stage (respecting search filter)
+  const completedJobsCount = filteredJobs.filter(
     job => job.stage === 'FINAL_PAYMENT_CLOSED' && !job.isArchived && !job.isDeadEstimate
   ).length;
 
@@ -170,13 +190,32 @@ function PipelinePage() {
       {/* Main Content */}
       <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 1, sm: 2 } }}>
         {/* Page Header */}
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h1" sx={{ mb: 1 }}>
-            Sales Pipeline
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-            Manage your woodworking projects from first contact to final payment
-          </Typography>
+        <Box sx={{ mb: 4, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'flex-start', md: 'center' }, justifyContent: 'space-between', gap: 2 }}>
+          <Box>
+            <Typography variant="h1" sx={{ mb: 1 }}>
+              Sales Pipeline
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Manage your woodworking projects from first contact to final payment
+            </Typography>
+          </Box>
+          <Box sx={{ minWidth: { xs: '100%', sm: 260 }, maxWidth: 340 }}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Search jobs in pipeline"
+              placeholder="Search by job, customer, or stage…"
+              value={pipelineSearch}
+              onChange={(e) => setPipelineSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
         </Box>
 
         {/* Todos and Appointments Section */}
@@ -332,7 +371,7 @@ function PipelinePage() {
           </Box>
         ) : (
           <PipelineBoard
-            jobs={jobs}
+            jobs={filteredJobs}
             onJobUpdate={handleJobUpdate}
             onStageChange={handleStageChange}
             onJobClick={setSelectedJobId}
