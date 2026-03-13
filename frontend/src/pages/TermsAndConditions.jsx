@@ -6,6 +6,14 @@ export default function TermsAndConditions() {
     <Box sx={{ minHeight: '100vh', py: 4 }}>
       <Container maxWidth="md">
         <Paper elevation={0} sx={{ p: { xs: 2, sm: 4 }, borderRadius: 2 }}>
+          <Box sx={{ textAlign: 'center', mb: 3 }}>
+            <Box
+              component="img"
+              src="/logo.png"
+              alt="Logo"
+              sx={{ height: 56, width: 'auto', objectFit: 'contain' }}
+            />
+          </Box>
           <Typography variant="h4" component="h1" sx={{ fontWeight: 600, mb: 1 }}>
             Terms and Conditions
           </Typography>
