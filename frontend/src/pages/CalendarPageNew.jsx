@@ -176,6 +176,8 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
             toast('Saved. Google Calendar sync failed.', { icon: 'ℹ️' });
           }
         }
+      } // end if (formData.jobId)
+
       onSave();
       onClose();
     } catch (error) {
