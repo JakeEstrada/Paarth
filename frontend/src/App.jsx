@@ -7,6 +7,8 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ForgotUsernamePage from './pages/ForgotUsernamePage';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsAndConditions from './pages/TermsAndConditions';
 import PipelinePage from './pages/PipelinePage';
 import JobArchivePage from './pages/JobArchivePage';
 import CompletedAppointmentsPage from './pages/CompletedAppointmentsPage';
@@ -45,6 +47,8 @@ function App() {
         <Route path="/register" element={user ? <Navigate to="/pipeline" replace /> : <RegisterPage />} />
         <Route path="/forgot-password" element={user ? <Navigate to="/pipeline" replace /> : <ForgotPasswordPage />} />
         <Route path="/forgot-username" element={user ? <Navigate to="/pipeline" replace /> : <ForgotUsernamePage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<TermsAndConditions />} />
         <Route
           path="/*"
           element={
