@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Box, Card, CardContent, Typography, Paper, Button, IconButton, Tooltip, useTheme } from '@mui/material';
-import { Add as AddIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
+import { Box, Card, CardContent, Typography, Paper, Button, IconButton, Tooltip, useTheme, TextField, InputAdornment } from '@mui/material';
+import { Add as AddIcon, CheckCircle as CheckCircleIcon, Search as SearchIcon } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import JobCard from './JobCard';
@@ -48,7 +48,7 @@ const EXECUTION_PHASE = [
   'FINAL_PAYMENT_CLOSED',
 ];
 
-function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobClick, onJobContextMenu, onArchiveCompleted, completedJobsCount }) {
+function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobClick, onJobContextMenu, onArchiveCompleted, completedJobsCount, search = '', onSearchChange }) {
   const theme = useTheme();
   const { canModifyPipeline } = useAuth();
   const [draggedOverStage, setDraggedOverStage] = useState(null);
@@ -302,7 +302,18 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
         p: 3,
       }}
     >
-      <Box sx={{ mb: 3, pb: 2, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box
+        sx={{
+          mb: 3,
+          pb: 2,
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'flex-start', md: 'center' },
+          gap: 2,
+        }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {onNewJobClick && (
             <Button
@@ -320,6 +331,23 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
           <Typography variant="h2" sx={{ fontSize: '1.5rem', fontWeight: 400 }}>
             Pipeline Overview
           </Typography>
+        </Box>
+        <Box sx={{ minWidth: { xs: '100%', sm: 260 }, maxWidth: 340 }}>
+          <TextField
+            fullWidth
+            size="small"
+            label="Search jobs in pipeline"
+            placeholder="Search by job, customer, or stage…"
+            value={search}
+            onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
         </Box>
       </Box>
 

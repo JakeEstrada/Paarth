@@ -14,14 +14,11 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
-  TextField,
-  InputAdornment,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   Archive as ArchiveIcon,
-  Search as SearchIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -190,32 +187,13 @@ function PipelinePage() {
       {/* Main Content */}
       <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 1, sm: 2 } }}>
         {/* Page Header */}
-        <Box sx={{ mb: 4, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'flex-start', md: 'center' }, justifyContent: 'space-between', gap: 2 }}>
-          <Box>
-            <Typography variant="h1" sx={{ mb: 1 }}>
-              Sales Pipeline
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Manage your woodworking projects from first contact to final payment
-            </Typography>
-          </Box>
-          <Box sx={{ minWidth: { xs: '100%', sm: 260 }, maxWidth: 340 }}>
-            <TextField
-              fullWidth
-              size="small"
-              label="Search jobs in pipeline"
-              placeholder="Search by job, customer, or stage…"
-              value={pipelineSearch}
-              onChange={(e) => setPipelineSearch(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h1" sx={{ mb: 1 }}>
+            Sales Pipeline
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Manage your woodworking projects from first contact to final payment
+          </Typography>
         </Box>
 
         {/* Todos and Appointments Section */}
@@ -384,6 +362,8 @@ function PipelinePage() {
             }}
             onArchiveCompleted={() => setArchiveDialogOpen(true)}
             completedJobsCount={completedJobsCount}
+            search={pipelineSearch}
+            onSearchChange={setPipelineSearch}
           />
         )}
 
