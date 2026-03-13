@@ -157,7 +157,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
               count: formData.recurrenceCount,
             },
           },
-          stage: 'SCHEDULED',
+          // Keep the existing job stage; do not auto-advance it when scheduling
           color: formData.color,
         });
 
