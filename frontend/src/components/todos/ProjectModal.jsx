@@ -25,6 +25,7 @@ import {
   AttachFile as AttachFileIcon,
   Delete as DeleteIcon,
   Download as DownloadIcon,
+  OpenInNew as OpenInNewIcon,
   PictureAsPdf as PictureAsPdfIcon,
   Image as ImageIcon,
   CheckCircle as CheckCircleIcon,
@@ -775,6 +776,16 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                           {formatFileSize(file.size)} • {format(new Date(file.createdAt), 'MMM dd, yyyy')}
                         </Typography>
                       </Box>
+                      {(isPDF || isImage) && (
+                        <IconButton
+                          size="small"
+                          onClick={() => window.open(`${API_URL}/files/${file._id}`, '_blank')}
+                          sx={{ color: 'primary.main' }}
+                          title={isPDF ? 'View PDF' : 'View image'}
+                        >
+                          <OpenInNewIcon fontSize="small" />
+                        </IconButton>
+                      )}
                       <IconButton
                         size="small"
                         onClick={() => handleDownloadFile(file._id)}
