@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Box, Card, CardContent, Typography, Paper, Button, IconButton, Tooltip, useTheme, TextField, InputAdornment } from '@mui/material';
-import { Add as AddIcon, CheckCircle as CheckCircleIcon, Search as SearchIcon } from '@mui/icons-material';
+import { Add as AddIcon, CheckCircle as CheckCircleIcon, Search as SearchIcon, History as HistoryIcon } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import JobCard from './JobCard';
@@ -50,6 +51,7 @@ const EXECUTION_PHASE = [
 
 function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobClick, onJobContextMenu, onArchiveCompleted, completedJobsCount, search = '', onSearchChange }) {
   const theme = useTheme();
+  const navigate = useNavigate();
   const { canModifyPipeline } = useAuth();
   const [draggedOverStage, setDraggedOverStage] = useState(null);
 
@@ -182,7 +184,7 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
               >
                 {count}
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <Typography
                   variant="body2"
                   sx={{
@@ -193,6 +195,26 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
                 >
                   ${Math.round(value / 1000)}K
                 </Typography>
+                {stageId === 'ESTIMATE_SENT' && (
+                  <Tooltip title="View archived estimates">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/archive');
+                      }}
+                      sx={{
+                        color: theme.palette.text.secondary,
+                        '&:hover': {
+                          color: theme.palette.primary.main,
+                          backgroundColor: theme.palette.action.hover,
+                        },
+                      }}
+                    >
+                      <HistoryIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
                 {stageId === 'FINAL_PAYMENT_CLOSED' && completedJobsCount > 0 && onArchiveCompleted && (
                   <Tooltip title={`Close out ${completedJobsCount} completed job(s)`}>
                     <IconButton
