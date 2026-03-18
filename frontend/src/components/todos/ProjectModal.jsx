@@ -16,6 +16,7 @@ import {
   Avatar,
   FormControlLabel,
   Checkbox,
+  useTheme,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -39,6 +40,7 @@ import { format } from 'date-fns';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function ProjectModal({ open, onClose, projectId, onUpdate }) {
+  const theme = useTheme();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
@@ -354,11 +356,12 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth="md"
+      maxWidth="xl"
       fullWidth
       PaperProps={{
         sx: {
           maxHeight: '90vh',
+          width: { xs: '95vw', md: '1200px' },
         }
       }}
     >
@@ -391,57 +394,84 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
             <CircularProgress />
           </Box>
         ) : project ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {/* Project Info */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: 'text.secondary' }}>
-                DESCRIPTION
-              </Typography>
-              <Typography variant="body1" sx={{ color: 'text.primary' }}>
-                {project.description || 'No description'}
-              </Typography>
-              {project.customerId && (
-                <Chip
-                  label={`Customer: ${project.customerId.name}`}
-                  size="small"
-                  sx={{ mt: 1 }}
-                  color="primary"
-                  variant="outlined"
-                />
-              )}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+              gap: 2,
+            }}
+          >
+            {/* Project Info (span full width across both columns) */}
+            <Box sx={{ gridColumn: { xs: '1 / -1', md: '1 / -1' } }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: 'text.secondary' }}>
+                  DESCRIPTION
+                </Typography>
+                <Typography variant="body1" sx={{ color: 'text.primary' }}>
+                  {project.description || 'No description'}
+                </Typography>
+                {project.customerId && (
+                  <Chip
+                    label={`Customer: ${project.customerId.name}`}
+                    size="small"
+                    sx={{ mt: 1 }}
+                    color="primary"
+                    variant="outlined"
+                  />
+                )}
+                <Divider sx={{ mt: 2, mb: 2 }} />
+              </Box>
             </Box>
 
-            <Divider />
-
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {/* Notes Section */}
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                <Typography
+                  variant="subtitle2"
+                  sx={{
+                    fontWeight: 600,
+                    color: theme.palette.mode === 'dark' ? '#64B5F6' : '#1565C0',
+                  }}
+                >
                   NOTES ({project.notes?.length || 0})
                 </Typography>
               </Box>
 
               {/* Add Note */}
-              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={2}
-                  placeholder="Add a note..."
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  size="small"
-                />
-                <Button
-                  variant="contained"
-                  startIcon={addingNote ? <CircularProgress size={16} /> : <AddIcon />}
-                  onClick={handleAddNote}
-                  disabled={addingNote || !newNote.trim()}
-                  sx={{ minWidth: 100 }}
-                >
-                  Add
-                </Button>
-              </Box>
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 4,
+                  mb: 2,
+                  backgroundColor: theme.palette.mode === 'dark'
+                    ? 'rgba(25, 118, 210, 0.12)'
+                    : 'rgba(25, 118, 210, 0.05)',
+                }}
+              >
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={3}
+                    placeholder="Add a note..."
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    size="small"
+                  />
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <Button
+                      variant="contained"
+                      startIcon={addingNote ? <CircularProgress size={16} /> : <AddIcon />}
+                      onClick={handleAddNote}
+                      disabled={addingNote || !newNote.trim()}
+                      sx={{ minWidth: 100, textTransform: 'none' }}
+                    >
+                      Add
+                    </Button>
+                  </Box>
+                </Box>
+              </Paper>
 
               {/* Notes List */}
               {project.notes && project.notes.length > 0 ? (
@@ -451,7 +481,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                       key={index}
                       sx={{
                         p: 2,
-                        backgroundColor: 'background.default',
+                        backgroundColor: theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.16)' : 'rgba(25, 118, 210, 0.06)',
                         borderLeft: '3px solid #1976D2',
                       }}
                     >
@@ -486,7 +516,13 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
             {/* Updates Section */}
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                <Typography
+                  variant="subtitle2"
+                  sx={{
+                    fontWeight: 600,
+                    color: theme.palette.mode === 'dark' ? '#CE93D8' : '#8E24AA',
+                  }}
+                >
                   UPDATES ({project.updates?.length || 0})
                 </Typography>
               </Box>
@@ -522,7 +558,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                       key={index}
                       sx={{
                         p: 2,
-                        backgroundColor: 'background.default',
+                        backgroundColor: theme.palette.mode === 'dark' ? 'rgba(156, 39, 176, 0.18)' : 'rgba(156, 39, 176, 0.06)',
                         borderLeft: '3px solid #9C27B0',
                       }}
                     >
@@ -552,16 +588,32 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
               )}
             </Box>
 
-            <Divider />
+            </Box>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
 
             {/* Tasks Section */}
             <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.secondary', mb: 2 }}>
+              <Typography
+                variant="subtitle2"
+                sx={{
+                  fontWeight: 600,
+                  color: theme.palette.mode === 'dark' ? '#64B5F6' : '#1565C0',
+                  mb: 2,
+                }}
+              >
                 TASKS ({projectTasks.length})
               </Typography>
 
               {/* Add Task */}
-              <Paper variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: 'background.default' }}>
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 2,
+                  mb: 2,
+                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.12)' : 'rgba(25, 118, 210, 0.05)',
+                }}
+              >
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                   New task (shows in Pipeline todos and Tasks page)
                 </Typography>
@@ -619,9 +671,16 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                         display: 'flex',
                         alignItems: 'center',
                         gap: 1,
-                        backgroundColor: 'background.default',
-                        borderLeft: task.isUrgent ? '3px solid' : '3px solid #4CAF50',
-                        borderColor: task.isUrgent ? 'error.main' : undefined,
+                        backgroundColor: task.isUrgent
+                          ? theme.palette.mode === 'dark'
+                            ? 'rgba(211, 47, 47, 0.18)'
+                            : 'rgba(211, 47, 47, 0.06)'
+                          : theme.palette.mode === 'dark'
+                          ? 'rgba(25, 118, 210, 0.14)'
+                          : 'rgba(25, 118, 210, 0.05)',
+                        borderLeft: task.isUrgent
+                          ? `3px solid ${theme.palette.error.main}`
+                          : '3px solid #1976D2',
                       }}
                     >
                       <IconButton
@@ -678,70 +737,16 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
             {/* Files Section */}
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                <Typography
+                  variant="subtitle2"
+                  sx={{
+                    fontWeight: 600,
+                    color: theme.palette.mode === 'dark' ? '#FFB74D' : '#EF6C00',
+                  }}
+                >
                   FILES ({files.length})
                 </Typography>
               </Box>
-
-              {/* File Upload Section */}
-              <Paper
-                sx={{
-                  p: 2,
-                  border: '2px dashed',
-                  borderColor: dragActive ? 'primary.main' : 'grey.300',
-                  backgroundColor: dragActive ? 'action.hover' : 'background.default',
-                  transition: 'all 0.2s ease',
-                  cursor: 'pointer',
-                  mb: 2,
-                }}
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-                onClick={() => document.getElementById('project-file-upload')?.click()}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <AttachFileIcon
-                    sx={{
-                      fontSize: 32,
-                      color: 'primary.main',
-                      transition: 'transform 0.2s ease',
-                      transform: dragActive ? 'scale(1.1)' : 'scale(1)',
-                    }}
-                  />
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
-                      {dragActive ? 'Drop files here' : 'Upload Files'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Drag & drop or click to browse • PDFs or photos • Max 10MB
-                    </Typography>
-                  </Box>
-                  <input
-                    accept="image/*,application/pdf"
-                    style={{ display: 'none' }}
-                    id="project-file-upload"
-                    type="file"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleFileUpload(e.target.files[0], e.target);
-                      }
-                    }}
-                    disabled={uploading}
-                  />
-                  <Button
-                    variant="outlined"
-                    component="span"
-                    size="small"
-                    startIcon={uploading ? <CircularProgress size={16} /> : <AttachFileIcon />}
-                    disabled={uploading}
-                    sx={{ textTransform: 'none' }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {uploading ? 'Uploading...' : 'Browse'}
-                  </Button>
-                </Box>
-              </Paper>
 
               {/* Files List */}
               {files.length > 0 ? (
@@ -757,7 +762,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                           display: 'flex',
                           alignItems: 'center',
                           gap: 2,
-                          backgroundColor: 'background.default',
+                          backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 152, 0, 0.14)' : 'rgba(255, 152, 0, 0.05)',
                           borderLeft: '3px solid #FF9800',
                         }}
                       >
@@ -811,8 +816,74 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                   No files uploaded yet
                 </Typography>
               )}
+
+              {/* File Upload Section (moved to the bottom) */}
+              <Paper
+                sx={{
+                  p: 2,
+                  border: '2px dashed',
+                  borderColor: dragActive ? 'primary.main' : 'grey.300',
+                  backgroundColor: dragActive
+                    ? 'rgba(255, 152, 0, 0.08)'
+                    : theme.palette.mode === 'dark'
+                      ? 'rgba(255, 152, 0, 0.06)'
+                      : 'rgba(255, 152, 0, 0.03)',
+                  transition: 'all 0.2s ease',
+                  cursor: 'pointer',
+                  mt: 2,
+                  mb: 0,
+                }}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => document.getElementById('project-file-upload')?.click()}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <AttachFileIcon
+                    sx={{
+                      fontSize: 32,
+                      color: 'primary.main',
+                      transition: 'transform 0.2s ease',
+                      transform: dragActive ? 'scale(1.1)' : 'scale(1)',
+                    }}
+                  />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                      {dragActive ? 'Drop files here' : 'Upload Files'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Drag & drop or click to browse • PDFs or photos • Max 10MB
+                    </Typography>
+                  </Box>
+                  <input
+                    accept="image/*,application/pdf"
+                    style={{ display: 'none' }}
+                    id="project-file-upload"
+                    type="file"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileUpload(e.target.files[0], e.target);
+                      }
+                    }}
+                    disabled={uploading}
+                  />
+                  <Button
+                    variant="outlined"
+                    component="span"
+                    size="small"
+                    startIcon={uploading ? <CircularProgress size={16} /> : <AttachFileIcon />}
+                    disabled={uploading}
+                    sx={{ textTransform: 'none' }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {uploading ? 'Uploading...' : 'Browse'}
+                  </Button>
+                </Box>
+              </Paper>
             </Box>
           </Box>
+        </Box>
         ) : null}
       </DialogContent>
 

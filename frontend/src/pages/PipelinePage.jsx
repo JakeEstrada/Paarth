@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Typography,
   Container,
@@ -36,6 +36,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function PipelinePage() {
   const theme = useTheme();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -147,18 +148,9 @@ function PipelinePage() {
   };
 
   const handleArchiveCompleted = async () => {
-    try {
-      setArchiving(true);
-      const response = await axios.post(`${API_URL}/jobs/archive-completed`);
-      toast.success(`Closed out ${response.data.archived} completed job(s)`);
-      setArchiveDialogOpen(false);
-      await fetchJobs(); // Refresh the list
-    } catch (error) {
-      console.error('Error archiving completed jobs:', error);
-      toast.error('Failed to archive completed jobs');
-    } finally {
-      setArchiving(false);
-    }
+    // Do not archive/modify jobs anymore; just send the user to the Completed Jobs view
+    navigate('/completed-jobs');
+    setArchiveDialogOpen(false);
   };
 
   // Filtered jobs for pipeline search
