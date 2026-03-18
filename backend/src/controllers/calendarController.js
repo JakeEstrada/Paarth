@@ -59,6 +59,9 @@ async function syncJobToCalendar(req, res) {
     const { calendar } = calendarClient;
     const startDate = new Date(job.schedule.startDate);
     const endDate = job.schedule.endDate ? new Date(job.schedule.endDate) : startDate;
+    const installerList = Array.isArray(job.schedule?.installers) && job.schedule.installers.length > 0
+      ? job.schedule.installers.filter(Boolean)
+      : (job.schedule?.installer ? [job.schedule.installer] : []);
     
     // Add one day to end date for all-day events
     const eventEndDate = new Date(endDate);
@@ -69,7 +72,11 @@ async function syncJobToCalendar(req, res) {
     
     const event = {
       summary: job.schedule?.title || job.title,
-      description: `Customer: ${job.customerId?.name || 'Unknown'}\nValue: $${job.valueEstimated || 0}`,
+      description: [
+        `Customer: ${job.customerId?.name || 'Unknown'}`,
+        `Value: $${job.valueEstimated || 0}`,
+        installerList.length > 0 ? `Installers: ${installerList.join(', ')}` : null,
+      ].filter(Boolean).join('\n'),
       start: {
         date: formatDateForCalendar(startDate),
         timeZone: 'America/Los_Angeles',

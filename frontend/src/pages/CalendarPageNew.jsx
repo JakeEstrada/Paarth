@@ -62,20 +62,26 @@ const DEFAULT_INSTALLER_ORDER = [
 ];
 
 // Event creation/edit modal
-function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, installerOptions = [] }) {
+function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, installerOptions = [], selectedInstaller = '' }) {
+  const theme = useTheme();
+  const GROUP_ACCENTS = ['#1976D2', '#9C27B0', '#FF9800', '#4CAF50', '#3F51B5'];
+  const getGroupAccent = (idx) => GROUP_ACCENTS[idx % GROUP_ACCENTS.length];
+
   const [formData, setFormData] = useState({
     title: '',
-    startDate: '',
     startTime: '09:00',
-    endDate: '',
     endTime: '17:00',
     allDay: true,
+    excludeSaturdays: false,
+    excludeSundays: false,
     recurrence: 'none', // none, daily, weekly, monthly, yearly
     recurrenceCount: 1,
     description: '',
     jobId: null,
     color: '#1976D2', // Default blue
-    installer: '', // Installer name
+    // Each entry is an independent "group":
+    // { installer, start date, end date }
+    entries: [{ installer: '', startDate: '', endDate: '' }],
   });
   const [availableJobs, setAvailableJobs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -85,26 +91,61 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
       // Set default dates from selected date or job
       const date = selectedDate || (job?.schedule?.startDate ? new Date(job.schedule.startDate) : new Date());
       const dateStr = format(date, 'yyyy-MM-dd');
+      const legacyEndDateStr = job?.schedule?.endDate
+        ? format(new Date(job.schedule.endDate), 'yyyy-MM-dd')
+        : dateStr;
+
+      const scheduleEntries = Array.isArray(job?.schedule?.entries) ? job.schedule.entries : [];
+      let computedEntries = [];
+
+      if (scheduleEntries.length > 0) {
+        computedEntries = scheduleEntries.map((entry) => ({
+          installer: entry?.installer || '',
+          startDate: entry?.startDate ? format(new Date(entry.startDate), 'yyyy-MM-dd') : '',
+          endDate: entry?.endDate ? format(new Date(entry.endDate), 'yyyy-MM-dd') : '',
+        }));
+      } else {
+        // Backward compatibility: build grouped entries from legacy fields.
+        const installersList = Array.isArray(job?.schedule?.installers) && job.schedule.installers.length > 0
+          ? job.schedule.installers.filter(Boolean)
+          : (job?.schedule?.installer ? [job.schedule.installer] : []);
+
+        const installers = installersList.length > 0
+          ? installersList
+          : selectedInstaller
+            ? [selectedInstaller]
+            : [''];
+
+        computedEntries = installers.map((inst) => ({
+          installer: inst,
+          startDate: dateStr,
+          endDate: legacyEndDateStr,
+        }));
+      }
+
+      if (selectedInstaller && computedEntries.length > 0 && !computedEntries[0].installer) {
+        computedEntries[0].installer = selectedInstaller;
+      }
       
       setFormData({
         title: job?.schedule?.title || job?.title || '',
-        startDate: dateStr,
         startTime: '09:00',
-        endDate: job?.schedule?.endDate ? format(new Date(job.schedule.endDate), 'yyyy-MM-dd') : dateStr,
         endTime: '17:00',
         allDay: true,
+        excludeSaturdays: false,
+        excludeSundays: false,
         recurrence: job?.schedule?.recurrence?.type || 'none',
         recurrenceCount: job?.schedule?.recurrence?.count || 1,
         description: job?.customerId?.name ? `Customer: ${job.customerId.name}` : '',
         jobId: job?._id || null,
         color: job?.color || '#1976D2',
-        installer: job?.schedule?.installer || '',
+        entries: computedEntries,
       });
 
       // Fetch available jobs
       fetchAvailableJobs();
     }
-  }, [open, selectedDate, job]);
+  }, [open, selectedDate, job, selectedInstaller]);
 
   const fetchAvailableJobs = async () => {
     try {
@@ -139,23 +180,134 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
 
       // If jobId is selected, update the job's schedule
       if (formData.jobId) {
-        const startDateTime = formData.allDay 
-          ? new Date(formData.startDate + 'T00:00:00')
-          : new Date(formData.startDate + 'T' + formData.startTime);
-        const endDateTime = formData.allDay
-          ? new Date(formData.endDate + 'T23:59:59')
-          : new Date(formData.endDate + 'T' + formData.endTime);
+        const normalizedEntries = (formData.entries || [])
+          .map((entry) => {
+            const installer = String(entry?.installer || '').trim();
+            const startDate = entry?.startDate || '';
+            const endDate = entry?.endDate || entry?.startDate || '';
+            return { installer, startDate, endDate };
+          })
+          .filter((entry) => entry.installer && entry.startDate);
+
+        if (normalizedEntries.length === 0) {
+          toast.error('Please add at least one installer group (installer + start date)');
+          setLoading(false);
+          return;
+        }
+
+        const shouldExcludeSaturdays = !!formData.excludeSaturdays;
+        const shouldExcludeSundays = !!formData.excludeSundays;
+
+        // Expand each entry range into allowed days, then re-group into smaller consecutive ranges.
+        const expandedEntries = [];
+        for (const entry of normalizedEntries) {
+          const installer = entry.installer;
+          const start = new Date(entry.startDate + 'T00:00:00');
+          const end = new Date(entry.endDate + 'T00:00:00');
+
+          if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
+
+          // Ensure start <= end
+          const rangeStart = start.getTime() <= end.getTime() ? start : end;
+          const rangeEnd = start.getTime() <= end.getTime() ? end : start;
+
+          let groupStart = null; // Date
+          let prevAllowed = null; // Date
+
+          for (let d = rangeStart; d.getTime() <= rangeEnd.getTime(); d = addDays(d, 1)) {
+            const day = d.getDay(); // 0=Sun, 6=Sat
+            const isBlocked =
+              (shouldExcludeSaturdays && day === 6) ||
+              (shouldExcludeSundays && day === 0);
+
+            if (isBlocked) {
+              if (groupStart && prevAllowed) {
+                expandedEntries.push({
+                  installer,
+                  startDate: format(groupStart, 'yyyy-MM-dd'),
+                  endDate: format(prevAllowed, 'yyyy-MM-dd'),
+                });
+              }
+              groupStart = null;
+              prevAllowed = null;
+              continue;
+            }
+
+            if (!groupStart) {
+              groupStart = d;
+              prevAllowed = d;
+              continue;
+            }
+
+            const expectedNext = addDays(prevAllowed, 1);
+            if (expectedNext.getTime() === d.getTime()) {
+              prevAllowed = d;
+            } else {
+              expandedEntries.push({
+                installer,
+                startDate: format(groupStart, 'yyyy-MM-dd'),
+                endDate: format(prevAllowed, 'yyyy-MM-dd'),
+              });
+              groupStart = d;
+              prevAllowed = d;
+            }
+          }
+
+          if (groupStart && prevAllowed) {
+            expandedEntries.push({
+              installer,
+              startDate: format(groupStart, 'yyyy-MM-dd'),
+              endDate: format(prevAllowed, 'yyyy-MM-dd'),
+            });
+          }
+        }
+
+        if (expandedEntries.length === 0) {
+          toast.error('No valid days left after excluding weekends');
+          setLoading(false);
+          return;
+        }
+
+        const updatedEntries = expandedEntries.map((entry) => {
+          const startDateTime = formData.allDay
+            ? new Date(entry.startDate + 'T00:00:00')
+            : new Date(entry.startDate + 'T' + formData.startTime);
+          const endDateTime = formData.allDay
+            ? new Date(entry.endDate + 'T23:59:59')
+            : new Date(entry.endDate + 'T' + formData.endTime);
+
+          return {
+            installer: entry.installer,
+            startDate: startDateTime.toISOString(),
+            endDate: endDateTime.toISOString(),
+          };
+        });
+
+        const legacyInstallers = Array.from(new Set(updatedEntries.map((e) => e.installer).filter(Boolean)));
+        const earliest = updatedEntries.reduce((acc, e) =>
+          new Date(e.startDate).getTime() <= new Date(acc.startDate).getTime() ? e : acc
+        );
+        const latest = updatedEntries.reduce((acc, e) =>
+          new Date(e.endDate).getTime() >= new Date(acc.endDate).getTime() ? e : acc
+        );
 
         await axios.patch(`${API_URL}/jobs/${formData.jobId}`, {
           schedule: {
-            startDate: startDateTime.toISOString(),
-            endDate: endDateTime.toISOString(),
-            installer: formData.installer,
+            // Legacy single date range (Google sync + older clients)
+            startDate: earliest.startDate,
+            endDate: latest.endDate,
+            installer: earliest.installer,
+            installers: legacyInstallers,
+
+            // Preferred multi-schedule model
+            entries: updatedEntries,
             recurrence: {
               type: formData.recurrence,
               interval: 1,
               count: formData.recurrenceCount,
             },
+            crewNotes: job?.schedule?.crewNotes,
+            title: formData.title,
           },
           // Keep the existing job stage; do not auto-advance it when scheduling
           color: formData.color,
@@ -260,25 +412,186 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
             isOptionEqualToValue={(option, value) => option?._id === value?._id}
           />
 
-          <Autocomplete
-            freeSolo
-            options={installerOptions}
-            value={formData.installer || ''}
-            onChange={(_, newValue) => {
-              setFormData({ ...formData, installer: newValue || '' });
-            }}
-            inputValue={formData.installer || ''}
-            onInputChange={(_, newInputValue) => {
-              setFormData({ ...formData, installer: newInputValue || '' });
-            }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Installer"
-                fullWidth
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Schedule Groups
+              </Typography>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    entries: [
+                      ...(Array.isArray(prev.entries) ? prev.entries : []),
+                      { installer: '', startDate: '', endDate: '' }, // empty group (as requested)
+                    ],
+                  }));
+                }}
+                title="Add another installer/date group"
+                sx={{
+                  border: `1px solid ${theme.palette.divider}`,
+                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)',
+                }}
+              >
+                <AddIcon fontSize="small" />
+              </IconButton>
+            </Box>
+
+            {(formData.entries || []).map((entry, idx) => (
+              <Box
+                key={idx}
+                sx={{
+                  border: `1px solid ${theme.palette.divider}`,
+                  borderLeft: `6px solid ${getGroupAccent(idx)}`,
+                  borderRadius: 1.5,
+                  p: 1.25,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1,
+                  backgroundColor:
+                    theme.palette.mode === 'dark'
+                      ? 'rgba(255,255,255,0.03)'
+                      : 'rgba(25, 118, 210, 0.05)',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 700, color: theme.palette.text.primary }}
+                  >
+                    Group {idx + 1}
+                  </Typography>
+                  {(formData.entries || []).length > 1 && (
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setFormData((prev) => ({
+                          ...prev,
+                          entries: prev.entries.filter((_, i) => i !== idx),
+                        }));
+                      }}
+                      title="Remove this group"
+                      sx={{
+                        border: `1px solid ${theme.palette.divider}`,
+                        backgroundColor:
+                          theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)',
+                      }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Box>
+
+                <Autocomplete
+                  freeSolo
+                  options={installerOptions}
+                  value={entry.installer || ''}
+                  onChange={(_, newValue) => {
+                    const next = typeof newValue === 'string' ? newValue : (newValue || '').toString();
+                    setFormData((prev) => ({
+                      ...prev,
+                      entries: prev.entries.map((e, i) => (i === idx ? { ...e, installer: next } : e)),
+                    }));
+                  }}
+                  inputValue={entry.installer || ''}
+                  onInputChange={(_, newInputValue) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      entries: prev.entries.map((e, i) => (i === idx ? { ...e, installer: newInputValue || '' } : e)),
+                    }));
+                  }}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Installer" fullWidth />
+                  )}
+                />
+
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <TextField
+                    label="Start Date"
+                    type="date"
+                    value={entry.startDate}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        entries: prev.entries.map((en, i) => (i === idx ? { ...en, startDate: next } : en)),
+                      }));
+                    }}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ flex: 1, minWidth: 160 }}
+                  />
+
+                  <TextField
+                    label="End Date"
+                    type="date"
+                    value={entry.endDate}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        entries: prev.entries.map((en, i) => (i === idx ? { ...en, endDate: next } : en)),
+                      }));
+                    }}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ flex: 1, minWidth: 160 }}
+                  />
+                </Box>
+              </Box>
+            ))}
+          </Box>
+
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                border: `1px solid ${theme.palette.divider}`,
+                backgroundColor: formData.excludeSaturdays
+                  ? theme.palette.mode === 'dark'
+                    ? 'rgba(76, 175, 80, 0.18)'
+                    : 'rgba(76, 175, 80, 0.10)'
+                  : 'transparent',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={formData.excludeSaturdays}
+                onChange={(e) => setFormData({ ...formData, excludeSaturdays: e.target.checked })}
+                id="excludeSaturdays"
               />
-            )}
-          />
+              <label htmlFor="excludeSaturdays">Exclude Saturdays</label>
+            </Box>
+
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                border: `1px solid ${theme.palette.divider}`,
+                backgroundColor: formData.excludeSundays
+                  ? theme.palette.mode === 'dark'
+                    ? 'rgba(255, 152, 0, 0.16)'
+                    : 'rgba(255, 152, 0, 0.10)'
+                  : 'transparent',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={formData.excludeSundays}
+                onChange={(e) => setFormData({ ...formData, excludeSundays: e.target.checked })}
+                id="excludeSundays"
+              />
+              <label htmlFor="excludeSundays">Exclude Sundays</label>
+            </Box>
+          </Box>
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <input
@@ -290,16 +603,8 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
             <label htmlFor="allDay">All day</label>
           </Box>
 
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
-              label="Start Date"
-              type="date"
-              value={formData.startDate}
-              onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-            />
-            {!formData.allDay && (
+          {!formData.allDay && (
+            <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
                 label="Start Time"
                 type="time"
@@ -308,19 +613,6 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                 fullWidth
                 InputLabelProps={{ shrink: true }}
               />
-            )}
-          </Box>
-
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
-              label="End Date"
-              type="date"
-              value={formData.endDate}
-              onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-            />
-            {!formData.allDay && (
               <TextField
                 label="End Time"
                 type="time"
@@ -329,8 +621,8 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                 fullWidth
                 InputLabelProps={{ shrink: true }}
               />
-            )}
-          </Box>
+            </Box>
+          )}
 
           <FormControl fullWidth>
             <InputLabel>Repeat</InputLabel>
@@ -433,7 +725,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
         </Box>
       </DialogContent>
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-        {job && (
+        {(job?.schedule?.entries?.length > 0 || job?.schedule?.startDate) && (
           <Button 
             onClick={async () => {
               if (!window.confirm(`Are you sure you want to remove "${job.title}" from the calendar?`)) {
@@ -444,7 +736,10 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                 await axios.patch(`${API_URL}/jobs/${job._id}`, {
                   schedule: {
                     startDate: null,
-                    endDate: null
+                    endDate: null,
+                    installer: '',
+                    installers: [],
+                    entries: [],
                   },
                   stage: 'READY_TO_SCHEDULE',
                 });
@@ -686,7 +981,8 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           {onViewJob && contextMenuEvent?._id && (
             <MenuItem
               onClick={() => {
-                onViewJob(contextMenuEvent._id);
+                // For calendar chips, we pass a pseudo-event with `jobId`
+                onViewJob(contextMenuEvent.jobId || contextMenuEvent._id);
                 handleCloseContextMenu();
               }}
             >
@@ -883,6 +1179,7 @@ function CalendarPageNew() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [benchJobs, setBenchJobs] = useState([]);
   const [scheduledJobs, setScheduledJobs] = useState([]);
+  const [selectedInstaller, setSelectedInstaller] = useState('');
   const [loading, setLoading] = useState(true);
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -946,7 +1243,8 @@ function CalendarPageNew() {
       
       // Filter scheduled jobs
       const scheduled = allJobs.filter(job => {
-        const hasSchedule = job.schedule?.startDate;
+        const hasSchedule = (Array.isArray(job?.schedule?.entries) && job.schedule.entries.some((e) => e?.startDate))
+          || job.schedule?.startDate;
         const isScheduledStage = job.stage === 'SCHEDULED';
         return (hasSchedule || isScheduledStage) && !job.isArchived && !job.isDeadEstimate;
       });
@@ -957,10 +1255,15 @@ function CalendarPageNew() {
       // Update installer order based on any installers used in jobs
       const installerSet = new Set(DEFAULT_INSTALLER_ORDER);
       [...bench, ...scheduled].forEach(job => {
-        const name = job.schedule?.installer;
-        if (name && typeof name === 'string') {
-          installerSet.add(name);
-        }
+        const entries = Array.isArray(job?.schedule?.entries) ? job.schedule.entries : [];
+        const installers = entries.length > 0
+          ? entries.map((e) => e?.installer).filter(Boolean)
+          : (Array.isArray(job?.schedule?.installers) && job.schedule.installers.length > 0
+            ? job.schedule.installers
+            : (job?.schedule?.installer ? [job.schedule.installer] : []));
+        installers.forEach((name) => {
+          if (name && typeof name === 'string') installerSet.add(name);
+        });
       });
       setInstallerOrder(Array.from(installerSet));
     } catch (error) {
@@ -992,6 +1295,57 @@ function CalendarPageNew() {
     ];
   }, [currentDate, isMobile]);
 
+  // Render one calendar chip per schedule entry (installer + start/end date range).
+  // Legacy support: if `schedule.entries` is missing, we fall back to the old single-range + `schedule.installers` model.
+  const calendarEvents = useMemo(() => {
+    return (scheduledJobs || []).flatMap((job) => {
+      const schedule = job?.schedule || {};
+      const entries = Array.isArray(schedule?.entries) ? schedule.entries : [];
+
+      if (entries.length > 0) {
+        return entries
+          .filter((entry) => entry?.startDate && entry?.installer)
+          .map((entry, entryIndex) => ({
+            _id: `${job._id}_entry_${entryIndex}`,
+            eventType: 'entries',
+            entryIndex,
+            jobId: job._id,
+            job,
+            title: job?.title,
+            color: job?.color,
+            schedule: {
+              startDate: entry.startDate,
+              endDate: entry.endDate || entry.startDate,
+              installer: entry.installer,
+            },
+          }));
+      }
+
+      // Legacy fallback
+      const installers = Array.isArray(schedule?.installers) && schedule.installers.length > 0
+        ? schedule.installers
+        : (schedule?.installer ? [schedule.installer] : []);
+
+      if (!schedule?.startDate || installers.length === 0) return [];
+
+      return installers
+        .filter(Boolean)
+        .map((installer, installerIndex) => ({
+          _id: `${job._id}_legacy_${installer}_${installerIndex}`,
+          eventType: 'legacy_installer',
+          jobId: job._id,
+          job,
+          title: job?.title,
+          color: job?.color,
+          schedule: {
+            startDate: schedule.startDate,
+            endDate: schedule.endDate || schedule.startDate,
+            installer,
+          },
+        }));
+    });
+  }, [scheduledJobs]);
+
   const handleDayClick = (date) => {
     if (!canModifyCalendar()) {
       toast.error('You do not have permission to create or modify calendar events');
@@ -999,46 +1353,140 @@ function CalendarPageNew() {
     }
     setSelectedDate(date);
     setSelectedJob(null);
+    setSelectedInstaller('');
     setEventModalOpen(true);
   };
 
-  const handleEventClick = (job) => {
+  const handleEventClick = (eventOrJob) => {
     if (!canModifyCalendar()) {
       toast.error('You do not have permission to modify calendar events');
       return;
     }
+    const job = eventOrJob?.job || eventOrJob;
     setSelectedJob(job);
-    setSelectedDate(job.schedule?.startDate ? new Date(job.schedule.startDate) : new Date());
+    setSelectedInstaller(
+      eventOrJob?.schedule?.installer ||
+        job?.schedule?.installer ||
+        (Array.isArray(job?.schedule?.installers) ? job.schedule.installers?.[0] : '') ||
+        ''
+    );
+    const start = eventOrJob?.schedule?.startDate || job?.schedule?.startDate;
+    setSelectedDate(start ? new Date(start) : new Date());
     setEventModalOpen(true);
   };
 
-  const handleEventDelete = async (job) => {
+  const handleEventDelete = async (eventOrJob) => {
+    const job = eventOrJob?.job || eventOrJob;
+    const isCalendarChipEvent = !!eventOrJob?.job && !!eventOrJob?.jobId;
+    const eventType = eventOrJob?.eventType;
+    const entryIndex = typeof eventOrJob?.entryIndex === 'number' ? eventOrJob.entryIndex : null;
+    const installerToRemove = eventOrJob?.schedule?.installer || '';
+
     if (!canModifyCalendar()) {
       toast.error('You do not have permission to modify calendar events');
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to remove "${job.title}" from the calendar?`)) {
+    const removalLabel =
+      isCalendarChipEvent && installerToRemove
+        ? `${job.title} (${installerToRemove})`
+        : job.title;
+
+    if (!window.confirm(`Are you sure you want to remove "${removalLabel}" from the calendar?`)) {
       return;
     }
 
     try {
-      await axios.patch(`${API_URL}/jobs/${job._id}`, {
-        schedule: {
-          startDate: null,
-          endDate: null
-        },
-        stage: 'READY_TO_SCHEDULE',
-      });
+      const clearSchedule = async () => {
+        await axios.patch(`${API_URL}/jobs/${job._id}`, {
+          schedule: {
+            startDate: null,
+            endDate: null,
+            installer: '',
+            installers: [],
+            entries: [],
+          },
+          stage: 'READY_TO_SCHEDULE',
+        });
 
-      // Remove from Google Calendar if synced
-      try {
-        await axios.delete(`${API_URL}/calendar/jobs/${job._id}/sync`);
-      } catch (calendarError) {
-        console.warn('Google Calendar removal failed:', calendarError);
+        // Remove from Google Calendar if synced
+        try {
+          await axios.delete(`${API_URL}/calendar/jobs/${job._id}/sync`);
+        } catch (calendarError) {
+          console.warn('Google Calendar removal failed:', calendarError);
+        }
+
+        toast.success('Job removed from calendar');
+      };
+
+      // If user clicked the delete button on the Scheduled Job cards,
+      // they pass the whole `job`, not a chip/event.
+      if (!isCalendarChipEvent) {
+        await clearSchedule();
+        await fetchJobs();
+        return;
       }
 
-      toast.success('Job removed from calendar');
+      if (eventType === 'entries' && entryIndex !== null) {
+        const existingEntries = Array.isArray(job?.schedule?.entries) ? job.schedule.entries : [];
+        const remainingEntries = existingEntries.filter((_, i) => i !== entryIndex);
+
+        if (remainingEntries.length === 0) {
+          await clearSchedule();
+        } else {
+          const remainingInstallers = remainingEntries.map((e) => e?.installer).filter(Boolean);
+          const earliest = remainingEntries.reduce((acc, e) =>
+            new Date(e?.startDate).getTime() <= new Date(acc?.startDate).getTime() ? e : acc
+          , remainingEntries[0] || {});
+          const latest = remainingEntries.reduce((acc, e) =>
+            new Date(e?.endDate).getTime() >= new Date(acc?.endDate).getTime() ? e : acc
+          , remainingEntries[0] || {});
+
+          await axios.patch(`${API_URL}/jobs/${job._id}`, {
+            schedule: {
+              entries: remainingEntries,
+              startDate: earliest?.startDate || null,
+              endDate: latest?.endDate || earliest?.startDate || null,
+              installer: earliest?.installer || '',
+              installers: remainingInstallers,
+              recurrence: job?.schedule?.recurrence,
+              crewNotes: job?.schedule?.crewNotes,
+              title: job?.schedule?.title,
+            },
+          });
+
+          toast.success('Schedule entry removed from calendar');
+        }
+
+        await fetchJobs();
+        return;
+      }
+
+      // Legacy chip removal (old "multiple installers, same date range")
+      const existingInstallers = Array.isArray(job?.schedule?.installers) && job.schedule.installers.length > 0
+        ? job.schedule.installers
+        : (job?.schedule?.installer ? [job.schedule.installer] : []);
+
+      const remainingInstallers = existingInstallers.filter((i) => i !== installerToRemove);
+
+      if (remainingInstallers.length === 0) {
+        await clearSchedule();
+      } else {
+        await axios.patch(`${API_URL}/jobs/${job._id}`, {
+          schedule: {
+            startDate: job?.schedule?.startDate,
+            endDate: job?.schedule?.endDate,
+            installer: remainingInstallers[0],
+            installers: remainingInstallers,
+            recurrence: job?.schedule?.recurrence,
+            crewNotes: job?.schedule?.crewNotes,
+            title: job?.schedule?.title,
+          },
+        });
+
+        toast.success('Installer removed from calendar');
+      }
+
       await fetchJobs();
     } catch (error) {
       console.error('Error removing job from calendar:', error);
@@ -1148,7 +1596,7 @@ function CalendarPageNew() {
                 key={index}
                 date={date}
                 isCurrentMonth={isSameMonth(date, monthDate)}
-                events={scheduledJobs}
+                events={calendarEvents}
                 onDayClick={handleDayClick}
                 onEventClick={handleEventClick}
                 onEventDelete={handleEventDelete}
@@ -1349,7 +1797,10 @@ function CalendarPageNew() {
                       job={job}
                       onJobClick={(j) => {
                         if (!canModifyCalendar()) { toast.error('You do not have permission to modify calendar events'); return; }
-                        setSelectedJob(j); setSelectedDate(new Date()); setEventModalOpen(true);
+                        setSelectedJob(j);
+                        setSelectedInstaller('');
+                        setSelectedDate(new Date());
+                        setEventModalOpen(true);
                       }}
                       onViewJob={(id) => setJobIdForDetailModal(id)}
                       onRemoveFromBench={handleRemoveFromBench}
@@ -1382,7 +1833,14 @@ function CalendarPageNew() {
                       job={job}
                       onJobClick={(j) => {
                         if (!canModifyCalendar()) { toast.error('You do not have permission to modify calendar events'); return; }
-                        setSelectedJob(j); setSelectedDate(j.schedule?.startDate ? new Date(j.schedule.startDate) : new Date()); setEventModalOpen(true);
+                        setSelectedJob(j);
+                        setSelectedInstaller(
+                          j?.schedule?.installer ||
+                            (Array.isArray(j?.schedule?.installers) ? j.schedule.installers?.[0] : '') ||
+                            ''
+                        );
+                        setSelectedDate(j.schedule?.startDate ? new Date(j.schedule.startDate) : new Date());
+                        setEventModalOpen(true);
                       }}
                       onJobDelete={handleEventDelete}
                       onViewJob={(id) => setJobIdForDetailModal(id)}
@@ -1537,12 +1995,14 @@ function CalendarPageNew() {
           setEventModalOpen(false);
           setSelectedDate(null);
           setSelectedJob(null);
+          setSelectedInstaller('');
         }}
         selectedDate={selectedDate}
         job={selectedJob}
         onSave={fetchJobs}
         onViewJob={(id) => setJobIdForDetailModal(id)}
         installerOptions={installerOrder}
+        selectedInstaller={selectedInstaller}
       />
 
       {/* Job detail modal (customer, files, etc.) */}

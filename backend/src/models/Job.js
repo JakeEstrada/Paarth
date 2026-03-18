@@ -99,7 +99,22 @@ const jobSchema = new mongoose.Schema({
   schedule: {
     startDate: Date,
     endDate: Date,
-    installer: String, // Installer name for calendar ordering
+    // Installer name for calendar ordering (legacy single-installer field)
+    installer: String,
+    // Multi-installer support: render one calendar event per installer
+    installers: {
+      type: [String],
+      default: [],
+    },
+    // Multi-schedule support: one entry per installer/date-range.
+    // This is the preferred model for allowing jobs to be split.
+    entries: [
+      {
+        installer: String,
+        startDate: Date,
+        endDate: Date,
+      },
+    ],
     crewNotes: String,
     recurrence: {
       type: {
