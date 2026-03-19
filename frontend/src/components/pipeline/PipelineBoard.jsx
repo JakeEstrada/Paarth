@@ -502,17 +502,6 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
         </DialogContent>
         <DialogActions>
           <Button
-            onClick={() => {
-              setStageOverrides({});
-              try {
-                localStorage.removeItem(PIPELINE_STAGE_CONFIG_KEY);
-              } catch (_) {}
-              toast.success('Pipeline customization reset');
-            }}
-          >
-            Reset
-          </Button>
-          <Button
             variant="contained"
             onClick={() => {
               try {
