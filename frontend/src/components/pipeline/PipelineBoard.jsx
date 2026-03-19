@@ -504,6 +504,8 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
           <Button
             variant="contained"
             onClick={() => {
+              const confirmed = window.confirm('Are you sure you want to save these stage changes?');
+              if (!confirmed) return;
               try {
                 localStorage.setItem(PIPELINE_STAGE_CONFIG_KEY, JSON.stringify(stageOverrides || {}));
               } catch (_) {}
