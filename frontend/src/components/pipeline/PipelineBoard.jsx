@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Box, Card, CardContent, Typography, Paper, Button, IconButton, Tooltip, useTheme, TextField, InputAdornment } from '@mui/material';
-import { Add as AddIcon, CheckCircle as CheckCircleIcon, Search as SearchIcon, History as HistoryIcon } from '@mui/icons-material';
+import { useMemo, useState } from 'react';
+import { Box, Card, CardContent, Typography, Paper, Button, IconButton, Tooltip, useTheme, TextField, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Checkbox } from '@mui/material';
+import { Add as AddIcon, CheckCircle as CheckCircleIcon, Search as SearchIcon, History as HistoryIcon, Edit as EditIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -55,11 +55,33 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
   const { canModifyPipeline } = useAuth();
   const [draggedOverStage, setDraggedOverStage] = useState(null);
 
+  const PIPELINE_STAGE_CONFIG_KEY = 'pipelineStageConfigV1';
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [stageOverrides, setStageOverrides] = useState(() => {
+    try {
+      const stored = localStorage.getItem(PIPELINE_STAGE_CONFIG_KEY);
+      if (!stored) return {};
+      const parsed = JSON.parse(stored);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  });
+
   // Group jobs by stage
   const jobsByStage = {};
   [...APPOINTMENTS_PHASE, ...SALES_PHASE, ...JOB_READINESS_PHASE, ...EXECUTION_PHASE].forEach(stageId => {
     jobsByStage[stageId] = jobs.filter(job => job.stage === stageId && !job.isArchived);
   });
+
+  const shownStages = useMemo(() => [...SALES_PHASE, ...JOB_READINESS_PHASE, ...EXECUTION_PHASE], []);
+  const getStageOverride = (stageId) => stageOverrides?.[stageId] || {};
+  const isStageHidden = (stageId) => !!getStageOverride(stageId)?.hidden;
+  const getStageLabel = (stageId) => {
+    const override = getStageOverride(stageId);
+    if (override?.label && String(override.label).trim()) return String(override.label).trim();
+    return STAGE_LABELS[stageId];
+  };
 
   // Calculate totals per stage
   const stageTotals = {};
@@ -168,7 +190,7 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
                 mb: 0.75,
               }}
             >
-              {STAGE_LABELS[stageId]}
+              {getStageLabel(stageId)}
             </Typography>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box
@@ -277,53 +299,59 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
   };
 
   // Render a phase section
-  const renderPhase = (phaseName, phaseStages, phaseColor) => (
-    <Box sx={{ mb: 3 }}>
-      <Typography
-        variant="h6"
-        sx={{
-          fontSize: '1rem',
-          fontWeight: 600,
-          color: theme.palette.text.primary,
-          mb: 1.5,
-          textTransform: 'uppercase',
-          letterSpacing: '0.5px',
-        }}
-      >
-        {phaseName}
-      </Typography>
-      <Box
-        sx={{
-          display: 'flex',
-          gap: 2,
-          overflowX: 'auto',
-          pb: 1,
-          width: '100%',
-          '&::-webkit-scrollbar': {
-            height: 6,
-          },
-          '&::-webkit-scrollbar-track': {
-            background: theme.palette.mode === 'dark' ? '#2A2A2A' : '#F5F7FA',
-          },
-          '&::-webkit-scrollbar-thumb': {
-            background: theme.palette.mode === 'dark' ? '#616161' : '#CFD8DC',
-            borderRadius: '3px',
-          },
-        }}
-      >
-        {phaseStages.map(renderStageColumn)}
+  const renderPhase = (phaseName, phaseStages) => {
+    const visibleStages = phaseStages.filter((stageId) => !isStageHidden(stageId));
+    if (visibleStages.length === 0) return null;
+
+    return (
+      <Box sx={{ mb: 3 }}>
+        <Typography
+          variant="h6"
+          sx={{
+            fontSize: '1rem',
+            fontWeight: 600,
+            color: theme.palette.text.primary,
+            mb: 1.5,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+          }}
+        >
+          {phaseName}
+        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 2,
+            overflowX: 'auto',
+            pb: 1,
+            width: '100%',
+            '&::-webkit-scrollbar': {
+              height: 6,
+            },
+            '&::-webkit-scrollbar-track': {
+              background: theme.palette.mode === 'dark' ? '#2A2A2A' : '#F5F7FA',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: theme.palette.mode === 'dark' ? '#616161' : '#CFD8DC',
+              borderRadius: '3px',
+            },
+          }}
+        >
+          {visibleStages.map(renderStageColumn)}
+        </Box>
       </Box>
-    </Box>
-  );
+    );
+  };
 
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        borderRadius: '20px',
-        p: 3,
-      }}
-    >
+    <>
+      <Paper
+        elevation={0}
+        sx={{
+          borderRadius: '20px',
+          p: 3,
+        }}
+      >
       <Box
         sx={{
           mb: 3,
@@ -354,7 +382,7 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
             Pipeline Overview
           </Typography>
         </Box>
-        <Box sx={{ minWidth: { xs: '100%', sm: 260 }, maxWidth: 340 }}>
+        <Box sx={{ minWidth: { xs: '100%', sm: 260 }, maxWidth: 340, display: 'flex', alignItems: 'center', gap: 1 }}>
           <TextField
             fullWidth
             size="small"
@@ -369,20 +397,136 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
               ),
             }}
           />
+          {canModifyPipeline && (
+            <IconButton
+              size="small"
+              onClick={() => setCustomizeOpen(true)}
+              title="Customize pipeline stages"
+              sx={{
+                border: `1px solid ${theme.palette.divider}`,
+                backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)',
+              }}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          )}
         </Box>
       </Box>
 
       {/* Appointments Phase - Now handled separately, not shown here */}
 
       {/* Sales Phase */}
-      {renderPhase('Sales Phase', SALES_PHASE, '#1976D2')}
+      {renderPhase('Sales Phase', SALES_PHASE)}
 
       {/* Job Readiness Phase */}
-      {renderPhase('Job Readiness', JOB_READINESS_PHASE, '#43A047')}
+      {renderPhase('Job Readiness', JOB_READINESS_PHASE)}
 
       {/* Execution Phase */}
-      {renderPhase('Execution Phase', EXECUTION_PHASE, '#F57C00')}
-    </Paper>
+      {renderPhase('Execution Phase', EXECUTION_PHASE)}
+      </Paper>
+
+      <Dialog
+        open={customizeOpen}
+        onClose={() => setCustomizeOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Customize Pipeline</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {shownStages.map((stageId) => {
+              const override = getStageOverride(stageId);
+              const hidden = !!override.hidden;
+              const labelValue =
+                override?.label && String(override.label).trim()
+                  ? String(override.label).trim()
+                  : STAGE_LABELS[stageId];
+
+              return (
+                <Box
+                  key={stageId}
+                  sx={{
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 2,
+                    p: 1.5,
+                    backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 2,
+                    }}
+                  >
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={hidden}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setStageOverrides((prev) => ({
+                              ...prev,
+                              [stageId]: {
+                                ...(prev?.[stageId] || {}),
+                                hidden: checked,
+                              },
+                            }));
+                          }}
+                        />
+                      }
+                      label={`Hide ${stageId}`}
+                    />
+                    <TextField
+                      size="small"
+                      label="Stage label"
+                      value={labelValue || stageId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setStageOverrides((prev) => ({
+                          ...prev,
+                          [stageId]: {
+                            ...(prev?.[stageId] || {}),
+                            label: val,
+                          },
+                        }));
+                      }}
+                      sx={{ minWidth: 260 }}
+                    />
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setStageOverrides({});
+              try {
+                localStorage.removeItem(PIPELINE_STAGE_CONFIG_KEY);
+              } catch (_) {}
+              toast.success('Pipeline customization reset');
+            }}
+          >
+            Reset
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              try {
+                localStorage.setItem(PIPELINE_STAGE_CONFIG_KEY, JSON.stringify(stageOverrides || {}));
+              } catch (_) {}
+              toast.success('Pipeline customization saved');
+              setCustomizeOpen(false);
+            }}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
 
