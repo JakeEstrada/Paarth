@@ -182,6 +182,8 @@ const jobSchema = new mongoose.Schema({
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     },
+    // Snapshot fallback so note author still renders even if user relation is missing
+    createdByName: String,
     createdAt: {
       type: Date,
       default: Date.now

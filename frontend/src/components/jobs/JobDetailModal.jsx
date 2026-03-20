@@ -516,7 +516,7 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
                         >
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                              {note.createdBy?.name || 'Unknown'}
+                              {note.createdBy?.name || note.createdByName || job?.createdBy?.name || 'Unknown'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
                               {formatDateTime(note.createdAt)}
@@ -975,7 +975,7 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
                     <Paper key={index} sx={{ p: 2 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                         <Typography variant="caption" color="text.secondary">
-                          {note.createdBy?.name || 'Unknown'} • {formatDateTime(note.createdAt)}
+                          {(note.createdBy?.name || note.createdByName || job?.createdBy?.name || 'Unknown')} • {formatDateTime(note.createdAt)}
                         </Typography>
                       </Box>
                       <Typography 

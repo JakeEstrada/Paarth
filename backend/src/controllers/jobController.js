@@ -56,7 +56,8 @@ async function getJob(req, res) {
     const job = await Job.findById(req.params.id)
       .populate('customerId')
       .populate('assignedTo', 'name email')
-      .populate('createdBy', 'name email');
+      .populate('createdBy', 'name email')
+      .populate('notes.createdBy', 'name email');
     
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
@@ -175,6 +176,11 @@ async function updateJob(req, res) {
         createdBy = defaultUser._id;
       }
     }
+    let createdByName = req.user?.name || null;
+    if (!createdByName && createdBy) {
+      const creatorUser = await User.findById(createdBy).select('name');
+      createdByName = creatorUser?.name || null;
+    }
     
     if (newNotes && Array.isArray(newNotes)) {
       // Find newly added notes (notes that weren't in the old array)
@@ -195,6 +201,7 @@ async function updateJob(req, res) {
             return {
               content: note.content,
               createdBy: createdBy,
+              createdByName: createdByName,
               createdAt: note.createdAt || new Date(),
               isStageChange: note.isStageChange || false
             };

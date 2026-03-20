@@ -36,6 +36,7 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import AddAppointmentModal from '../appointments/AddAppointmentModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -57,6 +58,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskUrgent, setNewTaskUrgent] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
+  const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
 
   useEffect(() => {
     if (open && projectId) {
@@ -72,6 +74,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
       setNewTaskTitle('');
       setNewTaskDescription('');
       setNewTaskUrgent(false);
+      setAddAppointmentOpen(false);
     }
   }, [open, projectId]);
 
@@ -656,6 +659,15 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                     >
                       Add Task
                     </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<AddIcon />}
+                      onClick={() => setAddAppointmentOpen(true)}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Add Appointment
+                    </Button>
                   </Box>
                 </Box>
               </Paper>
@@ -890,6 +902,24 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
+
+      <AddAppointmentModal
+        open={addAppointmentOpen}
+        onClose={() => setAddAppointmentOpen(false)}
+        onSuccess={() => {
+          toast.success('Project appointment created');
+          if (onUpdate) onUpdate();
+        }}
+        job={
+          project?.jobId
+            ? {
+                _id: project.jobId?._id || project.jobId,
+                customerId: project?.customerId || project?.jobId?.customerId,
+                title: project?.title,
+              }
+            : null
+        }
+      />
     </Dialog>
   );
 }

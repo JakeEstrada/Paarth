@@ -220,6 +220,7 @@ function AccountSettingsPage() {
                 onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
                 fullWidth
                 required
+                helperText="This name is used in activity and update logs."
               />
             </Grid>
 
