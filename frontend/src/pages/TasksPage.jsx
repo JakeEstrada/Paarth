@@ -23,6 +23,7 @@ import {
   FolderOpen as FolderOpenIcon,
   Transform as TransformIcon,
   PriorityHigh as PriorityHighIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -43,6 +44,7 @@ function TasksPage() {
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [projectSearch, setProjectSearch] = useState('');
 
   useEffect(() => {
     fetchTodos();
@@ -178,7 +180,20 @@ function TasksPage() {
     );
   }
 
-  const currentItems = tabValue === 0 ? projects : todos;
+  const currentItems = tabValue === 0
+    ? projects.filter((item) => {
+        const term = projectSearch.trim().toLowerCase();
+        if (!term) return true;
+        const title = item.title || '';
+        const description = item.description || '';
+        const customerName = item.customerId?.name || '';
+        return (
+          title.toLowerCase().includes(term) ||
+          description.toLowerCase().includes(term) ||
+          customerName.toLowerCase().includes(term)
+        );
+      })
+    : todos;
 
   return (
     <Box sx={{ p: 3 }}>
@@ -222,10 +237,28 @@ function TasksPage() {
         </Tabs>
       </Box>
 
+      {tabValue === 0 && (
+        <Box sx={{ mb: 2, maxWidth: 420 }}>
+          <TextField
+            fullWidth
+            size="small"
+            label="Search projects"
+            placeholder="Search by project, customer, or description"
+            value={projectSearch}
+            onChange={(e) => setProjectSearch(e.target.value)}
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary', fontSize: 18 }} />,
+            }}
+          />
+        </Box>
+      )}
+
       {currentItems.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="body2" color="text.secondary">
-            {tabValue === 0 ? 'No projects' : 'No tasks'}
+            {tabValue === 0
+              ? (projectSearch.trim() ? 'No projects match your search' : 'No projects')
+              : 'No tasks'}
           </Typography>
         </Paper>
       ) : (
