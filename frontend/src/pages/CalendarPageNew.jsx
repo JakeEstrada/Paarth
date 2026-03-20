@@ -1232,19 +1232,25 @@ function CalendarPageNew() {
       setLoading(true);
       const response = await axios.get(`${API_URL}/jobs`);
       const allJobs = response.data.jobs || response.data || [];
+
+      const jobHasCalendarSchedule = (job) => {
+        const entries = job?.schedule?.entries;
+        if (Array.isArray(entries) && entries.some((e) => e?.startDate)) return true;
+        return !!job?.schedule?.startDate;
+      };
       
-      // Filter bench jobs (job readiness phase)
+      // Filter bench jobs (readiness phase only — not already on the calendar)
       const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
       const bench = allJobs.filter(job => 
         readinessStages.includes(job.stage) && 
         !job.isArchived && 
-        !job.isDeadEstimate
+        !job.isDeadEstimate &&
+        !jobHasCalendarSchedule(job)
       );
       
       // Filter scheduled jobs
       const scheduled = allJobs.filter(job => {
-        const hasSchedule = (Array.isArray(job?.schedule?.entries) && job.schedule.entries.some((e) => e?.startDate))
-          || job.schedule?.startDate;
+        const hasSchedule = jobHasCalendarSchedule(job);
         const isScheduledStage = job.stage === 'SCHEDULED';
         return (hasSchedule || isScheduledStage) && !job.isArchived && !job.isDeadEstimate;
       });

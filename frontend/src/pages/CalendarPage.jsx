@@ -623,17 +623,24 @@ function CalendarPage() {
         } : null
       });
       
-      // Filter bench jobs (job readiness phase)
+      const jobHasCalendarSchedule = (job) => {
+        const entries = job?.schedule?.entries;
+        if (Array.isArray(entries) && entries.some((e) => e?.startDate)) return true;
+        return !!job?.schedule?.startDate;
+      };
+
+      // Filter bench jobs (readiness phase only — not already on the calendar)
       const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
       const bench = allJobs.filter(job => 
         readinessStages.includes(job.stage) && 
         !job.isArchived && 
-        !job.isDeadEstimate
+        !job.isDeadEstimate &&
+        !jobHasCalendarSchedule(job)
       );
       
-      // Filter scheduled jobs - check both schedule.startDate and stage SCHEDULED
+      // Filter scheduled jobs - entries, legacy startDate, or stage SCHEDULED
       const scheduled = allJobs.filter(job => {
-        const hasSchedule = job.schedule?.startDate;
+        const hasSchedule = jobHasCalendarSchedule(job);
         const isScheduledStage = job.stage === 'SCHEDULED';
         const notArchived = !job.isArchived;
         const notDeadEstimate = !job.isDeadEstimate;

@@ -40,28 +40,33 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
     setIsDragging(false);
   };
 
-  // Determine status dot color based on bench / scheduled state
+  // Determine status dot color: scheduled (green) beats bench (orange) when calendar exists
   const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
   const isArchived = !!job.isArchived;
   const isDeadEstimate = !!job.isDeadEstimate;
-  const hasSchedule = !!job.schedule?.startDate;
+  const hasSchedule =
+    !!(job.schedule?.startDate) ||
+    (Array.isArray(job.schedule?.entries) && job.schedule.entries.some((e) => e?.startDate));
 
-  const isBenchJob =
-    readinessStages.includes(job.stage) && !isArchived && !isDeadEstimate;
   const isScheduledJob =
     (hasSchedule || job.stage === 'SCHEDULED') && !isArchived && !isDeadEstimate;
+  const isBenchJob =
+    readinessStages.includes(job.stage) &&
+    !isArchived &&
+    !isDeadEstimate &&
+    !hasSchedule;
 
   let statusColor = theme.palette.info.main; // default blue
   let statusLabel = 'Open: not on bench or scheduled yet';
 
-  if (isBenchJob) {
-    statusColor = '#F57C00'; // orange
-    statusLabel =
-      'On bench: job is in a readiness stage and not yet scheduled on the calendar.';
-  } else if (isScheduledJob) {
+  if (isScheduledJob) {
     statusColor = theme.palette.success.main; // green
     statusLabel =
       'Scheduled: job has scheduled dates or is in the Scheduled stage.';
+  } else if (isBenchJob) {
+    statusColor = '#F57C00'; // orange
+    statusLabel =
+      'On bench: job is in a readiness stage and not yet scheduled on the calendar.';
   }
 
   return (
