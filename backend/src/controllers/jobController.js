@@ -20,7 +20,7 @@ async function getJobs(req, res) {
     const jobs = await Job.find(query)
       .populate({
         path: 'customerId',
-        select: 'name primaryPhone primaryEmail',
+        select: 'name primaryPhone primaryEmail address',
         strictPopulate: false
       })
       .populate({
@@ -514,7 +514,7 @@ async function getArchivedJobs(req, res) {
         { isArchived: true }
       ]
     })
-      .populate('customerId', 'name primaryPhone primaryEmail')
+      .populate('customerId', 'name primaryPhone primaryEmail address')
       .populate('assignedTo', 'name email')
       .populate('createdBy', 'name email')
       .sort({ archivedAt: -1, movedToDeadEstimateAt: -1, 'estimate.sentAt': -1 });
@@ -571,7 +571,7 @@ async function getCompletedJobs(req, res) {
       isDeadEstimate: { $ne: true }
       // Note: We include archived jobs here to keep a permanent list
     })
-      .populate('customerId', 'name primaryPhone primaryEmail')
+      .populate('customerId', 'name primaryPhone primaryEmail address')
       .populate('assignedTo', 'name email')
       .populate('createdBy', 'name email')
       .sort({ updatedAt: -1, createdAt: -1 });
