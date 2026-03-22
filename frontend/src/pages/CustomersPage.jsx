@@ -42,16 +42,15 @@ import {
   Delete as DeleteOutlineIcon,
   Note as NoteIcon,
   Work as WorkIcon,
-  OpenInNew as OpenInNewIcon,
+  Description as DescriptionIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
+import JobDetailModal from '../components/jobs/JobDetailModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function CustomersPage() {
-  const navigate = useNavigate();
   const theme = useTheme();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +68,7 @@ function CustomersPage() {
   const [notesText, setNotesText] = useState('');
   const [customerJobs, setCustomerJobs] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState(null);
 
   // Fetch customers
   const fetchCustomers = async () => {
@@ -199,13 +199,37 @@ function CustomersPage() {
     }
   };
 
+  const handleJobUpdate = async (jobId, updates) => {
+    try {
+      await axios.patch(`${API_URL}/jobs/${jobId}`, updates);
+      toast.success('Job updated');
+      if (selectedCustomer?._id) await fetchCustomerJobs(selectedCustomer._id);
+    } catch (error) {
+      console.error('Error updating job:', error);
+      toast.error('Failed to update job');
+      throw error;
+    }
+  };
+
+  const handleJobDeletedOrArchived = async () => {
+    if (selectedCustomer?._id) await fetchCustomerJobs(selectedCustomer._id);
+  };
+
   // Open contact modal
   const handleOpenContactModal = (customer) => {
     setSelectedCustomer(customer);
     setIsEditingCustomer(false);
     setEditCustomerForm({});
+    setSelectedJobId(null);
     setContactModalOpen(true);
     fetchCustomerJobs(customer._id);
+  };
+
+  const handleCloseContactModal = () => {
+    setContactModalOpen(false);
+    setIsEditingCustomer(false);
+    setEditCustomerForm({});
+    setSelectedJobId(null);
   };
 
   // Start editing customer
@@ -825,11 +849,7 @@ function CustomersPage() {
       {/* Contact Modal */}
       <Dialog 
         open={contactModalOpen} 
-        onClose={() => {
-          setContactModalOpen(false);
-          setIsEditingCustomer(false);
-          setEditCustomerForm({});
-        }}
+        onClose={handleCloseContactModal}
         maxWidth="md"
         fullWidth
       >
@@ -1294,12 +1314,7 @@ function CustomersPage() {
                               },
                             }}
                             onClick={() => {
-                              const id = job?._id;
-                              if (id) {
-                                navigate(`/pipeline?jobId=${encodeURIComponent(String(id))}`);
-                              } else {
-                                navigate('/pipeline');
-                              }
+                              if (job?._id) setSelectedJobId(job._id);
                             }}
                           >
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1320,7 +1335,7 @@ function CustomersPage() {
                                   )}
                                 </Box>
                               </Box>
-                              <OpenInNewIcon sx={{ fontSize: 16, color: 'text.secondary', ml: 1 }} />
+                              <DescriptionIcon sx={{ fontSize: 16, color: 'text.secondary', ml: 1 }} titleAccess="View job details" />
                             </Box>
                           </Box>
                         ))}
@@ -1354,10 +1369,20 @@ function CustomersPage() {
               </Button>
             </>
           ) : (
-            <Button onClick={() => setContactModalOpen(false)}>Close</Button>
+            <Button onClick={handleCloseContactModal}>Close</Button>
           )}
         </DialogActions>
       </Dialog>
+
+      <JobDetailModal
+        jobId={selectedJobId}
+        open={!!selectedJobId}
+        onClose={() => setSelectedJobId(null)}
+        onJobUpdate={handleJobUpdate}
+        onJobDelete={handleJobDeletedOrArchived}
+        onJobArchive={handleJobDeletedOrArchived}
+        sx={(theme) => ({ zIndex: theme.zIndex.modal + 2 })}
+      />
     </Box>
   );
 }

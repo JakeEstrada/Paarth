@@ -91,7 +91,16 @@ const getNextStage = (currentStage) => {
   return ALL_STAGES[currentIndex + 1];
 };
 
-function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobArchive, onAppointmentCreated }) {
+function JobDetailModal({
+  jobId,
+  open,
+  onClose,
+  onJobUpdate,
+  onJobDelete,
+  onJobArchive,
+  onAppointmentCreated,
+  sx,
+}) {
   const [activeTab, setActiveTab] = useState(0);
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -357,6 +366,7 @@ function JobDetailModal({ jobId, open, onClose, onJobUpdate, onJobDelete, onJobA
       onClose={onClose}
       maxWidth="md"
       fullWidth
+      sx={sx}
       PaperProps={{
         sx: {
           borderRadius: '16px',
