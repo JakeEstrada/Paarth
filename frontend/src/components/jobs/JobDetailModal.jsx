@@ -382,33 +382,34 @@ function JobDetailModal({
   const renderCustomerHeaderStrip = (j) => {
     const { name, addressLine, email, phone } = getCustomerContact(j);
     if (!name && !addressLine && !email && !phone) return null;
-    const smallText = { fontSize: '0.75rem', lineHeight: 1.45 };
-    const iconSm = { fontSize: 15, flexShrink: 0 };
+    const smallText = { fontSize: '0.7rem', lineHeight: 1.4 };
+    const iconSm = { fontSize: 14, flexShrink: 0 };
     return (
       <Box
         sx={{
-          mt: 1.5,
-          p: 1.25,
-          borderRadius: 1,
+          mt: 1.25,
+          py: 0.75,
+          px: 1,
+          borderRadius: 0.75,
           border: '1px solid',
           borderColor: 'divider',
           bgcolor: (theme) =>
             theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'action.hover',
           display: 'flex',
           flexDirection: 'column',
-          gap: 0.65,
+          gap: 0.4,
         }}
       >
         {name && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.65 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <PersonIcon sx={{ ...iconSm, color: 'primary.main', mt: '1px' }} />
-            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem', lineHeight: 1.4 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.78rem', lineHeight: 1.35 }}>
               {name}
             </Typography>
           </Box>
         )}
         {addressLine && (
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.65 }}>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
             <LocationIcon sx={{ ...iconSm, color: 'text.secondary', mt: '2px' }} />
             <Typography variant="caption" color="text.secondary" sx={smallText}>
               {addressLine}
@@ -416,9 +417,9 @@ function JobDetailModal({
           </Box>
         )}
         {(email || phone) && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.3 }}>
             {email && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.65 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <EmailIcon sx={{ ...iconSm, color: 'text.secondary' }} />
                 <Typography
                   variant="caption"
@@ -432,7 +433,7 @@ function JobDetailModal({
               </Box>
             )}
             {phone && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.65 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <PhoneIcon sx={{ ...iconSm, color: 'text.secondary' }} />
                 <Typography
                   variant="caption"
