@@ -46,10 +46,12 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function CustomersPage() {
+  const navigate = useNavigate();
   const theme = useTheme();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1292,8 +1294,12 @@ function CustomersPage() {
                               },
                             }}
                             onClick={() => {
-                              // Navigate to pipeline page
-                              window.location.href = '/pipeline';
+                              const id = job?._id;
+                              if (id) {
+                                navigate(`/pipeline?jobId=${encodeURIComponent(String(id))}`);
+                              } else {
+                                navigate('/pipeline');
+                              }
                             }}
                           >
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

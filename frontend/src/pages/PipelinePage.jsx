@@ -87,8 +87,10 @@ function PipelinePage() {
   useEffect(() => {
     const jobIdFromUrl = searchParams.get('jobId');
     if (jobIdFromUrl && jobs.length > 0) {
-      // Verify the job exists in the current jobs list
-      const jobExists = jobs.some(job => job._id === jobIdFromUrl);
+      // Verify the job exists in the current jobs list (normalize ids — API may return string or object)
+      const jobExists = jobs.some(
+        (job) => String(job._id) === String(jobIdFromUrl)
+      );
       if (jobExists) {
         setSelectedJobId(jobIdFromUrl);
         // Remove the query parameter from URL after opening
