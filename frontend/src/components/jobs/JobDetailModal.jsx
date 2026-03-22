@@ -382,47 +382,65 @@ function JobDetailModal({
   const renderCustomerHeaderStrip = (j) => {
     const { name, addressLine, email, phone } = getCustomerContact(j);
     if (!name && !addressLine && !email && !phone) return null;
+    const smallText = { fontSize: '0.75rem', lineHeight: 1.45 };
+    const iconSm = { fontSize: 15, flexShrink: 0 };
     return (
       <Box
         sx={{
           mt: 1.5,
+          p: 1.25,
+          borderRadius: 1,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: (theme) =>
+            theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'action.hover',
           display: 'flex',
           flexDirection: 'column',
-          gap: 0.75,
-          py: 1,
-          px: 0,
+          gap: 0.65,
         }}
       >
         {name && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-            <PersonIcon sx={{ fontSize: 18, color: 'primary.main', flexShrink: 0 }} />
-            <Typography variant="body1" sx={{ fontWeight: 600 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.65 }}>
+            <PersonIcon sx={{ ...iconSm, color: 'primary.main', mt: '1px' }} />
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem', lineHeight: 1.4 }}>
               {name}
             </Typography>
           </Box>
         )}
         {addressLine && (
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75 }}>
-            <LocationIcon sx={{ fontSize: 18, color: 'text.secondary', flexShrink: 0, mt: 0.15 }} />
-            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.45 }}>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.65 }}>
+            <LocationIcon sx={{ ...iconSm, color: 'text.secondary', mt: '2px' }} />
+            <Typography variant="caption" color="text.secondary" sx={smallText}>
               {addressLine}
             </Typography>
           </Box>
         )}
         {(email || phone) && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, pl: 0.25 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4 }}>
             {email && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <EmailIcon sx={{ fontSize: 17, color: 'text.secondary', flexShrink: 0 }} />
-                <Typography variant="body2" color="text.secondary" component="a" href={`mailto:${email}`} sx={{ wordBreak: 'break-all' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.65 }}>
+                <EmailIcon sx={{ ...iconSm, color: 'text.secondary' }} />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  component="a"
+                  href={`mailto:${email}`}
+                  sx={{ ...smallText, wordBreak: 'break-all', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                >
                   {email}
                 </Typography>
               </Box>
             )}
             {phone && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <PhoneIcon sx={{ fontSize: 17, color: 'text.secondary', flexShrink: 0 }} />
-                <Typography variant="body2" color="text.secondary" component="a" href={`tel:${phone}`} sx={{ wordBreak: 'break-all' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.65 }}>
+                <PhoneIcon sx={{ ...iconSm, color: 'text.secondary' }} />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  component="a"
+                  href={`tel:${phone}`}
+                  sx={{ ...smallText, wordBreak: 'break-all', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                >
                   {phone}
                 </Typography>
               </Box>
