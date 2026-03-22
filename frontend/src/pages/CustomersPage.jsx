@@ -512,47 +512,75 @@ function CustomersPage() {
     return emails;
   };
 
-  // Get all addresses for a customer
-  const getAllAddresses = (customer) => {
+  // Get all addresses for a customer (profile + job-site addresses from linked jobs)
+  const getAllAddresses = (customer, jobs = []) => {
     const addresses = [];
     const seenAddresses = new Set();
-    
+
     // Add primary address first if it exists
     if (customer.address && (customer.address.street || customer.address.city)) {
       const primaryStr = formatAddress(customer.address);
       addresses.push({
         address: customer.address,
         display: primaryStr,
-        isPrimary: true
+        isPrimary: true,
+        isJobSite: false,
       });
       seenAddresses.add(primaryStr.toLowerCase());
     }
-    
+
     // Add addresses from addresses array (avoid duplicates)
     if (customer.addresses && customer.addresses.length > 0) {
-      customer.addresses.forEach(addr => {
+      customer.addresses.forEach((addr) => {
         const addrStr = addr.fullAddress || formatAddress(addr);
         const normalizedStr = addrStr.toLowerCase();
         if (!seenAddresses.has(normalizedStr)) {
           addresses.push({
             address: addr,
             display: addrStr,
-            isPrimary: false
+            isPrimary: false,
+            isJobSite: false,
           });
           seenAddresses.add(normalizedStr);
         }
       });
     }
-    
-    // Sort addresses (primary first, then alphabetically)
-    addresses.sort((a, b) => {
+
+    // Job site addresses (stored on each job as jobAddress — not copied to customer record)
+    if (Array.isArray(jobs)) {
+      jobs.forEach((job) => {
+        const ja = job?.jobAddress;
+        if (!ja || (!ja.street && !ja.city && !ja.state && !ja.zip)) return;
+        const line = formatAddress(ja);
+        if (!line || line === '-') return;
+        const title = (job.title || 'Job').trim();
+        addresses.push({
+          address: ja,
+          display: `${title} | ${line}`,
+          isPrimary: false,
+          isJobSite: true,
+          jobId: job._id,
+        });
+      });
+    }
+
+    // Customer profile addresses first (primary, then others), then job sites by title
+    const profileRows = addresses.filter((a) => !a.isJobSite);
+    const jobRows = addresses.filter((a) => a.isJobSite);
+    profileRows.sort((a, b) => {
       if (a.isPrimary && !b.isPrimary) return -1;
       if (!a.isPrimary && b.isPrimary) return 1;
-      return a.display.localeCompare(b.display);
+      return (a.display || '').localeCompare(b.display || '');
     });
-    
-    return addresses;
+    jobRows.sort((a, b) => (a.display || '').localeCompare(b.display || ''));
+
+    return [...profileRows, ...jobRows];
   };
+
+  const contactModalAddressList = useMemo(() => {
+    if (!selectedCustomer) return [];
+    return getAllAddresses(selectedCustomer, customerJobs);
+  }, [selectedCustomer, customerJobs]);
 
   // Open notes dialog
   const handleOpenNotesDialog = (customer, e) => {
@@ -1213,32 +1241,43 @@ function CustomersPage() {
                     </Box>
                   )}
 
-                  {/* Addresses */}
-                  {getAllAddresses(selectedCustomer).length > 0 && (
+                  {/* Addresses (customer profile + job site addresses from jobs) */}
+                  {contactModalAddressList.length > 0 && (
                     <Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                         <LocationIcon color="primary" />
                         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                          Addresses ({getAllAddresses(selectedCustomer).length})
+                          Addresses ({contactModalAddressList.length})
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pl: 4 }}>
-                        {getAllAddresses(selectedCustomer).map((addrObj, idx) => (
+                        {contactModalAddressList.map((addrObj, idx) => (
                           <Typography 
-                            key={idx}
+                            key={addrObj.jobId || `addr-${idx}`}
                             variant="body2"
                             sx={{
                               fontFamily: 'monospace',
                               fontSize: '0.9rem',
                               pl: 2,
-                              borderLeft: addrObj.isPrimary 
-                                ? '3px solid #1976D2' 
-                                : '3px solid #e0e0e0'
+                              borderLeft: addrObj.isJobSite
+                                ? `3px solid ${theme.palette.warning.main}`
+                                : addrObj.isPrimary
+                                  ? `3px solid ${theme.palette.primary.main}`
+                                  : `3px solid ${theme.palette.divider}`,
                             }}
                           >
                             {addrObj.display}
                             {addrObj.isPrimary && (
                               <Chip label="Primary" size="small" sx={{ ml: 1, height: 20 }} />
+                            )}
+                            {addrObj.isJobSite && (
+                              <Chip
+                                label="Job site"
+                                size="small"
+                                color="warning"
+                                variant="outlined"
+                                sx={{ ml: 1, height: 20 }}
+                              />
                             )}
                           </Typography>
                         ))}
@@ -1350,7 +1389,7 @@ function CustomersPage() {
                   {/* Show message if no contact info */}
                   {getAllPhones(selectedCustomer).length === 0 && 
                    getAllEmails(selectedCustomer).length === 0 && 
-                   getAllAddresses(selectedCustomer).length === 0 && (
+                   contactModalAddressList.length === 0 && (
                     <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
                       No contact information available
                     </Typography>
