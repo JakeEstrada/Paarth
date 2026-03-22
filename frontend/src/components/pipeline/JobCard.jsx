@@ -13,40 +13,6 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
     return title.substring(0, maxLength) + '...';
   };
 
-  const truncateText = (text, maxLength = 80) => {
-    if (!text) return '';
-    const s = String(text).trim();
-    if (s.length <= maxLength) return s;
-    return s.substring(0, maxLength) + '…';
-  };
-
-  /** Prefer job site address, then customer address */
-  const formatAddressLine = () => {
-    const ja = job.jobAddress;
-    if (ja && (ja.street || ja.city || ja.state || ja.zip)) {
-      const parts = [ja.street, ja.city, ja.state, ja.zip].filter(Boolean);
-      return parts.join(', ');
-    }
-    const a = job.customerId && typeof job.customerId === 'object' ? job.customerId.address : null;
-    if (a && (a.street || a.city || a.state || a.zip)) {
-      const parts = [a.street, a.city, a.state, a.zip].filter(Boolean);
-      return parts.join(', ');
-    }
-    return '';
-  };
-
-  const contactEmail =
-    job.jobContact?.email ||
-    (job.customerId && typeof job.customerId === 'object' ? job.customerId.primaryEmail : '') ||
-    '';
-  const contactPhone =
-    job.jobContact?.phone ||
-    (job.customerId && typeof job.customerId === 'object' ? job.customerId.primaryPhone : '') ||
-    '';
-
-  const addressLine = formatAddressLine();
-  const hasContactRow = !!(contactEmail || contactPhone);
-
   const handleContextMenu = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -131,101 +97,63 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
       <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography
-              variant="body2"
-              sx={{
-                fontSize: '0.875rem',
-                fontWeight: 500,
-                color: theme.palette.text.primary,
-                lineHeight: 1.35,
-                display: 'block',
-              }}
-              title={job.title}
-            >
-              {truncateTitle(job.title, 50)}
-            </Typography>
-
-            {(addressLine || hasContactRow) && (
-              <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                {addressLine && (
-                  <Typography
-                    variant="caption"
-                    component="div"
-                    title={addressLine}
-                    sx={{
-                      color: theme.palette.text.secondary,
-                      fontSize: '0.7rem',
-                      lineHeight: 1.35,
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {truncateText(addressLine, 90)}
-                  </Typography>
-                )}
-                {hasContactRow && (
-                  <Typography
-                    variant="caption"
-                    component="div"
-                    sx={{
-                      color: theme.palette.text.secondary,
-                      fontSize: '0.7rem',
-                      lineHeight: 1.35,
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {contactEmail && (
-                      <Box component="span" title={contactEmail}>
-                        {truncateText(contactEmail, 42)}
-                      </Box>
-                    )}
-                    {contactEmail && contactPhone && (
-                      <Box component="span" sx={{ opacity: 0.6, mx: 0.5 }}>
-                        ·
-                      </Box>
-                    )}
-                    {contactPhone && (
-                      <Box component="span" title={contactPhone}>
-                        {contactPhone}
-                      </Box>
-                    )}
-                  </Typography>
-                )}
-              </Box>
-            )}
-
-            {job.description && (
+          <Typography
+            variant="body2"
+            sx={{
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              color: theme.palette.text.primary,
+              lineHeight: 1.4,
+              display: 'inline',
+            }}
+            title={job.title}
+          >
+            {truncateTitle(job.title, 50)}
+          </Typography>
+          {job.description && (
+            <>
+              <Typography 
+                component="span" 
+                sx={{ 
+                  mx: 0.75, 
+                  color: theme.palette.text.secondary,
+                  fontSize: '0.75rem'
+                }}
+              >
+                |
+              </Typography>
               <Typography
-                variant="caption"
-                component="div"
+                component="span"
+                variant="body2"
                 sx={{
-                  mt: addressLine || hasContactRow ? 0.5 : 0.25,
-                  fontSize: '0.7rem',
+                  fontSize: '0.75rem',
                   color: theme.palette.text.secondary,
                   fontStyle: 'italic',
                   fontWeight: 300,
-                  lineHeight: 1.35,
-                  display: 'block',
+                  lineHeight: 1.4,
                 }}
                 title={job.description}
               >
-                {truncateTitle(job.description, 48)}
+                {truncateTitle(job.description, 30)}
               </Typography>
-            )}
+            </>
+          )}
           </Box>
-          <Tooltip title={statusLabel}>
-            <Box
-              sx={{
-                flexShrink: 0,
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                backgroundColor: statusColor,
-                border: `2px solid ${theme.palette.background.paper}`,
-                mt: 0.5,
-              }}
-            />
-          </Tooltip>
-        </Box>
+        <Tooltip title={statusLabel}>
+          <Box
+            sx={{
+              flexShrink: 0,
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              backgroundColor: statusColor,
+              border: `2px solid ${theme.palette.background.paper}`,
+              mt: 0.5,
+            }}
+          />
+        </Tooltip>
+      </Box>
+        
       </CardContent>
     </Card>
   );

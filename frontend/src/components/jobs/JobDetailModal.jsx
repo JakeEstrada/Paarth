@@ -34,6 +34,8 @@ import {
   Delete as DeleteIcon,
   Archive as ArchiveIcon,
   SwapHoriz as SwapHorizIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
   CloudUpload as CloudUploadIcon,
   PictureAsPdf as PictureAsPdfIcon,
   Image as ImageIcon,
@@ -358,6 +360,79 @@ function JobDetailModal({
     return format(new Date(date), 'MMM dd, yyyy h:mm a');
   };
 
+  /** Job site / customer address + contact for header strip */
+  const getCustomerContact = (j) => {
+    if (!j) return { name: '', addressLine: '', email: '', phone: '' };
+    const cust = j.customerId && typeof j.customerId === 'object' ? j.customerId : null;
+    const ja = j.jobAddress;
+    let addressLine = '';
+    if (ja && (ja.street || ja.city || ja.state || ja.zip)) {
+      addressLine = [ja.street, ja.city, ja.state, ja.zip].filter(Boolean).join(', ');
+    } else if (cust?.address && (cust.address.street || cust.address.city || cust.address.state || cust.address.zip)) {
+      addressLine = [cust.address.street, cust.address.city, cust.address.state, cust.address.zip]
+        .filter(Boolean)
+        .join(', ');
+    }
+    const email = j.jobContact?.email || cust?.primaryEmail || '';
+    const phone = j.jobContact?.phone || cust?.primaryPhone || '';
+    const name = cust?.name || '';
+    return { name, addressLine, email, phone };
+  };
+
+  const renderCustomerHeaderStrip = (j) => {
+    const { name, addressLine, email, phone } = getCustomerContact(j);
+    if (!name && !addressLine && !email && !phone) return null;
+    return (
+      <Box
+        sx={{
+          mt: 1.5,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 0.75,
+          py: 1,
+          px: 0,
+        }}
+      >
+        {name && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <PersonIcon sx={{ fontSize: 18, color: 'primary.main', flexShrink: 0 }} />
+            <Typography variant="body1" sx={{ fontWeight: 600 }}>
+              {name}
+            </Typography>
+          </Box>
+        )}
+        {addressLine && (
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75 }}>
+            <LocationIcon sx={{ fontSize: 18, color: 'text.secondary', flexShrink: 0, mt: 0.15 }} />
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.45 }}>
+              {addressLine}
+            </Typography>
+          </Box>
+        )}
+        {(email || phone) && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, pl: 0.25 }}>
+            {email && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <EmailIcon sx={{ fontSize: 17, color: 'text.secondary', flexShrink: 0 }} />
+                <Typography variant="body2" color="text.secondary" component="a" href={`mailto:${email}`} sx={{ wordBreak: 'break-all' }}>
+                  {email}
+                </Typography>
+              </Box>
+            )}
+            {phone && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <PhoneIcon sx={{ fontSize: 17, color: 'text.secondary', flexShrink: 0 }} />
+                <Typography variant="body2" color="text.secondary" component="a" href={`tel:${phone}`} sx={{ wordBreak: 'break-all' }}>
+                  {phone}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        )}
+      </Box>
+    );
+  };
+
   if (!open || !job) return null;
 
   return (
@@ -399,29 +474,28 @@ function JobDetailModal({
                   rows={2}
                   placeholder="Add a short description to help identify this job..."
                 />
+                {renderCustomerHeaderStrip(job)}
               </>
             ) : (
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5, display: 'inline' }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, display: 'block' }}>
                   {job.title}
                 </Typography>
+                {renderCustomerHeaderStrip(job)}
                 {job.description && (
-                  <>
-                    <Typography component="span" sx={{ mx: 1, color: 'text.secondary' }}>
-                      |
-                    </Typography>
-                    <Typography 
-                      component="span" 
-                      variant="body2" 
-                      sx={{ 
-                        color: 'text.secondary',
-                        fontStyle: 'italic',
-                        fontWeight: 300
-                      }}
-                    >
-                      {job.description}
-                    </Typography>
-                  </>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      mt: 1.5,
+                      color: 'text.secondary',
+                      fontStyle: 'italic',
+                      fontWeight: 400,
+                      display: 'block',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {job.description}
+                  </Typography>
                 )}
               </Box>
             )}
