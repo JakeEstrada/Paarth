@@ -395,9 +395,13 @@ function JobDetailModal({
           borderColor: 'divider',
           bgcolor: (theme) =>
             theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'action.hover',
-          display: 'flex',
+          display: 'inline-flex',
           flexDirection: 'column',
+          alignSelf: 'flex-start',
           gap: 0.4,
+          maxWidth: '100%',
+          width: 'auto',
+          boxSizing: 'border-box',
         }}
       >
         {name && (
