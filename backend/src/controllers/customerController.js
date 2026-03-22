@@ -1,7 +1,35 @@
 const Customer = require('../models/Customer');
 const Activity = require('../models/Activity');
+const Job = require('../models/Job');
 const fs = require('fs');
 const path = require('path');
+
+/** Default pipeline job so every API-created customer has at least one job. Skip when caller will create the job (e.g. Add Job modal). */
+async function createInitialJobForCustomer(customer, createdBy) {
+  const baseTitle = (customer.name || 'Customer').trim() || 'New customer';
+  const title = `${baseTitle} — Job`.slice(0, 200);
+  const job = new Job({
+    customerId: customer._id,
+    title,
+    description: '',
+    stage: 'ESTIMATE_IN_PROGRESS',
+    source: customer.source || 'other',
+    createdBy,
+  });
+  await job.save();
+  try {
+    await Activity.create({
+      type: 'job_created',
+      jobId: job._id,
+      customerId: customer._id,
+      note: `Initial job "${job.title}" created for new customer`,
+      createdBy,
+    });
+  } catch (e) {
+    console.error('Failed to log initial job activity:', e.message);
+  }
+  return job;
+}
 
 // Get all customers
 async function getCustomers(req, res) {
@@ -71,8 +99,9 @@ async function createCustomer(req, res) {
       }
     }
     
+    const { skipInitialJob, ...customerBody } = req.body;
     const customer = new Customer({
-      ...req.body,
+      ...customerBody,
       createdBy: createdBy
     });
     
@@ -85,6 +114,20 @@ async function createCustomer(req, res) {
       note: `Customer "${customer.name}" created`,
       createdBy: createdBy
     });
+
+    // Every customer should have at least one job (pipeline). Skip when the client creates a job in the same flow (e.g. Add Job modal).
+    if (!skipInitialJob) {
+      try {
+        await createInitialJobForCustomer(customer, createdBy);
+      } catch (jobErr) {
+        console.error('Failed to create initial job for customer:', jobErr.message);
+        // Customer already exists; surface a clear error so ops can fix
+        return res.status(500).json({
+          error: 'Customer was created but the initial job could not be created. You can add a job from the pipeline.',
+          customerId: customer._id,
+        });
+      }
+    }
     
     res.status(201).json(customer);
   } catch (error) {

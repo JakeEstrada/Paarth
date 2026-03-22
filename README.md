@@ -988,6 +988,8 @@ Create customer.
 }
 ```
 
+By default, creating a customer also creates an initial pipeline job titled `"<Customer name> — Job"` in stage `ESTIMATE_IN_PROGRESS`, so every customer has at least one job. Set `"skipInitialJob": true` when you will create the job yourself in the same flow (e.g. Add Job from the pipeline).
+
 #### `GET /customers/:id`
 Get customer by ID.
 

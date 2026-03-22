@@ -244,6 +244,8 @@ function AddJobModal({ open, onClose, onJobCreated }) {
               address: (formData.customerAddress.street || formData.customerAddress.city) 
                 ? formData.customerAddress 
                 : undefined,
+              // Pipeline flow creates the real job next; avoid duplicate "Name — Job" from API
+              skipInitialJob: true,
             });
             customerId = customerResponse.data._id;
           }
