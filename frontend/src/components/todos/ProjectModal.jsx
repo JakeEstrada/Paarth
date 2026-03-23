@@ -772,18 +772,43 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                         sx={{
                           p: 1.5,
                           display: 'flex',
-                          alignItems: 'center',
+                          alignItems: 'flex-start',
                           gap: 2,
                           backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 152, 0, 0.14)' : 'rgba(255, 152, 0, 0.05)',
                           borderLeft: '3px solid #FF9800',
                         }}
                       >
-                        {isPDF ? (
-                          <PictureAsPdfIcon sx={{ color: '#F44336', fontSize: 28 }} />
-                        ) : isImage ? (
-                          <ImageIcon sx={{ color: '#2196F3', fontSize: 28 }} />
+                        {isImage ? (
+                          <Box
+                            sx={{
+                              width: 72,
+                              height: 72,
+                              borderRadius: 1,
+                              overflow: 'hidden',
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              flexShrink: 0,
+                              bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : '#fff',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => window.open(`${API_URL}/files/${file._id}`, '_blank')}
+                            title="View image"
+                          >
+                            <img
+                              src={`${API_URL}/files/${file._id}`}
+                              alt={file.originalName || 'Project file'}
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                                display: 'block',
+                              }}
+                            />
+                          </Box>
+                        ) : isPDF ? (
+                          <PictureAsPdfIcon sx={{ color: '#F44336', fontSize: 28, mt: 0.5 }} />
                         ) : (
-                          <AttachFileIcon sx={{ color: '#757575', fontSize: 28 }} />
+                          <AttachFileIcon sx={{ color: '#757575', fontSize: 28, mt: 0.5 }} />
                         )}
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="body2" sx={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
