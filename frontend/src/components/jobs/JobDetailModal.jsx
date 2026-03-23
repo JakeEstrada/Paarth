@@ -360,6 +360,9 @@ function JobDetailModal({
     return format(new Date(date), 'MMM dd, yyyy h:mm a');
   };
 
+  const getNoteAuthor = (note) =>
+    note?.createdBy?.name || note?.createdByName || job?.createdBy?.name || 'Unknown';
+
   /** Job site / customer address + contact for header strip */
   const getCustomerContact = (j) => {
     if (!j) return { name: '', addressLine: '', email: '', phone: '' };
@@ -622,8 +625,10 @@ function JobDetailModal({
                           }}
                         >
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                              {note.createdBy?.name || note.createdByName || job?.createdBy?.name || 'Unknown'}
+                            <Typography variant="caption" color="text.secondary">
+                              <Box component="span" sx={{ fontWeight: 700 }}>
+                                [{getNoteAuthor(note)}]
+                              </Box>
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
                               {formatDateTime(note.createdAt)}
@@ -1082,7 +1087,10 @@ function JobDetailModal({
                     <Paper key={index} sx={{ p: 2 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                         <Typography variant="caption" color="text.secondary">
-                          {(note.createdBy?.name || note.createdByName || job?.createdBy?.name || 'Unknown')} • {formatDateTime(note.createdAt)}
+                          <Box component="span" sx={{ fontWeight: 700 }}>
+                            [{getNoteAuthor(note)}]
+                          </Box>{' '}
+                          • {formatDateTime(note.createdAt)}
                         </Typography>
                       </Box>
                       <Typography 
