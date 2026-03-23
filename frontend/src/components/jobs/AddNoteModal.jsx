@@ -11,10 +11,12 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function AddNoteModal({ open, onClose, onSuccess, job }) {
+  const { user } = useAuth();
   const [noteContent, setNoteContent] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -56,7 +58,10 @@ function AddNoteModal({ open, onClose, onSuccess, job }) {
 
       // Update job with new notes array
       await axios.patch(`${API_URL}/jobs/${job._id}`, {
-        notes: updatedNotes
+        notes: updatedNotes,
+        // Pass explicit actor so note attribution is correct even when auth middleware is disabled on jobs routes
+        createdBy: user?._id,
+        createdByName: user?.name,
       });
       
       toast.success('Note added successfully');

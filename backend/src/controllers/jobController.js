@@ -168,15 +168,16 @@ async function updateJob(req, res) {
     const notesToAdd = [];
     const User = require('../models/User');
     
-    // Handle createdBy for new notes
-    let createdBy = req.user?._id || job.createdBy;
+    // Handle createdBy for new notes.
+    // Prefer authenticated user; if auth is unavailable, accept explicit actor from request.
+    let createdBy = req.user?._id || req.body.createdBy || job.createdBy;
     if (!createdBy) {
       const defaultUser = await User.findOne({ isActive: true });
       if (defaultUser) {
         createdBy = defaultUser._id;
       }
     }
-    let createdByName = req.user?.name || null;
+    let createdByName = req.user?.name || req.body.createdByName || null;
     if (!createdByName && createdBy) {
       const creatorUser = await User.findById(createdBy).select('name');
       createdByName = creatorUser?.name || null;
