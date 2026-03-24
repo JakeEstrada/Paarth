@@ -1,6 +1,5 @@
 const User = require('../models/User');
 const { generateAccessToken, generateRefreshToken } = require('../utils/generateToken');
-const { runWithTenantContext } = require('../middleware/tenantContext');
 
 // Register new user (requires admin approval)
 async function register(req, res) {
@@ -60,11 +59,9 @@ async function login(req, res) {
       $or: [{ email: loginField.toLowerCase() }, { email: loginField }],
     });
     if (!user) {
-      user = await runWithTenantContext({ tenantId: null, bypassTenant: true }, () =>
-        User.findOne({
-          $or: [{ email: loginField.toLowerCase() }, { email: loginField }],
-        })
-      );
+      user = await User.findOne({
+        $or: [{ email: loginField.toLowerCase() }, { email: loginField }],
+      }).setOptions({ bypassTenant: true });
     }
     if (!user) {
       return res.status(401).json({ error: 'Invalid email/username or password' });
@@ -121,9 +118,7 @@ async function forgotPassword(req, res) {
     
     let user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
-      user = await runWithTenantContext({ tenantId: null, bypassTenant: true }, () =>
-        User.findOne({ email: email.toLowerCase() })
-      );
+      user = await User.findOne({ email: email.toLowerCase() }).setOptions({ bypassTenant: true });
     }
     if (!user) {
       // Don't reveal if user exists for security
@@ -158,9 +153,7 @@ async function forgotUsername(req, res) {
     
     let user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
-      user = await runWithTenantContext({ tenantId: null, bypassTenant: true }, () =>
-        User.findOne({ email: email.toLowerCase() })
-      );
+      user = await User.findOne({ email: email.toLowerCase() }).setOptions({ bypassTenant: true });
     }
     if (!user) {
       // Don't reveal if user exists for security
@@ -191,9 +184,7 @@ async function resetPassword(req, res) {
     
     let user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
-      user = await runWithTenantContext({ tenantId: null, bypassTenant: true }, () =>
-        User.findOne({ email: email.toLowerCase() })
-      );
+      user = await User.findOne({ email: email.toLowerCase() }).setOptions({ bypassTenant: true });
     }
     if (!user) {
       return res.status(404).json({ error: 'User not found' });

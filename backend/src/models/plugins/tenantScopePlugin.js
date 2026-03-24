@@ -32,6 +32,9 @@ function tenantScopePlugin(schema) {
   ];
 
   function applyTenantFilter() {
+    const options = this.getOptions ? this.getOptions() : {};
+    if (options && options.bypassTenant) return;
+
     const { tenantId, bypassTenant } = getTenantContext();
     if (!tenantId || bypassTenant) return;
 

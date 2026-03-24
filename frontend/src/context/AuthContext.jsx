@@ -3,6 +3,17 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const TENANT_HEADER = 'x-tenant-id';
+
+const setAxiosTenantHeader = (tenantId) => {
+  if (tenantId) {
+    axios.defaults.headers.common[TENANT_HEADER] = tenantId;
+    localStorage.setItem('tenantId', tenantId);
+  } else {
+    delete axios.defaults.headers.common[TENANT_HEADER];
+    localStorage.removeItem('tenantId');
+  }
+};
 
 const AuthContext = createContext();
 
@@ -11,6 +22,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const savedTenantId = localStorage.getItem('tenantId');
+    if (savedTenantId) setAxiosTenantHeader(savedTenantId);
+
     // Check for existing token on mount
     const token = localStorage.getItem('accessToken');
     if (token) {
@@ -28,11 +42,13 @@ export function AuthProvider({ children }) {
         }
       });
       setUser(response.data.user);
+      setAxiosTenantHeader(response.data.user?.tenantId || null);
     } catch (error) {
       console.error('Error fetching user:', error);
       // Token might be invalid, clear it
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
+      setAxiosTenantHeader(null);
       setUser(null);
     } finally {
       setLoading(false);
@@ -54,6 +70,7 @@ export function AuthProvider({ children }) {
 
       // Set user
       setUser(user);
+      setAxiosTenantHeader(user?.tenantId || null);
 
       toast.success(`Welcome back, ${user.name}!`);
       return { success: true, user };
@@ -80,6 +97,7 @@ export function AuthProvider({ children }) {
       // Clear tokens and user
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
+      setAxiosTenantHeader(null);
       setUser(null);
       toast.success('Logged out successfully');
     }

@@ -5,6 +5,7 @@ require('dotenv').config();
 const { runWithTenantContext } = require('./middleware/tenantContext');
 const { ensureTenantBySlug, ensureDefaultTenant, normalizeTenantSlug } = require('./utils/tenantService');
 const { backfillTenantIds } = require('./scripts/backfillTenantIds');
+const Tenant = require('./models/Tenant');
 
 const app = express();
 
@@ -17,6 +18,20 @@ app.use('/uploads', express.static('uploads'));
 // Resolve tenant context for every request
 app.use(async (req, res, next) => {
   try {
+    const tenantIdHeader = req.headers['x-tenant-id'];
+    if (tenantIdHeader) {
+      const tenantById = await Tenant.findById(String(tenantIdHeader)).select('_id');
+      if (tenantById) {
+        return runWithTenantContext(
+          {
+            tenantId: String(tenantById._id),
+            bypassTenant: false,
+          },
+          () => next()
+        );
+      }
+    }
+
     const tenantHeader = req.headers['x-tenant-slug'];
     const tenantBody = req.body && typeof req.body === 'object' ? req.body.tenantSlug : null;
     const tenantSlug = normalizeTenantSlug(tenantHeader || tenantBody);

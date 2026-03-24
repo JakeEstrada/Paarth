@@ -20,9 +20,7 @@ async function requireAuth(req, res, next) {
     }
     
     // Get user from database without tenant filter, then scope subsequent queries by that user tenant
-    const user = await runWithTenantContext({ tenantId: null, bypassTenant: true }, () =>
-      User.findById(decoded.userId)
-    );
+    const user = await User.findById(decoded.userId).setOptions({ bypassTenant: true });
     if (!user || !user.isActive) {
       return res.status(401).json({ error: 'User not found or inactive' });
     }
@@ -32,7 +30,7 @@ async function requireAuth(req, res, next) {
     runWithTenantContext(
       {
         tenantId: user.tenantId ? String(user.tenantId) : null,
-        bypassTenant: user.role === 'super_admin',
+        bypassTenant: false,
       },
       () => next()
     );
