@@ -16,19 +16,42 @@ function isLikelyObjectId(value) {
 
 const app = express();
 
-// Middleware
-app.use(cors());
+function parseCorsOrigins() {
+  const raw = process.env.CORS_ORIGINS;
+  if (!raw || !String(raw).trim()) return true;
+  const list = String(raw)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return list.length ? list : true;
+}
+
+// Middleware — explicit headers so browser preflight (e.g. x-tenant-id) succeeds cross-origin
+app.use(
+  cors({
+    origin: parseCorsOrigins(),
+    credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-tenant-slug'],
+  })
+);
 app.use(express.json());
 // Serve uploaded files statically (before DB check)
 app.use('/uploads', express.static('uploads'));
 
 // Resolve tenant context for every request (must run only when MongoDB is ready, or skip DB for static paths)
 app.use(async (req, res, next) => {
+  // Let CORS preflight through without touching the DB (avoids "CORS failed" when Mongo is cold / slow)
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
   const skipTenantDb =
     req.path === '/' ||
     req.path === '/health' ||
     req.path.startsWith('/uploads/') ||
-    req.path.startsWith('/developer-tasks');
+    req.path.startsWith('/developer-tasks') ||
+    req.path.startsWith('/auth');
 
   if (skipTenantDb) {
     return runWithTenantContext({ tenantId: null, bypassTenant: true }, () => next());
@@ -82,6 +105,9 @@ app.use(async (req, res, next) => {
 
 // Middleware to check MongoDB connection before processing requests (except test routes and static files)
 app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
   // Skip check for root test route, health endpoint, static file serving, and developer tasks
   if (req.path === '/' || req.path === '/health' || req.path.startsWith('/uploads/') || req.path.startsWith('/developer-tasks')) {
     return next();
