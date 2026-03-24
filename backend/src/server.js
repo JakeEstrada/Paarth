@@ -26,13 +26,15 @@ function parseCorsOrigins() {
   return list.length ? list : true;
 }
 
-// Middleware — explicit headers so browser preflight (e.g. x-tenant-id) succeeds cross-origin
+// Middleware — explicit headers so browser preflight (e.g. x-tenant-id) succeeds cross-origin.
+// credentials: false — JWT is sent via Authorization header only; true + wrong CORS_ORIGINS breaks browsers.
 app.use(
   cors({
     origin: parseCorsOrigins(),
-    credentials: true,
+    credentials: false,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-tenant-slug'],
+    maxAge: 86400,
   })
 );
 app.use(express.json());
@@ -108,8 +110,14 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') {
     return next();
   }
-  // Skip check for root test route, health endpoint, static file serving, and developer tasks
-  if (req.path === '/' || req.path === '/health' || req.path.startsWith('/uploads/') || req.path.startsWith('/developer-tasks')) {
+  // Skip check for root test route, health endpoint, static files, developer tasks, auth (session restore during cold start)
+  if (
+    req.path === '/' ||
+    req.path === '/health' ||
+    req.path.startsWith('/uploads/') ||
+    req.path.startsWith('/developer-tasks') ||
+    req.path.startsWith('/auth')
+  ) {
     return next();
   }
 

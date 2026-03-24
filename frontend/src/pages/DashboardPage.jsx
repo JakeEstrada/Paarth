@@ -50,7 +50,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function DashboardPage() {
   const navigate = useNavigate();
   const theme = useTheme();
-  const { tenantForBranding } = useAuth();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalJobs: 0,
@@ -1361,18 +1360,15 @@ function DashboardPage() {
           '@media print': { display: 'block' },
         }}
       >
-        <PrintView
-          activities={sortedActivities}
-          selectedDate={selectedPrintDate}
-          tenant={tenantForBranding}
-        />
+        <PrintView activities={sortedActivities} selectedDate={selectedPrintDate} />
       </Box>
     </Container>
   );
 }
 
-// Print View Component
-function PrintView({ activities, selectedDate, tenant }) {
+// Print View Component (uses useAuth so tenant branding is always in scope)
+function PrintView({ activities, selectedDate }) {
+  const { tenantForBranding } = useAuth();
   // Filter activities for selected date (handle timezone correctly)
   // Parse the date string and create date in local timezone
   const [year, month, day] = selectedDate.split('-').map(Number);
@@ -1501,7 +1497,7 @@ function PrintView({ activities, selectedDate, tenant }) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, '@media print': { mb: 2 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <BrandLogo
-            tenant={tenant}
+            tenant={tenantForBranding}
             alt="Organization logo"
             sx={{ height: 60, width: 60, objectFit: 'contain', '@media print': { height: 50, width: 50 } }}
           />

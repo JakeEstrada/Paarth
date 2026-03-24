@@ -1,9 +1,17 @@
+const mongoose = require('mongoose');
 const { verifyAccessToken } = require('../utils/generateToken');
 const User = require('../models/User');
 const { runWithTenantContext } = require('./tenantContext');
 
 async function requireAuth(req, res, next) {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        error: 'Database connection unavailable',
+        message: 'MongoDB is not connected yet. Retry in a few seconds.',
+      });
+    }
+
     // Get token from header
     const authHeader = req.headers.authorization;
     
