@@ -12,7 +12,7 @@ const {
   logPayrollPrint
 } = require('../controllers/activityController');
 
-//router.use(requireAuth);
+router.use(requireAuth);
 
 router.get('/recent', getRecentActivities);
 router.get('/date-range', getActivitiesByDateRange);

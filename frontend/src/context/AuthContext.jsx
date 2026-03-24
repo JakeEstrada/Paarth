@@ -5,13 +5,31 @@ import toast from 'react-hot-toast';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const TENANT_HEADER = 'x-tenant-id';
 
+/** Accepts ObjectId string or populated tenant `{ _id, ... }` from /auth/login and /auth/me */
+function normalizeTenantIdForHeader(tenantId) {
+  if (tenantId == null) return '';
+  const raw = typeof tenantId === 'object' && tenantId !== null ? tenantId._id ?? tenantId.id : tenantId;
+  const id = String(raw).trim();
+  if (!/^[a-fA-F0-9]{24}$/.test(id)) return '';
+  return id;
+}
+
 const setAxiosTenantHeader = (tenantId) => {
-  if (tenantId) {
-    axios.defaults.headers.common[TENANT_HEADER] = tenantId;
-    localStorage.setItem('tenantId', tenantId);
+  const id = normalizeTenantIdForHeader(tenantId);
+  if (id) {
+    axios.defaults.headers.common[TENANT_HEADER] = id;
+    localStorage.setItem('tenantId', id);
   } else {
     delete axios.defaults.headers.common[TENANT_HEADER];
     // Keep localStorage tenantId so the login page can still show the org logo
+  }
+};
+
+const setAxiosAuthHeader = (token) => {
+  if (token) {
+    axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+  } else {
+    delete axios.defaults.headers.common.Authorization;
   }
 };
 
@@ -33,6 +51,7 @@ export function AuthProvider({ children }) {
     // Check for existing token on mount
     const token = localStorage.getItem('accessToken');
     if (token) {
+      setAxiosAuthHeader(token);
       fetchCurrentUser(token);
     } else {
       setLoading(false);
@@ -48,12 +67,14 @@ export function AuthProvider({ children }) {
       });
       setUser(response.data.user);
       setAxiosTenantHeader(response.data.user?.tenantId || null);
+      setAxiosAuthHeader(token);
     } catch (error) {
       console.error('Error fetching user:', error);
       // Token might be invalid, clear it
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       setAxiosTenantHeader(null);
+      setAxiosAuthHeader(null);
       setUser(null);
     } finally {
       setLoading(false);
@@ -72,6 +93,7 @@ export function AuthProvider({ children }) {
       // Store tokens
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
+      setAxiosAuthHeader(accessToken);
 
       // Set user
       setUser(user);
@@ -103,6 +125,7 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       setAxiosTenantHeader(null);
+      setAxiosAuthHeader(null);
       setUser(null);
       toast.success('Logged out successfully');
     }

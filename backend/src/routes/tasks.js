@@ -19,7 +19,7 @@ const {
   addProjectUpdate
 } = require('../controllers/taskController');
 
-//router.use(requireAuth);
+router.use(requireAuth);
 
 // Get tasks
 router.get('/', getAllIncompleteTasks);           // All incomplete tasks (for todo list)

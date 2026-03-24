@@ -11,7 +11,7 @@ const {
   uploadCustomersCSV
 } = require('../controllers/customerController');
 
-//router.use(requireAuth);  // All routes require authentication
+router.use(requireAuth);
 
 router.get('/', getCustomers);
 router.post('/', createCustomer);

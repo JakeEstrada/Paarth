@@ -12,7 +12,7 @@ const {
   deleteAppointment
 } = require('../controllers/appointmentController');
 
-//router.use(requireAuth);
+router.use(requireAuth);
 
 router.get('/', getAppointments);
 router.get('/completed', getCompletedAppointments);

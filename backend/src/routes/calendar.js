@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireAuth } = require('../middleware/auth');
 const {
   syncJobToCalendar,
   deleteJobFromCalendar,
@@ -7,12 +8,10 @@ const {
   handleAuthCallback
 } = require('../controllers/calendarController');
 
-//router.use(requireAuth);
-
 router.get('/auth-url', getAuthUrl);
 router.get('/auth/callback', handleAuthCallback);
-router.post('/jobs/:jobId/sync', syncJobToCalendar);
-router.delete('/jobs/:jobId/sync', deleteJobFromCalendar);
+router.post('/jobs/:jobId/sync', requireAuth, syncJobToCalendar);
+router.delete('/jobs/:jobId/sync', requireAuth, deleteJobFromCalendar);
 
 // Also handle frontend redirect callback
 router.get('/auth/google/callback', handleAuthCallback);

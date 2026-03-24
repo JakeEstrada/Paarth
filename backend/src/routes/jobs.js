@@ -19,7 +19,7 @@ const {
   archiveCompletedJobs
 } = require('../controllers/jobController');
 
-//router.use(requireAuth);
+router.use(requireAuth);
 
 router.get('/', getJobs);
 router.post('/', createJob);
