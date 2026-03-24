@@ -7,6 +7,13 @@ const { ensureTenantBySlug, ensureDefaultTenant, normalizeTenantSlug } = require
 const { backfillTenantIds } = require('./scripts/backfillTenantIds');
 const Tenant = require('./models/Tenant');
 
+function isLikelyObjectId(value) {
+  if (!value || typeof value !== 'string') return false;
+  const s = value.trim();
+  if (s.length !== 24) return false;
+  return /^[a-fA-F0-9]{24}$/.test(s);
+}
+
 const app = express();
 
 // Middleware
@@ -15,12 +22,32 @@ app.use(express.json());
 // Serve uploaded files statically (before DB check)
 app.use('/uploads', express.static('uploads'));
 
-// Resolve tenant context for every request
+// Resolve tenant context for every request (must run only when MongoDB is ready, or skip DB for static paths)
 app.use(async (req, res, next) => {
+  const skipTenantDb =
+    req.path === '/' ||
+    req.path === '/health' ||
+    req.path.startsWith('/uploads/') ||
+    req.path.startsWith('/developer-tasks');
+
+  if (skipTenantDb) {
+    return runWithTenantContext({ tenantId: null, bypassTenant: true }, () => next());
+  }
+
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      error: 'Database connection unavailable',
+      message: 'MongoDB is not connected yet. Retry in a few seconds.',
+    });
+  }
+
   try {
-    const tenantIdHeader = req.headers['x-tenant-id'];
-    if (tenantIdHeader) {
-      const tenantById = await Tenant.findById(String(tenantIdHeader)).select('_id');
+    const rawHeader = req.headers['x-tenant-id'];
+    const tenantIdHeader =
+      typeof rawHeader === 'string' ? rawHeader.trim() : Array.isArray(rawHeader) ? String(rawHeader[0] || '').trim() : '';
+
+    if (tenantIdHeader && isLikelyObjectId(tenantIdHeader)) {
+      const tenantById = await Tenant.findById(tenantIdHeader).select('_id');
       if (tenantById) {
         return runWithTenantContext(
           {
@@ -45,7 +72,11 @@ app.use(async (req, res, next) => {
       () => next()
     );
   } catch (error) {
-    return res.status(500).json({ error: 'Failed to resolve tenant context' });
+    console.error('Tenant context middleware:', error.message || error);
+    return res.status(500).json({
+      error: 'Failed to resolve tenant context',
+      detail: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
   }
 });
 
@@ -55,11 +86,11 @@ app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/health' || req.path.startsWith('/uploads/') || req.path.startsWith('/developer-tasks')) {
     return next();
   }
-  
+
   if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({ 
+    return res.status(503).json({
       error: 'Database connection unavailable',
-      message: 'MongoDB is not connected. Please check your connection settings.'
+      message: 'MongoDB is not connected. Please check your connection settings.',
     });
   }
   next();

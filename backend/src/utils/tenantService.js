@@ -10,15 +10,23 @@ function normalizeTenantSlug(value) {
 
 async function ensureTenantBySlug(slug, fallbackName = DEFAULT_TENANT_NAME) {
   const normalizedSlug = normalizeTenantSlug(slug);
-  const existing = await Tenant.findOne({ slug: normalizedSlug });
+  let existing = await Tenant.findOne({ slug: normalizedSlug });
   if (existing) return existing;
 
-  const tenant = new Tenant({
-    slug: normalizedSlug,
-    name: fallbackName,
-  });
-  await tenant.save();
-  return tenant;
+  try {
+    const tenant = new Tenant({
+      slug: normalizedSlug,
+      name: fallbackName,
+    });
+    await tenant.save();
+    return tenant;
+  } catch (err) {
+    if (err && err.code === 11000) {
+      existing = await Tenant.findOne({ slug: normalizedSlug });
+      if (existing) return existing;
+    }
+    throw err;
+  }
 }
 
 async function ensureDefaultTenant() {

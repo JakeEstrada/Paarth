@@ -14,8 +14,8 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    if (tenantId) {
-      config.headers['x-tenant-id'] = tenantId;
+    if (tenantId && /^[a-fA-F0-9]{24}$/.test(String(tenantId).trim())) {
+      config.headers['x-tenant-id'] = String(tenantId).trim();
     }
     return config;
   },

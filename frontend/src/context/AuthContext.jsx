@@ -23,7 +23,12 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const savedTenantId = localStorage.getItem('tenantId');
-    if (savedTenantId) setAxiosTenantHeader(savedTenantId);
+    if (savedTenantId && !/^[a-fA-F0-9]{24}$/.test(String(savedTenantId).trim())) {
+      localStorage.removeItem('tenantId');
+      delete axios.defaults.headers.common[TENANT_HEADER];
+    } else if (savedTenantId) {
+      setAxiosTenantHeader(savedTenantId);
+    }
 
     // Check for existing token on mount
     const token = localStorage.getItem('accessToken');
