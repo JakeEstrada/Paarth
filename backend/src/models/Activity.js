@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantScopePlugin = require('./plugins/tenantScopePlugin');
 
 const activitySchema = new mongoose.Schema({
   type: {
@@ -110,6 +111,8 @@ const activitySchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+activitySchema.plugin(tenantScopePlugin);
 
 // Indexes for querying
 activitySchema.index({ jobId: 1, createdAt: -1 });

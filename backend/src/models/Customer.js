@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantScopePlugin = require('./plugins/tenantScopePlugin');
 
 const customerSchema = new mongoose.Schema({
   name: {
@@ -85,6 +86,8 @@ const customerSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+customerSchema.plugin(tenantScopePlugin);
 
 // Index for searching
 customerSchema.index({ name: 'text', primaryEmail: 'text' });

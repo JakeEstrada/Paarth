@@ -43,6 +43,7 @@ import {
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import axios from 'axios';
+import PdfThumbnail from '../common/PdfThumbnail';
 import toast from 'react-hot-toast';
 import AddNoteModal from './AddNoteModal';
 import AddJobTaskModal from './AddJobTaskModal';
@@ -946,18 +947,36 @@ function JobDetailModal({
                         </Box>
                       )}
 
-                      {/* Link for PDFs */}
+                      {/* PDF first-page thumbnail (click to open) */}
                       {file.mimetype === 'application/pdf' && (
-                        <Button
-                          fullWidth
-                          variant="contained"
-                          size="medium"
-                          startIcon={<PictureAsPdfIcon />}
-                          onClick={() => window.open(`${API_URL}/files/${file._id}`, '_blank')}
-                          sx={{ mt: 2, textTransform: 'none', fontWeight: 600 }}
-                        >
-                          View PDF
-                        </Button>
+                        <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
+                          <Box
+                            onClick={() => window.open(`${API_URL}/files/${file._id}`, '_blank')}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                window.open(`${API_URL}/files/${file._id}`, '_blank');
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                            sx={{
+                              cursor: 'pointer',
+                              display: 'flex',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              bgcolor: 'action.hover',
+                              py: 1,
+                              '&:hover': { bgcolor: 'action.selected' },
+                            }}
+                            title="Open PDF"
+                          >
+                            <PdfThumbnail fileId={file._id} apiUrl={API_URL} maxWidth={360} maxHeight={200} />
+                          </Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', py: 0.75 }}>
+                            Click preview to open PDF
+                          </Typography>
+                        </Box>
                       )}
                     </Paper>
                   </Grid>

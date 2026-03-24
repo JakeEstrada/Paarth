@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantScopePlugin = require('./plugins/tenantScopePlugin');
 
 const fileSchema = new mongoose.Schema({
   jobId: {
@@ -15,6 +16,12 @@ const fileSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Customer',
     required: false // Made optional to support projects
+  },
+  folderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'DocumentFolder',
+    required: false, // For standalone document tree
+    default: null,
   },
   filename: {
     type: String,
@@ -59,10 +66,13 @@ const fileSchema = new mongoose.Schema({
   timestamps: true
 });
 
+fileSchema.plugin(tenantScopePlugin);
+
 // Indexes for querying
 fileSchema.index({ jobId: 1, createdAt: -1 });
 fileSchema.index({ taskId: 1, createdAt: -1 });
 fileSchema.index({ customerId: 1 });
+fileSchema.index({ folderId: 1, createdAt: -1 });
 fileSchema.index({ fileType: 1 });
 
 module.exports = mongoose.model('File', fileSchema);

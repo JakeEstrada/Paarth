@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const { generateAccessToken, generateRefreshToken } = require('../utils/generateToken');
+const { runWithTenantContext } = require('../middleware/tenantContext');
 
 // Register new user (requires admin approval)
 async function register(req, res) {
@@ -55,12 +56,16 @@ async function login(req, res) {
     
     // Find user by email or username (if username field exists, otherwise use email)
     // For now, we'll use email as the login field, but check if it matches username pattern
-    const user = await User.findOne({ 
-      $or: [
-        { email: loginField.toLowerCase() },
-        { email: loginField } // Also try case-sensitive for username-like emails
-      ]
+    let user = await User.findOne({
+      $or: [{ email: loginField.toLowerCase() }, { email: loginField }],
     });
+    if (!user) {
+      user = await runWithTenantContext({ tenantId: null, bypassTenant: true }, () =>
+        User.findOne({
+          $or: [{ email: loginField.toLowerCase() }, { email: loginField }],
+        })
+      );
+    }
     if (!user) {
       return res.status(401).json({ error: 'Invalid email/username or password' });
     }
@@ -114,7 +119,12 @@ async function forgotPassword(req, res) {
       return res.status(400).json({ error: 'Email is required' });
     }
     
-    const user = await User.findOne({ email: email.toLowerCase() });
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      user = await runWithTenantContext({ tenantId: null, bypassTenant: true }, () =>
+        User.findOne({ email: email.toLowerCase() })
+      );
+    }
     if (!user) {
       // Don't reveal if user exists for security
       return res.json({ 
@@ -146,7 +156,12 @@ async function forgotUsername(req, res) {
       return res.status(400).json({ error: 'Email is required' });
     }
     
-    const user = await User.findOne({ email: email.toLowerCase() });
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      user = await runWithTenantContext({ tenantId: null, bypassTenant: true }, () =>
+        User.findOne({ email: email.toLowerCase() })
+      );
+    }
     if (!user) {
       // Don't reveal if user exists for security
       return res.json({ 
@@ -174,7 +189,12 @@ async function resetPassword(req, res) {
       return res.status(400).json({ error: 'Email and new password are required' });
     }
     
-    const user = await User.findOne({ email: email.toLowerCase() });
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      user = await runWithTenantContext({ tenantId: null, bypassTenant: true }, () =>
+        User.findOne({ email: email.toLowerCase() })
+      );
+    }
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }

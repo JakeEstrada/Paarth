@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantScopePlugin = require('./plugins/tenantScopePlugin');
 
 const appointmentSchema = new mongoose.Schema({
   title: {
@@ -58,6 +59,8 @@ const appointmentSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+appointmentSchema.plugin(tenantScopePlugin);
 
 // Indexes for querying
 appointmentSchema.index({ status: 1, date: 1 });

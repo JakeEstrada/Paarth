@@ -27,7 +27,6 @@ import {
   Delete as DeleteIcon,
   Download as DownloadIcon,
   OpenInNew as OpenInNewIcon,
-  PictureAsPdf as PictureAsPdfIcon,
   Image as ImageIcon,
   CheckCircle as CheckCircleIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
@@ -37,6 +36,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import AddAppointmentModal from '../appointments/AddAppointmentModal';
+import PdfThumbnail from '../common/PdfThumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -806,7 +806,26 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                             />
                           </Box>
                         ) : isPDF ? (
-                          <PictureAsPdfIcon sx={{ color: '#F44336', fontSize: 28, mt: 0.5 }} />
+                          <Box
+                            sx={{
+                              width: 72,
+                              height: 72,
+                              borderRadius: 1,
+                              overflow: 'hidden',
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              flexShrink: 0,
+                              bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : '#fff',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            onClick={() => window.open(`${API_URL}/files/${file._id}`, '_blank')}
+                            title="View PDF"
+                          >
+                            <PdfThumbnail fileId={file._id} apiUrl={API_URL} maxWidth={72} maxHeight={72} />
+                          </Box>
                         ) : (
                           <AttachFileIcon sx={{ color: '#757575', fontSize: 28, mt: 0.5 }} />
                         )}

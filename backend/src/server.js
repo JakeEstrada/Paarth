@@ -2,6 +2,9 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
+const { runWithTenantContext } = require('./middleware/tenantContext');
+const { ensureTenantBySlug, ensureDefaultTenant, normalizeTenantSlug } = require('./utils/tenantService');
+const { backfillTenantIds } = require('./scripts/backfillTenantIds');
 
 const app = express();
 
@@ -10,6 +13,26 @@ app.use(cors());
 app.use(express.json());
 // Serve uploaded files statically (before DB check)
 app.use('/uploads', express.static('uploads'));
+
+// Resolve tenant context for every request
+app.use(async (req, res, next) => {
+  try {
+    const tenantHeader = req.headers['x-tenant-slug'];
+    const tenantBody = req.body && typeof req.body === 'object' ? req.body.tenantSlug : null;
+    const tenantSlug = normalizeTenantSlug(tenantHeader || tenantBody);
+    const tenant = await ensureTenantBySlug(tenantSlug, tenantSlug === 'default' ? 'Default Company' : tenantSlug);
+
+    runWithTenantContext(
+      {
+        tenantId: String(tenant._id),
+        bypassTenant: false,
+      },
+      () => next()
+    );
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to resolve tenant context' });
+  }
+});
 
 // Middleware to check MongoDB connection before processing requests (except test routes and static files)
 app.use((req, res, next) => {
@@ -107,6 +130,11 @@ mongoose.connect(process.env.MONGODB_URI, {
 })
   .then(() => {
     console.log('Yaas! MongoDB connected');
+    ensureDefaultTenant()
+      .then((tenant) => backfillTenantIds(tenant._id))
+      .catch((error) => {
+        console.error('Failed to initialize tenant data:', error.message);
+      });
   })
   .catch(err => {
     console.error('Uhh-oh! MongoDB connection error:', err);

@@ -7,6 +7,10 @@ const {
   getTaskFiles,
   uploadDocument,
   getDocuments,
+  getDocumentTree,
+  createDocumentFolder,
+  updateDocumentFolder,
+  deleteDocumentFolder,
   downloadFile,
   getFile,
   deleteFile,
@@ -18,6 +22,10 @@ const {
 router.post('/upload', upload.single('file'), uploadFile);
 router.post('/upload-document', upload.single('file'), uploadDocument);
 router.get('/documents', getDocuments);
+router.get('/documents/tree', getDocumentTree);
+router.post('/documents/folders', createDocumentFolder);
+router.patch('/documents/folders/:id', updateDocumentFolder);
+router.delete('/documents/folders/:id', deleteDocumentFolder);
 router.get('/job/:jobId', getJobFiles);
 router.get('/task/:taskId', getTaskFiles);
 router.get('/:id/download', downloadFile);

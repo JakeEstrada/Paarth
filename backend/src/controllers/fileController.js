@@ -1,4 +1,5 @@
 const File = require('../models/File');
+const DocumentFolder = require('../models/DocumentFolder');
 const Job = require('../models/Job');
 const Activity = require('../models/Activity');
 const fs = require('fs');
@@ -89,6 +90,61 @@ function findLocalFilePath(file) {
   });
   
   return null;
+}
+
+async function deleteStoredFileBinary(file) {
+  if (!file) return;
+  if (isS3Configured() && isS3File(file)) {
+    const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+    const s3Key = file.s3Key || file.path;
+    try {
+      const command = new DeleteObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: s3Key,
+      });
+      await s3Client.send(command);
+      console.log('File deleted from S3:', s3Key);
+    } catch (error) {
+      console.error('Error deleting file from S3:', error);
+    }
+    return;
+  }
+
+  const filePath = findLocalFilePath(file);
+  if (filePath && fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+    console.log('File deleted from local filesystem:', filePath);
+  }
+}
+
+async function resolveCreatedBy(req, fallbackUserId = null) {
+  const User = require('../models/User');
+  let createdBy = req.user?._id || req.body.createdBy || fallbackUserId || null;
+  if (!createdBy) {
+    const defaultUser = await User.findOne({ isActive: true });
+    if (defaultUser) createdBy = defaultUser._id;
+  }
+  return createdBy;
+}
+
+async function getDescendantFolderIds(rootFolderId) {
+  const allFolders = await DocumentFolder.find({}, '_id parentId').lean();
+  const childrenByParent = new Map();
+  allFolders.forEach((f) => {
+    const key = f.parentId ? String(f.parentId) : 'root';
+    if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+    childrenByParent.get(key).push(String(f._id));
+  });
+
+  const queue = [String(rootFolderId)];
+  const descendants = [];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    descendants.push(current);
+    const kids = childrenByParent.get(current) || [];
+    kids.forEach((k) => queue.push(k));
+  }
+  return descendants;
 }
 
 // Upload file
@@ -340,7 +396,7 @@ async function uploadDocument(req, res) {
       return res.status(400).json({ error: 'Only PDF files are allowed' });
     }
 
-    const { fileType = 'other' } = req.body;
+    const { fileType = 'other', folderId } = req.body;
 
     // Handle createdBy
     let createdBy = req.user?._id || req.body.createdBy;
@@ -389,6 +445,21 @@ async function uploadDocument(req, res) {
       console.log('Upload Document - File stored locally:', filePath);
     }
 
+    let resolvedFolderId = null;
+    if (folderId) {
+      const folder = await DocumentFolder.findById(folderId).select('_id');
+      if (!folder) {
+        await deleteStoredFileBinary({
+          ...req.file,
+          path: filePath,
+          s3Key,
+          filename: req.file.filename || (req.file.key ? req.file.key.split('/').pop() : 'unknown'),
+        });
+        return res.status(404).json({ error: 'Folder not found' });
+      }
+      resolvedFolderId = folder._id;
+    }
+
     const filename = req.file.filename || (req.file.key ? req.file.key.split('/').pop() : 'unknown');
     
     const file = new File({
@@ -403,6 +474,7 @@ async function uploadDocument(req, res) {
       s3Key: s3Key,
       fileType: fileType,
       uploadedBy: createdBy,
+      folderId: resolvedFolderId,
       description: req.body.description ? String(req.body.description).trim() : undefined,
     });
 
@@ -422,16 +494,150 @@ async function uploadDocument(req, res) {
 // Get all standalone documents (not tied to jobs or tasks)
 async function getDocuments(req, res) {
   try {
-    const files = await File.find({
+    const { folderId = null } = req.query;
+    const query = {
       jobId: null,
-      taskId: null
+      taskId: null,
+    };
+    if (folderId === 'root' || folderId === '' || folderId === 'null' || folderId === null) {
+      query.folderId = null;
+    } else if (folderId) {
+      query.folderId = folderId;
+    }
+
+    const files = await File.find({
+      ...query,
     })
       .populate('uploadedBy', 'name email')
+      .populate('folderId', 'name parentId')
       .sort({ createdAt: -1 });
 
     res.json(files);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+}
+
+async function getDocumentTree(req, res) {
+  try {
+    const [folders, files] = await Promise.all([
+      DocumentFolder.find({})
+        .populate('createdBy', 'name email')
+        .sort({ name: 1 })
+        .lean(),
+      File.find({ jobId: null, taskId: null })
+        .populate('uploadedBy', 'name email')
+        .populate('folderId', 'name parentId')
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
+
+    res.json({ folders, files });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to load document tree' });
+  }
+}
+
+async function createDocumentFolder(req, res) {
+  try {
+    const name = String(req.body.name || '').trim();
+    const parentId = req.body.parentId || null;
+    if (!name) return res.status(400).json({ error: 'Folder name is required' });
+
+    if (parentId) {
+      const parent = await DocumentFolder.findById(parentId).select('_id');
+      if (!parent) return res.status(404).json({ error: 'Parent folder not found' });
+    }
+
+    const createdBy = await resolveCreatedBy(req);
+    if (!createdBy) return res.status(400).json({ error: 'No user available' });
+
+    const folder = await DocumentFolder.create({ name, parentId, createdBy });
+    await folder.populate('createdBy', 'name email');
+    res.status(201).json(folder);
+  } catch (error) {
+    if (error?.code === 11000) return res.status(409).json({ error: 'A folder with this name already exists in that location' });
+    res.status(500).json({ error: error.message || 'Failed to create folder' });
+  }
+}
+
+async function updateDocumentFolder(req, res) {
+  try {
+    const folder = await DocumentFolder.findById(req.params.id);
+    if (!folder) return res.status(404).json({ error: 'Folder not found' });
+
+    const updates = {};
+    if (req.body.name !== undefined) {
+      const name = String(req.body.name || '').trim();
+      if (!name) return res.status(400).json({ error: 'Folder name cannot be empty' });
+      updates.name = name;
+    }
+
+    if (req.body.parentId !== undefined) {
+      const nextParent = req.body.parentId || null;
+      if (nextParent && String(nextParent) === String(folder._id)) {
+        return res.status(400).json({ error: 'Folder cannot be its own parent' });
+      }
+      if (nextParent) {
+        const parent = await DocumentFolder.findById(nextParent).select('_id');
+        if (!parent) return res.status(404).json({ error: 'Parent folder not found' });
+
+        const descendants = await getDescendantFolderIds(folder._id);
+        if (descendants.includes(String(nextParent))) {
+          return res.status(400).json({ error: 'Cannot move a folder into its own descendant' });
+        }
+      }
+      updates.parentId = nextParent;
+    }
+
+    Object.assign(folder, updates);
+    await folder.save();
+    await folder.populate('createdBy', 'name email');
+    res.json(folder);
+  } catch (error) {
+    if (error?.code === 11000) return res.status(409).json({ error: 'A folder with this name already exists in that location' });
+    res.status(500).json({ error: error.message || 'Failed to update folder' });
+  }
+}
+
+async function deleteDocumentFolder(req, res) {
+  try {
+    const folder = await DocumentFolder.findById(req.params.id);
+    if (!folder) return res.status(404).json({ error: 'Folder not found' });
+
+    const recursive = req.query.recursive === 'true' || req.body?.recursive === true;
+
+    if (!recursive) {
+      const [childFoldersCount, childFilesCount] = await Promise.all([
+        DocumentFolder.countDocuments({ parentId: folder._id }),
+        File.countDocuments({ jobId: null, taskId: null, folderId: folder._id }),
+      ]);
+      if (childFoldersCount > 0 || childFilesCount > 0) {
+        return res.status(400).json({ error: 'Folder is not empty. Use recursive delete.' });
+      }
+      await DocumentFolder.findByIdAndDelete(folder._id);
+      return res.json({ message: 'Folder deleted' });
+    }
+
+    const folderIds = await getDescendantFolderIds(folder._id);
+    const filesToDelete = await File.find({
+      jobId: null,
+      taskId: null,
+      folderId: { $in: folderIds },
+    });
+    for (const file of filesToDelete) {
+      await deleteStoredFileBinary(file);
+    }
+    await File.deleteMany({ _id: { $in: filesToDelete.map((f) => f._id) } });
+    await DocumentFolder.deleteMany({ _id: { $in: folderIds } });
+
+    res.json({
+      message: 'Folder and descendants deleted',
+      deletedFolders: folderIds.length,
+      deletedFiles: filesToDelete.length,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to delete folder' });
   }
 }
 
@@ -482,11 +688,21 @@ async function updateFile(req, res) {
     if (req.body.description !== undefined) {
       update.description = req.body.description ? String(req.body.description).trim() : '';
     }
+    if (req.body.folderId !== undefined) {
+      const nextFolderId = req.body.folderId || null;
+      if (nextFolderId) {
+        const folder = await DocumentFolder.findById(nextFolderId).select('_id');
+        if (!folder) return res.status(404).json({ error: 'Folder not found' });
+      }
+      update.folderId = nextFolderId;
+    }
 
     const file = await File.findByIdAndUpdate(req.params.id, update, {
       new: true,
       runValidators: true,
-    }).populate('uploadedBy', 'name email');
+    })
+      .populate('uploadedBy', 'name email')
+      .populate('folderId', 'name parentId');
 
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
@@ -508,29 +724,7 @@ async function deleteFile(req, res) {
     }
 
     // Delete physical file from S3 or local filesystem
-    if (isS3Configured() && isS3File(file)) {
-      // Delete from S3
-      const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
-      const s3Key = file.s3Key || file.path;
-      try {
-        const command = new DeleteObjectCommand({
-          Bucket: BUCKET_NAME,
-          Key: s3Key,
-        });
-        await s3Client.send(command);
-        console.log('File deleted from S3:', s3Key);
-      } catch (error) {
-        console.error('Error deleting file from S3:', error);
-        // Continue with database deletion even if S3 deletion fails
-      }
-    } else {
-      // Delete from local filesystem
-      const filePath = findLocalFilePath(file);
-      if (filePath && fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        console.log('File deleted from local filesystem:', filePath);
-      }
-    }
+    await deleteStoredFileBinary(file);
 
     // Log activity before deleting
     const User = require('../models/User');
@@ -572,6 +766,10 @@ module.exports = {
   getTaskFiles,
   uploadDocument,
   getDocuments,
+  getDocumentTree,
+  createDocumentFolder,
+  updateDocumentFolder,
+  deleteDocumentFolder,
   downloadFile,
   getFile,
   deleteFile,

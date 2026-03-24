@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantScopePlugin = require('./plugins/tenantScopePlugin');
 
 const billSchema = new mongoose.Schema({
   title: {
@@ -32,6 +33,8 @@ const billSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+billSchema.plugin(tenantScopePlugin);
 
 module.exports = mongoose.model('Bill', billSchema);
 

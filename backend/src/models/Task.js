@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const tenantScopePlugin = require('./plugins/tenantScopePlugin');
 
 const taskSchema = new mongoose.Schema({
   jobId: {
@@ -106,6 +107,8 @@ const taskSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+taskSchema.plugin(tenantScopePlugin);
 
 // Indexes for querying
 taskSchema.index({ jobId: 1, completedAt: 1 });
