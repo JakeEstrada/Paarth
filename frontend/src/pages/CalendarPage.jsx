@@ -559,14 +559,15 @@ function CalendarDay({ date, scheduledJobs, onDrop, onJobMove, onJobResize, isCu
         borderBottom: `1px solid ${theme.palette.divider}`,
         backgroundColor: isDragOver 
           ? (theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.2)' : '#E3F2FD')
-          : (isCurrentMonth ? theme.palette.background.paper : (theme.palette.mode === 'dark' ? '#1A1A1A' : '#fafafa')),
-        opacity: isCurrentMonth ? 1 : 0.5,
-        transition: 'background-color 0.2s',
+          : (isCurrentMonth ? theme.palette.background.paper : (theme.palette.mode === 'dark' ? '#141414' : '#f7f7f7')),
+        opacity: isCurrentMonth ? 1 : 0.14,
+        transition: 'background-color 0.2s, opacity 0.15s',
         position: 'relative',
         '&:hover': {
           backgroundColor: isCurrentMonth 
             ? (theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5')
             : (theme.palette.mode === 'dark' ? '#1E1E1E' : '#f0f0f0'),
+          opacity: isCurrentMonth ? 1 : 0.38,
         },
       }}
       onDrop={canModify ? handleDrop : undefined}
@@ -577,7 +578,13 @@ function CalendarDay({ date, scheduledJobs, onDrop, onJobMove, onJobResize, isCu
         variant="body2"
         sx={{
           fontWeight: isToday(date) ? 700 : 500,
-          color: isToday(date) ? 'primary.main' : isCurrentMonth ? 'text.primary' : 'text.secondary',
+          color: isToday(date)
+            ? 'primary.main'
+            : isCurrentMonth
+              ? 'text.primary'
+              : theme.palette.mode === 'dark'
+                ? 'rgba(255,255,255,0.22)'
+                : 'rgba(0,0,0,0.22)',
           mb: 0.5,
           fontSize: isToday(date) ? '0.9rem' : '0.85rem',
         }}

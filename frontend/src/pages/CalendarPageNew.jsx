@@ -866,18 +866,21 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           border: `1px solid ${theme.palette.divider}`,
           backgroundColor: isCurrentMonth 
             ? theme.palette.background.paper 
-            : (theme.palette.mode === 'dark' ? '#1A1A1A' : '#fafafa'),
-          opacity: isCurrentMonth ? 1 : 0.6,
+            : (theme.palette.mode === 'dark' ? '#141414' : '#f7f7f7'),
+          // Adjacent-month padding days: keep grid alignment but make jobs nearly invisible
+          opacity: isCurrentMonth ? 1 : 0.14,
           cursor: 'pointer',
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
           minHeight: 0,
           overflow: 'hidden',
+          transition: 'background-color 0.15s ease, opacity 0.15s ease',
           '&:hover': {
             backgroundColor: isCurrentMonth 
               ? (theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5') 
               : (theme.palette.mode === 'dark' ? '#1E1E1E' : '#f0f0f0'),
+            opacity: isCurrentMonth ? 1 : 0.38,
           },
         }}
         onClick={() => onDayClick(date)}
@@ -893,7 +896,13 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           variant="body2"
           sx={{
             fontWeight: isToday(date) ? 700 : 500,
-            color: isToday(date) ? 'primary.main' : isCurrentMonth ? 'text.primary' : 'text.secondary',
+            color: isToday(date)
+              ? 'primary.main'
+              : isCurrentMonth
+                ? 'text.primary'
+                : theme.palette.mode === 'dark'
+                  ? 'rgba(255,255,255,0.22)'
+                  : 'rgba(0,0,0,0.22)',
             flexShrink: 0,
             lineHeight: 1.2,
             fontSize: { xs: '0.8rem', sm: '0.9rem' },
