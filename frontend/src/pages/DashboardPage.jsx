@@ -1361,14 +1361,18 @@ function DashboardPage() {
           '@media print': { display: 'block' },
         }}
       >
-        <PrintView activities={sortedActivities} selectedDate={selectedPrintDate} />
+        <PrintView
+          activities={sortedActivities}
+          selectedDate={selectedPrintDate}
+          tenant={tenantForBranding}
+        />
       </Box>
     </Container>
   );
 }
 
 // Print View Component
-function PrintView({ activities, selectedDate }) {
+function PrintView({ activities, selectedDate, tenant }) {
   // Filter activities for selected date (handle timezone correctly)
   // Parse the date string and create date in local timezone
   const [year, month, day] = selectedDate.split('-').map(Number);
@@ -1497,7 +1501,7 @@ function PrintView({ activities, selectedDate }) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, '@media print': { mb: 2 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <BrandLogo
-            tenant={tenantForBranding}
+            tenant={tenant}
             alt="Organization logo"
             sx={{ height: 60, width: 60, objectFit: 'contain', '@media print': { height: 50, width: 50 } }}
           />
