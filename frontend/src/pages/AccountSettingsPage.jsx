@@ -18,15 +18,18 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Input as InputIcon,
+  PhotoCamera as PhotoCameraIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import api from '../utils/axios';
+import BrandLogo from '../components/common/BrandLogo';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function AccountSettingsPage() {
-  const { user: currentUser, fetchCurrentUser } = useAuth();
+  const { user: currentUser, fetchCurrentUser, isSuperAdmin, tenantForBranding } = useAuth();
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
   const [updating, setUpdating] = useState(false);
@@ -49,6 +52,7 @@ function AccountSettingsPage() {
     new: false,
     confirm: false,
   });
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => {
     fetchUserData();
@@ -103,6 +107,35 @@ function AccountSettingsPage() {
       toast.error(error.response?.data?.error || 'Failed to update profile');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleTenantLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file');
+      e.target.value = '';
+      return;
+    }
+    try {
+      setUploadingLogo(true);
+      const formData = new FormData();
+      formData.append('logo', file);
+      await api.post('/tenants/logo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast.success('Organization logo updated. It will appear for everyone in your company.');
+      const token = localStorage.getItem('accessToken');
+      if (token && fetchCurrentUser) {
+        await fetchCurrentUser(token);
+      }
+    } catch (error) {
+      console.error('Logo upload:', error);
+      toast.error(error.response?.data?.error || 'Failed to upload logo');
+    } finally {
+      setUploadingLogo(false);
+      e.target.value = '';
     }
   };
 
@@ -298,6 +331,42 @@ function AccountSettingsPage() {
           </Grid>
         )}
       </Paper>
+
+      {isSuperAdmin() && (
+        <Paper
+          elevation={0}
+          sx={{
+            borderRadius: '16px',
+            p: 4,
+            mb: 3,
+            background: 'white',
+            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+            <PhotoCameraIcon sx={{ fontSize: 28, color: 'primary.main' }} />
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Organization logo
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Upload your company logo. It appears in the sidebar, login screen (for your team), payroll, and printed reports for all users in your organization. PNG, JPG, GIF, WebP, or SVG. Max 2&nbsp;MB.
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+            <BrandLogo
+              tenant={tenantForBranding}
+              alt="Current organization logo"
+              sx={{ height: 72, width: 72, objectFit: 'contain', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 0.5 }}
+            />
+            <Box>
+              <Button variant="outlined" component="label" disabled={uploadingLogo} startIcon={uploadingLogo ? <CircularProgress size={18} /> : <PhotoCameraIcon />}>
+                {uploadingLogo ? 'Uploading…' : 'Upload logo'}
+                <input type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml" hidden onChange={handleTenantLogoUpload} />
+              </Button>
+            </Box>
+          </Box>
+        </Paper>
+      )}
 
       {/* Change Password Section */}
       <Paper

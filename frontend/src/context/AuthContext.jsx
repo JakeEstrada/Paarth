@@ -11,7 +11,7 @@ const setAxiosTenantHeader = (tenantId) => {
     localStorage.setItem('tenantId', tenantId);
   } else {
     delete axios.defaults.headers.common[TENANT_HEADER];
-    localStorage.removeItem('tenantId');
+    // Keep localStorage tenantId so the login page can still show the org logo
   }
 };
 
@@ -111,6 +111,16 @@ export function AuthProvider({ children }) {
     return user && user.role === 'super_admin';
   };
 
+  const tenantIdForBranding =
+    user?.tenantId?._id || user?.tenantId || localStorage.getItem('tenantId') || null;
+
+  const tenantForBranding =
+    user?.tenantId && typeof user.tenantId === 'object'
+      ? user.tenantId
+      : tenantIdForBranding
+        ? { _id: tenantIdForBranding }
+        : null;
+
   const canCreateUsers = () => {
     return user && user.role === 'super_admin';
   };
@@ -138,6 +148,8 @@ export function AuthProvider({ children }) {
     logout,
     isAdmin,
     isSuperAdmin,
+    tenantIdForBranding,
+    tenantForBranding,
     canCreateUsers,
     canViewAllTimes,
     canModifyPipeline,

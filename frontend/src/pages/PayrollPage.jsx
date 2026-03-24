@@ -29,6 +29,8 @@ import {
   IconButton,
   useTheme,
 } from '@mui/material';
+import { useAuth } from '../context/AuthContext';
+import BrandLogo from '../components/common/BrandLogo';
 import {
   Print as PrintIcon,
   Download as DownloadIcon,
@@ -48,6 +50,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function PayrollPage() {
   const theme = useTheme();
+  const { tenantForBranding } = useAuth();
   const [employeeName, setEmployeeName] = useState('Dave');
   const [ratePerHour, setRatePerHour] = useState('');
   const [date, setDate] = useState(new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }));
@@ -429,10 +432,9 @@ function PayrollPage() {
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
           {/* Logo at top left */}
           <Box sx={{ flexShrink: 0 }}>
-            <Box
-              component="img"
-              src="/logo.png"
-              alt="San Clemente Woodworking"
+            <BrandLogo
+              tenant={tenantForBranding}
+              alt="Organization logo"
               sx={{
                 height: 60,
                 width: 60,

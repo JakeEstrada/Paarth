@@ -19,6 +19,7 @@ import {
   Person as PersonIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import BrandLogo from '../components/common/BrandLogo';
 import toast from 'react-hot-toast';
 
 function LoginPage() {
@@ -27,7 +28,7 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, tenantForBranding } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -68,10 +69,9 @@ function LoginPage() {
           }}
         >
           <Box sx={{ mb: 4, textAlign: 'center' }}>
-            <Box
-              component="img"
-              src="/logo.png"
-              alt="San Clemente Woodworking"
+            <BrandLogo
+              tenant={tenantForBranding}
+              alt="Organization logo"
               sx={{
                 height: 60,
                 width: 60,

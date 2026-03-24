@@ -41,12 +41,16 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format, isToday, isTomorrow, parseISO, formatDistanceToNow } from 'date-fns';
+import { useAuth } from '../context/AuthContext';
+import BrandLogo from '../components/common/BrandLogo';
+import { tenantBrandingLogoUrl } from '../utils/tenantBranding';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function DashboardPage() {
   const navigate = useNavigate();
   const theme = useTheme();
+  const { tenantForBranding } = useAuth();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalJobs: 0,
@@ -451,7 +455,9 @@ function DashboardPage() {
   // Handle print
   const handlePrint = () => {
     setPrintDialogOpen(false);
-    
+    const reportLogoSrc =
+      tenantBrandingLogoUrl(tenantIdForBranding) || `${window.location.origin}/logo.png`;
+
     // Filter activities for selected date (handle timezone correctly)
     // Parse the date string and create date in local timezone
     const [year, month, day] = selectedPrintDate.split('-').map(Number);
@@ -747,7 +753,7 @@ function DashboardPage() {
             <body>
               <div class="header">
                 <div class="logo-container">
-                  <img src="${window.location.origin}/logo.png" alt="Logo" />
+                  <img src="${reportLogoSrc}" alt="Logo" />
                   <div>
                     <h1>Activity Report</h1>
                     <p>${format(selectedDateObj, 'EEEE, MMMM dd, yyyy')}</p>
@@ -1490,10 +1496,10 @@ function PrintView({ activities, selectedDate }) {
       {/* Header with Logo and Date */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, '@media print': { mb: 2 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <img
-            src="/logo.png"
-            alt="Logo"
-            style={{ height: '60px', '@media print': { height: '50px' } }}
+          <BrandLogo
+            tenant={tenantForBranding}
+            alt="Organization logo"
+            sx={{ height: 60, width: 60, objectFit: 'contain', '@media print': { height: 50, width: 50 } }}
           />
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 600, '@media print': { fontSize: '1.25rem' } }}>

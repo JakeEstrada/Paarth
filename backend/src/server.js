@@ -77,9 +77,11 @@ const calendarRoutes = require('./routes/calendar');
 const developerTasksRoutes = require('./routes/developerTasks');
 const userRoutes = require('./routes/users');
 const billRoutes = require('./routes/bills');
+const tenantRoutes = require('./routes/tenants');
 
 // Use routes
 app.use('/auth', authRoutes);
+app.use('/tenants', tenantRoutes);
 app.use('/users', userRoutes);
 app.use('/customers', customerRoutes);
 app.use('/jobs', jobRoutes);

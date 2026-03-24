@@ -774,5 +774,7 @@ module.exports = {
   getFile,
   deleteFile,
   updateFile,
+  getFileStream,
+  deleteStoredFileBinary,
 };
 

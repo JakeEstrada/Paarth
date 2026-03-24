@@ -28,6 +28,7 @@ import {
   Description as DocumentsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
+import BrandLogo from '../common/BrandLogo';
 
 const DRAWER_WIDTH = 260;
 
@@ -52,7 +53,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
-  const { isAdmin } = useAuth();
+  const { isAdmin, tenantForBranding } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const isActive = (path) => {
@@ -77,10 +78,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
           borderBottom: `1px solid ${theme.palette.divider}`,
         }}
       >
-        <Box
-          component="img"
-          src="/logo.png"
-          alt="San Clemente Woodworking"
+        <BrandLogo
+          tenant={tenantForBranding}
+          alt="Organization logo"
           sx={{
             height: 80,
             width: 80,

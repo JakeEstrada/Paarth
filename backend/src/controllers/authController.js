@@ -83,12 +83,16 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Account is inactive. Please contact an administrator.' });
     }
     
+    const userWithTenant = await User.findById(user._id)
+      .populate('tenantId', 'name slug logo updatedAt')
+      .setOptions({ bypassTenant: true });
+
     // Generate tokens
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
-    
+
     res.json({
-      user,
+      user: userWithTenant,
       accessToken,
       refreshToken
     });
@@ -99,7 +103,10 @@ async function login(req, res) {
 
 // Get current user
 async function me(req, res) {
-  res.json({ user: req.user });
+  const userWithTenant = await User.findById(req.user._id)
+    .populate('tenantId', 'name slug logo updatedAt')
+    .setOptions({ bypassTenant: true });
+  res.json({ user: userWithTenant });
 }
 
 // Logout (client-side handles token removal)

@@ -16,6 +16,8 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+import BrandLogo from '../components/common/BrandLogo';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -24,6 +26,7 @@ function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const navigate = useNavigate();
+  const { tenantForBranding } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -98,10 +101,9 @@ function ForgotPasswordPage() {
         <Card sx={{ boxShadow: '0 8px 32px rgba(0,0,0,0.1)', borderRadius: 3 }}>
           <CardContent sx={{ p: 4 }}>
             <Box sx={{ textAlign: 'center', mb: 4 }}>
-              <Box
-                component="img"
-                src="/logo.png"
-                alt="San Clemente Woodworking"
+              <BrandLogo
+                tenant={tenantForBranding}
+                alt="Organization logo"
                 sx={{
                   height: 80,
                   width: 80,
