@@ -2,9 +2,12 @@ import { useMemo, useState, useEffect } from 'react';
 import { Box, Card, CardContent, Typography, Paper, Button, IconButton, Tooltip, useTheme, TextField, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Checkbox } from '@mui/material';
 import { Add as AddIcon, CheckCircle as CheckCircleIcon, Search as SearchIcon, History as HistoryIcon, Edit as EditIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import JobCard from './JobCard';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const STAGE_LABELS = {
   APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
@@ -77,27 +80,38 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [stageOverrides, setStageOverrides] = useState({});
 
+  /** Server is source of truth per tenant; localStorage is fallback if API fails or old deploy. */
   useEffect(() => {
-    try {
-      let stored = localStorage.getItem(pipelineStageConfigKey);
-      if (!stored) {
-        const legacy = localStorage.getItem(LEGACY_PIPELINE_STAGE_CONFIG_KEY);
-        if (legacy) {
-          stored = legacy;
-          localStorage.setItem(pipelineStageConfigKey, legacy);
-          localStorage.removeItem(LEGACY_PIPELINE_STAGE_CONFIG_KEY);
-        }
+    if (!user) return;
+    let cancelled = false;
+
+    const loadLocalFallback = () => {
+      try {
+        let stored = localStorage.getItem(pipelineStageConfigKey);
+        if (!stored) stored = localStorage.getItem(LEGACY_PIPELINE_STAGE_CONFIG_KEY);
+        if (!stored) return {};
+        const parsed = JSON.parse(stored);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
       }
-      if (!stored) {
-        setStageOverrides({});
-        return;
+    };
+
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API_URL}/tenants/pipeline-settings`);
+        if (cancelled) return;
+        const o = data?.overrides && typeof data.overrides === 'object' && !Array.isArray(data.overrides) ? data.overrides : {};
+        setStageOverrides(o);
+      } catch {
+        if (!cancelled) setStageOverrides(loadLocalFallback());
       }
-      const parsed = JSON.parse(stored);
-      setStageOverrides(parsed && typeof parsed === 'object' ? parsed : {});
-    } catch (_) {
-      setStageOverrides({});
-    }
-  }, [pipelineStageConfigKey]);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, pipelineStageConfigKey]);
 
   // Group jobs by stage
   const jobsByStage = {};
@@ -534,14 +548,28 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
         <DialogActions>
           <Button
             variant="contained"
-            onClick={() => {
+            onClick={async () => {
               const confirmed = window.confirm('Are you sure you want to save these stage changes?');
               if (!confirmed) return;
               try {
-                localStorage.setItem(pipelineStageConfigKey, JSON.stringify(stageOverrides || {}));
-              } catch (_) {}
-              toast.success('Pipeline customization saved');
-              setCustomizeOpen(false);
+                const { data } = await axios.patch(`${API_URL}/tenants/pipeline-settings`, {
+                  overrides: stageOverrides || {},
+                });
+                const saved =
+                  data?.overrides && typeof data.overrides === 'object' && !Array.isArray(data.overrides)
+                    ? data.overrides
+                    : {};
+                setStageOverrides(saved);
+                try {
+                  localStorage.removeItem(pipelineStageConfigKey);
+                  localStorage.removeItem(LEGACY_PIPELINE_STAGE_CONFIG_KEY);
+                } catch (_) {}
+                toast.success('Pipeline customization saved');
+                setCustomizeOpen(false);
+              } catch (err) {
+                const msg = err.response?.data?.error || err.message || 'Failed to save';
+                toast.error(msg);
+              }
             }}
           >
             Save

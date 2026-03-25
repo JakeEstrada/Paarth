@@ -25,6 +25,11 @@ const tenantSchema = new mongoose.Schema(
       s3Key: { type: String },
       mimetype: { type: String, default: 'image/png' },
     },
+    // Per-tenant pipeline UI: custom stage labels + hidden flags (keys = stage enum id)
+    pipelineStageOverrides: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined,
+    },
   },
   {
     timestamps: true,

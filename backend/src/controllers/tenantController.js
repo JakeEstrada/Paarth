@@ -92,7 +92,68 @@ async function getTenantBrandingLogo(req, res) {
   }
 }
 
+function sanitizePipelineOverrides(raw) {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof k !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(k)) continue;
+    if (v == null || typeof v !== 'object' || Array.isArray(v)) continue;
+    const entry = {};
+    if (typeof v.hidden === 'boolean') entry.hidden = v.hidden;
+    if (v.label != null && String(v.label).trim()) entry.label = String(v.label).trim().slice(0, 160);
+    if (Object.keys(entry).length) out[k] = entry;
+  }
+  return out;
+}
+
+/** Any authenticated user in the tenant can read (labels must match for everyone). */
+async function getTenantPipelineSettings(req, res) {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    const tenant = await Tenant.findById(tenantId).select('pipelineStageOverrides').lean();
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    const o = tenant.pipelineStageOverrides;
+    const overrides = o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+    res.json({ overrides });
+  } catch (error) {
+    console.error('getTenantPipelineSettings:', error);
+    res.status(500).json({ error: error.message || 'Failed to load pipeline settings' });
+  }
+}
+
+/** Match frontend canModifyPipeline: super_admin + admin only */
+async function updateTenantPipelineSettings(req, res) {
+  try {
+    if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to update pipeline settings.' });
+    }
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    const { overrides } = req.body;
+    const sanitized = sanitizePipelineOverrides(overrides);
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    tenant.pipelineStageOverrides = sanitized;
+    await tenant.save();
+    res.json({ overrides: sanitized });
+  } catch (error) {
+    console.error('updateTenantPipelineSettings:', error);
+    res.status(500).json({ error: error.message || 'Failed to save pipeline settings' });
+  }
+}
+
 module.exports = {
   uploadTenantLogo,
   getTenantBrandingLogo,
+  getTenantPipelineSettings,
+  updateTenantPipelineSettings,
 };
