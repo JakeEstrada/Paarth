@@ -1209,7 +1209,7 @@ function CalendarPageNew({ tvMode = false }) {
     } catch (_) {}
     return 'right';
   });
-  const [benchWidth, setBenchWidth] = useState(320);
+  const [benchWidth, setBenchWidth] = useState(tvMode ? 260 : 320);
 
   useEffect(() => {
     if (tvMode) return;
@@ -1576,7 +1576,15 @@ function CalendarPageNew({ tvMode = false }) {
       <Box key={monthIndex} sx={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {/* Month Header - hide on mobile since it's in the main header */}
         {!isMobile && (
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5, textAlign: 'center', fontSize: { xs: '1rem', sm: '1.15rem' } }}>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 600,
+              mb: tvMode ? 0.25 : 0.5,
+              textAlign: 'center',
+              fontSize: tvMode ? { xs: '0.9rem', sm: '1rem' } : { xs: '1rem', sm: '1.15rem' },
+            }}
+          >
             {format(monthDate, 'MMMM yyyy')}
           </Typography>
         )}
@@ -1587,14 +1595,20 @@ function CalendarPageNew({ tvMode = false }) {
             <Paper
               key={dayIndex}
               sx={{
-                p: 0.5,
+                p: tvMode ? 0.25 : 0.5,
                 textAlign: 'center',
                 backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
                 border: `1px solid ${theme.palette.divider}`,
                 fontWeight: 600,
               }}
             >
-              <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.8rem' }, lineHeight: 1.2 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontSize: tvMode ? { xs: '0.65rem', sm: '0.7rem' } : { xs: '0.75rem', sm: '0.8rem' },
+                  lineHeight: 1.1,
+                }}
+              >
                 {isMobile ? WEEKDAY_LABELS[dayIndex].substring(0, 1) : WEEKDAY_LABELS[dayIndex].substring(0, 3)}
               </Typography>
             </Paper>
@@ -1610,11 +1624,19 @@ function CalendarPageNew({ tvMode = false }) {
           minHeight: 0,
           '& > *': {
             minWidth: 0,
-            aspectRatio: '1',
+            aspectRatio: tvMode ? '1.6' : '1',
           }
         }}>
           {visibleDays.map((date, index) => (
-            <Box key={index} sx={{ width: '100%', minWidth: 0, aspectRatio: '1', display: 'block' }}>
+            <Box
+              key={index}
+              sx={{
+                width: '100%',
+                minWidth: 0,
+                aspectRatio: tvMode ? '1.6' : '1',
+                display: 'block',
+              }}
+            >
               <CalendarDay
                 key={index}
                 date={date}
@@ -1640,7 +1662,7 @@ function CalendarPageNew({ tvMode = false }) {
         <CircularProgress />
       </Box>
     ) : (
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 1, sm: 1.5 } }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: tvMode ? { xs: 0.35, sm: 0.5 } : { xs: 1, sm: 1.5 } }}>
         {months.map((monthDate, index) => renderMonth(monthDate, index))}
       </Box>
     );
@@ -1882,7 +1904,7 @@ function CalendarPageNew({ tvMode = false }) {
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <Box sx={{ 
-        p: { xs: 1, sm: 2 }, 
+        p: tvMode ? { xs: 0.5, sm: 1 } : { xs: 1, sm: 2 }, 
         borderBottom: '1px solid #e0e0e0', 
         display: 'flex', 
         flexDirection: { xs: 'column', sm: 'row' },
@@ -1900,7 +1922,7 @@ function CalendarPageNew({ tvMode = false }) {
               fontWeight: 600, 
               minWidth: { xs: 'auto', sm: 200 }, 
               textAlign: 'center',
-              fontSize: { xs: '0.875rem', sm: '1.25rem', md: '1.5rem' }
+              fontSize: tvMode ? { xs: '0.8rem', sm: '1rem', md: '1.2rem' } : { xs: '0.875rem', sm: '1.25rem', md: '1.5rem' }
             }}
           >
             {isMobile 
@@ -1974,7 +1996,7 @@ function CalendarPageNew({ tvMode = false }) {
 
       {benchPosition === 'right' && (
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
-          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 0.5, sm: 1 }, minWidth: 0 }}>
+          <Box sx={{ flex: 1, overflow: 'auto', p: tvMode ? { xs: 0.2, sm: 0.4 } : { xs: 0.5, sm: 1 }, minWidth: 0 }}>
             {renderCalendarContent()}
           </Box>
           <Box
@@ -1983,7 +2005,7 @@ function CalendarPageNew({ tvMode = false }) {
               width: isBenchMinimized ? 48 : benchWidth,
               backgroundColor: theme.palette.background.paper,
               borderLeft: `3px solid ${theme.palette.divider}`,
-              p: isBenchMinimized ? 0 : { xs: 1, sm: 2 },
+              p: isBenchMinimized ? 0 : tvMode ? { xs: 0.5, sm: 0.75 } : { xs: 1, sm: 2 },
               overflow: isBenchMinimized ? 'hidden' : 'auto',
               position: 'relative',
               display: 'flex',
