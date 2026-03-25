@@ -117,6 +117,7 @@ function getEasterSunday(year) {
 }
 
 function getHolidayChipLabel(label, tvMode) {
+  if (!label) return '';
   if (!tvMode) return label;
   const shortMap = {
     "New Year's Day": 'New Year',
@@ -130,7 +131,7 @@ function getHolidayChipLabel(label, tvMode) {
     'Christmas Day': 'Christmas',
     Easter: 'Easter',
   };
-  return shortMap[label] || label;
+  return shortMap[label] || label.replace(/\s+Day$/i, '');
 }
 
 // Event creation/edit modal
@@ -989,13 +990,13 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
               title={holidayLabel}
               sx={{
                 color: theme.palette.error.main,
-                fontSize: tvMode ? '0.5rem' : '0.58rem',
+                fontSize: tvMode ? '0.56rem' : '0.62rem',
                 fontWeight: 700,
                 lineHeight: 1,
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                maxWidth: tvMode ? '56px' : '90px',
+                textOverflow: 'clip',
+                maxWidth: tvMode ? '92px' : '140px',
               }}
             >
               {getHolidayChipLabel(holidayLabel, tvMode)}
