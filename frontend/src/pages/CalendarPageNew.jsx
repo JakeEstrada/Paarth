@@ -39,11 +39,14 @@ import {
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
   Person as PersonIcon,
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon,
 } from '@mui/icons-material';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, startOfWeek, endOfWeek, isSameDay, addDays } from 'date-fns';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { useTheme as useAppTheme } from '../context/ThemeContext';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -61,6 +64,38 @@ const DEFAULT_INSTALLER_ORDER = [
   'Moris',
   'Hayden'
 ];
+
+function toISODate(year, month, day) {
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return `${year}-${mm}-${dd}`;
+}
+
+function nthWeekdayOfMonth(year, monthIndex, weekday, nth) {
+  const first = new Date(year, monthIndex, 1);
+  const offset = (weekday - first.getDay() + 7) % 7;
+  return new Date(year, monthIndex, 1 + offset + (nth - 1) * 7);
+}
+
+function lastWeekdayOfMonth(year, monthIndex, weekday) {
+  const last = new Date(year, monthIndex + 1, 0);
+  const offset = (last.getDay() - weekday + 7) % 7;
+  return new Date(year, monthIndex, last.getDate() - offset);
+}
+
+function buildMajorUSHolidayMap(year) {
+  const map = {};
+  map[toISODate(year, 1, 1)] = "New Year's Day";
+  map[format(nthWeekdayOfMonth(year, 0, 1, 3), 'yyyy-MM-dd')] = 'Martin Luther King Jr. Day';
+  map[format(nthWeekdayOfMonth(year, 1, 1, 3), 'yyyy-MM-dd')] = "Presidents' Day";
+  map[format(lastWeekdayOfMonth(year, 4, 1), 'yyyy-MM-dd')] = 'Memorial Day';
+  map[toISODate(year, 6, 19)] = 'Juneteenth';
+  map[toISODate(year, 7, 4)] = 'Independence Day';
+  map[format(nthWeekdayOfMonth(year, 8, 1, 1), 'yyyy-MM-dd')] = 'Labor Day';
+  map[format(nthWeekdayOfMonth(year, 10, 4, 4), 'yyyy-MM-dd')] = 'Thanksgiving';
+  map[toISODate(year, 12, 25)] = 'Christmas Day';
+  return map;
+}
 
 // Event creation/edit modal
 function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, installerOptions = [], selectedInstaller = '' }) {
@@ -780,7 +815,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
 }
 
 // Calendar Day Component
-function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete, onViewJob, onDayContextMenu, installerOrder }) {
+function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete, onViewJob, onDayContextMenu, installerOrder, holidayLabel = '', tvMode = false }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [contextMenu, setContextMenu] = useState(null);
@@ -893,24 +928,41 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           }
         }}
       >
-        <Typography
-          variant="body2"
-          sx={{
-            fontWeight: isToday(date) ? 700 : 500,
-            color: isToday(date)
-              ? 'primary.main'
-              : isCurrentMonth
-                ? 'text.primary'
-                : theme.palette.mode === 'dark'
-                  ? 'rgba(255,255,255,0.22)'
-                  : 'rgba(0,0,0,0.22)',
-            flexShrink: 0,
-            lineHeight: 1.2,
-            fontSize: { xs: '0.8rem', sm: '0.9rem' },
-          }}
-        >
-          {format(date, 'd')}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: isToday(date) ? 700 : 500,
+              color: isToday(date)
+                ? 'primary.main'
+                : isCurrentMonth
+                  ? 'text.primary'
+                  : theme.palette.mode === 'dark'
+                    ? 'rgba(255,255,255,0.22)'
+                    : 'rgba(0,0,0,0.22)',
+              flexShrink: 0,
+              lineHeight: 1.2,
+              fontSize: { xs: '0.8rem', sm: '0.9rem' },
+            }}
+          >
+            {format(date, 'd')}
+          </Typography>
+          {holidayLabel && (
+            <Typography
+              variant="caption"
+              title={holidayLabel}
+              sx={{
+                color: theme.palette.error.main,
+                fontSize: tvMode ? '0.52rem' : '0.58rem',
+                fontWeight: 700,
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {tvMode ? 'Holiday' : 'Holiday'}
+            </Typography>
+          )}
+        </Box>
         
         <Box sx={{ 
           display: 'flex', 
@@ -1185,6 +1237,7 @@ function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob }) {
 function CalendarPageNew({ tvMode = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
+  const { mode, toggleColorMode } = useAppTheme();
   const { canModifyCalendar, canViewCalendar } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -1317,6 +1370,18 @@ function CalendarPageNew({ tvMode = false }) {
       addMonths(currentDate, 2),
     ];
   }, [currentDate, isMobile, tvMode]);
+
+  const holidayMap = useMemo(() => {
+    const years = new Set();
+    months.forEach((monthDate) => {
+      years.add(monthDate.getFullYear());
+      years.add(addMonths(monthDate, -1).getFullYear());
+      years.add(addMonths(monthDate, 1).getFullYear());
+    });
+    const combined = {};
+    years.forEach((year) => Object.assign(combined, buildMajorUSHolidayMap(year)));
+    return combined;
+  }, [months]);
 
   // Render one calendar chip per schedule entry (installer + start/end date range).
   // Legacy support: if `schedule.entries` is missing, we fall back to the old single-range + `schedule.installers` model.
@@ -1642,6 +1707,8 @@ function CalendarPageNew({ tvMode = false }) {
                 date={date}
                 isCurrentMonth={isSameMonth(date, monthDate)}
                 events={calendarEvents}
+                holidayLabel={holidayMap[format(date, 'yyyy-MM-dd')] || ''}
+                tvMode={tvMode}
                 onDayClick={handleDayClick}
                 onEventClick={handleEventClick}
                 onEventDelete={handleEventDelete}
@@ -1907,12 +1974,21 @@ function CalendarPageNew({ tvMode = false }) {
         p: tvMode ? { xs: 0.5, sm: 1 } : { xs: 1, sm: 2 }, 
         borderBottom: '1px solid #e0e0e0', 
         display: 'flex', 
-        flexDirection: { xs: 'column', sm: 'row' },
+        flexDirection: { xs: 'column', sm: tvMode ? 'column' : 'row' },
         justifyContent: 'space-between', 
         alignItems: { xs: 'stretch', sm: 'center' },
         gap: { xs: 1, sm: 0 }
       }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: tvMode ? 'center' : 'flex-start',
+            gap: { xs: 1, sm: 2 },
+            flexWrap: 'wrap',
+            width: '100%',
+          }}
+        >
           <IconButton onClick={handlePrevMonth} size="small">
             <ChevronLeftIcon />
           </IconButton>
@@ -1952,6 +2028,17 @@ function CalendarPageNew({ tvMode = false }) {
           >
             {tvMode ? 'Exit Calendar view' : 'Calendar view'}
           </Button>
+          {tvMode && (
+            <Button
+              onClick={toggleColorMode}
+              variant="outlined"
+              size="small"
+              startIcon={mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+              sx={{ display: { xs: 'none', sm: 'flex' } }}
+            >
+              {mode === 'dark' ? 'Light mode' : 'Dark mode'}
+            </Button>
+          )}
         </Box>
         {/* Standalone event creation removed; calendar now only schedules existing jobs */}
         <FormControl size="small" sx={{ minWidth: 120, display: { xs: 'none', sm: tvMode ? 'none' : 'flex' } }}>
