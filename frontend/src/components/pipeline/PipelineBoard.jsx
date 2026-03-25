@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Box, Card, CardContent, Typography, Paper, Button, IconButton, Tooltip, useTheme, TextField, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Checkbox } from '@mui/material';
 import { Add as AddIcon, CheckCircle as CheckCircleIcon, Search as SearchIcon, History as HistoryIcon, Edit as EditIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
@@ -49,24 +49,55 @@ const EXECUTION_PHASE = [
   'FINAL_PAYMENT_CLOSED',
 ];
 
+const LEGACY_PIPELINE_STAGE_CONFIG_KEY = 'pipelineStageConfigV1';
+
+/** Per-tenant localStorage key so stage labels/hidden flags never leak across organizations. */
+function getPipelineStageConfigStorageKey(tenantId) {
+  if (tenantId == null) return `${LEGACY_PIPELINE_STAGE_CONFIG_KEY}_unknown`;
+  const raw =
+    typeof tenantId === 'object' && tenantId !== null
+      ? tenantId._id ?? tenantId.id
+      : tenantId;
+  const id = String(raw).trim();
+  if (/^[a-fA-F0-9]{24}$/.test(id)) return `${LEGACY_PIPELINE_STAGE_CONFIG_KEY}_${id}`;
+  return `${LEGACY_PIPELINE_STAGE_CONFIG_KEY}_unknown`;
+}
+
 function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobClick, onJobContextMenu, onArchiveCompleted, completedJobsCount, search = '', onSearchChange }) {
   const theme = useTheme();
   const navigate = useNavigate();
-  const { canModifyPipeline } = useAuth();
+  const { user, canModifyPipeline } = useAuth();
   const [draggedOverStage, setDraggedOverStage] = useState(null);
 
-  const PIPELINE_STAGE_CONFIG_KEY = 'pipelineStageConfigV1';
+  const pipelineStageConfigKey = useMemo(
+    () => getPipelineStageConfigStorageKey(user?.tenantId),
+    [user?.tenantId]
+  );
+
   const [customizeOpen, setCustomizeOpen] = useState(false);
-  const [stageOverrides, setStageOverrides] = useState(() => {
+  const [stageOverrides, setStageOverrides] = useState({});
+
+  useEffect(() => {
     try {
-      const stored = localStorage.getItem(PIPELINE_STAGE_CONFIG_KEY);
-      if (!stored) return {};
+      let stored = localStorage.getItem(pipelineStageConfigKey);
+      if (!stored) {
+        const legacy = localStorage.getItem(LEGACY_PIPELINE_STAGE_CONFIG_KEY);
+        if (legacy) {
+          stored = legacy;
+          localStorage.setItem(pipelineStageConfigKey, legacy);
+          localStorage.removeItem(LEGACY_PIPELINE_STAGE_CONFIG_KEY);
+        }
+      }
+      if (!stored) {
+        setStageOverrides({});
+        return;
+      }
       const parsed = JSON.parse(stored);
-      return parsed && typeof parsed === 'object' ? parsed : {};
+      setStageOverrides(parsed && typeof parsed === 'object' ? parsed : {});
     } catch (_) {
-      return {};
+      setStageOverrides({});
     }
-  });
+  }, [pipelineStageConfigKey]);
 
   // Group jobs by stage
   const jobsByStage = {};
@@ -507,7 +538,7 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
               const confirmed = window.confirm('Are you sure you want to save these stage changes?');
               if (!confirmed) return;
               try {
-                localStorage.setItem(PIPELINE_STAGE_CONFIG_KEY, JSON.stringify(stageOverrides || {}));
+                localStorage.setItem(pipelineStageConfigKey, JSON.stringify(stageOverrides || {}));
               } catch (_) {}
               toast.success('Pipeline customization saved');
               setCustomizeOpen(false);
