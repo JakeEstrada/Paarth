@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -1181,8 +1182,9 @@ function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob }) {
   );
 }
 
-function CalendarPageNew() {
+function CalendarPageNew({ tvMode = false }) {
   const theme = useTheme();
+  const navigate = useNavigate();
   const { canModifyCalendar, canViewCalendar } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -1200,6 +1202,7 @@ function CalendarPageNew() {
   const [installerOrder, setInstallerOrder] = useState(DEFAULT_INSTALLER_ORDER);
 
   const [benchPosition, setBenchPosition] = useState(() => {
+    if (tvMode) return 'right';
     try {
       const stored = localStorage.getItem(CALENDAR_BENCH_POSITION_KEY);
       if (stored === 'top' || stored === 'right' || stored === 'bottom') return stored;
@@ -1209,10 +1212,11 @@ function CalendarPageNew() {
   const [benchWidth, setBenchWidth] = useState(320);
 
   useEffect(() => {
+    if (tvMode) return;
     try {
       localStorage.setItem(CALENDAR_BENCH_POSITION_KEY, benchPosition);
     } catch (_) {}
-  }, [benchPosition]);
+  }, [benchPosition, tvMode]);
 
   const [hiddenWeekdays, setHiddenWeekdays] = useState(() => {
     try {
@@ -1298,8 +1302,12 @@ function CalendarPageNew() {
     return eachDayOfInterval({ start: calendarStart, end: calendarEnd });
   };
 
-  // Get months: one on mobile, three on desktop
+  // Get months: TV mode shows current + next month.
+  // Standard mode stays the same (one on mobile, three on desktop).
   const months = useMemo(() => {
+    if (tvMode) {
+      return [currentDate, addMonths(currentDate, 1)];
+    }
     if (isMobile) {
       return [currentDate];
     }
@@ -1308,7 +1316,7 @@ function CalendarPageNew() {
       addMonths(currentDate, 1),
       addMonths(currentDate, 2),
     ];
-  }, [currentDate, isMobile]);
+  }, [currentDate, isMobile, tvMode]);
 
   // Render one calendar chip per schedule entry (installer + start/end date range).
   // Legacy support: if `schedule.entries` is missing, we fall back to the old single-range + `schedule.installers` model.
@@ -1897,7 +1905,9 @@ function CalendarPageNew() {
           >
             {isMobile 
               ? format(currentDate, 'MMMM yyyy')
-              : `${format(currentDate, 'MMMM yyyy')} - ${format(addMonths(currentDate, 2), 'MMMM yyyy')}`
+              : tvMode
+                ? `${format(currentDate, 'MMMM yyyy')} - ${format(addMonths(currentDate, 1), 'MMMM yyyy')}`
+                : `${format(currentDate, 'MMMM yyyy')} - ${format(addMonths(currentDate, 2), 'MMMM yyyy')}`
             }
           </Typography>
           <IconButton onClick={handleNextMonth} size="small">
@@ -1912,9 +1922,17 @@ function CalendarPageNew() {
           >
             Today
           </Button>
+          <Button
+            onClick={() => navigate(tvMode ? '/calendar' : '/calendar-view')}
+            variant={tvMode ? 'contained' : 'outlined'}
+            size="small"
+            sx={{ display: { xs: 'none', sm: 'flex' } }}
+          >
+            {tvMode ? 'Exit Calendar view' : 'Calendar view'}
+          </Button>
         </Box>
         {/* Standalone event creation removed; calendar now only schedules existing jobs */}
-        <FormControl size="small" sx={{ minWidth: 120, display: { xs: 'none', sm: 'flex' } }}>
+        <FormControl size="small" sx={{ minWidth: 120, display: { xs: 'none', sm: tvMode ? 'none' : 'flex' } }}>
           <InputLabel>Bench position</InputLabel>
           <Select
             value={benchPosition}

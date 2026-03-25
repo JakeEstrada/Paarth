@@ -50,6 +50,14 @@ function App() {
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<TermsAndConditions />} />
         <Route
+          path="/calendar-view"
+          element={
+            <ProtectedRoute>
+              <CalendarPage tvMode />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/*"
           element={
             <ProtectedRoute>
