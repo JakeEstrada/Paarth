@@ -97,6 +97,42 @@ function buildMajorUSHolidayMap(year) {
   return map;
 }
 
+// Anonymous Gregorian computus for Easter Sunday
+function getEasterSunday(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31); // 3=March, 4=April
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+function getHolidayChipLabel(label, tvMode) {
+  if (!tvMode) return label;
+  const shortMap = {
+    "New Year's Day": 'New Year',
+    'Martin Luther King Jr. Day': 'MLK Day',
+    "Presidents' Day": "Presidents'",
+    'Memorial Day': 'Memorial',
+    Juneteenth: 'Juneteenth',
+    'Independence Day': 'Independence',
+    'Labor Day': 'Labor',
+    Thanksgiving: 'Thanksgiving',
+    'Christmas Day': 'Christmas',
+    Easter: 'Easter',
+  };
+  return shortMap[label] || label;
+}
+
 // Event creation/edit modal
 function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, installerOptions = [], selectedInstaller = '' }) {
   const theme = useTheme();
@@ -953,13 +989,16 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
               title={holidayLabel}
               sx={{
                 color: theme.palette.error.main,
-                fontSize: tvMode ? '0.52rem' : '0.58rem',
+                fontSize: tvMode ? '0.5rem' : '0.58rem',
                 fontWeight: 700,
                 lineHeight: 1,
                 whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: tvMode ? '56px' : '90px',
               }}
             >
-              {tvMode ? 'Holiday' : 'Holiday'}
+              {getHolidayChipLabel(holidayLabel, tvMode)}
             </Typography>
           )}
         </Box>
@@ -1379,7 +1418,10 @@ function CalendarPageNew({ tvMode = false }) {
       years.add(addMonths(monthDate, 1).getFullYear());
     });
     const combined = {};
-    years.forEach((year) => Object.assign(combined, buildMajorUSHolidayMap(year)));
+    years.forEach((year) => {
+      Object.assign(combined, buildMajorUSHolidayMap(year));
+      combined[format(getEasterSunday(year), 'yyyy-MM-dd')] = 'Easter';
+    });
     return combined;
   }, [months]);
 
@@ -1608,9 +1650,10 @@ function CalendarPageNew({ tvMode = false }) {
     setCurrentDate(new Date());
   };
 
+  const effectiveHiddenWeekdays = tvMode ? [] : hiddenWeekdays;
   const visibleWeekdays = useMemo(
-    () => [0, 1, 2, 3, 4, 5, 6].filter((d) => !hiddenWeekdays.includes(d)),
-    [hiddenWeekdays]
+    () => [0, 1, 2, 3, 4, 5, 6].filter((d) => !effectiveHiddenWeekdays.includes(d)),
+    [effectiveHiddenWeekdays]
   );
 
   const handleDayContextMenu = (date, e) => {
@@ -1634,7 +1677,7 @@ function CalendarPageNew({ tvMode = false }) {
   // Render a single month calendar
   const renderMonth = (monthDate, monthIndex) => {
     const calendarDays = getCalendarDaysForMonth(monthDate);
-    const visibleDays = calendarDays.filter((d) => !hiddenWeekdays.includes(d.getDay()));
+    const visibleDays = calendarDays.filter((d) => !effectiveHiddenWeekdays.includes(d.getDay()));
     const columnCount = visibleWeekdays.length;
 
     return (
