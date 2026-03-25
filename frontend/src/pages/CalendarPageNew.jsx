@@ -989,9 +989,15 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
               variant="caption"
               title={holidayLabel}
               sx={{
-                color: theme.palette.error.main,
+                color: theme.palette.mode === 'dark' ? '#FFD166' : '#8A5A00',
+                backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 209, 102, 0.14)' : 'rgba(255, 209, 102, 0.22)',
+                border: theme.palette.mode === 'dark' ? '1px solid rgba(255, 209, 102, 0.35)' : '1px solid rgba(138, 90, 0, 0.25)',
+                borderRadius: '10px',
+                px: 0.5,
+                py: 0.15,
                 fontSize: tvMode ? '0.56rem' : '0.62rem',
-                fontWeight: 700,
+                fontWeight: 800,
+                letterSpacing: '0.01em',
                 lineHeight: 1,
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
