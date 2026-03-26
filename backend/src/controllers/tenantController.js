@@ -19,8 +19,29 @@ function logoPayloadFromMulterFile(file) {
   };
 }
 
-/** super_admin only: replace tenant organization logo */
-async function uploadTenantLogo(req, res) {
+function getLogoFieldName(themeMode) {
+  return themeMode === 'dark' ? 'logoDark' : 'logoLight';
+}
+
+function resolveLogoObject(tenant, themeMode) {
+  const field = getLogoFieldName(themeMode);
+  if (tenant && tenant[field] && (tenant[field].path || tenant[field].s3Key || tenant[field].filename)) {
+    return { field, logo: tenant[field] };
+  }
+  // Backward compatibility: fall back to legacy `logo`
+  if (themeMode === 'dark') {
+    if (tenant && tenant.logo && (tenant.logo.path || tenant.logo.s3Key || tenant.logo.filename)) {
+      return { field: 'logo', logo: tenant.logo };
+    }
+  }
+  if (tenant && tenant.logo && (tenant.logo.path || tenant.logo.s3Key || tenant.logo.filename)) {
+    return { field: 'logo', logo: tenant.logo };
+  }
+  return { field, logo: null };
+}
+
+/** super_admin only: replace tenant organization logo (themeMode: 'light'|'dark') */
+async function uploadTenantThemeLogo(req, res, themeMode = 'light') {
   try {
     if (!req.user || req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Only the organization super admin can upload a logo.' });
@@ -38,51 +59,76 @@ async function uploadTenantLogo(req, res) {
       return res.status(404).json({ error: 'Organization not found.' });
     }
 
-    if (tenant.logo && (tenant.logo.path || tenant.logo.s3Key || tenant.logo.filename)) {
+    const targetField = getLogoFieldName(themeMode);
+    // Delete previous file if exists
+    const previous =
+      themeMode === 'light'
+        ? tenant[targetField] || tenant.logo
+        : tenant[targetField];
+    if (previous && (previous.path || previous.s3Key || previous.filename)) {
       await deleteStoredFileBinary({
-        filename: tenant.logo.filename,
-        path: tenant.logo.path,
-        s3Key: tenant.logo.s3Key,
-        mimetype: tenant.logo.mimetype,
+        filename: previous.filename,
+        path: previous.path,
+        s3Key: previous.s3Key,
+        mimetype: previous.mimetype,
       });
     }
 
-    tenant.logo = logoPayloadFromMulterFile(req.file);
+    const payload = logoPayloadFromMulterFile(req.file);
+    tenant[targetField] = payload;
+    // Keep legacy `logo` in sync for light uploads to preserve older consumers.
+    if (themeMode === 'light') {
+      tenant.logo = payload;
+    }
     await tenant.save();
 
     res.json({
       message: 'Logo updated successfully',
-      brandingPath: `/tenants/branding/${tenant._id}/logo`,
+      brandingPath: `/tenants/branding/${tenant._id}/logo?mode=${themeMode}`,
       tenant: {
         _id: tenant._id,
         name: tenant.name,
         slug: tenant.slug,
-        logo: tenant.logo,
+        [targetField]: tenant[targetField],
       },
     });
   } catch (error) {
-    console.error('uploadTenantLogo:', error);
+    console.error('uploadTenantThemeLogo:', error);
     res.status(500).json({ error: error.message || 'Failed to upload logo' });
   }
+}
+
+/** super_admin only: replace tenant organization logo (light) */
+async function uploadTenantLogo(req, res) {
+  return uploadTenantThemeLogo(req, res, 'light');
+}
+
+async function uploadTenantLogoLight(req, res) {
+  return uploadTenantThemeLogo(req, res, 'light');
+}
+
+async function uploadTenantLogoDark(req, res) {
+  return uploadTenantThemeLogo(req, res, 'dark');
 }
 
 /** Public: stream logo for img tags (login sidebar, etc.) */
 async function getTenantBrandingLogo(req, res) {
   try {
     const { tenantId } = req.params;
-    const tenant = await Tenant.findById(tenantId).select('logo');
-    if (!tenant || !tenant.logo || (!tenant.logo.path && !tenant.logo.s3Key)) {
-      return res.status(404).end();
-    }
+    const themeMode = String(req.query.mode || 'light').toLowerCase() === 'dark' ? 'dark' : 'light';
+
+    const tenant = await Tenant.findById(tenantId).select('logo logoLight logoDark');
+    const resolved = resolveLogoObject(tenant, themeMode);
+    if (!resolved.logo) return res.status(404).end();
 
     const pseudoFile = {
-      filename: tenant.logo.filename,
-      path: tenant.logo.path,
-      s3Key: tenant.logo.s3Key,
-      mimetype: tenant.logo.mimetype,
+      filename: resolved.logo.filename,
+      path: resolved.logo.path,
+      s3Key: resolved.logo.s3Key,
+      mimetype: resolved.logo.mimetype,
     };
 
-    res.setHeader('Content-Type', tenant.logo.mimetype || 'image/png');
+    res.setHeader('Content-Type', resolved.logo.mimetype || 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=86400');
     const stream = await getFileStream(pseudoFile);
     stream.pipe(res);
@@ -153,6 +199,8 @@ async function updateTenantPipelineSettings(req, res) {
 
 module.exports = {
   uploadTenantLogo,
+  uploadTenantLogoLight,
+  uploadTenantLogoDark,
   getTenantBrandingLogo,
   getTenantPipelineSettings,
   updateTenantPipelineSettings,

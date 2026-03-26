@@ -25,11 +25,13 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/axios';
 import BrandLogo from '../components/common/BrandLogo';
+import { useTheme } from '@mui/material/styles';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function AccountSettingsPage() {
   const { user: currentUser, fetchCurrentUser, isSuperAdmin, tenantForBranding } = useAuth();
+  const theme = useTheme();
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
   const [updating, setUpdating] = useState(false);
@@ -52,7 +54,8 @@ function AccountSettingsPage() {
     new: false,
     confirm: false,
   });
-  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingLogoLight, setUploadingLogoLight] = useState(false);
+  const [uploadingLogoDark, setUploadingLogoDark] = useState(false);
 
   useEffect(() => {
     fetchUserData();
@@ -110,7 +113,7 @@ function AccountSettingsPage() {
     }
   };
 
-  const handleTenantLogoUpload = async (e) => {
+  const handleTenantLogoUpload = async (e, themeMode) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -119,13 +122,14 @@ function AccountSettingsPage() {
       return;
     }
     try {
-      setUploadingLogo(true);
+      if (themeMode === 'dark') setUploadingLogoDark(true);
+      else setUploadingLogoLight(true);
       const formData = new FormData();
       formData.append('logo', file);
-      await api.post('/tenants/logo', formData, {
+      await api.post(`/tenants/logo/${themeMode}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      toast.success('Organization logo updated. It will appear for everyone in your company.');
+      toast.success(`Organization ${themeMode} logo updated. It will appear for everyone in your company.`);
       const token = localStorage.getItem('accessToken');
       if (token && fetchCurrentUser) {
         await fetchCurrentUser(token);
@@ -134,7 +138,8 @@ function AccountSettingsPage() {
       console.error('Logo upload:', error);
       toast.error(error.response?.data?.error || 'Failed to upload logo');
     } finally {
-      setUploadingLogo(false);
+      setUploadingLogoLight(false);
+      setUploadingLogoDark(false);
       e.target.value = '';
     }
   };
@@ -219,8 +224,11 @@ function AccountSettingsPage() {
           borderRadius: '16px',
           p: 4,
           mb: 3,
-          background: 'white',
-          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: theme.palette.background.paper,
+          boxShadow:
+            theme.palette.mode === 'dark'
+              ? '0 2px 12px rgba(0, 0, 0, 0.35)'
+              : '0 2px 12px rgba(0, 0, 0, 0.06)',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
@@ -339,8 +347,11 @@ function AccountSettingsPage() {
             borderRadius: '16px',
             p: 4,
             mb: 3,
-            background: 'white',
-            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+            background: theme.palette.background.paper,
+            boxShadow:
+              theme.palette.mode === 'dark'
+                ? '0 2px 12px rgba(0, 0, 0, 0.35)'
+                : '0 2px 12px rgba(0, 0, 0, 0.06)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
@@ -352,16 +363,68 @@ function AccountSettingsPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Upload your company logo. It appears in the sidebar, login screen (for your team), payroll, and printed reports for all users in your organization. PNG, JPG, GIF, WebP, or SVG. Max 2&nbsp;MB.
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
-            <BrandLogo
-              tenant={tenantForBranding}
-              alt="Current organization logo"
-              sx={{ height: 72, width: 72, objectFit: 'contain', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 0.5 }}
-            />
-            <Box>
-              <Button variant="outlined" component="label" disabled={uploadingLogo} startIcon={uploadingLogo ? <CircularProgress size={18} /> : <PhotoCameraIcon />}>
-                {uploadingLogo ? 'Uploading…' : 'Upload logo'}
-                <input type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml" hidden onChange={handleTenantLogoUpload} />
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+              <Typography variant="body2" color="text.secondary">Light logo</Typography>
+              <BrandLogo
+                tenant={tenantForBranding}
+                themeMode="light"
+                alt="Light theme organization logo"
+                sx={{
+                  height: 80,
+                  width: 80,
+                  objectFit: 'contain',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 0.5,
+                }}
+              />
+              <Button
+                variant="outlined"
+                component="label"
+                disabled={uploadingLogoLight}
+                startIcon={uploadingLogoLight ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
+              >
+                {uploadingLogoLight ? 'Uploading…' : 'Upload light'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                  hidden
+                  onChange={(e) => handleTenantLogoUpload(e, 'light')}
+                />
+              </Button>
+            </Box>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+              <Typography variant="body2" color="text.secondary">Dark logo</Typography>
+              <BrandLogo
+                tenant={tenantForBranding}
+                themeMode="dark"
+                alt="Dark theme organization logo"
+                sx={{
+                  height: 80,
+                  width: 80,
+                  objectFit: 'contain',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 0.5,
+                }}
+              />
+              <Button
+                variant="outlined"
+                component="label"
+                disabled={uploadingLogoDark}
+                startIcon={uploadingLogoDark ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
+              >
+                {uploadingLogoDark ? 'Uploading…' : 'Upload dark'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                  hidden
+                  onChange={(e) => handleTenantLogoUpload(e, 'dark')}
+                />
               </Button>
             </Box>
           </Box>
@@ -374,8 +437,11 @@ function AccountSettingsPage() {
         sx={{
           borderRadius: '16px',
           p: 4,
-          background: 'white',
-          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: theme.palette.background.paper,
+          boxShadow:
+            theme.palette.mode === 'dark'
+              ? '0 2px 12px rgba(0, 0, 0, 0.35)'
+              : '0 2px 12px rgba(0, 0, 0, 0.06)',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>

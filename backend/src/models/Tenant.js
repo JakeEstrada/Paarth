@@ -18,8 +18,21 @@ const tenantSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    // Organization logo (set by tenant super_admin); served at GET /tenants/branding/:id/logo
+    // Organization logos (set by tenant super_admin); served at GET /tenants/branding/:id/logo?mode=light|dark
+    // `logo` is kept for backward compatibility and treated as the light logo.
     logo: {
+      filename: { type: String },
+      path: { type: String },
+      s3Key: { type: String },
+      mimetype: { type: String, default: 'image/png' },
+    },
+    logoLight: {
+      filename: { type: String },
+      path: { type: String },
+      s3Key: { type: String },
+      mimetype: { type: String, default: 'image/png' },
+    },
+    logoDark: {
       filename: { type: String },
       path: { type: String },
       s3Key: { type: String },
