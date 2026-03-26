@@ -159,6 +159,8 @@ app.use('/calendar', calendarRoutes);
 app.use('/developer-tasks', developerTasksRoutes);
 app.use('/bills', billRoutes);
 app.use('/pipeline-layouts', pipelineLayoutRoutes);
+// Some deployments expose the API under `/api` without stripping the prefix from the path.
+app.use('/api/pipeline-layouts', pipelineLayoutRoutes);
 
 // Test route
 app.get('/', (req, res) => {

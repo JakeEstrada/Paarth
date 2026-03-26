@@ -32,6 +32,7 @@ import JobContextMenu from '../components/jobs/JobContextMenu';
 import AddJobTaskModal from '../components/jobs/AddJobTaskModal';
 import AddJobModal from '../components/jobs/AddJobModal';
 import { useAuth } from '../context/AuthContext';
+import { fetchPipelineLayoutsList, createPipelineLayout } from '../utils/pipelineLayoutsApi';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -102,12 +103,18 @@ function PipelinePage() {
 
   const refreshPipelineLayouts = useCallback(async () => {
     try {
-      const { data } = await axios.get(`${API_URL}/pipeline-layouts`);
-      const list = data.layouts || [];
+      const list = await fetchPipelineLayoutsList(API_URL);
       setPipelineLayouts(list);
       return list;
     } catch (error) {
+      const status = error.response?.status;
       console.error('Error loading pipeline layouts:', error);
+      if (status === 404) {
+        toast.error(
+          'Custom pipelines are not available on this server yet. Deploy the latest API (includes GET /pipeline-layouts).'
+        );
+      }
+      setPipelineLayouts([]);
       return [];
     }
   }, []);
@@ -287,7 +294,8 @@ function PipelinePage() {
     const confirmed = window.confirm('Are you sure you want to create a new pipeline?');
     if (!confirmed) return;
     try {
-      const { data } = await axios.post(`${API_URL}/pipeline-layouts`, { title: 'New pipeline' });
+      const res = await createPipelineLayout(API_URL, { title: 'New pipeline' });
+      const data = res.data;
       await refreshPipelineLayouts();
       setSelectedPipelineId(String(data._id));
       toast.success('New pipeline created — use Edit to add stages');

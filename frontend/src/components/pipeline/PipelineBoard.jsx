@@ -30,6 +30,7 @@ import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import JobCard from './JobCard';
+import { updatePipelineLayout, deletePipelineLayout } from '../../utils/pipelineLayoutsApi';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -481,7 +482,7 @@ function PipelineBoard({
         order: i,
         stageKeys: Array.isArray(l.stageKeys) ? l.stageKeys : [],
       }));
-      await axios.patch(`${API_URL}/pipeline-layouts/${layoutDraft._id}`, {
+      await updatePipelineLayout(API_URL, layoutDraft._id, {
         title: layoutDraft.title != null ? String(layoutDraft.title).trim() : '',
         levels,
       });
@@ -502,7 +503,7 @@ function PipelineBoard({
     if (!confirmed) return;
     setSavingLayout(true);
     try {
-      await axios.delete(`${API_URL}/pipeline-layouts/${layoutDraft._id}`);
+      await deletePipelineLayout(API_URL, layoutDraft._id);
       toast.success('Pipeline deleted');
       setLayoutEditorOpen(false);
       onCustomLayoutDeleted?.(layoutDraft._id);
