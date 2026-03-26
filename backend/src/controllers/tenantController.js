@@ -28,13 +28,11 @@ function resolveLogoObject(tenant, themeMode) {
   if (tenant && tenant[field] && (tenant[field].path || tenant[field].s3Key || tenant[field].filename)) {
     return { field, logo: tenant[field] };
   }
-  // Backward compatibility: fall back to legacy `logo`
-  if (themeMode === 'dark') {
-    if (tenant && tenant.logo && (tenant.logo.path || tenant.logo.s3Key || tenant.logo.filename)) {
-      return { field: 'logo', logo: tenant.logo };
-    }
-  }
-  if (tenant && tenant.logo && (tenant.logo.path || tenant.logo.s3Key || tenant.logo.filename)) {
+  // Backward compatibility:
+  // - Light mode: if no themed light logo exists, fall back to legacy `logo`.
+  // - Dark mode: do NOT fall back to legacy `logo`, so uploading a light logo
+  //   cannot accidentally overwrite what the user expects to be dark.
+  if (themeMode === 'light' && tenant && tenant.logo && (tenant.logo.path || tenant.logo.s3Key || tenant.logo.filename)) {
     return { field: 'logo', logo: tenant.logo };
   }
   return { field, logo: null };
@@ -76,9 +74,14 @@ async function uploadTenantThemeLogo(req, res, themeMode = 'light') {
 
     const payload = logoPayloadFromMulterFile(req.file);
     tenant[targetField] = payload;
-    // Keep legacy `logo` in sync for light uploads to preserve older consumers.
+    // Backward compatibility for older consumers:
+    // - Keep legacy `logo` in sync for light uploads.
+    // - If `logoDark` is missing, initialize it once from the light upload
+    //   (so dark doesn't start "empty", but future light uploads won't overwrite it).
     if (themeMode === 'light') {
       tenant.logo = payload;
+      const darkMissing = !tenant.logoDark || !(tenant.logoDark.path || tenant.logoDark.s3Key || tenant.logoDark.filename);
+      if (darkMissing) tenant.logoDark = payload;
     }
     await tenant.save();
 
