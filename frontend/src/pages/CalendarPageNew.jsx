@@ -969,7 +969,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           <Typography
             variant="body2"
             sx={{
-              fontWeight: isToday(date) ? 700 : 500,
+              fontWeight: isToday(date) ? 800 : 600,
               color: isToday(date)
                 ? 'primary.main'
                 : isCurrentMonth
@@ -1056,7 +1056,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                       px: 0.75,
                       py: 0,
                       lineHeight: 1.25,
-                      fontWeight: 600,
+                      fontWeight: 700,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -1140,7 +1140,7 @@ function BenchJobCard({ job, onJobClick, onViewJob, onRemoveFromBench }) {
             <Typography
               variant="body2"
               sx={{
-                fontWeight: 700,
+                fontWeight: 800,
                 fontSize: '0.85rem',
                 mb: 0.25,
                 overflow: 'hidden',
@@ -1237,7 +1237,7 @@ function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob }) {
             sx={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
             onClick={() => onJobClick(job)}
           >
-            <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem', mb: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Typography variant="body2" sx={{ fontWeight: 800, fontSize: '0.85rem', mb: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {job.title}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
@@ -1942,19 +1942,9 @@ function CalendarPageNew({ tvMode = false }) {
             </Typography>
           </Box>
         ) : (
-          <Box
-            sx={{
-              display: 'flex',
-              // For the calendar view, show Bench left and Scheduled right on desktop even when panel is on the right.
-              flexDirection: { xs: 'column', md: 'row' },
-              gap: { xs: 2, md: 3 },
-              height: '100%',
-              mt: 1,
-              flexWrap: 'nowrap',
-            }}
-          >
+          <Box sx={{ display: 'flex', flexDirection: placement === 'right' ? 'column' : { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 }, height: '100%', mt: 1, flexWrap: placement === 'right' ? 'nowrap' : undefined }}>
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                 Bench ({benchJobs.length})
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
@@ -1985,12 +1975,12 @@ function CalendarPageNew({ tvMode = false }) {
             <Box sx={{
               flex: 1,
               minWidth: 0,
-              borderLeft: { xs: 'none', md: '1px solid #e0e0e0' },
-              borderTop: { xs: '1px solid #e0e0e0', md: 'none' },
-              pl: { xs: 0, md: 3 },
+              borderLeft: placement === 'right' ? 'none' : { xs: 'none', md: '1px solid #e0e0e0' },
+              borderTop: placement === 'right' ? '1px solid #e0e0e0' : { xs: '1px solid #e0e0e0', md: 'none' },
+              pl: { xs: 0, md: placement === 'right' ? 0 : 3 },
               pt: { xs: 2, md: 0 },
             }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                 Scheduled ({scheduledJobs.length})
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
