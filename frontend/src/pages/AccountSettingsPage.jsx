@@ -130,6 +130,11 @@ function AccountSettingsPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success(`Organization ${themeMode} logo updated. It will appear for everyone in your company.`);
+      try {
+        localStorage.setItem('tenantLogoCacheBust', String(Date.now()));
+      } catch {
+        /* ignore */
+      }
       const token = localStorage.getItem('accessToken');
       if (token && fetchCurrentUser) {
         await fetchCurrentUser(token);

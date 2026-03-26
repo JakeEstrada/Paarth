@@ -5,18 +5,19 @@ import { tenantBrandingLogoUrl, DEFAULT_APP_LOGO } from '../../utils/tenantBrand
 
 /**
  * Tenant/org logo when `tenantId` is set; otherwise default app logo.
- * Uses public branding URL; on 404 or error, shows default asset.
+ * Uses public branding URL; on 404 or error, shows fallback asset (`fallbackSrc` or default app logo).
  */
-export function BrandLogo({ tenant, tenantId, alt = 'Organization logo', sx, themeMode }) {
+export function BrandLogo({ tenant, tenantId, alt = 'Organization logo', sx, themeMode, fallbackSrc }) {
   const muiTheme = useTheme();
   const resolvedThemeMode = themeMode || muiTheme.palette.mode || 'light';
   const srcTenant = tenant || tenantId;
   const remote = tenantBrandingLogoUrl(srcTenant, undefined, resolvedThemeMode);
-  const [src, setSrc] = useState(remote || DEFAULT_APP_LOGO);
+  const fallback = fallbackSrc || DEFAULT_APP_LOGO;
+  const [src, setSrc] = useState(remote || fallback);
 
   useEffect(() => {
-    setSrc(remote || DEFAULT_APP_LOGO);
-  }, [remote, srcTenant]);
+    setSrc(remote || fallback);
+  }, [remote, srcTenant, fallback]);
 
   return (
     <Box
@@ -24,7 +25,7 @@ export function BrandLogo({ tenant, tenantId, alt = 'Organization logo', sx, the
       src={src}
       alt={alt}
       sx={sx}
-      onError={() => setSrc(DEFAULT_APP_LOGO)}
+      onError={() => setSrc(fallback)}
     />
   );
 }

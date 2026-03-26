@@ -19,3 +19,18 @@ export function tenantBrandingLogoUrl(tenantId, cacheBust, mode = 'light') {
 }
 
 export const DEFAULT_APP_LOGO = '/logo.png';
+
+/** Default logo on the main login page until a tenant uploads their own (via Account Settings). */
+export const DEFAULT_SCWW_LOGIN_LOGO = '/scww-logo.svg';
+
+/**
+ * Merge optional cache-bust for branding URL (e.g. after logo upload).
+ * @param {object|null} tenant
+ */
+export function withTenantLogoCacheBust(tenant) {
+  if (!tenant || typeof window === 'undefined') return tenant;
+  const bust = localStorage.getItem('tenantLogoCacheBust');
+  if (!bust) return tenant;
+  const t = Number(bust);
+  return { ...tenant, updatedAt: new Date(Number.isFinite(t) ? t : bust) };
+}

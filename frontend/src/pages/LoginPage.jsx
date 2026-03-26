@@ -20,6 +20,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
+import { DEFAULT_SCWW_LOGIN_LOGO, withTenantLogoCacheBust } from '../utils/tenantBranding';
 import toast from 'react-hot-toast';
 
 function LoginPage() {
@@ -70,11 +71,13 @@ function LoginPage() {
         >
           <Box sx={{ mb: 4, textAlign: 'center' }}>
             <BrandLogo
-              tenant={tenantForBranding}
+              tenant={withTenantLogoCacheBust(tenantForBranding)}
+              fallbackSrc={DEFAULT_SCWW_LOGIN_LOGO}
               alt="Organization logo"
               sx={{
                 height: 60,
-                width: 60,
+                width: 120,
+                maxWidth: '100%',
                 objectFit: 'contain',
                 mb: 2,
               }}
