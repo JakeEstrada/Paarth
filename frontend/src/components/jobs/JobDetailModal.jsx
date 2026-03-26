@@ -225,6 +225,10 @@ function JobDetailModal({
     }
   };
 
+  const headerEstimatedValue = Number((isEditing ? editedJob?.valueEstimated : job?.valueEstimated) || 0);
+  const headerDepositValue = headerEstimatedValue * 0.4;
+  const headerFinalValue = headerEstimatedValue * 0.6;
+
   const handleFileDelete = async (fileId) => {
     if (!window.confirm('Are you sure you want to delete this file?')) {
       return;
@@ -549,6 +553,12 @@ function JobDetailModal({
               )}
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                 Estimated Value
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
+                Deposit (40%): {formatCurrency(headerDepositValue)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
+                Final (60%): {formatCurrency(headerFinalValue)}
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>

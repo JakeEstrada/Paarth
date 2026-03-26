@@ -40,14 +40,6 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
     setIsDragging(false);
   };
 
-  const estimatedValue = Number(job?.valueEstimated || 0);
-  const depositValue = estimatedValue * 0.4;
-  const finalValue = estimatedValue * 0.6;
-  const formatMoney = (value) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
-      Number(value || 0)
-    );
-
   // Determine status dot color: scheduled (green) beats bench (orange) when calendar exists
   const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
   const isArchived = !!job.isArchived;
@@ -161,27 +153,6 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
           />
         </Tooltip>
       </Box>
-      <Box sx={{ mt: 0.75 }}>
-        <Typography
-          variant="body2"
-          sx={{ fontSize: '0.8rem', fontWeight: 600, color: theme.palette.text.primary, lineHeight: 1.3 }}
-        >
-          Amount: {formatMoney(estimatedValue)}
-        </Typography>
-        <Typography
-          variant="caption"
-          sx={{ display: 'block', color: theme.palette.text.secondary, lineHeight: 1.25 }}
-        >
-          Deposit (40%): {formatMoney(depositValue)}
-        </Typography>
-        <Typography
-          variant="caption"
-          sx={{ display: 'block', color: theme.palette.text.secondary, lineHeight: 1.25 }}
-        >
-          Final (60%): {formatMoney(finalValue)}
-        </Typography>
-      </Box>
-        
       </CardContent>
     </Card>
   );
