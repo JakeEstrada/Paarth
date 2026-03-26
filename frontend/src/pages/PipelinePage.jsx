@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Typography,
@@ -31,12 +31,26 @@ import AddTodoModal from '../components/todos/AddTodoModal';
 import JobContextMenu from '../components/jobs/JobContextMenu';
 import AddJobTaskModal from '../components/jobs/AddJobTaskModal';
 import AddJobModal from '../components/jobs/AddJobModal';
+import { useAuth } from '../context/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+const PIPELINE_SELECTION_KEY_PREFIX = 'pipelineSelectedLayoutV1';
+
+function getPipelineSelectionStorageKey(tenantId) {
+  const raw =
+    tenantId && typeof tenantId === 'object'
+      ? tenantId._id ?? tenantId.id
+      : tenantId ?? localStorage.getItem('tenantId');
+  const id = String(raw ?? '').trim();
+  if (/^[a-fA-F0-9]{24}$/.test(id)) return `${PIPELINE_SELECTION_KEY_PREFIX}_${id}`;
+  return `${PIPELINE_SELECTION_KEY_PREFIX}_unknown`;
+}
 
 function PipelinePage() {
   const theme = useTheme();
   const navigate = useNavigate();
+  const { user, canModifyPipeline } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +77,9 @@ function PipelinePage() {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [pipelineSearch, setPipelineSearch] = useState('');
+  const [pipelineLayouts, setPipelineLayouts] = useState([]);
+  const [selectedPipelineId, setSelectedPipelineId] = useState('default');
+  const [pipelineHydrated, setPipelineHydrated] = useState(false);
 
   const autoMoveDeadEstimates = async () => {
     try {
@@ -82,6 +99,63 @@ function PipelinePage() {
     };
     initialize();
   }, []);
+
+  const refreshPipelineLayouts = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${API_URL}/pipeline-layouts`);
+      const list = data.layouts || [];
+      setPipelineLayouts(list);
+      return list;
+    } catch (error) {
+      console.error('Error loading pipeline layouts:', error);
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setPipelineHydrated(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const list = await refreshPipelineLayouts();
+      if (cancelled) return;
+      const key = getPipelineSelectionStorageKey(user.tenantId);
+      let saved = 'default';
+      try {
+        saved = localStorage.getItem(key) || 'default';
+      } catch {
+        saved = 'default';
+      }
+      if (saved !== 'default' && list.some((l) => String(l._id) === saved)) {
+        setSelectedPipelineId(saved);
+      } else {
+        setSelectedPipelineId('default');
+      }
+      setPipelineHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, refreshPipelineLayouts]);
+
+  useEffect(() => {
+    if (!user || !pipelineHydrated) return;
+    const key = getPipelineSelectionStorageKey(user.tenantId);
+    try {
+      localStorage.setItem(key, selectedPipelineId);
+    } catch {
+      /* ignore */
+    }
+  }, [user, selectedPipelineId, pipelineHydrated]);
+
+  useEffect(() => {
+    if (selectedPipelineId === 'default') return;
+    if (!pipelineLayouts.length) return;
+    const exists = pipelineLayouts.some((l) => String(l._id) === selectedPipelineId);
+    if (!exists) setSelectedPipelineId('default');
+  }, [pipelineLayouts, selectedPipelineId]);
 
   // Check for jobId in URL query params and open that job's modal
   useEffect(() => {
@@ -155,11 +229,17 @@ function PipelinePage() {
     setArchiveDialogOpen(false);
   };
 
-  // Filtered jobs for pipeline search
+  const layoutFilteredJobs = useMemo(() => {
+    if (selectedPipelineId === 'default') {
+      return jobs.filter((j) => !j.pipelineLayoutId);
+    }
+    return jobs.filter((j) => String(j.pipelineLayoutId || '') === selectedPipelineId);
+  }, [jobs, selectedPipelineId]);
+
   const filteredJobs = useMemo(() => {
     const term = pipelineSearch.trim().toLowerCase();
-    if (!term) return jobs;
-    return jobs.filter((job) => {
+    if (!term) return layoutFilteredJobs;
+    return layoutFilteredJobs.filter((job) => {
       const title = job.title || '';
       const customerName = job.customerId?.name || '';
       const stage = job.stage || '';
@@ -169,7 +249,60 @@ function PipelinePage() {
         stage.toLowerCase().includes(term)
       );
     });
-  }, [jobs, pipelineSearch]);
+  }, [layoutFilteredJobs, pipelineSearch]);
+
+  const pipelineOptions = useMemo(
+    () => [
+      { id: 'default', label: 'Woodworking (default)' },
+      ...pipelineLayouts.map((l) => ({
+        id: String(l._id),
+        label: l.title || 'Untitled pipeline',
+      })),
+    ],
+    [pipelineLayouts]
+  );
+
+  const activeCustomLayout = useMemo(() => {
+    if (selectedPipelineId === 'default') return null;
+    return pipelineLayouts.find((l) => String(l._id) === selectedPipelineId) || null;
+  }, [pipelineLayouts, selectedPipelineId]);
+
+  const pipelineMode = selectedPipelineId === 'default' ? 'default' : 'custom';
+
+  const selectedCustomInitialStage = useMemo(() => {
+    if (!activeCustomLayout?.levels?.length) return null;
+    const sorted = [...activeCustomLayout.levels].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    for (const lvl of sorted) {
+      const stage = (lvl.stageKeys || []).find((k) => String(k || '').trim());
+      if (stage) return String(stage).trim();
+    }
+    return null;
+  }, [activeCustomLayout]);
+
+  const handleCreateEmptyPipeline = async () => {
+    if (!canModifyPipeline()) {
+      toast.error('You do not have permission to create pipelines');
+      return;
+    }
+    const confirmed = window.confirm('Are you sure you want to create a new pipeline?');
+    if (!confirmed) return;
+    try {
+      const { data } = await axios.post(`${API_URL}/pipeline-layouts`, { title: 'New pipeline' });
+      await refreshPipelineLayouts();
+      setSelectedPipelineId(String(data._id));
+      toast.success('New pipeline created — use Edit to add stages');
+    } catch (error) {
+      const msg = error.response?.data?.error || error.message || 'Failed to create pipeline';
+      toast.error(msg);
+    }
+  };
+
+  const handleCustomLayoutDeleted = async (deletedId) => {
+    await refreshPipelineLayouts();
+    if (String(selectedPipelineId) === String(deletedId)) {
+      setSelectedPipelineId('default');
+    }
+  };
 
   // Count jobs in FINAL_PAYMENT_CLOSED stage (respecting search filter)
   const completedJobsCount = filteredJobs.filter(
@@ -358,6 +491,14 @@ function PipelinePage() {
             completedJobsCount={completedJobsCount}
             search={pipelineSearch}
             onSearchChange={setPipelineSearch}
+            pipelineMode={pipelineMode}
+            activeCustomLayout={activeCustomLayout}
+            pipelineSelectorValue={selectedPipelineId}
+            pipelineOptions={pipelineOptions}
+            onPipelineSelectChange={setSelectedPipelineId}
+            onCreateEmptyPipeline={handleCreateEmptyPipeline}
+            onCustomLayoutSaved={refreshPipelineLayouts}
+            onCustomLayoutDeleted={handleCustomLayoutDeleted}
           />
         )}
 
@@ -489,6 +630,8 @@ function PipelinePage() {
             // Refresh jobs list to show the new job
             fetchJobs();
           }}
+          pipelineLayoutId={selectedPipelineId === 'default' ? null : selectedPipelineId}
+          initialStage={selectedPipelineId === 'default' ? null : selectedCustomInitialStage}
         />
 
         {/* Close Out Completed Jobs Dialog */}

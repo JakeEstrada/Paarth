@@ -1,5 +1,29 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Box, Card, CardContent, Typography, Paper, Button, IconButton, Tooltip, useTheme, TextField, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Checkbox } from '@mui/material';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Paper,
+  Button,
+  IconButton,
+  Tooltip,
+  useTheme,
+  TextField,
+  InputAdornment,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControlLabel,
+  Checkbox,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  Autocomplete,
+} from '@mui/material';
 import { Add as AddIcon, CheckCircle as CheckCircleIcon, Search as SearchIcon, History as HistoryIcon, Edit as EditIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -52,6 +76,8 @@ const EXECUTION_PHASE = [
   'FINAL_PAYMENT_CLOSED',
 ];
 
+const STAGE_NAME_SUGGESTIONS = Object.values(STAGE_LABELS);
+
 const LEGACY_PIPELINE_STAGE_CONFIG_KEY = 'pipelineStageConfigV1';
 
 /** Per-tenant localStorage key so stage labels/hidden flags never leak across organizations. */
@@ -66,11 +92,33 @@ function getPipelineStageConfigStorageKey(tenantId) {
   return `${LEGACY_PIPELINE_STAGE_CONFIG_KEY}_unknown`;
 }
 
-function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobClick, onJobContextMenu, onArchiveCompleted, completedJobsCount, search = '', onSearchChange }) {
+function PipelineBoard({
+  jobs,
+  onJobUpdate,
+  onStageChange,
+  onJobClick,
+  onNewJobClick,
+  onJobContextMenu,
+  onArchiveCompleted,
+  completedJobsCount,
+  search = '',
+  onSearchChange,
+  pipelineMode = 'default',
+  activeCustomLayout = null,
+  pipelineSelectorValue = 'default',
+  pipelineOptions = [],
+  onPipelineSelectChange,
+  onCreateEmptyPipeline,
+  onCustomLayoutSaved,
+  onCustomLayoutDeleted,
+}) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { user, canModifyPipeline } = useAuth();
   const [draggedOverStage, setDraggedOverStage] = useState(null);
+  const [layoutEditorOpen, setLayoutEditorOpen] = useState(false);
+  const [layoutDraft, setLayoutDraft] = useState(null);
+  const [savingLayout, setSavingLayout] = useState(false);
 
   const pipelineStageConfigKey = useMemo(
     () => getPipelineStageConfigStorageKey(user?.tenantId),
@@ -113,11 +161,38 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
     };
   }, [user, pipelineStageConfigKey]);
 
-  // Group jobs by stage
-  const jobsByStage = {};
-  [...APPOINTMENTS_PHASE, ...SALES_PHASE, ...JOB_READINESS_PHASE, ...EXECUTION_PHASE].forEach(stageId => {
-    jobsByStage[stageId] = jobs.filter(job => job.stage === stageId && !job.isArchived);
-  });
+  const { jobsByStage, stageTotals } = useMemo(() => {
+    const byStage = {};
+    const totals = {};
+    let stageIds = [];
+
+    if (pipelineMode === 'custom' && activeCustomLayout?.levels?.length) {
+      const seen = new Set();
+      [...activeCustomLayout.levels]
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .forEach((lvl) => {
+          (lvl.stageKeys || []).forEach((k) => {
+            if (k && !seen.has(k)) {
+              seen.add(k);
+              stageIds.push(k);
+            }
+          });
+        });
+    } else {
+      stageIds = [...APPOINTMENTS_PHASE, ...SALES_PHASE, ...JOB_READINESS_PHASE, ...EXECUTION_PHASE];
+    }
+
+    stageIds.forEach((stageId) => {
+      const stageJobs = jobs.filter((job) => job.stage === stageId && !job.isArchived);
+      byStage[stageId] = stageJobs;
+      totals[stageId] = {
+        count: stageJobs.length,
+        value: stageJobs.reduce((sum, job) => sum + (job.valueEstimated || 0), 0),
+      };
+    });
+
+    return { jobsByStage: byStage, stageTotals: totals };
+  }, [jobs, pipelineMode, activeCustomLayout]);
 
   const shownStages = useMemo(() => [...SALES_PHASE, ...JOB_READINESS_PHASE, ...EXECUTION_PHASE], []);
   const getStageOverride = (stageId) => stageOverrides?.[stageId] || {};
@@ -125,18 +200,8 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
   const getStageLabel = (stageId) => {
     const override = getStageOverride(stageId);
     if (override?.label && String(override.label).trim()) return String(override.label).trim();
-    return STAGE_LABELS[stageId];
+    return STAGE_LABELS[stageId] || stageId;
   };
-
-  // Calculate totals per stage
-  const stageTotals = {};
-  [...APPOINTMENTS_PHASE, ...SALES_PHASE, ...JOB_READINESS_PHASE, ...EXECUTION_PHASE].forEach(stageId => {
-    const stageJobs = jobsByStage[stageId] || [];
-    stageTotals[stageId] = {
-      count: stageJobs.length,
-      value: stageJobs.reduce((sum, job) => sum + (job.valueEstimated || 0), 0),
-    };
-  });
 
   const handleDragOver = (e, stageId) => {
     e.preventDefault();
@@ -388,6 +453,69 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
     );
   };
 
+  const customHasStages =
+    pipelineMode === 'custom' &&
+    activeCustomLayout?.levels?.some((l) => Array.isArray(l?.stageKeys) && l.stageKeys.length > 0);
+
+  const openLayoutEditor = () => {
+    if (!activeCustomLayout) return;
+    const raw = activeCustomLayout.levels || [];
+    setLayoutDraft({
+      _id: activeCustomLayout._id,
+      title: activeCustomLayout.title || '',
+      levels: JSON.parse(JSON.stringify(raw)).map((l, i) => ({
+        title: l.title != null ? String(l.title) : `Level ${i + 1}`,
+        order: typeof l.order === 'number' ? l.order : i,
+        stageKeys: Array.isArray(l.stageKeys) ? [...l.stageKeys] : [],
+      })),
+    });
+    setLayoutEditorOpen(true);
+  };
+
+  const saveLayoutDraft = async () => {
+    if (!layoutDraft?._id) return;
+    setSavingLayout(true);
+    try {
+      const levels = (layoutDraft.levels || []).map((l, i) => ({
+        title: l.title != null ? String(l.title).trim() || `Level ${i + 1}` : `Level ${i + 1}`,
+        order: i,
+        stageKeys: Array.isArray(l.stageKeys) ? l.stageKeys : [],
+      }));
+      await axios.patch(`${API_URL}/pipeline-layouts/${layoutDraft._id}`, {
+        title: layoutDraft.title != null ? String(layoutDraft.title).trim() : '',
+        levels,
+      });
+      toast.success('Pipeline saved');
+      setLayoutEditorOpen(false);
+      onCustomLayoutSaved?.();
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || 'Failed to save pipeline';
+      toast.error(msg);
+    } finally {
+      setSavingLayout(false);
+    }
+  };
+
+  const deleteActiveLayout = async () => {
+    if (!layoutDraft?._id) return;
+    const confirmed = window.confirm('Are you sure you want to delete this pipeline?');
+    if (!confirmed) return;
+    setSavingLayout(true);
+    try {
+      await axios.delete(`${API_URL}/pipeline-layouts/${layoutDraft._id}`);
+      toast.success('Pipeline deleted');
+      setLayoutEditorOpen(false);
+      onCustomLayoutDeleted?.(layoutDraft._id);
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || 'Failed to delete pipeline';
+      toast.error(msg);
+    } finally {
+      setSavingLayout(false);
+    }
+  };
+
+  const showPipelinePicker = Array.isArray(pipelineOptions) && pipelineOptions.length > 0 && onPipelineSelectChange;
+
   return (
     <>
       <Paper
@@ -402,14 +530,13 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
           mb: 3,
           pb: 2,
           borderBottom: `1px solid ${theme.palette.divider}`,
-          display: 'flex',
-          flexDirection: { xs: 'column', md: 'row' },
-          justifyContent: 'space-between',
-          alignItems: { xs: 'flex-start', md: 'center' },
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) auto minmax(0, 1fr)' },
+          alignItems: 'center',
           gap: 2,
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, justifySelf: { xs: 'stretch', md: 'start' } }}>
           {onNewJobClick && (
             <Button
               variant="contained"
@@ -427,13 +554,24 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
             Pipeline Overview
           </Typography>
         </Box>
-        <Box sx={{ minWidth: { xs: '100%', sm: 260 }, maxWidth: 340, display: 'flex', alignItems: 'center', gap: 1 }}>
+
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
+            flexWrap: 'wrap',
+            justifySelf: { xs: 'stretch', md: 'center' },
+            width: { xs: '100%', md: 'auto' },
+          }}
+        >
           <TextField
-            fullWidth
             size="small"
             label="Search jobs in pipeline"
             value={search}
             onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
+            sx={{ width: { xs: '100%', sm: 280 }, minWidth: 0 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -442,32 +580,113 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
               ),
             }}
           />
-          {canModifyPipeline && (
-            <IconButton
-              size="small"
-              onClick={() => setCustomizeOpen(true)}
-              title="Customize pipeline stages"
-              sx={{
-                border: `1px solid ${theme.palette.divider}`,
-                backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)',
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </IconButton>
+          {showPipelinePicker && (
+            <FormControl size="small" sx={{ minWidth: 200, maxWidth: 280 }}>
+              <InputLabel id="pipeline-layout-select-label">Pipeline</InputLabel>
+              <Select
+                labelId="pipeline-layout-select-label"
+                label="Pipeline"
+                value={pipelineSelectorValue}
+                onChange={(e) => onPipelineSelectChange(e.target.value)}
+              >
+                {pipelineOptions.map((opt) => (
+                  <MenuItem key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+        </Box>
+
+        <Box
+          sx={{
+            justifySelf: { xs: 'end', md: 'end' },
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 0.5,
+            flexWrap: 'wrap',
+          }}
+        >
+          {onCreateEmptyPipeline && canModifyPipeline() && (
+            <Tooltip title="New empty pipeline">
+              <IconButton
+                size="small"
+                onClick={onCreateEmptyPipeline}
+                aria-label="New empty pipeline"
+                sx={{
+                  border: `1px solid ${theme.palette.divider}`,
+                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)',
+                }}
+              >
+                <AddIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {pipelineMode === 'custom' && canModifyPipeline() && activeCustomLayout && (
+            <Tooltip title="Edit this pipeline layout">
+              <IconButton
+                size="small"
+                onClick={openLayoutEditor}
+                aria-label="Edit pipeline layout"
+                sx={{
+                  border: `1px solid ${theme.palette.divider}`,
+                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)',
+                }}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {pipelineMode === 'default' && canModifyPipeline() && (
+            <Tooltip title="Customize pipeline stages">
+              <IconButton
+                size="small"
+                onClick={() => setCustomizeOpen(true)}
+                aria-label="Customize pipeline stages"
+                sx={{
+                  border: `1px solid ${theme.palette.divider}`,
+                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)',
+                }}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           )}
         </Box>
       </Box>
 
       {/* Appointments Phase - Now handled separately, not shown here */}
 
-      {/* Sales Phase */}
-      {renderPhase('Sales Phase', SALES_PHASE)}
+      {pipelineMode === 'default' && (
+        <>
+          {renderPhase('Sales Phase', SALES_PHASE)}
+          {renderPhase('Job Readiness', JOB_READINESS_PHASE)}
+          {renderPhase('Execution Phase', EXECUTION_PHASE)}
+        </>
+      )}
 
-      {/* Job Readiness Phase */}
-      {renderPhase('Job Readiness', JOB_READINESS_PHASE)}
-
-      {/* Execution Phase */}
-      {renderPhase('Execution Phase', EXECUTION_PHASE)}
+      {pipelineMode === 'custom' && activeCustomLayout && (
+        <>
+          {!customHasStages && (
+            <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                This pipeline has no columns yet.
+              </Typography>
+              {canModifyPipeline() && (
+                <Button variant="outlined" size="small" onClick={openLayoutEditor}>
+                  Edit pipeline — add stages
+                </Button>
+              )}
+            </Box>
+          )}
+          {customHasStages &&
+            [...activeCustomLayout.levels]
+              .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+              .map((lvl) => renderPhase(lvl.title || 'Phase', lvl.stageKeys || []))}
+        </>
+      )}
       </Paper>
 
       <Dialog
@@ -546,6 +765,9 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
           </Box>
         </DialogContent>
         <DialogActions>
+          <Button onClick={() => setCustomizeOpen(false)}>
+            Cancel
+          </Button>
           <Button
             variant="contained"
             onClick={async () => {
@@ -573,6 +795,140 @@ function PipelineBoard({ jobs, onJobUpdate, onStageChange, onJobClick, onNewJobC
             }}
           >
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={layoutEditorOpen}
+        onClose={() => !savingLayout && setLayoutEditorOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Edit pipeline layout</DialogTitle>
+        <DialogContent dividers>
+          {layoutDraft && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                label="Pipeline title"
+                value={layoutDraft.title}
+                onChange={(e) => setLayoutDraft((d) => (d ? { ...d, title: e.target.value } : d))}
+                fullWidth
+                size="small"
+              />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Levels and stages
+                </Typography>
+                <Button
+                  size="small"
+                  onClick={() =>
+                    setLayoutDraft((d) => {
+                      if (!d) return d;
+                      const next = [...(d.levels || [])];
+                      next.push({
+                        title: `Level ${next.length + 1}`,
+                        order: next.length,
+                        stageKeys: [],
+                      });
+                      return { ...d, levels: next };
+                    })
+                  }
+                >
+                  Add level
+                </Button>
+              </Box>
+              {(layoutDraft.levels || []).map((lvl, idx) => (
+                <Box
+                  key={idx}
+                  sx={{
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 2,
+                    p: 1.5,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 1.5,
+                  }}
+                >
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <TextField
+                      size="small"
+                      label="Level name"
+                      value={lvl.title || ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setLayoutDraft((d) => {
+                          if (!d) return d;
+                          const levels = [...(d.levels || [])];
+                          levels[idx] = { ...levels[idx], title: v };
+                          return { ...d, levels };
+                        });
+                      }}
+                      sx={{ flex: 1 }}
+                    />
+                    <Button
+                      size="small"
+                      color="error"
+                      disabled={(layoutDraft.levels || []).length <= 1}
+                      onClick={() =>
+                        setLayoutDraft((d) => {
+                          if (!d) return d;
+                          const levels = (d.levels || []).filter((_, i) => i !== idx);
+                          return { ...d, levels };
+                        })
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </Box>
+                  <Autocomplete
+                    multiple
+                    freeSolo
+                    options={STAGE_NAME_SUGGESTIONS}
+                    value={lvl.stageKeys || []}
+                    onChange={(_, stageKeys) => {
+                      setLayoutDraft((d) => {
+                        if (!d) return d;
+                        const levels = [...(d.levels || [])];
+                        levels[idx] = {
+                          ...levels[idx],
+                          stageKeys: [...new Set((stageKeys || []).map((k) => String(k || '').trim()).filter(Boolean))],
+                        };
+                        return { ...d, levels };
+                      });
+                    }}
+                    renderTags={(value, getTagProps) =>
+                      value.map((option, tagIndex) => (
+                        <Chip {...getTagProps({ index: tagIndex })} key={`${option}-${tagIndex}`} size="small" label={option} />
+                      ))
+                    }
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        size="small"
+                        label="Stages in this level"
+                        placeholder="Type a stage and press Enter"
+                      />
+                    )}
+                  />
+                </Box>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            color="error"
+            onClick={deleteActiveLayout}
+            disabled={savingLayout || !layoutDraft?._id}
+          >
+            Delete Pipeline
+          </Button>
+          <Button onClick={() => setLayoutEditorOpen(false)} disabled={savingLayout}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={saveLayoutDraft} disabled={savingLayout || !layoutDraft}>
+            {savingLayout ? 'Saving…' : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -32,7 +32,7 @@ const SOURCE_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
-function AddJobModal({ open, onClose, onJobCreated }) {
+function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, initialStage = null }) {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -265,9 +265,12 @@ function AddJobModal({ open, onClose, onJobCreated }) {
         title: formData.title.trim(),
         description: formData.description.trim() || '',
         customerId: customerId,
-        stage: 'ESTIMATE_IN_PROGRESS',
+        stage: (initialStage && String(initialStage).trim()) || 'ESTIMATE_IN_PROGRESS',
         source: formData.source,
       };
+      if (pipelineLayoutId) {
+        jobData.pipelineLayoutId = pipelineLayoutId;
+      }
 
       // Only include valueEstimated if it's provided and valid
       if (formData.valueEstimated && !isNaN(formData.valueEstimated)) {

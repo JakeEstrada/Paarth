@@ -19,25 +19,7 @@ const jobSchema = new mongoose.Schema({
   },
   stage: {
     type: String,
-    enum: [
-      // Sales phase
-      'APPOINTMENT_SCHEDULED',
-      'ESTIMATE_IN_PROGRESS',
-      'ESTIMATE_SENT',
-      'ENGAGED_DESIGN_REVIEW',
-      'CONTRACT_OUT',
-      'CONTRACT_SIGNED',
-      // Job readiness phase
-      'DEPOSIT_PENDING',
-      'JOB_PREP',
-      'TAKEOFF_COMPLETE',
-      'READY_TO_SCHEDULE',
-      // Execution phase
-      'SCHEDULED',
-      'IN_PRODUCTION',
-      'INSTALLED',
-      'FINAL_PAYMENT_CLOSED'
-    ],
+    trim: true,
     default: 'APPOINTMENT_SCHEDULED',
     required: true
   },
@@ -216,6 +198,14 @@ const jobSchema = new mongoose.Schema({
     default: false
   },
   movedToDeadEstimateAt: Date,
+
+  /** When set, job belongs to a tenant-defined custom pipeline layout (not the default board) */
+  pipelineLayoutId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'PipelineLayout',
+    default: null,
+    index: true,
+  },
   
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,

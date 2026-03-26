@@ -143,6 +143,7 @@ const developerTasksRoutes = require('./routes/developerTasks');
 const userRoutes = require('./routes/users');
 const billRoutes = require('./routes/bills');
 const tenantRoutes = require('./routes/tenants');
+const pipelineLayoutRoutes = require('./routes/pipelineLayouts');
 
 // Use routes
 app.use('/auth', authRoutes);
@@ -157,6 +158,7 @@ app.use('/files', fileRoutes);
 app.use('/calendar', calendarRoutes);
 app.use('/developer-tasks', developerTasksRoutes);
 app.use('/bills', billRoutes);
+app.use('/pipeline-layouts', pipelineLayoutRoutes);
 
 // Test route
 app.get('/', (req, res) => {
