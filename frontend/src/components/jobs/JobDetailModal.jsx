@@ -19,6 +19,7 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Link as MuiLink,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -93,6 +94,33 @@ const getNextStage = (currentStage) => {
   }
   return ALL_STAGES[currentIndex + 1];
 };
+
+const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+const URL_PART_REGEX = /^https?:\/\/[^\s]+$/;
+
+function renderTextWithLinks(text) {
+  const raw = String(text || '');
+  if (!raw) return '';
+  const parts = raw.split(URL_REGEX);
+  return parts.map((part, index) => {
+    if (URL_PART_REGEX.test(part)) {
+      return (
+        <MuiLink
+          key={`link-${index}`}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          underline="always"
+          sx={{ wordBreak: 'break-all' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </MuiLink>
+      );
+    }
+    return <Box key={`txt-${index}`} component="span">{part}</Box>;
+  });
+}
 
 function JobDetailModal({
   jobId,
@@ -653,7 +681,7 @@ function JobDetailModal({
                               fontWeight: note.isStageChange ? 500 : 'normal'
                             }}
                           >
-                            {note.content}
+                            {renderTextWithLinks(note.content)}
                           </Typography>
                         </Box>
                       ))}
@@ -1130,7 +1158,7 @@ function JobDetailModal({
                           fontWeight: note.isStageChange ? 500 : 'normal'
                         }}
                       >
-                        {note.content}
+                        {renderTextWithLinks(note.content)}
                       </Typography>
                     </Paper>
                   ))}
