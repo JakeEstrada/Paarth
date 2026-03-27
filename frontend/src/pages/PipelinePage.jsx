@@ -327,7 +327,7 @@ function PipelinePage() {
             Sales Pipeline
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Manage your woodworking projects from first contact to final payment
+            Manage your projects from first contact to final payment
           </Typography>
         </Box>
 
