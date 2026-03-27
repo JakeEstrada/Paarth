@@ -17,6 +17,7 @@ import {
   FormControlLabel,
   Checkbox,
   useTheme,
+  Link as MuiLink,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -39,6 +40,30 @@ import AddAppointmentModal from '../appointments/AddAppointmentModal';
 import PdfThumbnail from '../common/PdfThumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const URL_SPLIT_REGEX = /(https?:\/\/[^\s]+)/g;
+const URL_EXACT_REGEX = /^https?:\/\/[^\s]+$/;
+
+function renderTextWithLinks(text) {
+  const raw = String(text || '');
+  if (!raw) return '';
+  return raw.split(URL_SPLIT_REGEX).map((part, index) => {
+    if (URL_EXACT_REGEX.test(part)) {
+      return (
+        <MuiLink
+          key={`link-${index}`}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          underline="always"
+          sx={{ wordBreak: 'break-all' }}
+        >
+          {part}
+        </MuiLink>
+      );
+    }
+    return <Box component="span" key={`txt-${index}`}>{part}</Box>;
+  });
+}
 
 function ProjectModal({ open, onClose, projectId, onUpdate }) {
   const theme = useTheme();
@@ -502,7 +527,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                         </Box>
                       </Box>
                       <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>
-                        {note.content}
+                        {renderTextWithLinks(note.content)}
                       </Typography>
                     </Paper>
                   ))}
@@ -579,7 +604,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                         </Box>
                       </Box>
                       <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>
-                        {update.content}
+                        {renderTextWithLinks(update.content)}
                       </Typography>
                     </Paper>
                   ))}
@@ -720,7 +745,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                         </Typography>
                         {task.description && (
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {task.description}
+                            {renderTextWithLinks(task.description)}
                           </Typography>
                         )}
                         <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
