@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Typography,
@@ -15,11 +15,14 @@ import {
   DialogActions,
   DialogContentText,
   TextField,
+  Tooltip,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   Archive as ArchiveIcon,
+  Lock as LockIcon,
+  LockOpen as LockOpenIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -36,6 +39,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchPipelineLayoutsList, createPipelineLayout } from '../utils/pipelineLayoutsApi';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const SHOP_VIEW_AUTO_LOCK_MS = 5 * 60 * 1000;
 
 const PIPELINE_SELECTION_KEY_PREFIX = 'pipelineSelectedLayoutV1';
 
@@ -88,6 +92,7 @@ function PipelinePage() {
   const [sensitiveUnlocked, setSensitiveUnlocked] = useState(!isShopViewRole);
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
+  const lockTimerRef = useRef(null);
 
   useEffect(() => {
     setSensitiveUnlocked(!isShopViewRole);
@@ -110,6 +115,31 @@ function PipelinePage() {
       toast.error('Invalid PIN');
     }
   };
+  const lockSensitiveData = () => {
+    if (!isShopViewRole) return;
+    setSensitiveUnlocked(false);
+    toast.success('Sensitive data locked');
+  };
+
+  useEffect(() => {
+    if (!isShopViewRole) return undefined;
+    if (lockTimerRef.current) {
+      clearTimeout(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+    if (sensitiveUnlocked) {
+      lockTimerRef.current = setTimeout(() => {
+        setSensitiveUnlocked(false);
+        toast('Sensitive data locked after 5 minutes');
+      }, SHOP_VIEW_AUTO_LOCK_MS);
+    }
+    return () => {
+      if (lockTimerRef.current) {
+        clearTimeout(lockTimerRef.current);
+        lockTimerRef.current = null;
+      }
+    };
+  }, [isShopViewRole, sensitiveUnlocked]);
 
   const autoMoveDeadEstimates = async () => {
     try {
@@ -352,12 +382,27 @@ function PipelinePage() {
       <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 1, sm: 2 } }}>
         {/* Page Header */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h1" sx={{ mb: 1 }}>
-            {isShopViewRole ? 'Shop View' : 'Sales Pipeline'}
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Manage your projects from first contact to final payment
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+            <Box>
+              <Typography variant="h1" sx={{ mb: 1 }}>
+                {isShopViewRole ? 'Shop View' : 'Sales Pipeline'}
+              </Typography>
+              <Typography variant="body1" color="text.secondary">
+                Manage your projects from first contact to final payment
+              </Typography>
+            </Box>
+            {isShopViewRole && (
+              <Tooltip title={hideSensitive ? 'Unlock sensitive data (PIN)' : 'Lock sensitive data'}>
+                <IconButton
+                  onClick={hideSensitive ? requestSensitiveUnlock : lockSensitiveData}
+                  color={hideSensitive ? 'default' : 'warning'}
+                  size="small"
+                >
+                  {hideSensitive ? <LockIcon /> : <LockOpenIcon />}
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
         </Box>
 
         {/* Todos and Appointments Section */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -26,6 +26,7 @@ import {
   useTheme,
   useMediaQuery,
   Autocomplete,
+  Tooltip,
 } from '@mui/material';
 import {
   ChevronLeft as ChevronLeftIcon,
@@ -41,6 +42,8 @@ import {
   Person as PersonIcon,
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
+  Lock as LockIcon,
+  LockOpen as LockOpenIcon,
 } from '@mui/icons-material';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, startOfWeek, endOfWeek, isSameDay, addDays } from 'date-fns';
 import axios from 'axios';
@@ -55,6 +58,7 @@ const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 
 const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
 const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
 const SHOP_VIEW_PIN = '1030';
+const SHOP_VIEW_AUTO_LOCK_MS = 5 * 60 * 1000;
 
 // Default installer order used for calendar lanes and suggestions
 const DEFAULT_INSTALLER_ORDER = [
@@ -1314,6 +1318,7 @@ function CalendarPageNew({ tvMode = false }) {
   const [sensitiveUnlocked, setSensitiveUnlocked] = useState(user?.role !== 'shop_view');
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
+  const lockTimerRef = useRef(null);
 
   const hideSensitive = user?.role === 'shop_view' && !sensitiveUnlocked;
   const canModifyCalendarWithPin = () => canModifyCalendar() || (user?.role === 'shop_view' && sensitiveUnlocked);
@@ -1331,12 +1336,37 @@ function CalendarPageNew({ tvMode = false }) {
       toast.error('Invalid PIN');
     }
   };
+  const lockSensitiveData = () => {
+    if (user?.role !== 'shop_view') return;
+    setSensitiveUnlocked(false);
+    toast.success('Sensitive data locked');
+  };
 
   useEffect(() => {
     setSensitiveUnlocked(user?.role !== 'shop_view');
     setPinDialogOpen(false);
     setPinInput('');
   }, [user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== 'shop_view') return undefined;
+    if (lockTimerRef.current) {
+      clearTimeout(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+    if (sensitiveUnlocked) {
+      lockTimerRef.current = setTimeout(() => {
+        setSensitiveUnlocked(false);
+        toast('Sensitive data locked after 5 minutes');
+      }, SHOP_VIEW_AUTO_LOCK_MS);
+    }
+    return () => {
+      if (lockTimerRef.current) {
+        clearTimeout(lockTimerRef.current);
+        lockTimerRef.current = null;
+      }
+    };
+  }, [user?.role, sensitiveUnlocked]);
 
   useEffect(() => {
     if (tvMode) return;
@@ -2147,6 +2177,17 @@ function CalendarPageNew({ tvMode = false }) {
             >
               {mode === 'dark' ? 'Light mode' : 'Dark mode'}
             </Button>
+          )}
+          {user?.role === 'shop_view' && (
+            <Tooltip title={hideSensitive ? 'Unlock sensitive data (PIN)' : 'Lock sensitive data'}>
+              <IconButton
+                onClick={hideSensitive ? requestSensitiveUnlock : lockSensitiveData}
+                size="small"
+                color={hideSensitive ? 'default' : 'warning'}
+              >
+                {hideSensitive ? <LockIcon /> : <LockOpenIcon />}
+              </IconButton>
+            </Tooltip>
           )}
         </Box>
         {/* Standalone event creation removed; calendar now only schedules existing jobs */}
