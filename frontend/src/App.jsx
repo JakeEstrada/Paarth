@@ -24,6 +24,7 @@ import BillsPage from './pages/BillsPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
 import DashboardPage from './pages/DashboardPage';
 import DocumentsPage from './pages/DocumentsPage';
+import PdfViewerPage from './pages/PdfViewerPage';
 
 function App() {
   const { user, loading } = useAuth();
@@ -54,6 +55,14 @@ function App() {
           element={
             <ProtectedRoute>
               <CalendarPage tvMode />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/pdf/:fileId"
+          element={
+            <ProtectedRoute>
+              <PdfViewerPage />
             </ProtectedRoute>
           }
         />

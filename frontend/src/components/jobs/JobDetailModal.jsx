@@ -52,6 +52,10 @@ import AddAppointmentModal from '../appointments/AddAppointmentModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+const openPdfViewer = (fileId) => {
+  window.open(`/pdf/${fileId}`, '_blank');
+};
+
 const STAGE_LABELS = {
   APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
   ESTIMATE_IN_PROGRESS: 'Estimate Current, first 5 days',
@@ -1034,11 +1038,11 @@ function JobDetailModal({
                       {file.mimetype === 'application/pdf' && (
                         <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
                           <Box
-                            onClick={() => window.open(`${API_URL}/files/${file._id}`, '_blank')}
+                            onClick={() => openPdfViewer(file._id)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
-                                window.open(`${API_URL}/files/${file._id}`, '_blank');
+                                openPdfViewer(file._id);
                               }
                             }}
                             role="button"

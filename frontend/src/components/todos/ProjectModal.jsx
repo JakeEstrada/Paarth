@@ -40,6 +40,10 @@ import AddAppointmentModal from '../appointments/AddAppointmentModal';
 import PdfThumbnail from '../common/PdfThumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+const openPdfViewer = (fileId) => {
+  window.open(`/pdf/${fileId}`, '_blank');
+};
 const URL_SPLIT_REGEX = /(https?:\/\/[^\s]+)/g;
 const URL_EXACT_REGEX = /^https?:\/\/[^\s]+$/;
 
@@ -791,6 +795,15 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                   {files.map((file) => {
                     const isPDF = file.mimetype === 'application/pdf';
                     const isImage = file.mimetype?.startsWith('image/');
+                    const openPreview = () => {
+                      if (isPDF) {
+                        openPdfViewer(file._id);
+                        return;
+                      }
+                      if (isImage) {
+                        window.open(`${API_URL}/files/${file._id}`, '_blank');
+                      }
+                    };
                     return (
                       <Paper
                         key={file._id}
@@ -846,7 +859,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
-                            onClick={() => window.open(`${API_URL}/files/${file._id}`, '_blank')}
+                            onClick={openPreview}
                             title="View PDF"
                           >
                             <PdfThumbnail fileId={file._id} apiUrl={API_URL} maxWidth={72} maxHeight={72} />
@@ -865,7 +878,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                       {(isPDF || isImage) && (
                         <IconButton
                           size="small"
-                          onClick={() => window.open(`${API_URL}/files/${file._id}`, '_blank')}
+                          onClick={openPreview}
                           sx={{ color: 'primary.main' }}
                           title={isPDF ? 'View PDF' : 'View image'}
                         >
