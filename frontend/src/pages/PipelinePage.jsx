@@ -290,9 +290,25 @@ function PipelinePage() {
   };
 
   const handleArchiveCompleted = async () => {
-    // Do not archive/modify jobs anymore; just send the user to the Completed Jobs view
-    navigate('/completed-jobs');
-    setArchiveDialogOpen(false);
+    try {
+      setArchiving(true);
+      const response = await axios.post(`${API_URL}/jobs/archive-completed`);
+      const archivedCount = Number(response.data?.archived || 0);
+
+      if (archivedCount > 0) {
+        toast.success(`Closed out ${archivedCount} completed job(s)`);
+      } else {
+        toast('No completed jobs to close out');
+      }
+
+      await fetchJobs();
+      setArchiveDialogOpen(false);
+    } catch (error) {
+      console.error('Error closing out completed jobs:', error);
+      toast.error(error.response?.data?.error || 'Failed to close out completed jobs');
+    } finally {
+      setArchiving(false);
+    }
   };
 
   const layoutFilteredJobs = useMemo(() => {
