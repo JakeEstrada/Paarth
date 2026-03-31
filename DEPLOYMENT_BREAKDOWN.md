@@ -1,8 +1,8 @@
-# Paarth CRM - Complete Deployment Breakdown
+# Paarth OMS - Complete Deployment Breakdown
 
 ## Project Overview
 
-**Paarth** is a full-stack Customer Relationship Management (CRM) system built for San Clemente Woodworking. It's a production-ready application that manages customers, jobs, appointments, tasks, payroll, and file uploads.
+**Paarth** is a full-stack Order Management System (OMS) built for San Clemente Woodworking. It's a production-ready application that manages customers, jobs, appointments, tasks, payroll, and file uploads.
 
 **Application Type:** Full-stack web application (MERN-like stack)
 **Current Status:** Development/Production-ready

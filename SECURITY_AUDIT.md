@@ -1,7 +1,7 @@
 # Security Audit Report
 
 **Date:** February 9, 2026  
-**Repository:** Paarth CRM  
+**Repository:** Paarth OMS  
 **Status:** ✅ PASSED - Ready for Public Repository
 
 ## Security Audit Summary

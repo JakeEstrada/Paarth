@@ -4,7 +4,7 @@
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Click "Select a project" → "New Project"
-3. Name it (e.g., "Paarth CRM")
+3. Name it (e.g., "Paarth OMS")
 4. Click "Create"
 
 ## Step 2: Enable Google Calendar API
@@ -19,7 +19,7 @@
 2. Click "Create Credentials" → "OAuth client ID"
 3. If prompted, configure OAuth consent screen:
    - User Type: External (or Internal if using Google Workspace)
-   - App name: "Paarth CRM"
+   - App name: "Paarth OMS"
    - User support email: Your email
    - Developer contact: Your email
    - Click "Save and Continue"
@@ -27,7 +27,7 @@
    - Click "Save and Continue" through remaining steps
 4. Back to Credentials:
    - Application type: "Web application"
-   - Name: "Paarth CRM Web Client"
+   - Name: "Paarth OMS Web Client"
    - **Authorized redirect URIs** (click "+ Add URI" and add):
      - `http://localhost:4000/calendar/auth/callback` (for backend callback)
    - Click "Create"

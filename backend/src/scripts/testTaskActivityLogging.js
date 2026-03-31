@@ -162,16 +162,16 @@ async function backfillMissingActivities() {
         console.log(`Updated activity ${activityWithoutTaskId._id} for task "${task.title}"`);
         backfilled++;
       } else {
-        // Create new activity with descriptive note for San Clemente Woodworking CRM
+        // Create new activity with descriptive note for San Clemente Woodworking OMS
         const activityType = task.isProject ? 'project_created' : 'task_created';
         const activityNote = task.description 
           ? `${task.title} - ${task.description}`
           : task.title;
         
-        // Add context that this is for San Clemente Woodworking CRM testing
+        // Add context that this is for San Clemente Woodworking OMS testing
         const activityNoteText = task.isProject 
-          ? `Project added to San Clemente Woodworking CRM: ${activityNote}`
-          : `Change order/task added to San Clemente Woodworking CRM: ${activityNote}`;
+          ? `Project added to San Clemente Woodworking OMS: ${activityNote}`
+          : `Change order/task added to San Clemente Woodworking OMS: ${activityNote}`;
 
         await Activity.create({
           type: activityType,
@@ -229,14 +229,14 @@ async function createTestTasks() {
       return;
     }
 
-    console.log(`\nCreating test tasks for San Clemente Woodworking CRM...`);
+    console.log(`\nCreating test tasks for San Clemente Woodworking OMS...`);
     console.log(`Using Customer: ${testCustomer.name}`);
     console.log(`Using Job: ${testJob.title}`);
     console.log(`Using User: ${testUser.name || testUser.email}\n`);
 
     const testTasks = [
       {
-        title: 'Testing task creation activity logging for San Clemente Woodworking CRM',
+        title: 'Testing task creation activity logging for San Clemente Woodworking OMS',
         description: 'This test task verifies that when a task is created in the pipeline area (with jobId), it properly logs an activity with type "task_created" and includes the taskId field for proper linking in the recent activity feed.',
         jobId: testJob._id,
         customerId: testCustomer._id,
@@ -244,7 +244,7 @@ async function createTestTasks() {
         expectedActivityType: 'task_created'
       },
       {
-        title: 'Testing project creation activity logging for San Clemente Woodworking CRM',
+        title: 'Testing project creation activity logging for San Clemente Woodworking OMS',
         description: 'This test project verifies that when a project is created in the pipeline area (with jobId), it properly logs an activity with type "project_created" and includes the taskId field for proper linking in the recent activity feed.',
         jobId: testJob._id,
         customerId: testCustomer._id,
@@ -252,7 +252,7 @@ async function createTestTasks() {
         expectedActivityType: 'project_created'
       },
       {
-        title: 'Testing standalone task creation activity logging for San Clemente Woodworking CRM',
+        title: 'Testing standalone task creation activity logging for San Clemente Woodworking OMS',
         description: 'This test task verifies that when a standalone task is created (without jobId), it properly logs an activity with type "task_created" and includes the taskId field.',
         jobId: null,
         customerId: testCustomer._id,
@@ -260,7 +260,7 @@ async function createTestTasks() {
         expectedActivityType: 'task_created'
       },
       {
-        title: 'Testing standalone project creation activity logging for San Clemente Woodworking CRM',
+        title: 'Testing standalone project creation activity logging for San Clemente Woodworking OMS',
         description: 'This test project verifies that when a standalone project is created (without jobId), it properly logs an activity with type "project_created" and includes the taskId field.',
         jobId: null,
         customerId: testCustomer._id,
@@ -268,7 +268,7 @@ async function createTestTasks() {
         expectedActivityType: 'project_created'
       },
       {
-        title: 'Testing task activity logging with proper taskId linking for San Clemente Woodworking CRM',
+        title: 'Testing task activity logging with proper taskId linking for San Clemente Woodworking OMS',
         description: 'This test task verifies that the activity created includes the taskId field so that tasks can be properly linked and displayed in the recent activity feed on the dashboard.',
         jobId: testJob._id,
         customerId: testCustomer._id,
@@ -346,7 +346,7 @@ async function createTestTasks() {
     // Verify the activities were created correctly
     console.log(`\n=== Verifying Test Activities ===`);
     const testActivities = await Activity.find({
-      note: { $regex: 'Testing.*San Clemente Woodworking CRM' }
+      note: { $regex: 'Testing.*San Clemente Woodworking OMS' }
     })
       .populate('taskId', 'title isProject')
       .populate('jobId', 'title')

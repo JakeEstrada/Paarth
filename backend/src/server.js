@@ -169,7 +169,7 @@ app.use('/api/pipeline-layouts', pipelineLayoutRoutes);
 
 // Test route
 app.get('/', (req, res) => {
-  res.json({ message: 'Paarth CRM API is running!' });
+  res.json({ message: 'Paarth OMS API is running!' });
 });
 
 // Diagnostic route to check MongoDB connection status and S3 configuration

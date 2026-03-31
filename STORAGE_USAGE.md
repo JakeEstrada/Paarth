@@ -34,7 +34,7 @@
 
 #### 5. **MongoDB Database (Text Data)**
 - **Status:** Cannot access directly (likely using MongoDB Atlas or local instance)
-- **Estimated Size:** Very small (< 1 MB for typical CRM data)
+- **Estimated Size:** Very small (< 1 MB for typical OMS data)
   - Text data (customers, jobs, tasks, etc.) is very lightweight
   - MongoDB stores data efficiently
   - With typical usage (hundreds of customers, jobs, tasks), database would be < 5 MB

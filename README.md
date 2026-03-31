@@ -1,7 +1,7 @@
 <restored README content from git>
-# Paarth - San Clemente Woodworking CRM
+# Paarth - San Clemente Woodworking OMS
 
-A comprehensive Customer Relationship Management (CRM) and project management system designed specifically for San Clemente Woodworking. This application helps manage the entire workflow from initial customer contact through project completion, including job tracking, scheduling, customer management, and payroll.
+A comprehensive Order Management System (OMS) and project management system designed specifically for San Clemente Woodworking. This application helps manage the entire workflow from initial customer contact through project completion, including job tracking, scheduling, customer management, and payroll.
 
 ## 📋 Table of Contents
 
@@ -26,7 +26,7 @@ A comprehensive Customer Relationship Management (CRM) and project management sy
 
 ## 🎯 Overview
 
-Paarth is a full-stack CRM solution I built to streamline operations for a custom woodworking business. It provides end-to-end management of:
+Paarth is a full-stack OMS solution I built to streamline operations for a custom woodworking business. It provides end-to-end management of:
 
 - **Customer Relationships**: Centralized customer database with multiple contact methods and addresses
 - **Sales Pipeline**: Visual kanban board tracking jobs through 13 distinct stages from appointment to final payment
@@ -1574,7 +1574,7 @@ For issues or questions, please [create an issue](link-to-issues) or contact the
   - Activity log entries now display the acting user's name for clearer attribution
   - Corrected weighted-hours and overtime calculations in the payroll section
 
-- **v1.0.0**: Initial release with core CRM functionality
+- **v1.0.0**: Initial release with core OMS functionality
   - Sales pipeline management
   - Customer management
   - Job tracking
