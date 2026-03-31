@@ -131,6 +131,8 @@ function JobDetailModal({
   onJobArchive,
   onAppointmentCreated,
   sx,
+  hideSensitive = false,
+  onRequestSensitiveUnlock,
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [job, setJob] = useState(null);
@@ -157,6 +159,15 @@ function JobDetailModal({
     }
   }, [open, jobId]);
 
+  useEffect(() => {
+    if (!open || !jobId) return;
+    if (hideSensitive) {
+      setFiles([]);
+      return;
+    }
+    fetchFiles();
+  }, [open, jobId, hideSensitive]);
+
   const fetchJobDetails = async () => {
     try {
       setLoading(true);
@@ -165,7 +176,9 @@ function JobDetailModal({
       setEditedJob(response.data);
       setIsEditing(false);
       // Fetch files for this job
-      await fetchFiles();
+      if (!hideSensitive) {
+        await fetchFiles();
+      }
     } catch (error) {
       console.error('Error fetching job details:', error);
       toast.error('Failed to load job details');
@@ -176,6 +189,10 @@ function JobDetailModal({
   };
 
   const fetchFiles = async () => {
+    if (hideSensitive) {
+      setFiles([]);
+      return;
+    }
     try {
       const response = await axios.get(`${API_URL}/files/job/${jobId}`);
       setFiles(response.data || []);
@@ -562,7 +579,16 @@ function JobDetailModal({
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
             {/* Estimated Value in Header */}
             <Box sx={{ textAlign: 'right' }}>
-              {isEditing ? (
+              {hideSensitive ? (
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography variant="h6" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                    Locked
+                  </Typography>
+                  <Button size="small" onClick={() => onRequestSensitiveUnlock?.()}>
+                    Unlock
+                  </Button>
+                </Box>
+              ) : isEditing ? (
                 <TextField
                   type="number"
                   value={editedJob?.valueEstimated || 0}
@@ -582,12 +608,16 @@ function JobDetailModal({
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                 Estimated Value
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
-                Deposit (40%): {formatCurrency(headerDepositValue)}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
-                Final (60%): {formatCurrency(headerFinalValue)}
-              </Typography>
+              {!hideSensitive && (
+                <>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
+                    Deposit (40%): {formatCurrency(headerDepositValue)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
+                    Final (60%): {formatCurrency(headerFinalValue)}
+                  </Typography>
+                </>
+              )}
             </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
               {!isEditing ? (
@@ -627,7 +657,7 @@ function JobDetailModal({
       <DialogContent sx={{ pt: 2 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
           <Tab label="Overview" />
-          <Tab label="Files" />
+          <Tab label={hideSensitive ? 'Files (Locked)' : 'Files'} />
           <Tab label="Notes" />
         </Tabs>
 
@@ -868,6 +898,17 @@ function JobDetailModal({
 
         {activeTab === 1 && (
           <Box>
+            {hideSensitive ? (
+              <Paper sx={{ p: 3, textAlign: 'center' }}>
+                <Typography variant="body1" sx={{ mb: 1 }}>
+                  Financial details and files are locked in Shop View.
+                </Typography>
+                <Button variant="contained" onClick={() => onRequestSensitiveUnlock?.()}>
+                  Unlock with PIN
+                </Button>
+              </Paper>
+            ) : (
+              <>
             <Grid container spacing={3} sx={{ mb: 3 }}>
               {/* Estimate Info */}
               <Grid item xs={12} sm={6}>
@@ -1097,6 +1138,8 @@ function JobDetailModal({
                 </label>
               </Box>
             </Paper>
+              </>
+            )}
           </Box>
         )}
 

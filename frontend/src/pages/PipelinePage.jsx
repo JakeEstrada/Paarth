@@ -14,6 +14,7 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
+  TextField,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -48,7 +49,9 @@ function getPipelineSelectionStorageKey(tenantId) {
   return `${PIPELINE_SELECTION_KEY_PREFIX}_unknown`;
 }
 
-function PipelinePage() {
+const SHOP_VIEW_PIN = '1030';
+
+function PipelinePage({ shopMode = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { user, canModifyPipeline } = useAuth();
@@ -81,6 +84,31 @@ function PipelinePage() {
   const [pipelineLayouts, setPipelineLayouts] = useState([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState('default');
   const [pipelineHydrated, setPipelineHydrated] = useState(false);
+  const [sensitiveUnlocked, setSensitiveUnlocked] = useState(!shopMode);
+  const [pinDialogOpen, setPinDialogOpen] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+
+  useEffect(() => {
+    setSensitiveUnlocked(!shopMode);
+    setPinDialogOpen(false);
+    setPinInput('');
+  }, [shopMode]);
+
+  const hideSensitive = shopMode && !sensitiveUnlocked;
+  const requestSensitiveUnlock = () => {
+    if (!shopMode) return;
+    setPinInput('');
+    setPinDialogOpen(true);
+  };
+  const handleSensitiveUnlock = () => {
+    if (pinInput.trim() === SHOP_VIEW_PIN) {
+      setSensitiveUnlocked(true);
+      setPinDialogOpen(false);
+      toast.success('Sensitive data unlocked');
+    } else {
+      toast.error('Invalid PIN');
+    }
+  };
 
   const autoMoveDeadEstimates = async () => {
     try {
@@ -324,7 +352,7 @@ function PipelinePage() {
         {/* Page Header */}
         <Box sx={{ mb: 4 }}>
           <Typography variant="h1" sx={{ mb: 1 }}>
-            Sales Pipeline
+            {shopMode ? 'Shop View' : 'Sales Pipeline'}
           </Typography>
           <Typography variant="body1" color="text.secondary">
             Manage your projects from first contact to final payment
@@ -507,6 +535,8 @@ function PipelinePage() {
             onCreateEmptyPipeline={handleCreateEmptyPipeline}
             onCustomLayoutSaved={refreshPipelineLayouts}
             onCustomLayoutDeleted={handleCustomLayoutDeleted}
+            hideSensitive={hideSensitive}
+            onRequestSensitiveUnlock={requestSensitiveUnlock}
           />
         )}
 
@@ -522,6 +552,8 @@ function PipelinePage() {
             // Trigger refresh of appointment list
             setAppointmentRefreshTrigger(prev => prev + 1);
           }}
+          hideSensitive={hideSensitive}
+          onRequestSensitiveUnlock={requestSensitiveUnlock}
         />
 
         {/* Add Appointment Modal */}
@@ -625,6 +657,8 @@ function PipelinePage() {
             onJobUpdate={handleJobUpdate}
             onJobDelete={handleJobDelete}
             onJobArchive={handleJobArchive}
+            hideSensitive={hideSensitive}
+            onRequestSensitiveUnlock={requestSensitiveUnlock}
           />
         )}
 
@@ -663,6 +697,31 @@ function PipelinePage() {
               startIcon={<ArchiveIcon />}
             >
               {archiving ? 'Closing...' : `Close Out ${completedJobsCount} Job(s)`}
+            </Button>
+          </DialogActions>
+        </Dialog>
+        <Dialog open={pinDialogOpen} onClose={() => setPinDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Unlock Sensitive Data</DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              Enter PIN to view financial numbers and files.
+            </DialogContentText>
+            <TextField
+              autoFocus
+              fullWidth
+              label="PIN"
+              type="password"
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSensitiveUnlock();
+              }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setPinDialogOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleSensitiveUnlock}>
+              Unlock
             </Button>
           </DialogActions>
         </Dialog>
