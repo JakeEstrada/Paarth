@@ -1,7 +1,7 @@
 <restored README content from git>
 # Paarth - San Clemente Woodworking OMS
 
-A comprehensive Order Management System (OMS) and project management system designed specifically for San Clemente Woodworking. This application helps manage the entire workflow from initial customer contact through project completion, including job tracking, scheduling, customer management, and payroll.
+A comprehensive Operations Management System (OMS) and project management system designed specifically for San Clemente Woodworking. This application helps manage the entire workflow from initial customer contact through project completion, including job tracking, scheduling, customer management, and payroll.
 
 ## 📋 Table of Contents
 
