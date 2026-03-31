@@ -35,7 +35,6 @@ const DRAWER_WIDTH = 260;
 const menuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
   { text: 'Pipeline', icon: <PipelineIcon />, path: '/pipeline' },
-  { text: 'Shop View', icon: <PipelineIcon />, path: '/shop-view' },
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
   { text: 'Projects / Tasks', icon: <TasksIcon />, path: '/tasks' },

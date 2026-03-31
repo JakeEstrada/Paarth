@@ -54,6 +54,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
 const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
+const SHOP_VIEW_PIN = '1030';
 
 // Default installer order used for calendar lanes and suggestions
 const DEFAULT_INSTALLER_ORDER = [
@@ -1285,7 +1286,7 @@ function CalendarPageNew({ tvMode = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { mode, toggleColorMode } = useAppTheme();
-  const { canModifyCalendar, canViewCalendar } = useAuth();
+  const { user, canModifyCalendar, canViewCalendar } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [currentDate, setCurrentDate] = useState(new Date());
   const [benchJobs, setBenchJobs] = useState([]);
@@ -1310,6 +1311,31 @@ function CalendarPageNew({ tvMode = false }) {
     return 'right';
   });
   const [benchWidth, setBenchWidth] = useState(tvMode ? 260 : 320);
+  const [sensitiveUnlocked, setSensitiveUnlocked] = useState(user?.role !== 'shop_view');
+  const [pinDialogOpen, setPinDialogOpen] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+
+  const hideSensitive = user?.role === 'shop_view' && !sensitiveUnlocked;
+  const requestSensitiveUnlock = () => {
+    if (user?.role !== 'shop_view') return;
+    setPinInput('');
+    setPinDialogOpen(true);
+  };
+  const handleSensitiveUnlock = () => {
+    if (pinInput.trim() === SHOP_VIEW_PIN) {
+      setSensitiveUnlocked(true);
+      setPinDialogOpen(false);
+      toast.success('Sensitive data unlocked');
+    } else {
+      toast.error('Invalid PIN');
+    }
+  };
+
+  useEffect(() => {
+    setSensitiveUnlocked(user?.role !== 'shop_view');
+    setPinDialogOpen(false);
+    setPinInput('');
+  }, [user?.role]);
 
   useEffect(() => {
     if (tvMode) return;
@@ -2212,7 +2238,34 @@ function CalendarPageNew({ tvMode = false }) {
           setJobIdForDetailModal(null);
           fetchJobs();
         }}
+        hideSensitive={hideSensitive}
+        onRequestSensitiveUnlock={requestSensitiveUnlock}
       />
+      <Dialog open={pinDialogOpen} onClose={() => setPinDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Unlock Sensitive Data</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Enter PIN to view financial numbers and files.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            label="PIN"
+            type="password"
+            value={pinInput}
+            onChange={(e) => setPinInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSensitiveUnlock();
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPinDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleSensitiveUnlock}>
+            Unlock
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Right-click on a date: hide/show that weekday */}
       <Menu

@@ -51,7 +51,7 @@ function getPipelineSelectionStorageKey(tenantId) {
 
 const SHOP_VIEW_PIN = '1030';
 
-function PipelinePage({ shopMode = false }) {
+function PipelinePage() {
   const theme = useTheme();
   const navigate = useNavigate();
   const { user, canModifyPipeline } = useAuth();
@@ -84,19 +84,20 @@ function PipelinePage({ shopMode = false }) {
   const [pipelineLayouts, setPipelineLayouts] = useState([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState('default');
   const [pipelineHydrated, setPipelineHydrated] = useState(false);
-  const [sensitiveUnlocked, setSensitiveUnlocked] = useState(!shopMode);
+  const isShopViewRole = user?.role === 'shop_view';
+  const [sensitiveUnlocked, setSensitiveUnlocked] = useState(!isShopViewRole);
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
 
   useEffect(() => {
-    setSensitiveUnlocked(!shopMode);
+    setSensitiveUnlocked(!isShopViewRole);
     setPinDialogOpen(false);
     setPinInput('');
-  }, [shopMode]);
+  }, [isShopViewRole]);
 
-  const hideSensitive = shopMode && !sensitiveUnlocked;
+  const hideSensitive = isShopViewRole && !sensitiveUnlocked;
   const requestSensitiveUnlock = () => {
-    if (!shopMode) return;
+    if (!isShopViewRole) return;
     setPinInput('');
     setPinDialogOpen(true);
   };
@@ -352,7 +353,7 @@ function PipelinePage({ shopMode = false }) {
         {/* Page Header */}
         <Box sx={{ mb: 4 }}>
           <Typography variant="h1" sx={{ mb: 1 }}>
-            {shopMode ? 'Shop View' : 'Sales Pipeline'}
+            {isShopViewRole ? 'Shop View' : 'Sales Pipeline'}
           </Typography>
           <Typography variant="body1" color="text.secondary">
             Manage your projects from first contact to final payment

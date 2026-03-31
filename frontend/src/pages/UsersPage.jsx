@@ -225,6 +225,7 @@ function UsersPage() {
       installer: 'success',
       read_only: 'default',
       employee: 'secondary',
+      shop_view: 'info',
     };
     return colors[role] || 'default';
   };
@@ -488,6 +489,7 @@ function UsersPage() {
                     disabled={!isSuperAdmin() && (formData.role === 'admin' || editingUser?.role === 'admin')}
                   >
                     <MenuItem value="employee">Employee</MenuItem>
+                    <MenuItem value="shop_view">Shop View</MenuItem>
                     <MenuItem value="sales">Sales</MenuItem>
                     <MenuItem value="manager">Manager</MenuItem>
                     <MenuItem value="installer">Installer</MenuItem>
@@ -562,6 +564,7 @@ function UsersPage() {
                 label="Role"
               >
                 <MenuItem value="employee">Employee</MenuItem>
+                <MenuItem value="shop_view">Shop View</MenuItem>
                 <MenuItem value="sales">Sales</MenuItem>
                 <MenuItem value="manager">Manager</MenuItem>
                 <MenuItem value="installer">Installer</MenuItem>
@@ -571,6 +574,8 @@ function UsersPage() {
             </FormControl>
             <Typography variant="caption" color="text.secondary">
               Employee: Can change own time, view calendar and pipeline (read-only)
+              <br />
+              Shop View: Pipeline and calendar view with sensitive financial/file data behind PIN.
               <br />
               Admin: Can view all employee times, change pipeline
               <br />
