@@ -10,8 +10,18 @@ import {
   AccordionDetails,
   Chip,
   useTheme,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Button,
 } from '@mui/material';
-import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
+import { ExpandMore as ExpandMoreIcon, EditCalendar as EditCalendarIcon } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import JobDetailModal from '../components/jobs/JobDetailModal';
@@ -26,6 +36,11 @@ function CompletedJobsPage() {
   const [completedJobs, setCompletedJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [contextMenuJob, setContextMenuJob] = useState(null);
+  const [closeDateDialogOpen, setCloseDateDialogOpen] = useState(false);
+  const [closeDateInput, setCloseDateInput] = useState('');
+  const [savingCloseDate, setSavingCloseDate] = useState(false);
 
   useEffect(() => {
     fetchCompletedJobs();
@@ -75,6 +90,58 @@ function CompletedJobsPage() {
 
   const handleJobArchive = async (jobId) => {
     await fetchCompletedJobs();
+  };
+
+  const handleContextMenu = (event, job) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu(
+      contextMenu === null
+        ? { mouseX: event.clientX + 2, mouseY: event.clientY - 6 }
+        : null
+    );
+    setContextMenuJob(job);
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenu(null);
+    setContextMenuJob(null);
+  };
+
+  const openCloseDateDialog = () => {
+    if (!contextMenuJob) return;
+    const source =
+      contextMenuJob.completedClosedOutAt ||
+      contextMenuJob.finalPayment?.paidAt ||
+      contextMenuJob.updatedAt ||
+      contextMenuJob.createdAt;
+    const date = source ? new Date(source) : new Date();
+    const yyyyMmDd = Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+    setCloseDateInput(yyyyMmDd);
+    setCloseDateDialogOpen(true);
+    handleCloseContextMenu();
+  };
+
+  const handleSaveCloseDate = async () => {
+    if (!contextMenuJob || !closeDateInput) {
+      toast.error('Please pick a valid date');
+      return;
+    }
+    try {
+      setSavingCloseDate(true);
+      await axios.patch(`${API_URL}/jobs/${contextMenuJob._id}`, {
+        completedClosedOutAt: new Date(`${closeDateInput}T12:00:00.000Z`).toISOString(),
+        isCompletedClosedOut: true,
+      });
+      toast.success('Close date updated');
+      setCloseDateDialogOpen(false);
+      await fetchCompletedJobs();
+    } catch (error) {
+      console.error('Error updating close date:', error);
+      toast.error(error.response?.data?.error || 'Failed to update close date');
+    } finally {
+      setSavingCloseDate(false);
+    }
   };
 
   return (
@@ -153,6 +220,7 @@ function CompletedJobsPage() {
                       <Card
                         key={job._id}
                         onClick={() => setSelectedJobId(job._id)}
+                        onContextMenu={(e) => handleContextMenu(e, job)}
                         sx={{
                           borderLeft: '4px solid #43A047',
                           cursor: 'pointer',
@@ -218,6 +286,44 @@ function CompletedJobsPage() {
           onJobArchive={handleJobArchive}
           hideSensitive={hideSensitive}
         />
+        <Menu
+          open={contextMenu !== null}
+          onClose={handleCloseContextMenu}
+          anchorReference="anchorPosition"
+          anchorPosition={
+            contextMenu !== null
+              ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+              : undefined
+          }
+        >
+          <MenuItem onClick={openCloseDateDialog}>
+            <ListItemIcon>
+              <EditCalendarIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Edit Close Date</ListItemText>
+          </MenuItem>
+        </Menu>
+        <Dialog open={closeDateDialogOpen} onClose={() => !savingCloseDate && setCloseDateDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Edit Close Date</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              fullWidth
+              margin="dense"
+              label="Close date"
+              type="date"
+              value={closeDateInput}
+              onChange={(e) => setCloseDateInput(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCloseDateDialogOpen(false)} disabled={savingCloseDate}>Cancel</Button>
+            <Button variant="contained" onClick={handleSaveCloseDate} disabled={savingCloseDate}>
+              {savingCloseDate ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </Box>
   );

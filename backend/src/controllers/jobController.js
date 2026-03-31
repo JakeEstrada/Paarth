@@ -580,10 +580,14 @@ async function getCompletedJobs(req, res) {
       .populate('createdBy', 'name email')
       .sort({ updatedAt: -1, createdAt: -1 });
     
-    // Organize by month/year based on completion date
+    // Organize by month/year based on explicit close date first.
     const organized = {};
     jobs.forEach(job => {
-      const completionDate = job.updatedAt || job.finalPayment?.paidAt || job.createdAt;
+      const completionDate =
+        job.completedClosedOutAt ||
+        job.finalPayment?.paidAt ||
+        job.updatedAt ||
+        job.createdAt;
       if (!completionDate) return;
       
       const date = new Date(completionDate);
