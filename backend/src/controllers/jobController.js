@@ -9,7 +9,8 @@ async function getJobs(req, res) {
     
     let query = { 
       isArchived: { $ne: true }, // Matches false, null, or missing field
-      isDeadEstimate: { $ne: true } // Matches false, null, or missing field
+      isDeadEstimate: { $ne: true }, // Matches false, null, or missing field
+      isCompletedClosedOut: { $ne: true }, // Closed-out completed jobs should not remain on active pipeline
     };
     
     if (stage) query.stage = stage;
@@ -490,7 +491,8 @@ async function getPipelineSummary(req, res) {
         const jobs = await Job.find({ 
           stage, 
           isArchived: false,
-          isDeadEstimate: { $ne: true } // Matches false, null, or missing field
+          isDeadEstimate: { $ne: true }, // Matches false, null, or missing field
+          isCompletedClosedOut: { $ne: true },
         });
         const count = jobs.length;
         const totalValue = jobs.reduce((sum, job) => sum + (job.valueEstimated || 0), 0);
@@ -505,14 +507,15 @@ async function getPipelineSummary(req, res) {
   }
 }
 
-// Get archived jobs organized by month/year (includes both dead estimates and manually archived jobs)
+// Get archived jobs organized by month/year (dead estimates + manually archived non-completed jobs)
 async function getArchivedJobs(req, res) {
   try {
-    // Get both dead estimates AND manually archived jobs
+    // Archive page is strictly for jobs that did NOT move forward (dead/cancelled paths),
+    // not successfully completed jobs.
     const jobs = await Job.find({ 
       $or: [
         { isDeadEstimate: true },
-        { isArchived: true }
+        { isArchived: true, stage: { $ne: 'FINAL_PAYMENT_CLOSED' } }
       ]
     })
       .populate('customerId', 'name primaryPhone primaryEmail address')
@@ -564,7 +567,7 @@ async function getArchivedJobs(req, res) {
   }
 }
 
-// Get completed jobs (FINAL_PAYMENT_CLOSED) - includes archived jobs
+// Get completed jobs (FINAL_PAYMENT_CLOSED)
 async function getCompletedJobs(req, res) {
   try {
     const jobs = await Job.find({ 
@@ -1094,21 +1097,22 @@ async function unarchiveJob(req, res) {
   }
 }
 
-// Archive all jobs in FINAL_PAYMENT_CLOSED stage
+// Close out all jobs in FINAL_PAYMENT_CLOSED stage (separate from archive/dead-estimate workflow)
 async function archiveCompletedJobs(req, res) {
   try {
     const User = require('../models/User');
     
-    // Find all jobs in FINAL_PAYMENT_CLOSED stage that aren't already archived
+    // Find all completed jobs that are not already closed out.
+    // Include previously-archived completed jobs so we can recover them into completed-history-only.
     const jobsToArchive = await Job.find({
       stage: 'FINAL_PAYMENT_CLOSED',
-      isArchived: { $ne: true },
-      isDeadEstimate: { $ne: true }
+      isDeadEstimate: { $ne: true },
+      isCompletedClosedOut: { $ne: true },
     });
 
     if (jobsToArchive.length === 0) {
       return res.json({ 
-        message: 'No jobs to archive',
+        message: 'No completed jobs to close out',
         archived: 0,
         jobIds: []
       });
@@ -1136,19 +1140,20 @@ async function archiveCompletedJobs(req, res) {
       hour12: true
     });
 
-    // Archive each job
+    // Close out each completed job without putting it in Job Archive.
     for (const job of jobsToArchive) {
-      job.isArchived = true;
-      job.archivedAt = archiveDate;
-      
-      if (req.user) {
-        job.archivedBy = req.user._id;
-      }
+      // Explicitly ensure completed jobs are not treated as archived jobs.
+      job.isArchived = false;
+      job.archivedAt = undefined;
+      job.archivedBy = undefined;
+      job.isCompletedClosedOut = true;
+      job.completedClosedOutAt = archiveDate;
+      job.completedClosedOutBy = createdBy || undefined;
 
       // Add timestamped note
       if (createdBy) {
         job.notes.push({
-          content: `Job archived on ${timestamp} (bulk archive of completed jobs)`,
+          content: `Job closed out on ${timestamp} (completed jobs close-out)`,
           createdBy: createdBy,
           createdAt: archiveDate
         });
@@ -1161,10 +1166,10 @@ async function archiveCompletedJobs(req, res) {
       if (createdBy) {
         try {
           await Activity.create({
-            type: 'job_archived',
+            type: 'job_updated',
             jobId: job._id,
             customerId: job.customerId,
-            note: `Job bulk archived on ${timestamp} - Final Payment Closed`,
+            note: `Job closed out on ${timestamp} - Final Payment Closed`,
             createdBy: createdBy
           });
         } catch (activityError) {
@@ -1174,7 +1179,7 @@ async function archiveCompletedJobs(req, res) {
     }
 
     res.json({
-      message: `Successfully archived ${archivedIds.length} completed job(s)`,
+      message: `Successfully closed out ${archivedIds.length} completed job(s)`,
       archived: archivedIds.length,
       jobIds: archivedIds
     });

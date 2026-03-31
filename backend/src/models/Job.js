@@ -191,6 +191,17 @@ const jobSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
+
+  // Completed jobs close-out state (separate from dead-estimate/archive workflow)
+  isCompletedClosedOut: {
+    type: Boolean,
+    default: false
+  },
+  completedClosedOutAt: Date,
+  completedClosedOutBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   
   // Dead estimates - estimates sent but no response after 7 days
   isDeadEstimate: {
@@ -220,6 +231,7 @@ jobSchema.plugin(tenantScopePlugin);
 
 // Indexes for querying
 jobSchema.index({ stage: 1, isArchived: 1, createdAt: -1 });
+jobSchema.index({ stage: 1, isCompletedClosedOut: 1, createdAt: -1 });
 jobSchema.index({ customerId: 1 });
 jobSchema.index({ assignedTo: 1 });
 jobSchema.index({ isArchived: 1 });
