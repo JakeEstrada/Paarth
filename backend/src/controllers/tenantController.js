@@ -30,9 +30,11 @@ function resolveLogoObject(tenant, themeMode) {
   }
   // Backward compatibility:
   // - Light mode: if no themed light logo exists, fall back to legacy `logo`.
-  // - Dark mode: do NOT fall back to legacy `logo`, so uploading a light logo
-  //   cannot accidentally overwrite what the user expects to be dark.
-  if (themeMode === 'light' && tenant && tenant.logo && (tenant.logo.path || tenant.logo.s3Key || tenant.logo.filename)) {
+  // - Dark mode: fall back to light logo (logoLight or legacy `logo`) when no dark logo exists.
+  if (themeMode === 'dark' && tenant && tenant.logoLight && (tenant.logoLight.path || tenant.logoLight.s3Key || tenant.logoLight.filename)) {
+    return { field: 'logoLight', logo: tenant.logoLight };
+  }
+  if (tenant && tenant.logo && (tenant.logo.path || tenant.logo.s3Key || tenant.logo.filename)) {
     return { field: 'logo', logo: tenant.logo };
   }
   return { field, logo: null };
