@@ -1316,6 +1316,7 @@ function CalendarPageNew({ tvMode = false }) {
   const [pinInput, setPinInput] = useState('');
 
   const hideSensitive = user?.role === 'shop_view' && !sensitiveUnlocked;
+  const canModifyCalendarWithPin = () => canModifyCalendar() || (user?.role === 'shop_view' && sensitiveUnlocked);
   const requestSensitiveUnlock = () => {
     if (user?.role !== 'shop_view') return;
     setPinInput('');
@@ -1511,8 +1512,13 @@ function CalendarPageNew({ tvMode = false }) {
   }, [scheduledJobs]);
 
   const handleDayClick = (date) => {
-    if (!canModifyCalendar()) {
-      toast.error('You do not have permission to create or modify calendar events');
+    if (!canModifyCalendarWithPin()) {
+      if (user?.role === 'shop_view') {
+        requestSensitiveUnlock();
+        toast.error('Enter PIN to modify calendar events');
+      } else {
+        toast.error('You do not have permission to create or modify calendar events');
+      }
       return;
     }
     setSelectedDate(date);
@@ -1522,8 +1528,13 @@ function CalendarPageNew({ tvMode = false }) {
   };
 
   const handleEventClick = (eventOrJob) => {
-    if (!canModifyCalendar()) {
-      toast.error('You do not have permission to modify calendar events');
+    if (!canModifyCalendarWithPin()) {
+      if (user?.role === 'shop_view') {
+        requestSensitiveUnlock();
+        toast.error('Enter PIN to modify calendar events');
+      } else {
+        toast.error('You do not have permission to modify calendar events');
+      }
       return;
     }
     const job = eventOrJob?.job || eventOrJob;
@@ -1546,8 +1557,13 @@ function CalendarPageNew({ tvMode = false }) {
     const entryIndex = typeof eventOrJob?.entryIndex === 'number' ? eventOrJob.entryIndex : null;
     const installerToRemove = eventOrJob?.schedule?.installer || '';
 
-    if (!canModifyCalendar()) {
-      toast.error('You do not have permission to modify calendar events');
+    if (!canModifyCalendarWithPin()) {
+      if (user?.role === 'shop_view') {
+        requestSensitiveUnlock();
+        toast.error('Enter PIN to modify calendar events');
+      } else {
+        toast.error('You do not have permission to modify calendar events');
+      }
       return;
     }
 
@@ -1985,7 +2001,15 @@ function CalendarPageNew({ tvMode = false }) {
                       key={job._id}
                       job={job}
                       onJobClick={(j) => {
-                        if (!canModifyCalendar()) { toast.error('You do not have permission to modify calendar events'); return; }
+                        if (!canModifyCalendarWithPin()) {
+                          if (user?.role === 'shop_view') {
+                            requestSensitiveUnlock();
+                            toast.error('Enter PIN to modify calendar events');
+                          } else {
+                            toast.error('You do not have permission to modify calendar events');
+                          }
+                          return;
+                        }
                         setSelectedJob(j);
                         setSelectedInstaller('');
                         setSelectedDate(new Date());
@@ -2021,7 +2045,15 @@ function CalendarPageNew({ tvMode = false }) {
                       key={job._id}
                       job={job}
                       onJobClick={(j) => {
-                        if (!canModifyCalendar()) { toast.error('You do not have permission to modify calendar events'); return; }
+                        if (!canModifyCalendarWithPin()) {
+                          if (user?.role === 'shop_view') {
+                            requestSensitiveUnlock();
+                            toast.error('Enter PIN to modify calendar events');
+                          } else {
+                            toast.error('You do not have permission to modify calendar events');
+                          }
+                          return;
+                        }
                         setSelectedJob(j);
                         setSelectedInstaller(
                           j?.schedule?.installer ||
