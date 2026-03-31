@@ -53,7 +53,7 @@ function getPipelineSelectionStorageKey(tenantId) {
   return `${PIPELINE_SELECTION_KEY_PREFIX}_unknown`;
 }
 
-const SHOP_VIEW_PIN = '1030';
+const SHOP_VIEW_SENSITIVE_PIN = '2217';
 
 function PipelinePage() {
   const theme = useTheme();
@@ -107,7 +107,7 @@ function PipelinePage() {
     setPinDialogOpen(true);
   };
   const handleSensitiveUnlock = () => {
-    if (pinInput.trim() === SHOP_VIEW_PIN) {
+    if (pinInput.trim() === SHOP_VIEW_SENSITIVE_PIN) {
       setSensitiveUnlocked(true);
       setPinDialogOpen(false);
       toast.success('Sensitive data unlocked');

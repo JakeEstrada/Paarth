@@ -41,7 +41,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-const SHOP_VIEW_PIN = '1030';
+const SHOP_VIEW_SENSITIVE_PIN = '2217';
 const SHOP_VIEW_AUTO_LOCK_MS = 5 * 60 * 1000;
 
 function BillsPage() {
@@ -75,7 +75,7 @@ function BillsPage() {
     setPinDialogOpen(true);
   };
   const handleSensitiveUnlock = () => {
-    if (pinInput.trim() === SHOP_VIEW_PIN) {
+    if (pinInput.trim() === SHOP_VIEW_SENSITIVE_PIN) {
       setSensitiveUnlocked(true);
       setPinDialogOpen(false);
       toast.success('Bills unlocked');

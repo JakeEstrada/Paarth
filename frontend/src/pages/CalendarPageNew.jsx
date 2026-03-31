@@ -57,7 +57,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
 const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
-const SHOP_VIEW_PIN = '1030';
+const SHOP_VIEW_SENSITIVE_PIN = '2217';
+const SHOP_VIEW_EXIT_PIN = 'scww';
 const SHOP_VIEW_AUTO_LOCK_MS = 5 * 60 * 1000;
 
 // Default installer order used for calendar lanes and suggestions
@@ -1330,7 +1331,7 @@ function CalendarPageNew({ tvMode = false }) {
     setPinDialogOpen(true);
   };
   const handleSensitiveUnlock = () => {
-    if (pinInput.trim() === SHOP_VIEW_PIN) {
+    if (pinInput.trim() === SHOP_VIEW_SENSITIVE_PIN) {
       setSensitiveUnlocked(true);
       setPinDialogOpen(false);
       toast.success('Sensitive data unlocked');
@@ -1348,7 +1349,7 @@ function CalendarPageNew({ tvMode = false }) {
     setExitPinDialogOpen(true);
   };
   const handleExitWithPin = () => {
-    if (exitPinInput.trim() === SHOP_VIEW_PIN) {
+    if (exitPinInput.trim().toLowerCase() === SHOP_VIEW_EXIT_PIN) {
       setExitPinDialogOpen(false);
       navigate('/calendar');
     } else {
