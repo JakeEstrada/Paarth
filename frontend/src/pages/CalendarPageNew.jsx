@@ -1318,6 +1318,8 @@ function CalendarPageNew({ tvMode = false }) {
   const [sensitiveUnlocked, setSensitiveUnlocked] = useState(user?.role !== 'shop_view');
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
+  const [exitPinDialogOpen, setExitPinDialogOpen] = useState(false);
+  const [exitPinInput, setExitPinInput] = useState('');
   const lockTimerRef = useRef(null);
 
   const hideSensitive = user?.role === 'shop_view' && !sensitiveUnlocked;
@@ -1341,11 +1343,25 @@ function CalendarPageNew({ tvMode = false }) {
     setSensitiveUnlocked(false);
     toast.success('Sensitive data locked');
   };
+  const requestExitUnlock = () => {
+    setExitPinInput('');
+    setExitPinDialogOpen(true);
+  };
+  const handleExitWithPin = () => {
+    if (exitPinInput.trim() === SHOP_VIEW_PIN) {
+      setExitPinDialogOpen(false);
+      navigate('/calendar');
+    } else {
+      toast.error('Invalid PIN');
+    }
+  };
 
   useEffect(() => {
     setSensitiveUnlocked(user?.role !== 'shop_view');
     setPinDialogOpen(false);
     setPinInput('');
+    setExitPinDialogOpen(false);
+    setExitPinInput('');
   }, [user?.role]);
 
   useEffect(() => {
@@ -2160,7 +2176,13 @@ function CalendarPageNew({ tvMode = false }) {
             Today
           </Button>
           <Button
-            onClick={() => navigate(tvMode ? '/calendar' : '/calendar-view')}
+            onClick={() => {
+              if (tvMode) {
+                requestExitUnlock();
+                return;
+              }
+              navigate('/calendar-view');
+            }}
             variant={tvMode ? 'contained' : 'outlined'}
             size="small"
             sx={{ display: { xs: 'none', sm: 'flex' } }}
@@ -2336,6 +2358,31 @@ function CalendarPageNew({ tvMode = false }) {
           <Button onClick={() => setPinDialogOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleSensitiveUnlock}>
             Unlock
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={exitPinDialogOpen} onClose={() => setExitPinDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Exit Calendar View</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Enter PIN to exit kiosk calendar view.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            label="PIN"
+            type="password"
+            value={exitPinInput}
+            onChange={(e) => setExitPinInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleExitWithPin();
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExitPinDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleExitWithPin}>
+            Exit
           </Button>
         </DialogActions>
       </Dialog>
