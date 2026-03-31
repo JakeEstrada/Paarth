@@ -7,6 +7,9 @@ const {
   getTaskFiles,
   uploadDocument,
   getDocuments,
+  createTextDocument,
+  getTextDocument,
+  updateTextDocument,
   getDocumentTree,
   createDocumentFolder,
   updateDocumentFolder,
@@ -21,6 +24,9 @@ const {
 
 router.post('/upload', upload.single('file'), uploadFile);
 router.post('/upload-document', upload.single('file'), uploadDocument);
+router.post('/documents/text', createTextDocument);
+router.get('/documents/text/:id', getTextDocument);
+router.put('/documents/text/:id', updateTextDocument);
 router.get('/documents', getDocuments);
 router.get('/documents/tree', getDocumentTree);
 router.post('/documents/folders', createDocumentFolder);

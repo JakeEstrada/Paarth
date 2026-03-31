@@ -14,6 +14,7 @@ import {
   DialogActions,
   Divider,
   Breadcrumbs,
+  Chip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -32,6 +33,8 @@ import {
   Home as HomeIcon,
   DriveFileRenameOutline as RenameIcon,
   CreateNewFolder as CreateNewFolderIcon,
+  NoteAdd as NoteAddIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -69,6 +72,15 @@ function DocumentExplorer() {
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFileOpen, setNewFileOpen] = useState(false);
+  const [newFilePath, setNewFilePath] = useState('');
+  const [newFileContent, setNewFileContent] = useState('');
+  const [creatingFile, setCreatingFile] = useState(false);
+  const [textEditorOpen, setTextEditorOpen] = useState(false);
+  const [editingTextDoc, setEditingTextDoc] = useState(null);
+  const [textContent, setTextContent] = useState('');
+  const [textFileName, setTextFileName] = useState('');
+  const [savingTextDoc, setSavingTextDoc] = useState(false);
   const [renameFolderOpen, setRenameFolderOpen] = useState(false);
   const [folderToRename, setFolderToRename] = useState(null);
   const [renameFolderName, setRenameFolderName] = useState('');
@@ -209,6 +221,71 @@ function DocumentExplorer() {
       await fetchTree();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to delete folder');
+    }
+  };
+
+  const composePathPrefix = () => {
+    if (breadcrumbs.length <= 1) return '';
+    return `${breadcrumbs.slice(1).map((c) => c.name).join('/')}/`;
+  };
+
+  const openNewFileDialog = () => {
+    setNewFilePath(`${composePathPrefix()}new-document.txt`);
+    setNewFileContent('');
+    setNewFileOpen(true);
+  };
+
+  const handleCreateTextFile = async () => {
+    const filePath = newFilePath.trim();
+    if (!filePath) return toast.error('File path is required');
+    try {
+      setCreatingFile(true);
+      await axios.post(`${API_URL}/files/documents/text`, {
+        path: filePath,
+        content: newFileContent,
+      });
+      toast.success('File created');
+      setNewFileOpen(false);
+      setNewFilePath('');
+      setNewFileContent('');
+      await fetchTree();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to create file');
+    } finally {
+      setCreatingFile(false);
+    }
+  };
+
+  const handleOpenTextFile = async (doc) => {
+    try {
+      const response = await axios.get(`${API_URL}/files/documents/text/${doc._id}`);
+      setEditingTextDoc(doc);
+      setTextFileName(doc.originalName || 'document.txt');
+      setTextContent(response.data?.content || '');
+      setTextEditorOpen(true);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to open file');
+    }
+  };
+
+  const handleSaveTextFile = async () => {
+    if (!editingTextDoc) return;
+    const nextName = textFileName.trim();
+    if (!nextName) return toast.error('File name cannot be empty');
+    try {
+      setSavingTextDoc(true);
+      await axios.put(`${API_URL}/files/documents/text/${editingTextDoc._id}`, {
+        content: textContent,
+        originalName: nextName,
+      });
+      toast.success('File saved');
+      setTextEditorOpen(false);
+      setEditingTextDoc(null);
+      await fetchTree();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to save file');
+    } finally {
+      setSavingTextDoc(false);
     }
   };
 
@@ -389,13 +466,16 @@ function DocumentExplorer() {
   return (
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4" sx={{ fontWeight: 600 }}>Important Documents</Typography>
+        <Typography variant="h4" sx={{ fontWeight: 600 }}>Document Explorer</Typography>
       </Box>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '320px 1fr' }, gap: 2 }}>
         <Paper sx={{ p: 2, maxHeight: '75vh', overflow: 'auto' }}>
           <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
             <Button size="small" variant="contained" startIcon={<CreateNewFolderIcon />} onClick={() => setNewFolderOpen(true)} sx={{ textTransform: 'none' }}>
               New Folder
+            </Button>
+            <Button size="small" variant="outlined" startIcon={<NoteAddIcon />} onClick={openNewFileDialog} sx={{ textTransform: 'none' }}>
+              New File
             </Button>
           </Box>
           <Button
@@ -573,7 +653,11 @@ function DocumentExplorer() {
               >
                 <Box sx={{ minWidth: 0 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                    <PictureAsPdfIcon sx={{ color: '#F44336', fontSize: 18, flexShrink: 0 }} />
+                    {doc.mimetype === 'application/pdf' ? (
+                      <PictureAsPdfIcon sx={{ color: '#F44336', fontSize: 18, flexShrink: 0 }} />
+                    ) : (
+                      <DescriptionIcon sx={{ color: 'primary.main', fontSize: 18, flexShrink: 0 }} />
+                    )}
                     <Typography variant="body2" noWrap title={doc.originalName}>{doc.originalName}</Typography>
                   </Box>
                   {doc.description && (
@@ -582,7 +666,14 @@ function DocumentExplorer() {
                     </Typography>
                   )}
                 </Box>
-                <Typography variant="body2" color="text.secondary" sx={{ display: { xs: 'none', md: 'block' } }}>PDF</Typography>
+                <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+                  <Chip
+                    size="small"
+                    label={doc.mimetype === 'application/pdf' ? 'PDF' : 'TEXT'}
+                    color={doc.mimetype === 'application/pdf' ? 'error' : 'primary'}
+                    variant="outlined"
+                  />
+                </Box>
                 <Typography variant="body2" color="text.secondary" sx={{ display: { xs: 'none', md: 'block' } }}>
                   {format(new Date(doc.createdAt), 'MMM dd, yyyy')}
                 </Typography>
@@ -590,15 +681,23 @@ function DocumentExplorer() {
                   {formatFileSize(doc.size)}
                 </Typography>
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <IconButton size="small" onClick={() => { setViewingDocument(doc); setViewDialogOpen(true); }} title="View">
-                    <DescriptionIcon fontSize="small" />
-                  </IconButton>
+                  {doc.mimetype === 'application/pdf' ? (
+                    <IconButton size="small" onClick={() => { setViewingDocument(doc); setViewDialogOpen(true); }} title="View PDF">
+                      <DescriptionIcon fontSize="small" />
+                    </IconButton>
+                  ) : (
+                    <IconButton size="small" onClick={() => handleOpenTextFile(doc)} title="Open file">
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  )}
                   <IconButton size="small" onClick={() => { setDocumentToEdit(doc); setDescriptionInput(doc.description || ''); setEditDescriptionOpen(true); }} title="Edit description">
                     <RenameIcon fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" onClick={() => handleDownload(doc)} title="Download">
-                    <DownloadIcon fontSize="small" />
-                  </IconButton>
+                  {doc.mimetype === 'application/pdf' && (
+                    <IconButton size="small" onClick={() => handleDownload(doc)} title="Download">
+                      <DownloadIcon fontSize="small" />
+                    </IconButton>
+                  )}
                   <IconButton size="small" color="error" onClick={() => handleDeleteFile(doc)} title="Delete">
                     <DeleteIcon fontSize="small" />
                   </IconButton>
@@ -610,11 +709,40 @@ function DocumentExplorer() {
           {filteredFolders.length === 0 && filteredFiles.length === 0 && (
             <Paper sx={{ p: 4, textAlign: 'center', mt: 2 }}>
               <AttachFileIcon sx={{ fontSize: 56, color: 'text.secondary', mb: 1 }} />
-              <Typography variant="body2" color="text.secondary">No folders or documents in this location.</Typography>
+              <Typography variant="body2" color="text.secondary">This folder is empty. Create a folder or new text file path to begin.</Typography>
             </Paper>
           )}
         </Box>
       </Box>
+
+      <Dialog open={newFileOpen} onClose={() => setNewFileOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Create New File</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="File path"
+            helperText="Example: Shop SOPs/Opening/opening-checklist.txt"
+            value={newFilePath}
+            onChange={(e) => setNewFilePath(e.target.value)}
+            sx={{ mt: 1, mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={10}
+            label="File content"
+            value={newFileContent}
+            onChange={(e) => setNewFileContent(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNewFileOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateTextFile} disabled={creatingFile}>
+            {creatingFile ? 'Creating...' : 'Create File'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={newFolderOpen} onClose={() => setNewFolderOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Create Folder</DialogTitle>
@@ -690,6 +818,33 @@ function DocumentExplorer() {
             />
           )}
         </DialogContent>
+      </Dialog>
+
+      <Dialog open={textEditorOpen} onClose={() => setTextEditorOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>Edit File</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="File name"
+            value={textFileName}
+            onChange={(e) => setTextFileName(e.target.value)}
+            sx={{ mt: 1, mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={16}
+            label="Content"
+            value={textContent}
+            onChange={(e) => setTextContent(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTextEditorOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveTextFile} disabled={savingTextDoc}>
+            {savingTextDoc ? 'Saving...' : 'Save File'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

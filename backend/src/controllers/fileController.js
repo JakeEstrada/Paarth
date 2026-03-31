@@ -10,6 +10,42 @@ const { s3Client, BUCKET_NAME, isS3Configured } = require('../config/s3');
 // Get uploads directory - same as in upload.js middleware
 // Use environment variable if set, otherwise use relative path
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
+const DOCUMENT_TEXT_DIR = path.join(UPLOADS_DIR, 'documents-text');
+
+function sanitizePathSegment(segment) {
+  return String(segment || '')
+    .trim()
+    .replace(/[<>:"\\|?*\x00-\x1F]/g, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/\.+$/g, '');
+}
+
+function ensureTxtExtension(name) {
+  return name.toLowerCase().endsWith('.txt') ? name : `${name}.txt`;
+}
+
+async function resolveFolderPath(folderPath, createdBy) {
+  if (!folderPath) return null;
+  const segments = String(folderPath)
+    .split('/')
+    .map((part) => sanitizePathSegment(part))
+    .filter(Boolean);
+
+  let parentId = null;
+  for (const segment of segments) {
+    let folder = await DocumentFolder.findOne({ parentId, name: segment });
+    if (!folder) {
+      folder = await DocumentFolder.create({
+        name: segment,
+        parentId,
+        createdBy,
+      });
+    }
+    parentId = folder._id;
+  }
+
+  return parentId;
+}
 
 // Helper function to check if file is stored in S3
 function isS3File(file) {
@@ -518,6 +554,104 @@ async function getDocuments(req, res) {
   }
 }
 
+async function createTextDocument(req, res) {
+  try {
+    const rawPath = String(req.body.path || '').trim();
+    if (!rawPath) return res.status(400).json({ error: 'Path is required' });
+
+    const createdBy = await resolveCreatedBy(req);
+    if (!createdBy) return res.status(400).json({ error: 'No user available' });
+
+    const parts = rawPath.split('/').map((p) => sanitizePathSegment(p)).filter(Boolean);
+    if (parts.length === 0) return res.status(400).json({ error: 'Path is invalid' });
+
+    const fileNameRaw = ensureTxtExtension(parts.pop());
+    const folderPath = parts.join('/');
+    const folderId = await resolveFolderPath(folderPath, createdBy);
+
+    const now = Date.now();
+    const safeBase = sanitizePathSegment(fileNameRaw.replace(/\.txt$/i, '')) || 'untitled';
+    const diskName = `${safeBase}-${now}.txt`;
+    const content = String(req.body.content || '');
+
+    fs.mkdirSync(DOCUMENT_TEXT_DIR, { recursive: true });
+    const diskPath = path.join(DOCUMENT_TEXT_DIR, diskName);
+    fs.writeFileSync(diskPath, content, 'utf8');
+
+    const file = await File.create({
+      jobId: undefined,
+      taskId: undefined,
+      customerId: undefined,
+      folderId: folderId || null,
+      filename: diskName,
+      originalName: fileNameRaw,
+      mimetype: 'text/plain',
+      size: Buffer.byteLength(content, 'utf8'),
+      path: diskPath,
+      fileType: 'other',
+      uploadedBy: createdBy,
+      description: req.body.description ? String(req.body.description).trim() : undefined,
+    });
+
+    await file.populate('uploadedBy', 'name email');
+    await file.populate('folderId', 'name parentId');
+    return res.status(201).json(file);
+  } catch (error) {
+    if (error?.code === 11000) return res.status(409).json({ error: 'A folder with this name already exists in that location' });
+    return res.status(500).json({ error: error.message || 'Failed to create file' });
+  }
+}
+
+async function getTextDocument(req, res) {
+  try {
+    const file = await File.findById(req.params.id);
+    if (!file) return res.status(404).json({ error: 'File not found' });
+    if (file.mimetype !== 'text/plain') return res.status(400).json({ error: 'Only text documents are editable' });
+
+    const filePath = findLocalFilePath(file);
+    if (!filePath) return res.status(404).json({ error: 'File not found on server' });
+    const content = fs.readFileSync(filePath, 'utf8');
+    return res.json({
+      _id: file._id,
+      originalName: file.originalName,
+      folderId: file.folderId || null,
+      content,
+      updatedAt: file.updatedAt,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to load file content' });
+  }
+}
+
+async function updateTextDocument(req, res) {
+  try {
+    const file = await File.findById(req.params.id);
+    if (!file) return res.status(404).json({ error: 'File not found' });
+    if (file.mimetype !== 'text/plain') return res.status(400).json({ error: 'Only text documents are editable' });
+
+    const content = String(req.body.content || '');
+    const filePath = findLocalFilePath(file);
+    if (!filePath) return res.status(404).json({ error: 'File not found on server' });
+    fs.writeFileSync(filePath, content, 'utf8');
+
+    file.size = Buffer.byteLength(content, 'utf8');
+    if (req.body.originalName !== undefined) {
+      const nextName = ensureTxtExtension(sanitizePathSegment(req.body.originalName));
+      if (!nextName || nextName === '.txt') return res.status(400).json({ error: 'File name cannot be empty' });
+      file.originalName = nextName;
+    }
+    if (req.body.description !== undefined) {
+      file.description = req.body.description ? String(req.body.description).trim() : '';
+    }
+    await file.save();
+    await file.populate('uploadedBy', 'name email');
+    await file.populate('folderId', 'name parentId');
+    return res.json(file);
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to save file' });
+  }
+}
+
 async function getDocumentTree(req, res) {
   try {
     const [folders, files] = await Promise.all([
@@ -766,6 +900,9 @@ module.exports = {
   getTaskFiles,
   uploadDocument,
   getDocuments,
+  createTextDocument,
+  getTextDocument,
+  updateTextDocument,
   getDocumentTree,
   createDocumentFolder,
   updateDocumentFolder,
