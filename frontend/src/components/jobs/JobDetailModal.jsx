@@ -584,9 +584,11 @@ function JobDetailModal({
                   <Typography variant="h6" sx={{ color: 'text.secondary', fontWeight: 600 }}>
                     Locked
                   </Typography>
-                  <Button size="small" onClick={() => onRequestSensitiveUnlock?.()}>
-                    Unlock
-                  </Button>
+                  {onRequestSensitiveUnlock && (
+                    <Button size="small" onClick={() => onRequestSensitiveUnlock?.()}>
+                      Unlock
+                    </Button>
+                  )}
                 </Box>
               ) : isEditing ? (
                 <TextField
@@ -903,9 +905,11 @@ function JobDetailModal({
                 <Typography variant="body1" sx={{ mb: 1 }}>
                   Financial details and files are locked in Shop View.
                 </Typography>
-                <Button variant="contained" onClick={() => onRequestSensitiveUnlock?.()}>
-                  Unlock with PIN
-                </Button>
+                {onRequestSensitiveUnlock && (
+                  <Button variant="contained" onClick={() => onRequestSensitiveUnlock?.()}>
+                    Unlock with PIN
+                  </Button>
+                )}
               </Paper>
             ) : (
               <>

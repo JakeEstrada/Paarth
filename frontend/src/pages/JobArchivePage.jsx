@@ -24,11 +24,14 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import JobCard from '../components/pipeline/JobCard';
 import JobDetailModal from '../components/jobs/JobDetailModal';
+import { useAuth } from '../context/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function JobArchivePage() {
   const theme = useTheme();
+  const { user } = useAuth();
+  const hideSensitive = user?.role === 'shop_view';
   const [deadEstimates, setDeadEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
@@ -280,7 +283,7 @@ function JobArchivePage() {
                     </Box>
                     <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                       <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 500 }}>
-                        {formatCurrency(getTotalValue(group.jobs))}
+                        {hideSensitive ? 'Locked' : formatCurrency(getTotalValue(group.jobs))}
                       </Typography>
                     </Box>
                   </Box>
@@ -331,7 +334,7 @@ function JobArchivePage() {
                             </Typography>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5 }}>
                               <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 500 }}>
-                                {formatCurrency(job.valueEstimated)}
+                                {hideSensitive ? 'Locked' : formatCurrency(job.valueEstimated)}
                               </Typography>
                               {daysSince !== null && (
                                 <Chip
@@ -370,6 +373,7 @@ function JobArchivePage() {
           onJobUpdate={handleJobUpdate}
           onJobDelete={handleJobDelete}
           onJobArchive={handleJobArchive}
+          hideSensitive={hideSensitive}
         />
 
         {/* Context Menu */}

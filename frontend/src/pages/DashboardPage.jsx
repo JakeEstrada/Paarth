@@ -50,6 +50,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function DashboardPage() {
   const navigate = useNavigate();
   const theme = useTheme();
+  const { user } = useAuth();
+  const hideSensitive = user?.role === 'shop_view';
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalJobs: 0,
@@ -854,7 +856,7 @@ function DashboardPage() {
                     Pipeline Value
                   </Typography>
                   <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    {formatCurrency(stats.totalRevenue)}
+                    {hideSensitive ? 'Locked' : formatCurrency(stats.totalRevenue)}
                   </Typography>
                 </Box>
                 <MoneyIcon sx={{ fontSize: 36, color: 'primary.main', opacity: 0.7 }} />
@@ -871,7 +873,7 @@ function DashboardPage() {
                     Contracted
                   </Typography>
                   <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    {formatCurrency(stats.contractedRevenue)}
+                    {hideSensitive ? 'Locked' : formatCurrency(stats.contractedRevenue)}
                   </Typography>
                 </Box>
                 <CheckCircleIcon sx={{ fontSize: 36, color: 'success.main', opacity: 0.7 }} />
@@ -888,7 +890,7 @@ function DashboardPage() {
                     Potential
                   </Typography>
                   <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    {formatCurrency(stats.potentialRevenue)}
+                    {hideSensitive ? 'Locked' : formatCurrency(stats.potentialRevenue)}
                   </Typography>
                 </Box>
                 <TrendingUpIcon sx={{ fontSize: 36, color: 'info.main', opacity: 0.7 }} />
