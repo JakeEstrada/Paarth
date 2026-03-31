@@ -38,6 +38,7 @@ app.use(
   })
 );
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 // Serve uploaded files statically (before DB check)
 app.use('/uploads', express.static('uploads'));
 
@@ -53,7 +54,8 @@ app.use(async (req, res, next) => {
     req.path === '/health' ||
     req.path.startsWith('/uploads/') ||
     req.path.startsWith('/developer-tasks') ||
-    req.path.startsWith('/auth');
+    req.path.startsWith('/auth') ||
+    req.path.startsWith('/twilio');
 
   if (skipTenantDb) {
     return runWithTenantContext({ tenantId: null, bypassTenant: true }, () => next());
@@ -116,7 +118,8 @@ app.use((req, res, next) => {
     req.path === '/health' ||
     req.path.startsWith('/uploads/') ||
     req.path.startsWith('/developer-tasks') ||
-    req.path.startsWith('/auth')
+    req.path.startsWith('/auth') ||
+    req.path.startsWith('/twilio')
   ) {
     return next();
   }
@@ -144,6 +147,7 @@ const userRoutes = require('./routes/users');
 const billRoutes = require('./routes/bills');
 const tenantRoutes = require('./routes/tenants');
 const pipelineLayoutRoutes = require('./routes/pipelineLayouts');
+const twilioRoutes = require('./routes/twilio');
 
 // Use routes
 app.use('/auth', authRoutes);
@@ -159,6 +163,7 @@ app.use('/calendar', calendarRoutes);
 app.use('/developer-tasks', developerTasksRoutes);
 app.use('/bills', billRoutes);
 app.use('/pipeline-layouts', pipelineLayoutRoutes);
+app.use('/twilio', twilioRoutes);
 // Some deployments expose the API under `/api` without stripping the prefix from the path.
 app.use('/api/pipeline-layouts', pipelineLayoutRoutes);
 
