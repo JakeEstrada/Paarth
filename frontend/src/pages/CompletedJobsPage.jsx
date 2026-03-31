@@ -38,6 +38,7 @@ function CompletedJobsPage() {
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [contextMenuJob, setContextMenuJob] = useState(null);
+  const [editingCloseDateJob, setEditingCloseDateJob] = useState(null);
   const [closeDateDialogOpen, setCloseDateDialogOpen] = useState(false);
   const [closeDateInput, setCloseDateInput] = useState('');
   const [savingCloseDate, setSavingCloseDate] = useState(false);
@@ -110,6 +111,7 @@ function CompletedJobsPage() {
 
   const openCloseDateDialog = () => {
     if (!contextMenuJob) return;
+    setEditingCloseDateJob(contextMenuJob);
     const source =
       contextMenuJob.completedClosedOutAt ||
       contextMenuJob.finalPayment?.paidAt ||
@@ -123,13 +125,13 @@ function CompletedJobsPage() {
   };
 
   const handleSaveCloseDate = async () => {
-    if (!contextMenuJob || !closeDateInput) {
+    if (!editingCloseDateJob || !closeDateInput) {
       toast.error('Please pick a valid date');
       return;
     }
     try {
       setSavingCloseDate(true);
-      await axios.patch(`${API_URL}/jobs/${contextMenuJob._id}`, {
+      await axios.patch(`${API_URL}/jobs/${editingCloseDateJob._id}`, {
         completedClosedOutAt: new Date(`${closeDateInput}T12:00:00.000Z`).toISOString(),
         isCompletedClosedOut: true,
       });
@@ -303,7 +305,16 @@ function CompletedJobsPage() {
             <ListItemText>Edit Close Date</ListItemText>
           </MenuItem>
         </Menu>
-        <Dialog open={closeDateDialogOpen} onClose={() => !savingCloseDate && setCloseDateDialogOpen(false)} maxWidth="xs" fullWidth>
+        <Dialog
+          open={closeDateDialogOpen}
+          onClose={() => {
+            if (savingCloseDate) return;
+            setCloseDateDialogOpen(false);
+            setEditingCloseDateJob(null);
+          }}
+          maxWidth="xs"
+          fullWidth
+        >
           <DialogTitle>Edit Close Date</DialogTitle>
           <DialogContent>
             <TextField
@@ -318,7 +329,15 @@ function CompletedJobsPage() {
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setCloseDateDialogOpen(false)} disabled={savingCloseDate}>Cancel</Button>
+            <Button
+              onClick={() => {
+                setCloseDateDialogOpen(false);
+                setEditingCloseDateJob(null);
+              }}
+              disabled={savingCloseDate}
+            >
+              Cancel
+            </Button>
             <Button variant="contained" onClick={handleSaveCloseDate} disabled={savingCloseDate}>
               {savingCloseDate ? 'Saving...' : 'Save'}
             </Button>
