@@ -5,13 +5,20 @@ const Activity = require('../models/Activity');
 // Get all jobs
 async function getJobs(req, res) {
   try {
-    const { stage, assignedTo, search, customerId, page = 1, limit = 100 } = req.query;
+    const { stage, assignedTo, search, customerId, page = 1, limit = 100, includeCompletedClosedOut } = req.query;
+    const includeClosedOut =
+      includeCompletedClosedOut === true ||
+      includeCompletedClosedOut === 'true' ||
+      includeCompletedClosedOut === '1' ||
+      includeCompletedClosedOut === 1;
     
-    let query = { 
+    let query = {
       isArchived: { $ne: true }, // Matches false, null, or missing field
       isDeadEstimate: { $ne: true }, // Matches false, null, or missing field
-      isCompletedClosedOut: { $ne: true }, // Closed-out completed jobs should not remain on active pipeline
     };
+    if (!includeClosedOut) {
+      query.isCompletedClosedOut = { $ne: true }; // Keep closed-out completed jobs off active pipeline by default
+    }
     
     if (stage) query.stage = stage;
     if (assignedTo) query.assignedTo = assignedTo;

@@ -615,7 +615,9 @@ function CalendarPage() {
   const fetchJobs = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/jobs`);
+      const response = await axios.get(`${API_URL}/jobs`, {
+        params: { includeCompletedClosedOut: true },
+      });
       const allJobs = response.data.jobs || response.data || [];
       
       console.log('Raw jobs response:', {

@@ -228,7 +228,9 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
 
   const fetchAvailableJobs = async () => {
     try {
-      const response = await axios.get(`${API_URL}/jobs`);
+      const response = await axios.get(`${API_URL}/jobs`, {
+        params: { includeCompletedClosedOut: true },
+      });
       const jobs = response.data.jobs || response.data || [];
       setAvailableJobs(jobs.filter(j => !j.isArchived && !j.isDeadEstimate));
     } catch (error) {
@@ -1417,7 +1419,9 @@ function CalendarPageNew({ tvMode = false }) {
   const fetchJobs = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/jobs`);
+      const response = await axios.get(`${API_URL}/jobs`, {
+        params: { includeCompletedClosedOut: true },
+      });
       const allJobs = response.data.jobs || response.data || [];
 
       const jobHasCalendarSchedule = (job) => {
