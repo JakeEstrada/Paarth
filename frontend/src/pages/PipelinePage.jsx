@@ -37,6 +37,7 @@ import AddJobTaskModal from '../components/jobs/AddJobTaskModal';
 import AddJobModal from '../components/jobs/AddJobModal';
 import { useAuth } from '../context/AuthContext';
 import { fetchPipelineLayoutsList, createPipelineLayout } from '../utils/pipelineLayoutsApi';
+import { useSocketSubscription } from '../hooks/useSocketSubscription';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const SHOP_VIEW_AUTO_LOCK_MS = 5 * 60 * 1000;
@@ -58,7 +59,7 @@ const SHOP_VIEW_SENSITIVE_PIN = '2217';
 function PipelinePage() {
   const theme = useTheme();
   const navigate = useNavigate();
-  const { user, canModifyPipeline } = useAuth();
+  const { user, canModifyPipeline, tenantIdForBranding } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -240,7 +241,7 @@ function PipelinePage() {
     }
   }, [jobs, searchParams, setSearchParams]);
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -257,7 +258,19 @@ function PipelinePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const handleRealtimeProjectUpdate = useCallback(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+  const handleRealtimeTaskUpdate = useCallback(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+  useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeProjectUpdate);
+  useSocketSubscription(tenantRoom, 'project.created', handleRealtimeProjectUpdate);
+  useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeTaskUpdate);
+  useSocketSubscription(tenantRoom, 'task.created', handleRealtimeTaskUpdate);
 
   const handleJobUpdate = async (jobId, updates) => {
     try {

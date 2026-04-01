@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -51,6 +51,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { useTheme as useAppTheme } from '../context/ThemeContext';
 import JobDetailModal from '../components/jobs/JobDetailModal';
+import { useSocketSubscription } from '../hooks/useSocketSubscription';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -1293,7 +1294,7 @@ function CalendarPageNew({ tvMode = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { mode, toggleColorMode } = useAppTheme();
-  const { user, canModifyCalendar, canViewCalendar } = useAuth();
+  const { user, canModifyCalendar, canViewCalendar, tenantIdForBranding } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [currentDate, setCurrentDate] = useState(new Date());
   const [benchJobs, setBenchJobs] = useState([]);
@@ -1416,7 +1417,7 @@ function CalendarPageNew({ tvMode = false }) {
     fetchJobs();
   }, [currentDate]);
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     try {
       setLoading(true);
       const response = await axios.get(`${API_URL}/jobs`, {
@@ -1469,7 +1470,16 @@ function CalendarPageNew({ tvMode = false }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const handleRealtimeProjectUpdate = useCallback(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+  useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeProjectUpdate);
+  useSocketSubscription(tenantRoom, 'project.created', handleRealtimeProjectUpdate);
+  useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeProjectUpdate);
+  useSocketSubscription(tenantRoom, 'task.created', handleRealtimeProjectUpdate);
 
   // Generate calendar days for a specific month
   const getCalendarDaysForMonth = (date) => {

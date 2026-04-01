@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Job = require('../models/Job');
 const Activity = require('../models/Activity');
+const { publishProjectCreated, publishProjectUpdated } = require('../services/eventBus');
 
 // Get all jobs
 async function getJobs(req, res) {
@@ -114,6 +115,9 @@ async function createJob(req, res) {
     
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
+
+    const io = req.app.get('io');
+    publishProjectCreated(io, job.toObject ? job.toObject() : job);
     
     res.status(201).json(job);
   } catch (error) {
@@ -370,6 +374,9 @@ async function updateJob(req, res) {
     
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
+
+    const io = req.app.get('io');
+    publishProjectUpdated(io, job.toObject ? job.toObject() : job);
     
     res.json(job);
   } catch (error) {
@@ -441,6 +448,9 @@ async function moveJobStage(req, res) {
     
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
+
+    const io = req.app.get('io');
+    publishProjectUpdated(io, job.toObject ? job.toObject() : job);
     
     res.json(job);
   } catch (error) {

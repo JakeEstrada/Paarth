@@ -1,5 +1,6 @@
 const Task = require('../models/Task');
 const Activity = require('../models/Activity');
+const { publishTaskCreated, publishTaskUpdated } = require('../services/eventBus');
 
 // Get all tasks for a job
 async function getJobTasks(req, res) {
@@ -218,6 +219,9 @@ async function createTask(req, res) {
     if (task.customerId) {
       await task.populate('customerId', 'name');
     }
+
+    const io = req.app.get('io');
+    publishTaskCreated(io, task.toObject ? task.toObject() : task);
     
     res.status(201).json(task);
   } catch (error) {
@@ -286,6 +290,9 @@ async function updateTask(req, res) {
     await task.populate('assignedTo', 'name email');
     await task.populate('completedBy', 'name email');
     await task.populate('createdBy', 'name email');
+
+    const io = req.app.get('io');
+    publishTaskUpdated(io, task.toObject ? task.toObject() : task);
     
     res.json(task);
   } catch (error) {
@@ -365,6 +372,9 @@ async function completeTask(req, res) {
     await task.populate('assignedTo', 'name email');
     await task.populate('completedBy', 'name email');
     await task.populate('createdBy', 'name email');
+
+    const io = req.app.get('io');
+    publishTaskUpdated(io, task.toObject ? task.toObject() : task);
     
     res.json(task);
   } catch (error) {
@@ -391,6 +401,9 @@ async function uncompleteTask(req, res) {
     
     await task.populate('assignedTo', 'name email');
     await task.populate('createdBy', 'name email');
+
+    const io = req.app.get('io');
+    publishTaskUpdated(io, task.toObject ? task.toObject() : task);
     
     res.json(task);
   } catch (error) {
@@ -417,6 +430,13 @@ async function deleteTask(req, res) {
     
     // Delete the task
     await Task.findByIdAndDelete(req.params.id);
+
+    const io = req.app.get('io');
+    publishTaskUpdated(io, {
+      _id: task._id,
+      tenantId: task.tenantId,
+      deleted: true,
+    });
     
     // Log activity for task deletion
     const Customer = require('../models/Customer');

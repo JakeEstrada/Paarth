@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
@@ -6,6 +7,7 @@ const { runWithTenantContext } = require('./middleware/tenantContext');
 const { ensureTenantBySlug, ensureDefaultTenant, normalizeTenantSlug } = require('./utils/tenantService');
 const { backfillTenantIds } = require('./scripts/backfillTenantIds');
 const Tenant = require('./models/Tenant');
+const { initializeSocketServer } = require('./services/socketServer');
 
 function isLikelyObjectId(value) {
   if (!value || typeof value !== 'string') return false;
@@ -15,6 +17,7 @@ function isLikelyObjectId(value) {
 }
 
 const app = express();
+const httpServer = http.createServer(app);
 
 function parseCorsOrigins() {
   const raw = process.env.CORS_ORIGINS;
@@ -210,7 +213,9 @@ app.get('/health', (req, res) => {
 
 // Start server (will work even if MongoDB isn't connected yet)
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+const io = initializeSocketServer(httpServer);
+app.set('io', io);
+httpServer.listen(PORT, () => {
   console.log(`<3 Server running on http://localhost:${PORT}`);
 });
 
