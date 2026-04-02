@@ -56,6 +56,10 @@ const openPdfViewer = (fileId) => {
   window.open(`/pdf/${fileId}`, '_blank');
 };
 
+const openPictureViewer = (fileId) => {
+  window.open(`/picture/${fileId}`, '_blank');
+};
+
 const STAGE_LABELS = {
   APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
   ESTIMATE_IN_PROGRESS: 'Estimate Current, first 5 days',
@@ -1029,7 +1033,7 @@ function JobDetailModal({
                               objectFit: 'cover',
                               cursor: 'pointer',
                             }}
-                            onClick={() => window.open(`${API_URL}/files/${file._id}`, '_blank')}
+                            onClick={() => openPictureViewer(file._id)}
                           />
                         </Box>
                       )}

@@ -44,6 +44,10 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const openPdfViewer = (fileId) => {
   window.open(`/pdf/${fileId}`, '_blank');
 };
+
+const openPictureViewer = (fileId) => {
+  window.open(`/picture/${fileId}`, '_blank');
+};
 const URL_SPLIT_REGEX = /(https?:\/\/[^\s]+)/g;
 const URL_EXACT_REGEX = /^https?:\/\/[^\s]+$/;
 
@@ -801,7 +805,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                         return;
                       }
                       if (isImage) {
-                        window.open(`${API_URL}/files/${file._id}`, '_blank');
+                        openPictureViewer(file._id);
                       }
                     };
                     return (
@@ -829,7 +833,7 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                               bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : '#fff',
                               cursor: 'pointer',
                             }}
-                            onClick={() => window.open(`${API_URL}/files/${file._id}`, '_blank')}
+                            onClick={() => openPictureViewer(file._id)}
                             title="View image"
                           >
                             <img
