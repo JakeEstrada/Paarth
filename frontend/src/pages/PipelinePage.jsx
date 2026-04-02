@@ -417,7 +417,9 @@ function PipelinePage() {
                 {isShopViewRole ? 'Shop View' : 'Sales Pipeline'}
               </Typography>
               <Typography variant="body1" color="text.secondary">
-                Manage your projects from first contact to final payment
+                {isShopViewRole
+                  ? 'Pipeline board — job stages and scheduling context for the shop floor'
+                  : 'Manage your projects from first contact to final payment'}
               </Typography>
             </Box>
             {isShopViewRole && (
@@ -434,7 +436,8 @@ function PipelinePage() {
           </Box>
         </Box>
 
-        {/* Todos and Appointments Section */}
+        {/* Todos and Appointments — hidden in shop view (pipeline only) */}
+        {!isShopViewRole && (
         <Box sx={{ mb: 4 }}>
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: { xs: 2, sm: 3 } }}>
             {/* Todos Section */}
@@ -579,6 +582,7 @@ function PipelinePage() {
             </Box>
           </Box>
         </Box>
+        )}
 
         {/* Pipeline Board */}
         {loading ? (
