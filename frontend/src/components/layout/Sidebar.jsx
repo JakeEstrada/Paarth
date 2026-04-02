@@ -26,6 +26,7 @@ import {
   Person as UsersIcon,
   Receipt as ReceiptIcon,
   Description as DocumentsIcon,
+  ViewWeek as PipelineViewKioskIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
@@ -53,7 +54,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
-  const { isAdmin, tenantForBranding } = useAuth();
+  const { isAdmin, tenantForBranding, user } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const isActive = (path) => {
@@ -138,6 +139,54 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             </ListItemButton>
           </ListItem>
         ))}
+        {user?.role === 'shop_view' && (
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => handleNavigation('/pipeline-view')}
+              selected={isActive('/pipeline-view')}
+              sx={{
+                mx: 1,
+                mb: 0.5,
+                borderRadius: '8px',
+                '&.Mui-selected': {
+                  backgroundColor: theme.palette.mode === 'dark'
+                    ? 'rgba(25, 118, 210, 0.16)'
+                    : '#E3F2FD',
+                  color: theme.palette.primary.main,
+                  '&:hover': {
+                    backgroundColor: theme.palette.mode === 'dark'
+                      ? 'rgba(25, 118, 210, 0.24)'
+                      : '#BBDEFB',
+                  },
+                  '& .MuiListItemIcon-root': {
+                    color: theme.palette.primary.main,
+                  },
+                },
+                '&:hover': {
+                  backgroundColor: theme.palette.mode === 'dark'
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : '#F5F5F5',
+                },
+              }}
+            >
+              <ListItemIcon
+                sx={{
+                  minWidth: 40,
+                  color: isActive('/pipeline-view') ? theme.palette.primary.main : 'inherit',
+                }}
+              >
+                <PipelineViewKioskIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary="Pipeline view"
+                primaryTypographyProps={{
+                  fontSize: '0.9375rem',
+                  fontWeight: isActive('/pipeline-view') ? 600 : 400,
+                }}
+              />
+            </ListItemButton>
+          </ListItem>
+        )}
         {isAdmin() && (
           <ListItem disablePadding>
             <ListItemButton

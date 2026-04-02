@@ -59,6 +59,14 @@ function App() {
           }
         />
         <Route
+          path="/pipeline-view"
+          element={
+            <ProtectedRoute>
+              <PipelinePage tvMode />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/pdf/:fileId"
           element={
             <ProtectedRoute>

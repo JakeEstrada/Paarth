@@ -55,8 +55,9 @@ function getPipelineSelectionStorageKey(tenantId) {
 }
 
 const SHOP_VIEW_SENSITIVE_PIN = '2217';
+const SHOP_VIEW_EXIT_PIN = 'scww';
 
-function PipelinePage() {
+function PipelinePage({ tvMode = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { user, canModifyPipeline, tenantIdForBranding } = useAuth();
@@ -93,13 +94,32 @@ function PipelinePage() {
   const [sensitiveUnlocked, setSensitiveUnlocked] = useState(!isShopViewRole);
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
+  const [exitPinDialogOpen, setExitPinDialogOpen] = useState(false);
+  const [exitPinInput, setExitPinInput] = useState('');
   const lockTimerRef = useRef(null);
 
   useEffect(() => {
     setSensitiveUnlocked(!isShopViewRole);
     setPinDialogOpen(false);
     setPinInput('');
+    setExitPinDialogOpen(false);
+    setExitPinInput('');
   }, [isShopViewRole]);
+
+  const requestExitUnlock = () => {
+    setExitPinInput('');
+    setExitPinDialogOpen(true);
+  };
+  const handleExitWithPin = () => {
+    if (exitPinInput.trim().toLowerCase() === SHOP_VIEW_EXIT_PIN) {
+      setExitPinDialogOpen(false);
+      navigate('/pipeline');
+    } else {
+      toast.error('Invalid PIN');
+    }
+  };
+
+  const showTasksAndAppointments = !isShopViewRole && !tvMode;
 
   const hideSensitive = isShopViewRole && !sensitiveUnlocked;
   const requestSensitiveUnlock = () => {
@@ -406,38 +426,80 @@ function PipelinePage() {
   ).length;
 
   return (
-    <Box>
+    <Box sx={{ minHeight: tvMode ? '100vh' : undefined }}>
       {/* Main Content */}
-      <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 1, sm: 2 } }}>
+      <Container
+        maxWidth="xl"
+        sx={{
+          py: tvMode ? { xs: 1, sm: 1.5 } : { xs: 2, sm: 4 },
+          px: { xs: 1, sm: 2 },
+        }}
+      >
         {/* Page Header */}
-        <Box sx={{ mb: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+        <Box sx={{ mb: tvMode ? 2 : 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
             <Box>
-              <Typography variant="h1" sx={{ mb: 1 }}>
-                {isShopViewRole ? 'Shop View' : 'Sales Pipeline'}
+              <Typography variant="h1" sx={{ mb: 1, fontSize: tvMode ? { xs: '1.35rem', sm: '1.6rem' } : undefined }}>
+                {tvMode
+                  ? isShopViewRole
+                    ? 'Shop pipeline view'
+                    : 'Pipeline view'
+                  : isShopViewRole
+                    ? 'Shop View'
+                    : 'Sales Pipeline'}
               </Typography>
               <Typography variant="body1" color="text.secondary">
-                {isShopViewRole
-                  ? 'Pipeline board — job stages and scheduling context for the shop floor'
-                  : 'Manage your projects from first contact to final payment'}
+                {tvMode
+                  ? 'Fullscreen board — use Exit to return to the app'
+                  : isShopViewRole
+                    ? 'Pipeline board — job stages and scheduling context for the shop floor'
+                    : 'Manage your projects from first contact to final payment'}
               </Typography>
             </Box>
-            {isShopViewRole && (
-              <Tooltip title={hideSensitive ? 'Unlock sensitive data (PIN)' : 'Lock sensitive data'}>
-                <IconButton
-                  onClick={hideSensitive ? requestSensitiveUnlock : lockSensitiveData}
-                  color={hideSensitive ? 'default' : 'warning'}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+              {isShopViewRole && (
+                <Tooltip title={hideSensitive ? 'Unlock sensitive data (PIN)' : 'Lock sensitive data'}>
+                  <IconButton
+                    onClick={hideSensitive ? requestSensitiveUnlock : lockSensitiveData}
+                    color={hideSensitive ? 'default' : 'warning'}
+                    size="small"
+                  >
+                    {hideSensitive ? <LockIcon /> : <LockOpenIcon />}
+                  </IconButton>
+                </Tooltip>
+              )}
+              {!tvMode && (
+                <Button
+                  variant="outlined"
                   size="small"
+                  onClick={() => navigate('/pipeline-view')}
+                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
                 >
-                  {hideSensitive ? <LockIcon /> : <LockOpenIcon />}
-                </IconButton>
-              </Tooltip>
-            )}
+                  Pipeline view
+                </Button>
+              )}
+              {tvMode && (
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={() => {
+                    if (isShopViewRole) {
+                      requestExitUnlock();
+                      return;
+                    }
+                    navigate('/pipeline');
+                  }}
+                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                >
+                  Exit Pipeline view
+                </Button>
+              )}
+            </Box>
           </Box>
         </Box>
 
-        {/* Todos and Appointments — hidden in shop view (pipeline only) */}
-        {!isShopViewRole && (
+        {/* Todos and Appointments — hidden in shop view or fullscreen pipeline view */}
+        {showTasksAndAppointments && (
         <Box sx={{ mb: 4 }}>
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: { xs: 2, sm: 3 } }}>
             {/* Todos Section */}
@@ -801,6 +863,31 @@ function PipelinePage() {
             <Button onClick={() => setPinDialogOpen(false)}>Cancel</Button>
             <Button variant="contained" onClick={handleSensitiveUnlock}>
               Unlock
+            </Button>
+          </DialogActions>
+        </Dialog>
+        <Dialog open={exitPinDialogOpen} onClose={() => setExitPinDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Exit Pipeline View</DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              Enter PIN to exit kiosk pipeline view.
+            </DialogContentText>
+            <TextField
+              autoFocus
+              fullWidth
+              label="PIN"
+              type="password"
+              value={exitPinInput}
+              onChange={(e) => setExitPinInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleExitWithPin();
+              }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setExitPinDialogOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleExitWithPin}>
+              Exit
             </Button>
           </DialogActions>
         </Dialog>
