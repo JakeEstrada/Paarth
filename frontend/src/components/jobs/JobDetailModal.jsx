@@ -1111,7 +1111,7 @@ function JobDetailModal({
                     {dragActive ? 'Drop files here' : 'Upload Files'}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Drag & drop or click to browse • PDFs or photos • Max 10MB
+                    Drag & drop or click to browse • Images and PDFs • Max 10MB
                   </Typography>
                 </Box>
                 <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -1129,7 +1129,6 @@ function JobDetailModal({
                   </Select>
                 </FormControl>
                 <input
-                  accept="image/*,application/pdf"
                   style={{ display: 'none' }}
                   id="file-upload"
                   type="file"
