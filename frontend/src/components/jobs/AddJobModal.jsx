@@ -22,6 +22,13 @@ import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+/** Synthetic "Create …" row from filterOptions — extract the typed name for submit state */
+function parseCreateNewOptionName(option) {
+  if (!option || option._id !== 'new' || typeof option.name !== 'string') return '';
+  const m = /^Create "(.*)"$/.exec(option.name);
+  return m ? m[1] : '';
+}
+
 const SOURCE_OPTIONS = [
   { value: 'referral', label: 'Referral' },
   { value: 'yelp', label: 'Yelp' },
@@ -94,13 +101,12 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
 
   const handleCustomerChange = (event, newValue, reason) => {
     if (reason === 'selectOption' && newValue) {
-      // Check if it's the "Create new" option
       if (newValue._id === 'new') {
-        // User wants to create new customer
-        setFormData({
-          ...formData,
+        const typedName = parseCreateNewOptionName(newValue);
+        setFormData((prev) => ({
+          ...prev,
           customerId: null,
-          customerName: customerInputValue,
+          customerName: typedName || prev.customerName,
           customerPhone: '',
           customerEmail: '',
           customerAddress: {
@@ -109,11 +115,13 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
             state: '',
             zip: '',
           },
-        });
+        }));
+        if (typedName) {
+          setCustomerInputValue(typedName);
+        }
       } else {
-        // Customer selected from list
-        setFormData({
-          ...formData,
+        setFormData((prev) => ({
+          ...prev,
           customerId: newValue._id,
           customerName: newValue.name,
           customerPhone: newValue.primaryPhone || '',
@@ -124,13 +132,12 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
             state: '',
             zip: '',
           },
-        });
+        }));
         setCustomerInputValue(newValue.name);
       }
     } else if (reason === 'clear') {
-      // Customer cleared
-      setFormData({
-        ...formData,
+      setFormData((prev) => ({
+        ...prev,
         customerId: null,
         customerName: '',
         customerPhone: '',
@@ -141,18 +148,15 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
           state: '',
           zip: '',
         },
-      });
+      }));
       setCustomerInputValue('');
     }
   };
 
   const handleCustomerInputChange = (event, newInputValue, reason) => {
-    if (reason === 'reset') {
-      return;
-    }
+    // Do not skip `reset`: MUI may emit reset when clearing; ignoring it blocks empty input.
     setCustomerInputValue(newInputValue);
-    // Empty input must clear stored name — do not use `||` on inputValue or `if (newInputValue)` here
-    // or the last character cannot be deleted (empty string is falsy).
+
     if (newInputValue === '') {
       setFormData((prev) => ({
         ...prev,
@@ -161,14 +165,24 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
       }));
       return;
     }
-    // If user is typing and it doesn't match any customer, treat as new customer
-    if (!customers.some((c) => c.name.toLowerCase() === newInputValue.toLowerCase())) {
-      setFormData((prev) => ({
+
+    // Always mirror typed text into customerName. Previously we skipped when the text matched an
+    // existing customer exactly — that left stale customerName and broke backspace/delete.
+    // Keep customerId only while the typed string still matches the selected customer.
+    setFormData((prev) => {
+      const selected = prev.customerId
+        ? customers.find((c) => c._id === prev.customerId)
+        : null;
+      const stillMatchesSelection =
+        selected &&
+        selected.name.toLowerCase() === newInputValue.toLowerCase();
+
+      return {
         ...prev,
-        customerId: null,
         customerName: newInputValue,
-      }));
-    }
+        customerId: stillMatchesSelection ? prev.customerId : null,
+      };
+    });
   };
 
   const handleChange = (field, value) => {
@@ -357,7 +371,14 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
 
           <Autocomplete
             freeSolo
+            selectOnFocus={false}
+            autoHighlight={false}
             options={customers}
+            isOptionEqualToValue={(option, value) => {
+              if (option === value) return true;
+              if (!option || !value) return false;
+              return String(option._id) === String(value._id);
+            }}
             getOptionLabel={(option) => {
               if (typeof option === 'string') return option;
               if (option._id === 'new') return option.name;
