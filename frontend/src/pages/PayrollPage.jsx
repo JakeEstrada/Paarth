@@ -398,6 +398,17 @@ function PayrollPage() {
             left: 0;
             top: 0;
             width: 100%;
+            color: #000000 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .print-summary .MuiTypography-root,
+          .print-summary .MuiTableCell-root,
+          .print-summary strong {
+            color: #000000 !important;
+          }
+          .print-summary .MuiDivider-root {
+            border-color: #000000 !important;
           }
           /* Hide sidebar and navigation */
           nav, aside, header, footer,
@@ -415,6 +426,12 @@ function PayrollPage() {
           className="print-summary"
           sx={{
             display: capturingPdf ? 'block' : 'none',
+            color: '#000',
+            backgroundColor: '#fff',
+            '& .MuiTypography-root': { color: '#000' },
+            '& .MuiTableCell-root': { color: '#000' },
+            '& .MuiTableRow-root': { color: '#000' },
+            '& .MuiDivider-root': { borderColor: '#000', opacity: 1 },
             '@media print': { display: 'block', p: 2 },
             ...(capturingPdf && {
               position: 'fixed',
@@ -474,7 +491,7 @@ function PayrollPage() {
                 <strong>Weighted hours:</strong> {weightedHoursData.weighted.toFixed(2)} hrs
               </Typography>
               {weightedHoursData.overtime > 0 && (
-                <Typography component="span" variant="caption" sx={{ fontSize: '8pt', color: 'text.secondary' }}>
+                <Typography component="span" variant="caption" sx={{ fontSize: '8pt', color: '#000' }}>
                   ({weightedHoursData.regular.toFixed(2)} reg + {weightedHoursData.overtime.toFixed(2)} OT × 1.5)
                 </Typography>
               )}
@@ -503,7 +520,18 @@ function PayrollPage() {
                   </TableRow>
                 );
               })}
-              <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5', '& td': { fontWeight: 700, borderTop: `2px solid ${theme.palette.divider}`, fontSize: '9pt', py: 0.5 } }}>
+              <TableRow
+                sx={{
+                  backgroundColor: '#f0f0f0',
+                  '& td': {
+                    fontWeight: 700,
+                    borderTop: '2px solid #000',
+                    fontSize: '9pt',
+                    py: 0.5,
+                    color: '#000',
+                  },
+                }}
+              >
                 <TableCell sx={{ borderRight: '1px solid #000' }}>Total</TableCell>
                 <TableCell sx={{ borderRight: '1px solid #000' }}></TableCell>
                 <TableCell sx={{ borderRight: '1px solid #000' }}></TableCell>
@@ -579,18 +607,27 @@ function PayrollPage() {
           </Box>
         </Box>
 
-        <Box sx={{ mt: 1.5, p: 1.25, border: `2px solid ${theme.palette.divider}`, backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f9f9f9' }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, textAlign: 'center', fontSize: '11pt' }}>
+        <Box
+          sx={{
+            mt: 1.5,
+            p: 1.25,
+            border: '2px solid #000',
+            backgroundColor: '#fff',
+            color: '#000',
+            '& .MuiTypography-root': { color: '#000' },
+          }}
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, textAlign: 'center', fontSize: '11pt', color: '#000' }}>
             Paycheck Summary
           </Typography>
           <Box sx={{ mb: 1, display: 'flex', flexWrap: 'wrap', columnGap: 2, rowGap: 0.5, justifyContent: 'center' }}>
-            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt' }}><strong>Pay:</strong> ${payHours.toFixed(2)}</Typography>
-            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt' }}><strong>Travel:</strong> ${travelCost.toFixed(2)}</Typography>
-            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt' }}><strong>Receipts:</strong> ${totalReceipts.toFixed(2)}</Typography>
+            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt', color: '#000' }}><strong>Pay:</strong> ${payHours.toFixed(2)}</Typography>
+            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt', color: '#000' }}><strong>Travel:</strong> ${travelCost.toFixed(2)}</Typography>
+            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt', color: '#000' }}><strong>Receipts:</strong> ${totalReceipts.toFixed(2)}</Typography>
           </Box>
-          <Divider sx={{ my: 1, borderWidth: 1 }} />
+          <Divider sx={{ my: 1, borderWidth: 1, borderColor: '#000' }} />
           <Box sx={{ textAlign: 'center' }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '12pt' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '12pt', color: '#000' }}>
               Overall Total: ${overallTotal.toFixed(2)}
             </Typography>
           </Box>
