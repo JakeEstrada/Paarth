@@ -4,13 +4,15 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
+  Divider,
 } from '@mui/material';
 import {
   SwapHoriz as MoveIcon,
   AddTask as AddTaskIcon,
+  Archive as ArchiveIcon,
 } from '@mui/icons-material';
 
-function JobContextMenu({ anchorEl, open, onClose, onMoveStage, onAddTask, job }) {
+function JobContextMenu({ anchorEl, open, onClose, onMoveStage, onAddTask, onArchive, job }) {
   const handleMoveStage = () => {
     onMoveStage();
     onClose();
@@ -20,6 +22,14 @@ function JobContextMenu({ anchorEl, open, onClose, onMoveStage, onAddTask, job }
     onAddTask();
     onClose();
   };
+
+  const handleArchive = () => {
+    if (onArchive) onArchive();
+    onClose();
+  };
+
+  const canArchive =
+    job && onArchive && !job.isArchived && !job.isDeadEstimate;
 
   return (
     <Menu
@@ -47,6 +57,17 @@ function JobContextMenu({ anchorEl, open, onClose, onMoveStage, onAddTask, job }
         </ListItemIcon>
         <ListItemText>Add Change Order / Task</ListItemText>
       </MenuItem>
+      {canArchive && (
+        <>
+          <Divider />
+          <MenuItem onClick={handleArchive}>
+            <ListItemIcon>
+              <ArchiveIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Archive job</ListItemText>
+          </MenuItem>
+        </>
+      )}
     </Menu>
   );
 }

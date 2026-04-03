@@ -385,7 +385,7 @@ function PayrollPage() {
       <style>{`
         @media print {
           @page {
-            margin: 1in;
+            margin: 0.5in;
           }
           body * {
             visibility: hidden;
@@ -450,11 +450,37 @@ function PayrollPage() {
           </Box>
         </Box>
 
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5, borderBottom: '2px solid #000', pb: 0.5, fontSize: '12pt' }}>
-            Work Hours
-          </Typography>
-          <Table size="small" sx={{ mb: 2, border: '1px solid #000', borderCollapse: 'collapse', '& td, & th': { borderCollapse: 'collapse' } }}>
+        <Box sx={{ mb: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'baseline',
+              justifyContent: 'space-between',
+              gap: 1,
+              borderBottom: '2px solid #000',
+              pb: 0.5,
+              mb: 1,
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '12pt', m: 0 }}>
+              Work Hours
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 1.5, columnGap: 2 }}>
+              <Typography component="span" variant="body2" sx={{ fontSize: '9pt', whiteSpace: 'nowrap' }}>
+                <strong>Total hours:</strong> {totalHours.toFixed(2)} hrs
+              </Typography>
+              <Typography component="span" variant="body2" sx={{ fontSize: '9pt', whiteSpace: 'nowrap' }}>
+                <strong>Weighted hours:</strong> {weightedHoursData.weighted.toFixed(2)} hrs
+              </Typography>
+              {weightedHoursData.overtime > 0 && (
+                <Typography component="span" variant="caption" sx={{ fontSize: '8pt', color: 'text.secondary' }}>
+                  ({weightedHoursData.regular.toFixed(2)} reg + {weightedHoursData.overtime.toFixed(2)} OT × 1.5)
+                </Typography>
+              )}
+            </Box>
+          </Box>
+          <Table size="small" sx={{ mb: 1, border: '1px solid #000', borderCollapse: 'collapse', '& td, & th': { borderCollapse: 'collapse' } }}>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 700, borderRight: '1px solid #000', borderBottom: '1px solid #000', fontSize: '9pt', py: 0.5 }}>Day</TableCell>
@@ -486,64 +512,85 @@ function PayrollPage() {
               </TableRow>
             </TableBody>
           </Table>
-          <Box sx={{ mt: 1.5 }}>
-            <Typography variant="body1" sx={{ fontSize: '9pt', mb: 0.5 }}><strong>Total Hours:</strong> {totalHours.toFixed(2)} hrs</Typography>
-            <Typography variant="body1" sx={{ fontSize: '9pt', mb: 0.5 }}><strong>Weighted Hours:</strong> {weightedHoursData.weighted.toFixed(2)} hrs</Typography>
-            {weightedHoursData.overtime > 0 && (
-              <Typography variant="body2" sx={{ ml: 2, fontSize: '8pt' }}>
-                ({weightedHoursData.regular.toFixed(2)} regular + {weightedHoursData.overtime.toFixed(2)} overtime × 1.5)
+        </Box>
+
+        {/* Miles + Receipts side-by-side to save vertical space on print/PDF */}
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: 2,
+            mb: 2,
+            alignItems: 'flex-start',
+            '@media print': { gap: 1.5 },
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, fontSize: '11pt' }}>
+              Miles
+            </Typography>
+            <Box sx={{ borderBottom: '1px solid #000', mb: 1 }} />
+            {totalMiles > 0 ? (
+              <>
+                {travelMiles
+                  .filter((day) => parseFloat(day.miles) > 0)
+                  .map((day) => (
+                    <Typography key={day.day} variant="body2" sx={{ fontSize: '8.5pt', mb: 0.25, lineHeight: 1.35 }}>
+                      {day.day}: {day.miles} mi
+                    </Typography>
+                  ))}
+                <Typography variant="body2" sx={{ fontSize: '9pt', mt: 0.75 }}>
+                  <strong>Travel cost:</strong> ${travelCost.toFixed(2)}
+                </Typography>
+              </>
+            ) : (
+              <Typography variant="body2" sx={{ fontSize: '8.5pt' }}>
+                None (0 mi)
+              </Typography>
+            )}
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, fontSize: '11pt' }}>
+              Receipts
+            </Typography>
+            <Box sx={{ borderBottom: '1px solid #000', mb: 1 }} />
+            {receipts.length > 0 ? (
+              <>
+                {receipts.map((receipt, idx) => (
+                  <Typography
+                    key={idx}
+                    variant="body2"
+                    sx={{ fontSize: '8.5pt', mb: 0.25, lineHeight: 1.35 }}
+                  >
+                    {(receipt.description || 'Receipt').slice(0, 48)}
+                    {(receipt.description || '').length > 48 ? '…' : ''}: $
+                    {(parseFloat(receipt.amount) || 0).toFixed(2)}
+                  </Typography>
+                ))}
+                <Typography variant="body2" sx={{ fontSize: '9pt', mt: 0.75 }}>
+                  <strong>Total:</strong> ${totalReceipts.toFixed(2)}
+                </Typography>
+              </>
+            ) : (
+              <Typography variant="body2" sx={{ fontSize: '8.5pt' }}>
+                None — $0.00
               </Typography>
             )}
           </Box>
         </Box>
 
-        {/* Always show Travel Miles section */}
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, fontSize: '12pt' }}>
-            Miles
-          </Typography>
-          <Box sx={{ borderBottom: '1px solid #000', mb: 1.5 }}></Box>
-          {totalMiles > 0 ? (
-            <>
-              {travelMiles
-                .filter(day => parseFloat(day.miles) > 0)
-                .map((day) => (
-                  <Typography key={day.day} variant="body1" sx={{ fontSize: '9pt', mb: 0.3 }}>
-                    {day.day}: {day.miles} miles
-                  </Typography>
-                ))}
-              <Box sx={{ mt: 1.5 }}>
-                <Typography variant="body1" sx={{ fontSize: '9pt' }}><strong>Travel Cost:</strong> ${travelCost.toFixed(2)}</Typography>
-              </Box>
-            </>
-          ) : (
-            <Typography variant="body1" sx={{ fontSize: '9pt' }}>0</Typography>
-          )}
-        </Box>
-
-        {/* Always show Receipts section */}
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, fontSize: '12pt' }}>
-            Receipts
-          </Typography>
-          <Box sx={{ borderBottom: '1px solid #000', mb: 1.5 }}></Box>
-          <Typography variant="body1" sx={{ fontSize: '9pt' }}>
-            ${totalReceipts.toFixed(2)}
-          </Typography>
-        </Box>
-
-        <Box sx={{ mt: 3, p: 2, border: `2px solid ${theme.palette.divider}`, backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f9f9f9' }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, textAlign: 'center', fontSize: '12pt' }}>
+        <Box sx={{ mt: 1.5, p: 1.25, border: `2px solid ${theme.palette.divider}`, backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f9f9f9' }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, textAlign: 'center', fontSize: '11pt' }}>
             Paycheck Summary
           </Typography>
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body1" sx={{ fontSize: '9pt', mb: 1 }}><strong>Pay Hours:</strong> ${payHours.toFixed(2)}</Typography>
-            <Typography variant="body1" sx={{ fontSize: '9pt', mb: 1 }}><strong>Travel Cost:</strong> ${travelCost.toFixed(2)}</Typography>
-            <Typography variant="body1" sx={{ fontSize: '9pt', mb: 1 }}><strong>Receipts:</strong> ${totalReceipts.toFixed(2)}</Typography>
+          <Box sx={{ mb: 1, display: 'flex', flexWrap: 'wrap', columnGap: 2, rowGap: 0.5, justifyContent: 'center' }}>
+            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt' }}><strong>Pay:</strong> ${payHours.toFixed(2)}</Typography>
+            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt' }}><strong>Travel:</strong> ${travelCost.toFixed(2)}</Typography>
+            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt' }}><strong>Receipts:</strong> ${totalReceipts.toFixed(2)}</Typography>
           </Box>
-          <Divider sx={{ my: 2, borderWidth: 2 }} />
-          <Box sx={{ textAlign: 'center', mt: 2 }}>
-            <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '14pt' }}>
+          <Divider sx={{ my: 1, borderWidth: 1 }} />
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '12pt' }}>
               Overall Total: ${overallTotal.toFixed(2)}
             </Typography>
           </Box>

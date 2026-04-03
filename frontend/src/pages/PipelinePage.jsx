@@ -769,6 +769,21 @@ function PipelinePage({ tvMode = false }) {
               setAddJobTaskOpen(true);
             }
           }}
+          onArchive={async () => {
+            const jobId = contextMenuJob?._id;
+            if (!jobId) return;
+            try {
+              await axios.post(`${API_URL}/jobs/${jobId}/archive`);
+              toast.success('Job archived successfully');
+              if (selectedJobId === jobId) {
+                setSelectedJobId(null);
+              }
+              fetchJobs();
+            } catch (error) {
+              console.error('Error archiving job:', error);
+              toast.error(error.response?.data?.error || 'Failed to archive job');
+            }
+          }}
           job={contextMenuJob}
         />
 
