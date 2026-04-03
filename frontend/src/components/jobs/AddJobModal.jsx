@@ -146,15 +146,28 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
     }
   };
 
-  const handleCustomerInputChange = (event, newInputValue) => {
+  const handleCustomerInputChange = (event, newInputValue, reason) => {
+    if (reason === 'reset') {
+      return;
+    }
     setCustomerInputValue(newInputValue);
+    // Empty input must clear stored name — do not use `||` on inputValue or `if (newInputValue)` here
+    // or the last character cannot be deleted (empty string is falsy).
+    if (newInputValue === '') {
+      setFormData((prev) => ({
+        ...prev,
+        customerId: null,
+        customerName: '',
+      }));
+      return;
+    }
     // If user is typing and it doesn't match any customer, treat as new customer
-    if (newInputValue && !customers.some(c => c.name.toLowerCase() === newInputValue.toLowerCase())) {
-      setFormData({
-        ...formData,
+    if (!customers.some((c) => c.name.toLowerCase() === newInputValue.toLowerCase())) {
+      setFormData((prev) => ({
+        ...prev,
         customerId: null,
         customerName: newInputValue,
-      });
+      }));
     }
   };
 
@@ -351,7 +364,7 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
               return option.name || '';
             }}
             value={formData.customerId ? customers.find(c => c._id === formData.customerId) || null : null}
-            inputValue={customerInputValue || formData.customerName}
+            inputValue={customerInputValue}
             onInputChange={handleCustomerInputChange}
             onChange={handleCustomerChange}
             loading={loadingCustomers}
