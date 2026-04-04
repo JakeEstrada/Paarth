@@ -813,39 +813,14 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                         key={file._id}
                         sx={{
                           p: 1.5,
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: 2,
                           backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 152, 0, 0.14)' : 'rgba(255, 152, 0, 0.05)',
                           borderLeft: '3px solid #FF9800',
                         }}
                       >
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
                         {isImage ? (
-                          <Box
-                            sx={{
-                              width: 72,
-                              height: 72,
-                              borderRadius: 1,
-                              overflow: 'hidden',
-                              border: '1px solid',
-                              borderColor: 'divider',
-                              flexShrink: 0,
-                              bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : '#fff',
-                              cursor: 'pointer',
-                            }}
-                            onClick={() => openPictureViewer(file._id)}
-                            title="View image"
-                          >
-                            <img
-                              src={`${API_URL}/files/${file._id}`}
-                              alt={file.originalName || 'Project file'}
-                              style={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'cover',
-                                display: 'block',
-                              }}
-                            />
+                          <Box sx={{ color: 'primary.main', mt: 0.5, flexShrink: 0 }}>
+                            <ImageIcon sx={{ fontSize: 28 }} />
                           </Box>
                         ) : isPDF ? (
                           <Box
@@ -905,6 +880,32 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                       >
                         <DeleteIcon fontSize="small" />
                       </IconButton>
+                        </Box>
+                        {isImage && (
+                          <Box
+                            sx={{
+                              mt: 2,
+                              borderRadius: 1,
+                              overflow: 'hidden',
+                              border: '1px solid',
+                              borderColor: 'divider',
+                            }}
+                          >
+                            <img
+                              src={`${API_URL}/files/${file._id}`}
+                              alt={file.originalName || 'Project file'}
+                              style={{
+                                width: '100%',
+                                height: 'auto',
+                                maxHeight: '200px',
+                                objectFit: 'cover',
+                                cursor: 'pointer',
+                                display: 'block',
+                              }}
+                              onClick={() => openPictureViewer(file._id)}
+                            />
+                          </Box>
+                        )}
                     </Paper>
                     );
                   })}
