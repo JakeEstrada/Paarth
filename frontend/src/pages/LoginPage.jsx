@@ -19,8 +19,6 @@ import {
   Person as PersonIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import BrandLogo from '../components/common/BrandLogo';
-import { DEFAULT_SCWW_LOGIN_LOGO, withTenantLogoCacheBust } from '../utils/tenantBranding';
 import toast from 'react-hot-toast';
 
 function LoginPage() {
@@ -29,7 +27,7 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login, tenantForBranding } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -70,16 +68,18 @@ function LoginPage() {
           }}
         >
           <Box sx={{ mb: 4, textAlign: 'center' }}>
-            <BrandLogo
-              tenant={withTenantLogoCacheBust(tenantForBranding)}
-              fallbackSrc={DEFAULT_SCWW_LOGIN_LOGO}
-              alt="Organization logo"
+            <Box
+              component="img"
+              src="/logo.png"
+              alt="San Clemente Woodworking"
               sx={{
-                height: 60,
-                width: 120,
+                height: 112,
+                width: 112,
                 maxWidth: '100%',
                 objectFit: 'contain',
                 mb: 2,
+                mx: 'auto',
+                display: 'block',
               }}
             />
             <Typography variant="h5" sx={{ fontWeight: 500, mb: 0.5 }}>

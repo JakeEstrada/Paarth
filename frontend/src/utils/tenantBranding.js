@@ -21,7 +21,7 @@ export function tenantBrandingLogoUrl(tenantId, cacheBust, mode = 'light') {
 export const DEFAULT_APP_LOGO = '/logo.png';
 
 /** Default logo on the main login page until a tenant uploads their own (via Account Settings). */
-export const DEFAULT_SCWW_LOGIN_LOGO = '/scww-logo.svg';
+export const DEFAULT_SCWW_LOGIN_LOGO = '/logo.png';
 
 /**
  * Merge optional cache-bust for branding URL (e.g. after logo upload).
