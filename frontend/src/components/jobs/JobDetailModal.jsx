@@ -922,8 +922,7 @@ function JobDetailModal({
             ) : (
               <>
             <Grid container spacing={3} sx={{ mb: 3 }}>
-              {/* Estimate Info */}
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12}>
                 <Paper sx={{ p: 2 }}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
                     Estimate Amount
@@ -934,31 +933,6 @@ function JobDetailModal({
                   {job.estimate?.sentAt && (
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
                       Sent: {formatDate(job.estimate.sentAt)}
-                    </Typography>
-                  )}
-                </Paper>
-              </Grid>
-
-              {/* Contract Info */}
-              <Grid item xs={12} sm={6}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                    Contract Signed
-                  </Typography>
-                  {job.contract?.signedAt ? (
-                    <>
-                      <Typography variant="body1">
-                        {formatDate(job.contract.signedAt)}
-                      </Typography>
-                      {job.contract.depositRequired > 0 && (
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                          Deposit: {formatCurrency(job.contract.depositRequired)}
-                        </Typography>
-                      )}
-                    </>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      Not signed yet
                     </Typography>
                   )}
                 </Paper>
