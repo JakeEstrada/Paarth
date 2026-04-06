@@ -169,6 +169,7 @@ app.use('/pipeline-layouts', pipelineLayoutRoutes);
 app.use('/twilio', twilioRoutes);
 // Some deployments expose the API under `/api` without stripping the prefix from the path.
 app.use('/api/pipeline-layouts', pipelineLayoutRoutes);
+app.use('/api/twilio', twilioRoutes);
 
 // Test route
 app.get('/', (req, res) => {
