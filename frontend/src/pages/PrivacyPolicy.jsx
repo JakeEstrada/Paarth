@@ -95,7 +95,7 @@ export default function PrivacyPolicy() {
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
             You can opt out at any time by replying STOP. For help, reply HELP or contact us at{' '}
-            <a href="mailto:contact@sanclementewoodworking.com">contact@sanclementewoodworking.com</a>.
+            <a href="mailto:Office@sanclementewoodworking.com">Office@sanclementewoodworking.com</a>.
           </Typography>
 
           <Typography variant="body2" color="text.secondary" sx={{ mt: 4 }}>
