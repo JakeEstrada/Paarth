@@ -700,7 +700,13 @@ function JobDetailModal({
                             borderRadius: 1, 
                             bgcolor: 'action.hover',
                             borderLeft: '3px solid',
-                            borderColor: note.isStageChange ? 'primary.main' : (note.isAppointment ? 'warning.main' : 'divider')
+                            borderColor: note.important
+                              ? 'error.main'
+                              : note.isStageChange
+                                ? 'primary.main'
+                                : note.isAppointment
+                                  ? 'warning.main'
+                                  : 'divider'
                           }}
                         >
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
@@ -716,9 +722,15 @@ function JobDetailModal({
                           <Typography 
                             variant="body2"
                             sx={{
-                              color: note.isStageChange ? 'primary.main' : (note.isAppointment ? 'warning.main' : 'text.primary'),
-                              fontStyle: (note.isStageChange || note.isAppointment) ? 'italic' : 'normal',
-                              fontWeight: note.isStageChange ? 500 : 'normal'
+                              color: note.important
+                                ? 'error.main'
+                                : note.isStageChange
+                                  ? 'primary.main'
+                                  : note.isAppointment
+                                    ? 'warning.main'
+                                    : 'text.primary',
+                              fontStyle: (note.isStageChange || note.isAppointment) && !note.important ? 'italic' : 'normal',
+                              fontWeight: note.important ? 600 : note.isStageChange ? 500 : 'normal'
                             }}
                           >
                             {renderTextWithLinks(note.content)}
@@ -1169,7 +1181,16 @@ function JobDetailModal({
                     return dateB - dateA; // Descending order (newest first)
                   })
                   .map((note, index) => (
-                    <Paper key={index} sx={{ p: 2 }}>
+                    <Paper
+                      key={index}
+                      sx={{
+                        p: 2,
+                        ...(note.important && {
+                          borderLeft: '4px solid',
+                          borderColor: 'error.main',
+                        }),
+                      }}
+                    >
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                         <Typography variant="caption" color="text.secondary">
                           <Box component="span" sx={{ fontWeight: 700 }}>
@@ -1181,9 +1202,15 @@ function JobDetailModal({
                       <Typography 
                         variant="body2"
                         sx={{
-                          color: note.isStageChange ? '#1976D2' : (note.isAppointment ? '#F57C00' : 'inherit'),
-                          fontStyle: (note.isStageChange || note.isAppointment) ? 'italic' : 'normal',
-                          fontWeight: note.isStageChange ? 500 : 'normal'
+                          color: note.important
+                            ? 'error.main'
+                            : note.isStageChange
+                              ? '#1976D2'
+                              : note.isAppointment
+                                ? '#F57C00'
+                                : 'inherit',
+                          fontStyle: (note.isStageChange || note.isAppointment) && !note.important ? 'italic' : 'normal',
+                          fontWeight: note.important ? 600 : note.isStageChange ? 500 : 'normal'
                         }}
                       >
                         {renderTextWithLinks(note.content)}

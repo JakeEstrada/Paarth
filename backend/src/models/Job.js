@@ -178,6 +178,10 @@ const jobSchema = new mongoose.Schema({
     isAppointment: {
       type: Boolean,
       default: false
+    },
+    important: {
+      type: Boolean,
+      default: false
     }
   }],
   

@@ -8,6 +8,8 @@ import {
   TextField,
   Box,
   Typography,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -18,12 +20,14 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function AddNoteModal({ open, onClose, onSuccess, job }) {
   const { user } = useAuth();
   const [noteContent, setNoteContent] = useState('');
+  const [important, setImportant] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Reset form when modal opens
   useEffect(() => {
     if (open && job) {
       setNoteContent('');
+      setImportant(false);
     }
   }, [open, job]);
 
@@ -53,6 +57,7 @@ function AddNoteModal({ open, onClose, onSuccess, job }) {
         {
           content: noteContent.trim(),
           createdAt: new Date(),
+          important,
         }
       ];
 
@@ -68,7 +73,8 @@ function AddNoteModal({ open, onClose, onSuccess, job }) {
       
       // Reset form
       setNoteContent('');
-      
+      setImportant(false);
+
       onSuccess?.();
       onClose();
     } catch (error) {
@@ -82,6 +88,7 @@ function AddNoteModal({ open, onClose, onSuccess, job }) {
   const handleClose = () => {
     if (!loading) {
       setNoteContent('');
+      setImportant(false);
       onClose();
     }
   };
@@ -108,6 +115,20 @@ function AddNoteModal({ open, onClose, onSuccess, job }) {
               rows={4}
               autoFocus
               placeholder="Enter your note here..."
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={important}
+                  onChange={(e) => setImportant(e.target.checked)}
+                  color="error"
+                />
+              }
+              label={
+                <Typography variant="body2" color="text.secondary">
+                  Mark as important (shown in red on the job timeline)
+                </Typography>
+              }
             />
           </Box>
         </DialogContent>

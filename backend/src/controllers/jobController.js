@@ -216,7 +216,9 @@ async function updateJob(req, res) {
               createdBy: createdBy,
               createdByName: createdByName,
               createdAt: note.createdAt || new Date(),
-              isStageChange: note.isStageChange || false
+              isStageChange: note.isStageChange || false,
+              isAppointment: note.isAppointment || false,
+              important: Boolean(note.important),
             };
           }
         } else {
