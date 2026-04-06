@@ -46,6 +46,7 @@ import {
   Description as DescriptionIcon,
   Lock as LockIcon,
   LockOpen as LockOpenIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -77,6 +78,10 @@ function CustomersPage() {
   const [customerJobs, setCustomerJobs] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [sharePhone, setSharePhone] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [sendingShare, setSendingShare] = useState(false);
   const [sensitiveUnlocked, setSensitiveUnlocked] = useState(!isShopViewRole);
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -291,6 +296,62 @@ function CustomersPage() {
     setIsEditingCustomer(false);
     setEditCustomerForm({});
     setSelectedJobId(null);
+  };
+
+  const buildShareMessage = (customer) => {
+    if (!customer) return '';
+    const phones = getAllPhones(customer).map((p) => p.value).filter(Boolean);
+    const emails = getAllEmails(customer).map((e) => e.value).filter(Boolean);
+    const addr = formatAddress(customer.address);
+    const lines = [
+      `Customer: ${customer.name || 'Unknown'}`,
+      phones.length ? `Phone: ${phones.join(', ')}` : null,
+      emails.length ? `Email: ${emails.join(', ')}` : null,
+      addr && addr !== '-' ? `Address: ${addr}` : null,
+    ].filter(Boolean);
+    return lines.join('\n');
+  };
+
+  const handleOpenShareDialog = () => {
+    if (!selectedCustomer) return;
+    setSharePhone(selectedCustomer.primaryPhone || '');
+    setShareMessage(buildShareMessage(selectedCustomer));
+    setShareDialogOpen(true);
+  };
+
+  const handleCloseShareDialog = () => {
+    setShareDialogOpen(false);
+    setSharePhone('');
+    setShareMessage('');
+    setSendingShare(false);
+  };
+
+  const handleSendShareSms = async () => {
+    const to = sharePhone.trim();
+    const message = shareMessage.trim();
+    if (!to) {
+      toast.error('Enter a phone number to text');
+      return;
+    }
+    if (!message) {
+      toast.error('Message cannot be empty');
+      return;
+    }
+    try {
+      setSendingShare(true);
+      await axios.post(`${API_URL}/twilio/send-sms`, {
+        to,
+        message,
+        customerId: selectedCustomer?._id,
+      });
+      toast.success('Customer info sent by text');
+      handleCloseShareDialog();
+    } catch (error) {
+      console.error('Error sending customer share text:', error);
+      toast.error(error.response?.data?.error || 'Failed to send text');
+    } finally {
+      setSendingShare(false);
+    }
   };
 
   // Start editing customer
@@ -956,9 +1017,18 @@ function CustomersPage() {
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{selectedCustomer?.name || 'Customer Details'}</span>
           {!isEditingCustomer && (
-            <IconButton onClick={handleStartEditCustomer} color="primary" size="small">
-              <EditIcon />
-            </IconButton>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Tooltip title="Share via text">
+                <IconButton onClick={handleOpenShareDialog} color="primary" size="small">
+                  <ShareIcon />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Edit customer">
+                <IconButton onClick={handleStartEditCustomer} color="primary" size="small">
+                  <EditIcon />
+                </IconButton>
+              </Tooltip>
+            </Box>
           )}
         </DialogTitle>
         <DialogContent>
@@ -1523,6 +1593,42 @@ function CustomersPage() {
           <Button onClick={() => setPinDialogOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleSensitiveUnlock}>
             Unlock
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={shareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Share Customer by Text</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Enter the phone number and message to send.
+          </DialogContentText>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Send to phone number"
+            placeholder="+19495551234"
+            value={sharePhone}
+            onChange={(e) => setSharePhone(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={4}
+            label="Message"
+            value={shareMessage}
+            onChange={(e) => setShareMessage(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseShareDialog} disabled={sendingShare}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSendShareSms}
+            disabled={sendingShare}
+            startIcon={sendingShare ? <CircularProgress size={16} /> : <ShareIcon />}
+          >
+            {sendingShare ? 'Sending...' : 'Send Text'}
           </Button>
         </DialogActions>
       </Dialog>
