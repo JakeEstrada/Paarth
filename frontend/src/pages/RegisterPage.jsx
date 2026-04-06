@@ -11,6 +11,8 @@ import {
   InputAdornment,
   IconButton,
   Alert,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Visibility,
@@ -30,8 +32,10 @@ function RegisterPage() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: '',
+    smsConsent: false,
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -184,6 +188,17 @@ function RegisterPage() {
 
               <TextField
                 fullWidth
+                label="Phone Number (optional)"
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                margin="normal"
+                placeholder="+19495551234"
+                sx={{ mb: 2 }}
+              />
+
+              <TextField
+                fullWidth
                 label="Password"
                 type={showPassword ? 'text' : 'password'}
                 value={formData.password}
@@ -233,6 +248,24 @@ function RegisterPage() {
                   Your account will need admin approval before you can log in.
                 </Typography>
               </Alert>
+
+              <FormControlLabel
+                sx={{ mb: 2, alignItems: 'flex-start' }}
+                control={
+                  <Checkbox
+                    checked={formData.smsConsent}
+                    onChange={(e) => setFormData({ ...formData, smsConsent: e.target.checked })}
+                  />
+                }
+                label={
+                  <Typography variant="body2" color="text.secondary">
+                    I agree to receive SMS updates from San Clemente Woodworking regarding my project,
+                    including scheduling updates, reminders, and customer support communications.
+                    Message frequency may vary. Message and data rates may apply. Reply STOP to opt out
+                    and HELP for help.
+                  </Typography>
+                }
+              />
 
               <Button
                 type="submit"

@@ -79,6 +79,22 @@ export default function TermsAndConditions() {
           </Typography>
 
           <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>
+            SMS Communications
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
+            By providing your phone number, you consent to receive SMS messages from San Clemente
+            Woodworking related to your project, including appointment reminders, scheduling updates,
+            project notifications, and customer support communications.
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
+            Message frequency may vary. Message and data rates may apply.
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
+            You can opt out at any time by replying STOP. For help, reply HELP or contact us at{' '}
+            <a href="mailto:contact@sanclementewoodworking.com">contact@sanclementewoodworking.com</a>.
+          </Typography>
+
+          <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>
             Limitation
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
