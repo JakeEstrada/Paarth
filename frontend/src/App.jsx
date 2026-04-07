@@ -27,6 +27,7 @@ import DocumentsPage from './pages/DocumentsPage';
 import PdfViewerPage from './pages/PdfViewerPage';
 import PictureViewerPage from './pages/PictureViewerPage';
 import FinanceHubPage from './pages/FinanceHubPage';
+import TakeoffSheetPage from './pages/TakeoffSheetPage';
 
 function App() {
   const { user, loading } = useAuth();
@@ -106,6 +107,7 @@ function App() {
                   <Route path="/payroll" element={<PayrollPage />} />
                   <Route path="/bills" element={<BillsPage />} />
                   <Route path="/finance" element={<FinanceHubPage />} />
+                  <Route path="/takeoff-sheet" element={<TakeoffSheetPage />} />
                   <Route path="/users" element={<ProtectedRoute requireAdmin><UsersPage /></ProtectedRoute>} />
                   <Route path="/account-settings" element={<AccountSettingsPage />} />
                 </Routes>

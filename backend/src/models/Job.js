@@ -50,6 +50,7 @@ const jobSchema = new mongoose.Schema({
   
   // Estimate details
   estimate: {
+    number: String,
     amount: Number,
     sentAt: Date,
     lineItems: [{

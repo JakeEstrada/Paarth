@@ -28,6 +28,7 @@ import {
   Description as DocumentsIcon,
   ViewWeek as PipelineViewKioskIcon,
   AccountBalanceWallet as FinanceHubIcon,
+  TableRows as TakeoffIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
@@ -44,6 +45,7 @@ const menuItems = [
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
   { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
   { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance' },
+  { text: 'Take Off Sheet', icon: <TakeoffIcon />, path: '/takeoff-sheet' },
 ];
 
 const archiveItems = [
