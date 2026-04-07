@@ -67,15 +67,16 @@ function wrapMultilineText(text, maxChars = 28) {
     .filter((line, idx, arr) => line !== '' || idx < arr.length - 1)
     .join('\n');
 }
-function enforceStreetWithTrailingNewline(raw) {
+function enforceStreetCityLines(raw) {
   const text = String(raw || '').replace(/\r/g, '').trim();
   if (!text) return '';
-  const firstLine = text
+  const lines = text
     .split('\n')
     .map((l) => l.trim())
-    .filter(Boolean)[0] || '';
-  // Force trailing newline so print/PDF keeps a hard break after street.
-  return firstLine ? `${firstLine}\n` : '';
+    .filter(Boolean);
+  const streetLine = lines[0] || '';
+  const cityLine = lines[1] || '';
+  return [streetLine, cityLine].filter(Boolean).join('\n');
 }
 
 function TakeoffSheetPage() {
@@ -85,6 +86,7 @@ function TakeoffSheetPage() {
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [soldToInput, setSoldToInput] = useState('');
   const [pendingFocus, setPendingFocus] = useState(null);
+  const [isExportMode, setIsExportMode] = useState(false);
   const [form, setForm] = useState({
     customerId: null,
     soldTo: '',
@@ -129,7 +131,7 @@ function TakeoffSheetPage() {
   const normalizeNameAddressWrapping = () => {
     setForm((prev) => ({
       ...prev,
-      nameAddress: enforceStreetWithTrailingNewline(wrapMultilineText(prev.nameAddress, 30)),
+      nameAddress: enforceStreetCityLines(wrapMultilineText(prev.nameAddress, 30)),
     }));
   };
 
@@ -152,12 +154,13 @@ function TakeoffSheetPage() {
     const streetLine = wrapWords(newValue.address?.street || '', 30);
     const normalizedName = String(newValue.name || '').trim();
     const addressLine = streetLine || '';
+    const cityLine = String(newValue.address?.city || '').trim();
     setForm((prev) => ({
       ...prev,
       customerId: newValue._id,
       soldTo: normalizedName,
       phoneNumber: newValue.primaryPhone || prev.phoneNumber,
-      nameAddress: addressLine ? `${addressLine}\n` : '',
+      nameAddress: [addressLine, cityLine].filter(Boolean).join('\n'),
     }));
     setSoldToInput(normalizedName);
   };
@@ -258,7 +261,8 @@ function TakeoffSheetPage() {
     }
     try {
       normalizeNameAddressWrapping();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      setIsExportMode(true);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const canvas = await html2canvas(sheetRef.current, {
         backgroundColor: '#ffffff',
         scale: 2,
@@ -272,6 +276,8 @@ function TakeoffSheetPage() {
     } catch (error) {
       console.error('Error generating takeoff PDF:', error);
       toast.error('Failed to generate PDF');
+    } finally {
+      setIsExportMode(false);
     }
   };
 
@@ -282,7 +288,8 @@ function TakeoffSheetPage() {
     }
     try {
       normalizeNameAddressWrapping();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      setIsExportMode(true);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const canvas = await html2canvas(sheetRef.current, {
         backgroundColor: '#ffffff',
         scale: 2,
@@ -309,6 +316,8 @@ function TakeoffSheetPage() {
     } catch (error) {
       console.error('Error creating printable PDF:', error);
       toast.error('Failed to open print view');
+    } finally {
+      setIsExportMode(false);
     }
   };
 
@@ -443,25 +452,41 @@ function TakeoffSheetPage() {
                     <Box sx={{ bgcolor: '#c2dff6', borderBottom: '1px solid #000', textAlign: 'center', py: 0.4, fontSize: 19 }}>
                       NAME & ADDRESS
                     </Box>
-                    <TextField
-                      variant="standard"
-                      value={form.nameAddress}
-                      onChange={(e) => setField('nameAddress', e.target.value)}
-                      onBlur={normalizeNameAddressWrapping}
-                      multiline
-                      minRows={4}
-                      InputProps={{
-                        disableUnderline: true,
-                        sx: { fontSize: 15, px: 1, py: 0.7 },
-                      }}
-                      inputProps={{
-                        style: {
-                          whiteSpace: 'pre-wrap',
-                          overflowWrap: 'break-word',
-                        },
-                      }}
-                      fullWidth
-                    />
+                    {isExportMode ? (
+                      <Box
+                        sx={{
+                          px: 1,
+                          py: 0.7,
+                          minHeight: 104,
+                          fontSize: 15,
+                          whiteSpace: 'pre-line',
+                          lineHeight: 1.35,
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {form.nameAddress}
+                      </Box>
+                    ) : (
+                      <TextField
+                        variant="standard"
+                        value={form.nameAddress}
+                        onChange={(e) => setField('nameAddress', e.target.value)}
+                        onBlur={normalizeNameAddressWrapping}
+                        multiline
+                        minRows={4}
+                        InputProps={{
+                          disableUnderline: true,
+                          sx: { fontSize: 15, px: 1, py: 0.7 },
+                        }}
+                        inputProps={{
+                          style: {
+                            whiteSpace: 'pre-wrap',
+                            overflowWrap: 'break-word',
+                          },
+                        }}
+                        fullWidth
+                      />
+                    )}
                   </Box>
                   <Box sx={{ borderRight: '1px solid #000' }}>
                     <Box sx={{ bgcolor: '#c2dff6', borderBottom: '1px solid #000', textAlign: 'center', py: 0.4, fontSize: 19 }}>
@@ -506,7 +531,7 @@ function TakeoffSheetPage() {
                     sx={{
                       borderRight: '1px solid #000',
                       textAlign: 'center',
-                      py: 0.68,
+                      py: 0.95,
                       fontSize: 15,
                       lineHeight: 1,
                     }}

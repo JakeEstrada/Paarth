@@ -450,24 +450,27 @@ function FinanceHubPage() {
                       </Typography>
                       <Typography sx={{ fontSize: 14, mt: 0.8 }}>1030 Calle Sombra, Unit F</Typography>
                       <Typography sx={{ fontSize: 14 }}>San Clemente, CA 92673</Typography>
-                      <Box sx={{ display: 'flex', gap: 4, mt: 2 }}>
-                        <Typography sx={{ fontSize: 13 }}>Phone #</Typography>
-                        <TextField
-                          variant="standard"
-                          value={estimateForm.customerPhone}
-                          onChange={(e) => setEstimateField('customerPhone', e.target.value)}
-                          placeholder="951 491-1137"
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 13, minWidth: 130 } }}
-                        />
+                      <Box sx={{ mt: 2, ml: -9 }}>
+                        <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
+                          <Typography sx={{ fontSize: 13 }}>Phone #</Typography>
+                          <TextField
+                            variant="standard"
+                            value={estimateForm.customerPhone}
+                            onChange={(e) => setEstimateField('customerPhone', e.target.value)}
+                            placeholder="951 491-1137"
+                            InputProps={{ disableUnderline: true, sx: { fontSize: 13, minWidth: 150 } }}
+                          />
+                        </Box>
+                        <Typography sx={{ fontSize: 13, ml: 0 }}>www.sanclementewoodworking.com</Typography>
                         <TextField
                           variant="standard"
                           value={estimateForm.customerEmail}
                           onChange={(e) => setEstimateField('customerEmail', e.target.value)}
                           placeholder="office@sanclementewoodworking.com"
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 13, minWidth: 200 } }}
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 13, minWidth: 260 } }}
+                          sx={{ ml: 0 }}
                         />
                       </Box>
-                      <Typography sx={{ fontSize: 13 }}>www.sanclementewoodworking.com</Typography>
                     </Box>
                   </Box>
 
@@ -490,8 +493,12 @@ function FinanceHubPage() {
                         <TextField
                           variant="standard"
                           value={estimateForm.estimateNumber}
-                          onChange={(e) => setEstimateField('estimateNumber', e.target.value)}
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 12, px: 1, py: 0.8 } }}
+                          InputProps={{
+                            disableUnderline: true,
+                            readOnly: true,
+                            sx: { fontSize: 12, px: 1, py: 0.8, textAlign: 'right' },
+                          }}
+                          inputProps={{ style: { textAlign: 'right' } }}
                           sx={{ width: '50%' }}
                         />
                       </Box>
@@ -551,10 +558,10 @@ function FinanceHubPage() {
 
                 <Box sx={{ mt: 3, border: '1px solid #000' }}>
                   <Box sx={{ display: 'grid', gridTemplateColumns: '20% 48% 12% 20%', bgcolor: '#000', color: '#fff' }}>
-                    <Box sx={{ p: 1, fontWeight: 700, fontSize: 12 }}>Item</Box>
-                    <Box sx={{ p: 1, fontWeight: 700, fontSize: 12 }}>Description</Box>
-                    <Box sx={{ p: 1, fontWeight: 700, fontSize: 12 }}>Qty</Box>
-                    <Box sx={{ p: 1, fontWeight: 700, fontSize: 12 }}>Total</Box>
+                    <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Item</Box>
+                    <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Description</Box>
+                    <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Qty</Box>
+                    <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Total</Box>
                   </Box>
                   {estimateForm.lineItems.map((row, index) => (
                     <Box
@@ -563,46 +570,46 @@ function FinanceHubPage() {
                         display: 'grid',
                         gridTemplateColumns: '20% 48% 12% 20%',
                         borderTop: '1px solid #000',
-                        minHeight: 70,
+                        minHeight: 50,
                       }}
                     >
-                      <Box sx={{ p: 1, borderRight: '1px solid #000' }}>
+                      <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000' }}>
                         <TextField
                           variant="standard"
                           value={row.itemName}
                           onChange={(e) => setLineItem(index, 'itemName', e.target.value)}
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
                           fullWidth
                         />
                       </Box>
-                      <Box sx={{ p: 1, borderRight: '1px solid #000' }}>
+                      <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000' }}>
                         <TextField
                           variant="standard"
                           value={row.description}
                           onChange={(e) => setLineItem(index, 'description', e.target.value)}
                           multiline
                           minRows={2}
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
                           fullWidth
                         />
                       </Box>
-                      <Box sx={{ p: 1, borderRight: '1px solid #000' }}>
+                      <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000' }}>
                         <TextField
                           variant="standard"
                           type="number"
                           value={row.quantity}
                           onChange={(e) => setLineItem(index, 'quantity', e.target.value)}
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
                           fullWidth
                         />
                       </Box>
-                      <Box sx={{ p: 1, display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
+                      <Box sx={{ px: 0.75, py: 0.45, display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
                         <TextField
                           variant="standard"
                           type="number"
                           value={row.total}
                           onChange={(e) => setLineItem(index, 'total', e.target.value)}
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
                           fullWidth
                         />
                         <IconButton
