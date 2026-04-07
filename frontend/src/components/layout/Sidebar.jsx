@@ -27,6 +27,7 @@ import {
   Receipt as ReceiptIcon,
   Description as DocumentsIcon,
   ViewWeek as PipelineViewKioskIcon,
+  AccountBalanceWallet as FinanceHubIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
@@ -42,6 +43,7 @@ const menuItems = [
   { text: 'Documents', icon: <DocumentsIcon />, path: '/documents' },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
   { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
+  { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance' },
 ];
 
 const archiveItems = [
