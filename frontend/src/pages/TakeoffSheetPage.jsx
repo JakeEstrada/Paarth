@@ -39,11 +39,52 @@ function formatVerticalFractions(text) {
   });
 }
 
+function wrapWords(text, maxChars = 28) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  const words = raw.split(/\s+/);
+  const lines = [];
+  let current = '';
+  words.forEach((word) => {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  });
+  if (current) lines.push(current);
+  return lines.join('\n');
+}
+
+function wrapMultilineText(text, maxChars = 28) {
+  const raw = String(text || '');
+  if (!raw.trim()) return '';
+  return raw
+    .split('\n')
+    .map((line) => wrapWords(line, maxChars))
+    .filter((line, idx, arr) => line !== '' || idx < arr.length - 1)
+    .join('\n');
+}
+function enforceStreetWithTrailingNewline(raw) {
+  const text = String(raw || '').replace(/\r/g, '').trim();
+  if (!text) return '';
+  const firstLine = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)[0] || '';
+  // Force trailing newline so print/PDF keeps a hard break after street.
+  return firstLine ? `${firstLine}\n` : '';
+}
+
 function TakeoffSheetPage() {
   const sheetRef = useRef(null);
+  const cellRefs = useRef([]);
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [soldToInput, setSoldToInput] = useState('');
+  const [pendingFocus, setPendingFocus] = useState(null);
   const [form, setForm] = useState({
     customerId: null,
     soldTo: '',
@@ -70,8 +111,26 @@ function TakeoffSheetPage() {
     fetchCustomers();
   }, []);
 
+  useEffect(() => {
+    if (!pendingFocus) return;
+    const { row, col } = pendingFocus;
+    const input = cellRefs.current?.[row]?.[col];
+    if (input && typeof input.focus === 'function') {
+      input.focus();
+      if (typeof input.select === 'function') input.select();
+    }
+    setPendingFocus(null);
+  }, [pendingFocus, form.rows.length]);
+
   const setField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const normalizeNameAddressWrapping = () => {
+    setForm((prev) => ({
+      ...prev,
+      nameAddress: enforceStreetWithTrailingNewline(wrapMultilineText(prev.nameAddress, 30)),
+    }));
   };
 
   const handleSoldToChange = (_, newValue, reason) => {
@@ -90,22 +149,17 @@ function TakeoffSheetPage() {
       setSoldToInput(newValue);
       return;
     }
-    const streetLine = newValue.address?.street || '';
-    const cityStateZipLine = [
-      newValue.address?.city,
-      newValue.address?.state,
-      newValue.address?.zip,
-    ]
-      .filter(Boolean)
-      .join(', ');
+    const streetLine = wrapWords(newValue.address?.street || '', 30);
+    const normalizedName = String(newValue.name || '').trim();
+    const addressLine = streetLine || '';
     setForm((prev) => ({
       ...prev,
       customerId: newValue._id,
-      soldTo: newValue.name || '',
+      soldTo: normalizedName,
       phoneNumber: newValue.primaryPhone || prev.phoneNumber,
-      nameAddress: [newValue.name || '', streetLine, cityStateZipLine].filter(Boolean).join('\n').trim(),
+      nameAddress: addressLine ? `${addressLine}\n` : '',
     }));
-    setSoldToInput(newValue.name || '');
+    setSoldToInput(normalizedName);
   };
 
   const handleSoldToInputChange = (_, value) => {
@@ -126,6 +180,59 @@ function TakeoffSheetPage() {
 
   const addRow = () => {
     setForm((prev) => ({ ...prev, rows: [...prev.rows, newRow()] }));
+  };
+
+  const focusCell = (row, col) => {
+    const input = cellRefs.current?.[row]?.[col];
+    if (input && typeof input.focus === 'function') {
+      input.focus();
+      if (typeof input.select === 'function') input.select();
+      return true;
+    }
+    return false;
+  };
+
+  const handleGridKeyDown = (event, rowIndex, colIndex) => {
+    const totalCols = 4;
+    const lastRow = form.rows.length - 1;
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const nextRow = rowIndex + 1;
+      if (nextRow > lastRow) {
+        addRow();
+        setPendingFocus({ row: form.rows.length, col: 0 });
+        return;
+      }
+      focusCell(nextRow, 0);
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      const direction = event.shiftKey ? -1 : 1;
+      let nextRow = rowIndex;
+      let nextCol = colIndex + direction;
+
+      if (nextCol >= totalCols) {
+        nextCol = 0;
+        nextRow += 1;
+      } else if (nextCol < 0) {
+        nextCol = totalCols - 1;
+        nextRow -= 1;
+      }
+
+      if (nextRow < 0) {
+        focusCell(0, 0);
+        return;
+      }
+      if (nextRow > lastRow) {
+        addRow();
+        setPendingFocus({ row: form.rows.length, col: 0 });
+        return;
+      }
+      focusCell(nextRow, nextCol);
+    }
   };
 
   const removeLastRow = () => {
@@ -150,6 +257,8 @@ function TakeoffSheetPage() {
       return;
     }
     try {
+      normalizeNameAddressWrapping();
+      await new Promise((resolve) => setTimeout(resolve, 0));
       const canvas = await html2canvas(sheetRef.current, {
         backgroundColor: '#ffffff',
         scale: 2,
@@ -172,6 +281,8 @@ function TakeoffSheetPage() {
       return;
     }
     try {
+      normalizeNameAddressWrapping();
+      await new Promise((resolve) => setTimeout(resolve, 0));
       const canvas = await html2canvas(sheetRef.current, {
         backgroundColor: '#ffffff',
         scale: 2,
@@ -336,9 +447,19 @@ function TakeoffSheetPage() {
                       variant="standard"
                       value={form.nameAddress}
                       onChange={(e) => setField('nameAddress', e.target.value)}
+                      onBlur={normalizeNameAddressWrapping}
                       multiline
                       minRows={4}
-                      InputProps={{ disableUnderline: true, sx: { fontSize: 15, px: 1, py: 0.7 } }}
+                      InputProps={{
+                        disableUnderline: true,
+                        sx: { fontSize: 15, px: 1, py: 0.7 },
+                      }}
+                      inputProps={{
+                        style: {
+                          whiteSpace: 'pre-wrap',
+                          overflowWrap: 'break-word',
+                        },
+                      }}
                       fullWidth
                     />
                   </Box>
@@ -403,7 +524,7 @@ function TakeoffSheetPage() {
                       display: 'grid',
                       gridTemplateColumns: '37% 12% 12% 39%',
                       borderTop: '1px solid #000',
-                      minHeight: 46,
+                      minHeight: 52,
                     }}
                   >
                     <Box sx={{ borderRight: '1px solid #000' }}>
@@ -412,7 +533,26 @@ function TakeoffSheetPage() {
                         value={row.item}
                         onChange={(e) => setRowField(index, 'item', e.target.value)}
                         onBlur={() => normalizeFractionField(index, 'item')}
-                        InputProps={{ disableUnderline: true, sx: { fontSize: 14, px: 1, py: 0.7 } }}
+                        onKeyDown={(e) => handleGridKeyDown(e, index, 0)}
+                        inputRef={(el) => {
+                          if (!cellRefs.current[index]) cellRefs.current[index] = [];
+                          cellRefs.current[index][0] = el;
+                        }}
+                        InputProps={{
+                          disableUnderline: true,
+                          sx: {
+                            fontSize: 14,
+                            px: 1,
+                            py: 0.95,
+                            lineHeight: 1.35,
+                          },
+                        }}
+                        inputProps={{
+                          style: {
+                            lineHeight: 1.35,
+                            paddingBottom: 4,
+                          },
+                        }}
                         fullWidth
                       />
                     </Box>
@@ -422,7 +562,26 @@ function TakeoffSheetPage() {
                         value={row.qty}
                         onChange={(e) => setRowField(index, 'qty', e.target.value)}
                         onBlur={() => normalizeFractionField(index, 'qty')}
-                        InputProps={{ disableUnderline: true, sx: { fontSize: 14, px: 1, py: 0.7 } }}
+                        onKeyDown={(e) => handleGridKeyDown(e, index, 1)}
+                        inputRef={(el) => {
+                          if (!cellRefs.current[index]) cellRefs.current[index] = [];
+                          cellRefs.current[index][1] = el;
+                        }}
+                        InputProps={{
+                          disableUnderline: true,
+                          sx: {
+                            fontSize: 14,
+                            px: 1,
+                            py: 0.95,
+                            lineHeight: 1.35,
+                          },
+                        }}
+                        inputProps={{
+                          style: {
+                            lineHeight: 1.35,
+                            paddingBottom: 4,
+                          },
+                        }}
                         fullWidth
                       />
                     </Box>
@@ -432,7 +591,26 @@ function TakeoffSheetPage() {
                         value={row.material}
                         onChange={(e) => setRowField(index, 'material', e.target.value)}
                         onBlur={() => normalizeFractionField(index, 'material')}
-                        InputProps={{ disableUnderline: true, sx: { fontSize: 14, px: 1, py: 0.7 } }}
+                        onKeyDown={(e) => handleGridKeyDown(e, index, 2)}
+                        inputRef={(el) => {
+                          if (!cellRefs.current[index]) cellRefs.current[index] = [];
+                          cellRefs.current[index][2] = el;
+                        }}
+                        InputProps={{
+                          disableUnderline: true,
+                          sx: {
+                            fontSize: 14,
+                            px: 1,
+                            py: 0.95,
+                            lineHeight: 1.35,
+                          },
+                        }}
+                        inputProps={{
+                          style: {
+                            lineHeight: 1.35,
+                            paddingBottom: 4,
+                          },
+                        }}
                         fullWidth
                       />
                     </Box>
@@ -442,7 +620,26 @@ function TakeoffSheetPage() {
                         value={row.description}
                         onChange={(e) => setRowField(index, 'description', e.target.value)}
                         onBlur={() => normalizeFractionField(index, 'description')}
-                        InputProps={{ disableUnderline: true, sx: { fontSize: 14, px: 1, py: 0.7 } }}
+                        onKeyDown={(e) => handleGridKeyDown(e, index, 3)}
+                        inputRef={(el) => {
+                          if (!cellRefs.current[index]) cellRefs.current[index] = [];
+                          cellRefs.current[index][3] = el;
+                        }}
+                        InputProps={{
+                          disableUnderline: true,
+                          sx: {
+                            fontSize: 14,
+                            px: 1,
+                            py: 0.95,
+                            lineHeight: 1.35,
+                          },
+                        }}
+                        inputProps={{
+                          style: {
+                            lineHeight: 1.35,
+                            paddingBottom: 4,
+                          },
+                        }}
                         fullWidth
                       />
                     </Box>
