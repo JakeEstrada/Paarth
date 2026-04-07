@@ -476,10 +476,10 @@ function FinanceHubPage() {
 
                   <Box sx={{ textAlign: 'right' }}>
                     <Typography sx={{ fontWeight: 700, fontSize: 22, mb: 1 }}>Estimate</Typography>
-                    <Box sx={{ width: 220, border: '1px solid #000' }}>
+                    <Box sx={{ width: 252, border: '1px solid #000' }}>
                       <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12 }}>
-                        <Box sx={{ width: '50%', p: 1, borderRight: '1px solid #fff' }}>Date</Box>
-                        <Box sx={{ width: '50%', p: 1 }}>Estimate #</Box>
+                        <Box sx={{ width: '56%', p: 1, borderRight: '1px solid #fff' }}>Date</Box>
+                        <Box sx={{ width: '44%', p: 1 }}>Estimate #</Box>
                       </Box>
                       <Box sx={{ display: 'flex' }}>
                         <TextField
@@ -488,7 +488,7 @@ function FinanceHubPage() {
                           value={estimateForm.estimateDate}
                           onChange={(e) => setEstimateField('estimateDate', e.target.value)}
                           InputProps={{ disableUnderline: true, sx: { fontSize: 12, px: 1, py: 0.8 } }}
-                          sx={{ width: '50%', borderRight: '1px solid #000' }}
+                          sx={{ width: '56%', borderRight: '1px solid #000' }}
                         />
                         <TextField
                           variant="standard"
@@ -499,7 +499,7 @@ function FinanceHubPage() {
                             sx: { fontSize: 12, px: 1, py: 0.8, textAlign: 'right' },
                           }}
                           inputProps={{ style: { textAlign: 'right' } }}
-                          sx={{ width: '50%' }}
+                          sx={{ width: '44%' }}
                         />
                       </Box>
                     </Box>
@@ -646,6 +646,7 @@ function FinanceHubPage() {
                     InputProps={{ disableUnderline: true, sx: { fontSize: 12 } }}
                     fullWidth
                   />
+                  <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
                 </Box>
               </Box>
             </Box>
