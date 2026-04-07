@@ -21,7 +21,11 @@ import {
   TextField,
   Button,
 } from '@mui/material';
-import { ExpandMore as ExpandMoreIcon, EditCalendar as EditCalendarIcon } from '@mui/icons-material';
+import {
+  ExpandMore as ExpandMoreIcon,
+  EditCalendar as EditCalendarIcon,
+  Restore as RestoreIcon,
+} from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import JobDetailModal from '../components/jobs/JobDetailModal';
@@ -42,6 +46,9 @@ function CompletedJobsPage() {
   const [closeDateDialogOpen, setCloseDateDialogOpen] = useState(false);
   const [closeDateInput, setCloseDateInput] = useState('');
   const [savingCloseDate, setSavingCloseDate] = useState(false);
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
+  const [reopenJob, setReopenJob] = useState(null);
+  const [reopening, setReopening] = useState(false);
 
   useEffect(() => {
     fetchCompletedJobs();
@@ -122,6 +129,34 @@ function CompletedJobsPage() {
     setCloseDateInput(yyyyMmDd);
     setCloseDateDialogOpen(true);
     handleCloseContextMenu();
+  };
+
+  const openReopenDialog = () => {
+    if (!contextMenuJob) return;
+    setReopenJob(contextMenuJob);
+    setReopenDialogOpen(true);
+    handleCloseContextMenu();
+  };
+
+  const handleConfirmReopenFromCompleted = async () => {
+    if (!reopenJob?._id) return;
+    const jobId = reopenJob._id;
+    try {
+      setReopening(true);
+      await axios.post(`${API_URL}/jobs/${jobId}/reopen-from-completed`);
+      toast.success('Job returned to pipeline (Installed)');
+      setReopenDialogOpen(false);
+      setReopenJob(null);
+      if (selectedJobId && String(selectedJobId) === String(jobId)) {
+        setSelectedJobId(null);
+      }
+      await fetchCompletedJobs();
+    } catch (error) {
+      console.error('Error reopening job:', error);
+      toast.error(error.response?.data?.error || 'Failed to return job to pipeline');
+    } finally {
+      setReopening(false);
+    }
   };
 
   const handleSaveCloseDate = async () => {
@@ -304,6 +339,16 @@ function CompletedJobsPage() {
             </ListItemIcon>
             <ListItemText>Edit Close Date</ListItemText>
           </MenuItem>
+          <MenuItem onClick={openReopenDialog}>
+            <ListItemIcon>
+              <RestoreIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText
+              primary="Return to pipeline"
+              secondary="Undo close-out; move to Installed for payment tracking"
+              secondaryTypographyProps={{ variant: 'caption' }}
+            />
+          </MenuItem>
         </Menu>
         <Dialog
           open={closeDateDialogOpen}
@@ -340,6 +385,49 @@ function CompletedJobsPage() {
             </Button>
             <Button variant="contained" onClick={handleSaveCloseDate} disabled={savingCloseDate}>
               {savingCloseDate ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={reopenDialogOpen}
+          onClose={() => {
+            if (reopening) return;
+            setReopenDialogOpen(false);
+            setReopenJob(null);
+          }}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Return job to pipeline?</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              This removes the job from Completed Jobs and sets the stage to <strong>Installed</strong> so you
+              can track final payment on the board. Close-out flags are cleared.
+            </Typography>
+            {reopenJob && (
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                {reopenJob.title}
+              </Typography>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => {
+                setReopenDialogOpen(false);
+                setReopenJob(null);
+              }}
+              disabled={reopening}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleConfirmReopenFromCompleted}
+              disabled={reopening}
+            >
+              {reopening ? 'Working…' : 'Return to pipeline'}
             </Button>
           </DialogActions>
         </Dialog>

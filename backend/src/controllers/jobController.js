@@ -1212,6 +1212,80 @@ async function archiveCompletedJobs(req, res) {
   }
 }
 
+/** Move a FINAL_PAYMENT_CLOSED job back to the pipeline (e.g. payment not received yet after close-out). */
+async function reopenFromCompleted(req, res) {
+  try {
+    const User = require('../models/User');
+    const job = await Job.findById(req.params.id);
+
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    if (job.isDeadEstimate) {
+      return res.status(400).json({ error: 'This action does not apply to dead-estimate jobs' });
+    }
+    if (job.stage !== 'FINAL_PAYMENT_CLOSED') {
+      return res.status(400).json({
+        error: 'Only jobs in Final Payment Closed can be returned to the pipeline',
+      });
+    }
+
+    const reopenDate = new Date();
+    const previousStage = job.stage;
+    job.stage = 'INSTALLED';
+    job.isCompletedClosedOut = false;
+    job.completedClosedOutAt = undefined;
+    job.completedClosedOutBy = undefined;
+
+    let createdBy = req.user?._id || job.createdBy;
+    if (!createdBy) {
+      const defaultUser = await User.findOne({ isActive: true });
+      if (defaultUser) {
+        createdBy = defaultUser._id;
+      }
+    }
+
+    const timestamp = reopenDate.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    if (createdBy) {
+      job.notes.push({
+        content: `Job returned to pipeline from Completed Jobs on ${timestamp} (stage: ${previousStage} → INSTALLED)`,
+        createdBy,
+        createdAt: reopenDate,
+      });
+    }
+
+    await job.save();
+
+    if (createdBy) {
+      await Activity.create({
+        type: 'stage_change',
+        jobId: job._id,
+        customerId: job.customerId,
+        fromStage: previousStage,
+        toStage: 'INSTALLED',
+        note: `Returned to pipeline from completed list on ${timestamp}`,
+        createdBy,
+      });
+    }
+
+    await job.populate('customerId', 'name primaryPhone primaryEmail');
+    await job.populate('assignedTo', 'name email');
+
+    res.json(job);
+  } catch (error) {
+    console.error('Error reopening job from completed:', error);
+    res.status(500).json({ error: error.message });
+  }
+}
+
 module.exports = {
   getJobs,
   getJob,
@@ -1228,5 +1302,6 @@ module.exports = {
   archiveJob,
   unarchiveJob,
   archiveCompletedJobs,
+  reopenFromCompleted,
   debugDeadEstimates
 };
