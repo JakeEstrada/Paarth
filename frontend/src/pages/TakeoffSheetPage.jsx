@@ -1,46 +1,120 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
   Container,
-  IconButton,
   TextField,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material';
+import { Add as AddIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import axios from 'axios';
 import toast from 'react-hot-toast';
 
 const DEFAULT_ROWS = 12;
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const SUPER = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+const SUB = { '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉' };
 
 function newRow() {
   return { item: '', qty: '', material: '', description: '' };
 }
 
+function formatVerticalFractions(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(/\b(\d{1,2})\/(\d{1,2})\b/g, (_, num, den) => {
+    const top = String(num)
+      .split('')
+      .map((d) => SUPER[d] || d)
+      .join('');
+    const bottom = String(den)
+      .split('')
+      .map((d) => SUB[d] || d)
+      .join('');
+    return `${top}⁄${bottom}`;
+  });
+}
+
 function TakeoffSheetPage() {
   const sheetRef = useRef(null);
+  const [customers, setCustomers] = useState([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [soldToInput, setSoldToInput] = useState('');
   const [form, setForm] = useState({
+    customerId: null,
     soldTo: '',
     phoneNumber: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: new Date().toLocaleDateString('en-US'),
     nameAddress: '',
     notes: '',
     bay: '',
     rows: Array.from({ length: DEFAULT_ROWS }, () => newRow()),
   });
 
-  const printableDate = useMemo(() => {
-    if (!form.date) return '';
-    const d = new Date(`${form.date}T12:00:00.000Z`);
-    if (Number.isNaN(d.getTime())) return form.date;
-    return d.toLocaleDateString('en-US');
-  }, [form.date]);
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      try {
+        setLoadingCustomers(true);
+        const response = await axios.get(`${API_URL}/customers?limit=1000`);
+        setCustomers(response.data.customers || response.data || []);
+      } catch (error) {
+        console.error('Error fetching customers for takeoff sheet:', error);
+      } finally {
+        setLoadingCustomers(false);
+      }
+    };
+    fetchCustomers();
+  }, []);
 
   const setField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSoldToChange = (_, newValue, reason) => {
+    if (reason === 'clear') {
+      setForm((prev) => ({
+        ...prev,
+        customerId: null,
+        soldTo: '',
+      }));
+      setSoldToInput('');
+      return;
+    }
+    if (!newValue) return;
+    if (typeof newValue === 'string') {
+      setForm((prev) => ({ ...prev, customerId: null, soldTo: newValue }));
+      setSoldToInput(newValue);
+      return;
+    }
+    const streetLine = newValue.address?.street || '';
+    const cityStateZipLine = [
+      newValue.address?.city,
+      newValue.address?.state,
+      newValue.address?.zip,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    setForm((prev) => ({
+      ...prev,
+      customerId: newValue._id,
+      soldTo: newValue.name || '',
+      phoneNumber: newValue.primaryPhone || prev.phoneNumber,
+      nameAddress: [newValue.name || '', streetLine, cityStateZipLine].filter(Boolean).join('\n').trim(),
+    }));
+    setSoldToInput(newValue.name || '');
+  };
+
+  const handleSoldToInputChange = (_, value) => {
+    setSoldToInput(value);
+    setForm((prev) => ({
+      ...prev,
+      soldTo: value,
+      customerId: prev.soldTo.toLowerCase() === value.toLowerCase() ? prev.customerId : null,
+    }));
   };
 
   const setRowField = (index, field, value) => {
@@ -54,10 +128,19 @@ function TakeoffSheetPage() {
     setForm((prev) => ({ ...prev, rows: [...prev.rows, newRow()] }));
   };
 
-  const removeRow = (index) => {
+  const removeLastRow = () => {
+    setForm((prev) => {
+      if (prev.rows.length <= 1) return prev;
+      return { ...prev, rows: prev.rows.slice(0, -1) };
+    });
+  };
+
+  const normalizeFractionField = (index, field) => {
     setForm((prev) => ({
       ...prev,
-      rows: prev.rows.filter((_, i) => i !== index),
+      rows: prev.rows.map((row, i) =>
+        i === index ? { ...row, [field]: formatVerticalFractions(row[field]) } : row
+      ),
     }));
   };
 
@@ -80,6 +163,41 @@ function TakeoffSheetPage() {
     } catch (error) {
       console.error('Error generating takeoff PDF:', error);
       toast.error('Failed to generate PDF');
+    }
+  };
+
+  const printPdf = async () => {
+    if (!sheetRef.current) {
+      toast.error('Sheet not ready for print');
+      return;
+    }
+    try {
+      const canvas = await html2canvas(sheetRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+      });
+      const imageData = canvas.toDataURL('image/png');
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      doc.addImage(imageData, 'PNG', 0, 0, 612, 792, undefined, 'FAST');
+      const blobUrl = doc.output('bloburl');
+      const win = window.open(blobUrl, '_blank');
+      if (win) {
+        const trigger = () => {
+          try {
+            win.focus();
+            win.print();
+          } catch (e) {
+            console.warn('Print trigger failed:', e);
+          }
+        };
+        win.onload = trigger;
+        setTimeout(trigger, 700);
+      }
+      toast.success('Print view opened');
+    } catch (error) {
+      console.error('Error creating printable PDF:', error);
+      toast.error('Failed to open print view');
     }
   };
 
@@ -145,12 +263,35 @@ function TakeoffSheetPage() {
                     <Box sx={{ bgcolor: '#c2dff6', borderBottom: '1px solid #000', textAlign: 'center', py: 0.4, fontSize: 19 }}>
                       SOLD TO
                     </Box>
-                    <TextField
-                      variant="standard"
-                      value={form.soldTo}
-                      onChange={(e) => setField('soldTo', e.target.value)}
-                      InputProps={{ disableUnderline: true, sx: { fontSize: 16, px: 1, py: 0.7 } }}
-                      fullWidth
+                    <Autocomplete
+                      freeSolo
+                      options={customers}
+                      loading={loadingCustomers}
+                      value={form.customerId ? customers.find((c) => c._id === form.customerId) || null : null}
+                      inputValue={soldToInput}
+                      onChange={handleSoldToChange}
+                      onInputChange={handleSoldToInputChange}
+                      isOptionEqualToValue={(option, value) => String(option?._id) === String(value?._id)}
+                      getOptionLabel={(option) =>
+                        typeof option === 'string' ? option : option?.name || ''
+                      }
+                      filterOptions={(options, params) =>
+                        options.filter((c) =>
+                          (c.name || '').toLowerCase().includes(params.inputValue.toLowerCase())
+                        )
+                      }
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          variant="standard"
+                          InputProps={{
+                            ...params.InputProps,
+                            disableUnderline: true,
+                            sx: { fontSize: 16, px: 1, py: 0.7 },
+                          }}
+                          fullWidth
+                        />
+                      )}
                     />
                   </Box>
                   <Box sx={{ borderRight: '1px solid #000' }}>
@@ -172,10 +313,14 @@ function TakeoffSheetPage() {
                     <Box sx={{ display: 'flex', justifyContent: 'center', py: 0.6 }}>
                       <TextField
                         variant="standard"
-                        type="date"
                         value={form.date}
                         onChange={(e) => setField('date', e.target.value)}
-                        InputProps={{ disableUnderline: true, sx: { fontSize: 16 } }}
+                        placeholder="MM/DD/YYYY"
+                        InputProps={{
+                          disableUnderline: true,
+                          sx: { fontSize: 16 },
+                          inputProps: { inputMode: 'numeric' },
+                        }}
                       />
                     </Box>
                   </Box>
@@ -236,7 +381,17 @@ function TakeoffSheetPage() {
                 >
                   <Box sx={{ borderRight: '1px solid #000', textAlign: 'center', py: 0.45, fontSize: 24 }}>ITEM</Box>
                   <Box sx={{ borderRight: '1px solid #000', textAlign: 'center', py: 0.45, fontSize: 24 }}>QTY</Box>
-                  <Box sx={{ borderRight: '1px solid #000', textAlign: 'center', py: 0.45, fontSize: 24 }}>MATERIAL</Box>
+                  <Box
+                    sx={{
+                      borderRight: '1px solid #000',
+                      textAlign: 'center',
+                      py: 0.68,
+                      fontSize: 15,
+                      lineHeight: 1,
+                    }}
+                  >
+                    MATERIALS
+                  </Box>
                   <Box sx={{ textAlign: 'center', py: 0.45, fontSize: 24 }}>DESCRIPTION</Box>
                 </Box>
 
@@ -256,6 +411,7 @@ function TakeoffSheetPage() {
                         variant="standard"
                         value={row.item}
                         onChange={(e) => setRowField(index, 'item', e.target.value)}
+                        onBlur={() => normalizeFractionField(index, 'item')}
                         InputProps={{ disableUnderline: true, sx: { fontSize: 14, px: 1, py: 0.7 } }}
                         fullWidth
                       />
@@ -265,6 +421,7 @@ function TakeoffSheetPage() {
                         variant="standard"
                         value={row.qty}
                         onChange={(e) => setRowField(index, 'qty', e.target.value)}
+                        onBlur={() => normalizeFractionField(index, 'qty')}
                         InputProps={{ disableUnderline: true, sx: { fontSize: 14, px: 1, py: 0.7 } }}
                         fullWidth
                       />
@@ -274,6 +431,7 @@ function TakeoffSheetPage() {
                         variant="standard"
                         value={row.material}
                         onChange={(e) => setRowField(index, 'material', e.target.value)}
+                        onBlur={() => normalizeFractionField(index, 'material')}
                         InputProps={{ disableUnderline: true, sx: { fontSize: 14, px: 1, py: 0.7 } }}
                         fullWidth
                       />
@@ -283,12 +441,10 @@ function TakeoffSheetPage() {
                         variant="standard"
                         value={row.description}
                         onChange={(e) => setRowField(index, 'description', e.target.value)}
+                        onBlur={() => normalizeFractionField(index, 'description')}
                         InputProps={{ disableUnderline: true, sx: { fontSize: 14, px: 1, py: 0.7 } }}
                         fullWidth
                       />
-                      <IconButton size="small" onClick={() => removeRow(index)} disabled={form.rows.length <= 1}>
-                        <DeleteIcon fontSize="inherit" />
-                      </IconButton>
                     </Box>
                   </Box>
                 ))}
@@ -300,8 +456,14 @@ function TakeoffSheetPage() {
             <Button startIcon={<AddIcon />} onClick={addRow}>
               Add row
             </Button>
+            <Button variant="outlined" color="error" onClick={removeLastRow} disabled={form.rows.length <= 1}>
+              Delete row
+            </Button>
             <Button variant="contained" startIcon={<PictureAsPdfIcon />} onClick={downloadPdf}>
               Download PDF
+            </Button>
+            <Button variant="outlined" onClick={printPdf}>
+              Print PDF
             </Button>
           </Box>
 
