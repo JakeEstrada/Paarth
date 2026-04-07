@@ -143,7 +143,7 @@ function CompletedJobsPage() {
     const jobId = reopenJob._id;
     try {
       setReopening(true);
-      await axios.post(`${API_URL}/jobs/${jobId}/reopen-from-completed`);
+      await axios.post(`${API_URL}/jobs/${jobId}/reopen-from-completed`, {});
       toast.success('Job returned to pipeline (Installed)');
       setReopenDialogOpen(false);
       setReopenJob(null);
@@ -153,7 +153,19 @@ function CompletedJobsPage() {
       await fetchCompletedJobs();
     } catch (error) {
       console.error('Error reopening job:', error);
-      toast.error(error.response?.data?.error || 'Failed to return job to pipeline');
+      const data = error.response?.data;
+      const fromBody =
+        data && typeof data === 'object'
+          ? data.error || data.message
+          : typeof data === 'string'
+            ? data.replace(/<[^>]*>/g, '').trim().slice(0, 240)
+            : null;
+      const status = error.response?.status;
+      const msg =
+        fromBody ||
+        error.message ||
+        (status ? `Request failed (${status})` : 'Failed to return job to pipeline');
+      toast.error(msg);
     } finally {
       setReopening(false);
     }

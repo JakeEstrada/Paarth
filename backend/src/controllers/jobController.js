@@ -1216,7 +1216,12 @@ async function archiveCompletedJobs(req, res) {
 async function reopenFromCompleted(req, res) {
   try {
     const User = require('../models/User');
-    const job = await Job.findById(req.params.id);
+    const id = req.params.id;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid job id' });
+    }
+
+    const job = await Job.findById(id);
 
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
@@ -1234,8 +1239,12 @@ async function reopenFromCompleted(req, res) {
     const previousStage = job.stage;
     job.stage = 'INSTALLED';
     job.isCompletedClosedOut = false;
-    job.completedClosedOutAt = undefined;
-    job.completedClosedOutBy = undefined;
+    job.completedClosedOutAt = null;
+    job.completedClosedOutBy = null;
+    // Completed list can include jobs that were also archived; clear archive so the job shows on the pipeline.
+    job.isArchived = false;
+    job.archivedAt = undefined;
+    job.archivedBy = undefined;
 
     let createdBy = req.user?._id || job.createdBy;
     if (!createdBy) {
@@ -1265,15 +1274,20 @@ async function reopenFromCompleted(req, res) {
     await job.save();
 
     if (createdBy) {
-      await Activity.create({
-        type: 'stage_change',
-        jobId: job._id,
-        customerId: job.customerId,
-        fromStage: previousStage,
-        toStage: 'INSTALLED',
-        note: `Returned to pipeline from completed list on ${timestamp}`,
-        createdBy,
-      });
+      try {
+        await Activity.create({
+          type: 'stage_change',
+          jobId: job._id,
+          customerId: job.customerId,
+          fromStage: previousStage,
+          toStage: 'INSTALLED',
+          note: `Returned to pipeline from completed list on ${timestamp}`,
+          createdBy,
+          ...(job.tenantId ? { tenantId: job.tenantId } : {}),
+        });
+      } catch (activityErr) {
+        console.error('reopenFromCompleted: activity log failed (job was still reopened):', activityErr);
+      }
     }
 
     await job.populate('customerId', 'name primaryPhone primaryEmail');
@@ -1282,7 +1296,10 @@ async function reopenFromCompleted(req, res) {
     res.json(job);
   } catch (error) {
     console.error('Error reopening job from completed:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message || 'Failed to reopen job',
+      detail: process.env.NODE_ENV === 'development' ? String(error) : undefined,
+    });
   }
 }
 
