@@ -54,7 +54,8 @@ function expandOneTab(input, target) {
 }
 
 /**
- * Readline-style Tab: complete from saved lists. One match: step by segments (e.g. W → W.O → full).
+ * Readline-style Tab: complete from saved lists.
+ * One match: do a single segment step (e.g. W -> W.O), then next Tab moves cell.
  * Several matches: fill full strings in list order; repeat cycles alternates.
  */
 function terminalTabComplete(options, value, cycleKey, cycleRef) {
@@ -67,6 +68,8 @@ function terminalTabComplete(options, value, cycleKey, cycleRef) {
   if (!extending.length) return null;
   const ordered = list.filter((o) => extending.includes(o));
   if (ordered.length === 1) {
+    // After the first segmented completion (contains delimiter), let Tab navigate forward.
+    if (/[.\-_/ ]/.test(raw)) return null;
     const only = ordered[0];
     const step = expandOneTab(raw, only);
     if (step !== raw) return step;

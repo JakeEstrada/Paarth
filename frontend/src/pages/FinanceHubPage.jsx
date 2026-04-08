@@ -798,6 +798,18 @@ function FinanceHubPage() {
                   p: 5,
                   border: '1px solid #d9d9d9',
                   fontFamily: 'Arial, Helvetica, sans-serif',
+                  // Keep estimate sheet typography print-like in dark mode.
+                  '& .MuiTypography-root': { color: '#000' },
+                  '& .MuiInputBase-root': { color: '#000' },
+                  '& .MuiInputBase-input': {
+                    color: '#000',
+                    WebkitTextFillColor: '#000',
+                  },
+                  '& .MuiInputBase-input::placeholder': {
+                    color: 'rgba(0,0,0,0.42)',
+                    opacity: 1,
+                  },
+                  '& .MuiIconButton-root': { color: '#000' },
                 }}
               >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
