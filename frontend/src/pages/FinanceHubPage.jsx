@@ -193,8 +193,6 @@ function FinanceHubPage() {
     customerAddress: {
       street: '',
       city: '',
-      state: '',
-      zip: '',
     },
     projectName: '',
     lineItems: DEFAULT_LINE_ITEMS(),
@@ -273,17 +271,13 @@ function FinanceHubPage() {
               ? {
                   street: cust.address.street || '',
                   city: cust.address.city || '',
-                  state: cust.address.state || '',
-                  zip: cust.address.zip || '',
                 }
               : job.jobAddress
                 ? {
                     street: job.jobAddress.street || '',
                     city: job.jobAddress.city || '',
-                    state: job.jobAddress.state || '',
-                    zip: job.jobAddress.zip || '',
                   }
-                : { street: '', city: '', state: '', zip: '' },
+                : { street: '', city: '' },
           projectName: est.projectName || job.title || '',
           lineItems,
           footerNote:
@@ -403,7 +397,10 @@ function FinanceHubPage() {
         customerName: newValue.name || '',
         customerPhone: newValue.primaryPhone || '',
         customerEmail: newValue.primaryEmail || '',
-        customerAddress: newValue.address || { street: '', city: '', state: '', zip: '' },
+        customerAddress: {
+          street: newValue?.address?.street || '',
+          city: newValue?.address?.city || '',
+        },
       }));
     } else if (reason === 'clear') {
       setEstimateForm((prev) => ({
@@ -412,7 +409,7 @@ function FinanceHubPage() {
         customerName: '',
         customerPhone: '',
         customerEmail: '',
-        customerAddress: { street: '', city: '', state: '', zip: '' },
+        customerAddress: { street: '', city: '' },
       }));
       setCustomerPipelineJobs([]);
       setEstimateSaveTargetId(null);
@@ -545,7 +542,7 @@ function FinanceHubPage() {
         customerName: '',
         customerPhone: '',
         customerEmail: '',
-        customerAddress: { street: '', city: '', state: '', zip: '' },
+        customerAddress: { street: '', city: '' },
         projectName: '',
         lineItems: DEFAULT_LINE_ITEMS(),
         footerNote: 'Customer acknowledges paint and stain are not included.',
@@ -911,22 +908,6 @@ function FinanceHubPage() {
                         placeholder="City"
                         InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
                         sx={{ flex: 1 }}
-                      />
-                      <TextField
-                        variant="standard"
-                        value={estimateForm.customerAddress.state}
-                        onChange={(e) => setEstimateAddressField('state', e.target.value)}
-                        placeholder="ST"
-                        InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
-                        sx={{ width: 60 }}
-                      />
-                      <TextField
-                        variant="standard"
-                        value={estimateForm.customerAddress.zip}
-                        onChange={(e) => setEstimateAddressField('zip', e.target.value)}
-                        placeholder="ZIP"
-                        InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
-                        sx={{ width: 90 }}
                       />
                     </Box>
                   </Box>
