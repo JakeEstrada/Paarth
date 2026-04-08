@@ -906,11 +906,22 @@ function FinanceHubPage() {
                       sx={{
                         display: 'grid',
                         gridTemplateColumns: '20% 48% 12% 20%',
+                        gridAutoRows: 'minmax(min-content, auto)',
                         borderTop: '1px solid #000',
-                        minHeight: 50,
+                        alignItems: 'stretch',
+                        minHeight: 'min-content',
                       }}
                     >
-                      <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000' }}>
+                      <Box
+                        sx={{
+                          px: 0.75,
+                          py: 0.45,
+                          borderRight: '1px solid #000',
+                          minWidth: 0,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                        }}
+                      >
                         <TextField
                           variant="standard"
                           value={row.itemName}
@@ -925,7 +936,8 @@ function FinanceHubPage() {
                           py: 0.45,
                           borderRight: '1px solid #000',
                           minWidth: 0,
-                          overflow: 'hidden',
+                          display: 'flex',
+                          alignItems: 'flex-start',
                         }}
                       >
                         <TextField
@@ -934,23 +946,40 @@ function FinanceHubPage() {
                           onChange={(e) => setLineItem(index, 'description', e.target.value)}
                           multiline
                           minRows={2}
+                          maxRows={40}
                           InputProps={{
                             disableUnderline: true,
                             sx: {
                               fontSize: 12.5,
                               width: '100%',
                               alignItems: 'flex-start',
+                              overflow: 'visible',
+                              '& .MuiInputBase-root': {
+                                overflow: 'visible',
+                              },
                               '& .MuiInputBase-inputMultiline': {
                                 whiteSpace: 'pre-wrap',
                                 overflowWrap: 'anywhere',
                                 wordBreak: 'break-word',
+                                overflow: 'visible !important',
+                                resize: 'none',
+                                fieldSizing: 'content',
                               },
                             },
                           }}
                           fullWidth
                         />
                       </Box>
-                      <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000' }}>
+                      <Box
+                        sx={{
+                          px: 0.75,
+                          py: 0.45,
+                          borderRight: '1px solid #000',
+                          minWidth: 0,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                        }}
+                      >
                         <TextField
                           variant="standard"
                           type="text"
@@ -961,7 +990,16 @@ function FinanceHubPage() {
                           fullWidth
                         />
                       </Box>
-                      <Box sx={{ px: 0.75, py: 0.45, display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
+                      <Box
+                        sx={{
+                          px: 0.75,
+                          py: 0.45,
+                          minWidth: 0,
+                          display: 'flex',
+                          gap: 0.5,
+                          alignItems: 'flex-start',
+                        }}
+                      >
                         <TextField
                           variant="standard"
                           type="text"
