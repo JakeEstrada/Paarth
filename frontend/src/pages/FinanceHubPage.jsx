@@ -185,6 +185,7 @@ function FinanceHubPage() {
   const [customerPipelineJobs, setCustomerPipelineJobs] = useState([]);
   const [loadingCustomerJobs, setLoadingCustomerJobs] = useState(false);
   const [estimateSaveTargetId, setEstimateSaveTargetId] = useState(null);
+  const [isEstimateExportMode, setIsEstimateExportMode] = useState(false);
   const estimateCanvasRef = useRef(null);
   const [estimateForm, setEstimateForm] = useState(() => ({
     estimateNumber: formatEstimateNumber(readEstimateSequence()),
@@ -457,17 +458,23 @@ function FinanceHubPage() {
     if (!estimateCanvasRef.current) {
       throw new Error('Estimate canvas not ready');
     }
-    const canvas = await html2canvas(estimateCanvasRef.current, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      useCORS: true,
-    });
-    const imageData = canvas.toDataURL('image/png');
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-    const pageW = 612;
-    const pageH = 792;
-    doc.addImage(imageData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
-    return doc;
+    try {
+      setIsEstimateExportMode(true);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const canvas = await html2canvas(estimateCanvasRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+      });
+      const imageData = canvas.toDataURL('image/png');
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const pageW = 612;
+      const pageH = 792;
+      doc.addImage(imageData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+      return doc;
+    } finally {
+      setIsEstimateExportMode(false);
+    }
   };
 
   const downloadEstimatePdf = async () => {
@@ -944,13 +951,15 @@ function FinanceHubPage() {
                           inputProps={{ inputMode: 'decimal' }}
                           fullWidth
                         />
-                        <IconButton
-                          size="small"
-                          onClick={() => removeLineItem(index)}
-                          disabled={estimateForm.lineItems.length <= 1}
-                        >
-                          <DeleteIcon fontSize="inherit" />
-                        </IconButton>
+                        {!isEstimateExportMode && (
+                          <IconButton
+                            size="small"
+                            onClick={() => removeLineItem(index)}
+                            disabled={estimateForm.lineItems.length <= 1}
+                          >
+                            <DeleteIcon fontSize="inherit" />
+                          </IconButton>
+                        )}
                       </Box>
                     </Box>
                   ))}
