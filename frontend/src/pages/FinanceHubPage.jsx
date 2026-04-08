@@ -30,6 +30,9 @@ import toast from 'react-hot-toast';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const ESTIMATE_PREFIX = '1102';
 const ESTIMATE_SEQ_KEY = 'financeHubEstimateSequence';
+const COMPANY_PHONE = '951 491-1137';
+const COMPANY_EMAIL = 'office@sanclementewoodworking.com';
+const COMPANY_WEBSITE = 'www.sanclementewoodworking.com';
 
 const TAB_DEFS = [
   {
@@ -188,8 +191,6 @@ function FinanceHubPage() {
     estimateDate: new Date().toISOString().slice(0, 10),
     customerId: null,
     customerName: '',
-    customerPhone: '',
-    customerEmail: '',
     customerAddress: {
       street: '',
       city: '',
@@ -264,8 +265,6 @@ function FinanceHubPage() {
             (sent ? sent.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
           customerId: typeof cust === 'object' && cust?._id ? cust._id : cust || null,
           customerName: typeof cust === 'object' ? cust.name || '' : '',
-          customerPhone: typeof cust === 'object' ? cust.primaryPhone || '' : '',
-          customerEmail: typeof cust === 'object' ? cust.primaryEmail || '' : '',
           customerAddress:
             typeof cust === 'object' && cust.address
               ? {
@@ -395,8 +394,6 @@ function FinanceHubPage() {
         ...prev,
         customerId: newValue._id,
         customerName: newValue.name || '',
-        customerPhone: newValue.primaryPhone || '',
-        customerEmail: newValue.primaryEmail || '',
         customerAddress: {
           street: newValue?.address?.street || '',
           city: newValue?.address?.city || '',
@@ -407,8 +404,6 @@ function FinanceHubPage() {
         ...prev,
         customerId: null,
         customerName: '',
-        customerPhone: '',
-        customerEmail: '',
         customerAddress: { street: '', city: '' },
       }));
       setCustomerPipelineJobs([]);
@@ -446,13 +441,6 @@ function FinanceHubPage() {
       jobAddress:
         estimateForm.customerAddress.street || estimateForm.customerAddress.city
           ? estimateForm.customerAddress
-          : undefined,
-      jobContact:
-        estimateForm.customerPhone || estimateForm.customerEmail
-          ? {
-              phone: estimateForm.customerPhone || undefined,
-              email: estimateForm.customerEmail || undefined,
-            }
           : undefined,
     };
   };
@@ -540,8 +528,6 @@ function FinanceHubPage() {
         estimateDate: new Date().toISOString().slice(0, 10),
         customerId: null,
         customerName: '',
-        customerPhone: '',
-        customerEmail: '',
         customerAddress: { street: '', city: '' },
         projectName: '',
         lineItems: DEFAULT_LINE_ITEMS(),
@@ -826,23 +812,10 @@ function FinanceHubPage() {
                       <Box sx={{ mt: 2, ml: -9 }}>
                         <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
                           <Typography sx={{ fontSize: 13 }}>Phone #</Typography>
-                          <TextField
-                            variant="standard"
-                            value={estimateForm.customerPhone}
-                            onChange={(e) => setEstimateField('customerPhone', e.target.value)}
-                            placeholder="951 491-1137"
-                            InputProps={{ disableUnderline: true, sx: { fontSize: 13, minWidth: 150 } }}
-                          />
+                          <Typography sx={{ fontSize: 13, minWidth: 150 }}>{COMPANY_PHONE}</Typography>
                         </Box>
-                        <Typography sx={{ fontSize: 13, ml: 0 }}>www.sanclementewoodworking.com</Typography>
-                        <TextField
-                          variant="standard"
-                          value={estimateForm.customerEmail}
-                          onChange={(e) => setEstimateField('customerEmail', e.target.value)}
-                          placeholder="office@sanclementewoodworking.com"
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 13, minWidth: 260 } }}
-                          sx={{ ml: 0 }}
-                        />
+                        <Typography sx={{ fontSize: 13, ml: 0 }}>{COMPANY_WEBSITE}</Typography>
+                        <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{COMPANY_EMAIL}</Typography>
                       </Box>
                     </Box>
                   </Box>
