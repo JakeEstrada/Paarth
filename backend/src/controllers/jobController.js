@@ -248,6 +248,12 @@ async function updateJob(req, res) {
     // Update the job (remove temporary _notesToUpdate field first)
     const { _notesToUpdate, ...jobUpdateData } = req.body;
     Object.assign(job, jobUpdateData);
+    if (jobUpdateData.takeoff !== undefined) {
+      job.markModified('takeoff');
+    }
+    if (jobUpdateData.estimate !== undefined) {
+      job.markModified('estimate');
+    }
     await job.save();
     
     // Track ALL field changes (excluding notes which we handle separately)

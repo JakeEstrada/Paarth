@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Autocomplete,
   Box,
@@ -9,7 +10,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material';
+import { Add as AddIcon, PictureAsPdf as PictureAsPdfIcon, Save as SaveIcon } from '@mui/icons-material';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import axios from 'axios';
@@ -23,6 +24,37 @@ const SUB = { '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '
 function newRow() {
   return { item: '', qty: '', material: '', description: '' };
 }
+
+function normalizeSavedRow(r) {
+  if (!r || typeof r !== 'object') return newRow();
+  return {
+    item: typeof r.item === 'string' ? r.item : '',
+    qty: typeof r.qty === 'string' ? r.qty : '',
+    material: typeof r.material === 'string' ? r.material : '',
+    description: typeof r.description === 'string' ? r.description : '',
+  };
+}
+
+function normalizeSavedForm(saved) {
+  if (!saved || typeof saved !== 'object') return null;
+  const rows = Array.isArray(saved.rows) && saved.rows.length > 0
+    ? saved.rows.map(normalizeSavedRow)
+    : Array.from({ length: DEFAULT_ROWS }, () => newRow());
+  return {
+    customerId: saved.customerId ?? null,
+    soldTo: typeof saved.soldTo === 'string' ? saved.soldTo : '',
+    phoneNumber: typeof saved.phoneNumber === 'string' ? saved.phoneNumber : '',
+    date:
+      typeof saved.date === 'string' && saved.date.trim()
+        ? saved.date
+        : new Date().toLocaleDateString('en-US'),
+    nameAddress: typeof saved.nameAddress === 'string' ? saved.nameAddress : '',
+    notes: typeof saved.notes === 'string' ? saved.notes : '',
+    bay: typeof saved.bay === 'string' ? saved.bay : '',
+    rows,
+  };
+}
+
 
 function formatVerticalFractions(text) {
   if (!text || typeof text !== 'string') return text;
@@ -79,15 +111,29 @@ function enforceStreetCityLines(raw) {
   return [streetLine, cityLine].filter(Boolean).join('\n');
 }
 
-function TakeoffSheetPage() {
-  const sheetRef = useRef(null);
-  const cellRefs = useRef([]);
-  const [customers, setCustomers] = useState([]);
-  const [loadingCustomers, setLoadingCustomers] = useState(false);
-  const [soldToInput, setSoldToInput] = useState('');
-  const [pendingFocus, setPendingFocus] = useState(null);
-  const [isExportMode, setIsExportMode] = useState(false);
-  const [form, setForm] = useState({
+/** Sold-to / customer fields always follow the linked job (not user-picked). */
+function takeoffCustomerFieldsFromJob(job) {
+  const cust = job?.customerId;
+  if (!cust || typeof cust !== 'object' || !cust._id) {
+    return {
+      customerId: null,
+      soldTo: '',
+      phoneNumber: '',
+      nameAddress: '',
+    };
+  }
+  const streetLine = wrapWords(cust.address?.street || '', 30);
+  const cityLine = String(cust.address?.city || '').trim();
+  return {
+    customerId: cust._id,
+    soldTo: String(cust.name || '').trim(),
+    phoneNumber: cust.primaryPhone || '',
+    nameAddress: [streetLine, cityLine].filter(Boolean).join('\n'),
+  };
+}
+
+function defaultTakeoffForm() {
+  return {
     customerId: null,
     soldTo: '',
     phoneNumber: '',
@@ -96,22 +142,86 @@ function TakeoffSheetPage() {
     notes: '',
     bay: '',
     rows: Array.from({ length: DEFAULT_ROWS }, () => newRow()),
-  });
+  };
+}
+
+function TakeoffSheetPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const jobId = searchParams.get('jobId');
+  const sheetRef = useRef(null);
+  const cellRefs = useRef([]);
+  const [jobs, setJobs] = useState([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [loadingJobSheet, setLoadingJobSheet] = useState(false);
+  const [savingTakeoff, setSavingTakeoff] = useState(false);
+  const [pendingFocus, setPendingFocus] = useState(null);
+  const [isExportMode, setIsExportMode] = useState(false);
+  const [form, setForm] = useState(defaultTakeoffForm);
 
   useEffect(() => {
-    const fetchCustomers = async () => {
+    const fetchJobs = async () => {
       try {
-        setLoadingCustomers(true);
-        const response = await axios.get(`${API_URL}/customers?limit=1000`);
-        setCustomers(response.data.customers || response.data || []);
+        setLoadingJobs(true);
+        const response = await axios.get(`${API_URL}/jobs?limit=500`);
+        setJobs(response.data.jobs || response.data || []);
       } catch (error) {
-        console.error('Error fetching customers for takeoff sheet:', error);
+        console.error('Error fetching jobs for takeoff sheet:', error);
       } finally {
-        setLoadingCustomers(false);
+        setLoadingJobs(false);
       }
     };
-    fetchCustomers();
+    fetchJobs();
   }, []);
+
+  useEffect(() => {
+    if (!jobId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingJobSheet(true);
+        const { data: job } = await axios.get(`${API_URL}/jobs/${jobId}`);
+        if (cancelled) return;
+        setJobs((prev) =>
+          prev.some((j) => String(j._id) === String(job._id)) ? prev : [job, ...prev]
+        );
+        const fromJob = takeoffCustomerFieldsFromJob(job);
+        const sheet = job.takeoff?.sheetData;
+        const normalized = sheet && typeof sheet === 'object' ? normalizeSavedForm(sheet) : null;
+        if (normalized) {
+          setForm({
+            ...normalized,
+            customerId: fromJob.customerId,
+            soldTo: fromJob.soldTo,
+            phoneNumber: normalized.phoneNumber?.trim() ? normalized.phoneNumber : fromJob.phoneNumber,
+            nameAddress: normalized.nameAddress?.trim() ? normalized.nameAddress : fromJob.nameAddress,
+          });
+          return;
+        }
+        if (fromJob.customerId) {
+          setForm({
+            ...defaultTakeoffForm(),
+            ...fromJob,
+            date: new Date().toLocaleDateString('en-US'),
+          });
+        } else {
+          setForm(defaultTakeoffForm());
+        }
+      } catch (error) {
+        console.error('Error loading takeoff job:', error);
+        toast.error(error.response?.data?.error || 'Could not load job');
+      } finally {
+        if (!cancelled) setLoadingJobSheet(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId]);
+
+  useEffect(() => {
+    if (jobId) return;
+    setForm(defaultTakeoffForm());
+  }, [jobId]);
 
   useEffect(() => {
     if (!pendingFocus) return;
@@ -132,45 +242,6 @@ function TakeoffSheetPage() {
     setForm((prev) => ({
       ...prev,
       nameAddress: enforceStreetCityLines(wrapMultilineText(prev.nameAddress, 30)),
-    }));
-  };
-
-  const handleSoldToChange = (_, newValue, reason) => {
-    if (reason === 'clear') {
-      setForm((prev) => ({
-        ...prev,
-        customerId: null,
-        soldTo: '',
-      }));
-      setSoldToInput('');
-      return;
-    }
-    if (!newValue) return;
-    if (typeof newValue === 'string') {
-      setForm((prev) => ({ ...prev, customerId: null, soldTo: newValue }));
-      setSoldToInput(newValue);
-      return;
-    }
-    const streetLine = wrapWords(newValue.address?.street || '', 30);
-    const normalizedName = String(newValue.name || '').trim();
-    const addressLine = streetLine || '';
-    const cityLine = String(newValue.address?.city || '').trim();
-    setForm((prev) => ({
-      ...prev,
-      customerId: newValue._id,
-      soldTo: normalizedName,
-      phoneNumber: newValue.primaryPhone || prev.phoneNumber,
-      nameAddress: [addressLine, cityLine].filter(Boolean).join('\n'),
-    }));
-    setSoldToInput(normalizedName);
-  };
-
-  const handleSoldToInputChange = (_, value) => {
-    setSoldToInput(value);
-    setForm((prev) => ({
-      ...prev,
-      soldTo: value,
-      customerId: prev.soldTo.toLowerCase() === value.toLowerCase() ? prev.customerId : null,
     }));
   };
 
@@ -281,6 +352,35 @@ function TakeoffSheetPage() {
     }
   };
 
+  const saveTakeoff = async () => {
+    if (!jobId) {
+      toast.error('Select a job to save this takeoff (use the job list above or open from a job card)');
+      return;
+    }
+    if (!form.customerId) {
+      toast.error('This job has no customer on file, or select a job first');
+      return;
+    }
+    try {
+      setSavingTakeoff(true);
+      const { data: job } = await axios.get(`${API_URL}/jobs/${jobId}`);
+      const existing = job.takeoff && typeof job.takeoff === 'object' ? job.takeoff : {};
+      await axios.patch(`${API_URL}/jobs/${jobId}`, {
+        takeoff: {
+          ...existing,
+          sheetData: form,
+          sheetUpdatedAt: new Date().toISOString(),
+        },
+      });
+      toast.success('Take off sheet saved to job');
+    } catch (error) {
+      console.error('Error saving takeoff sheet:', error);
+      toast.error(error.response?.data?.error || 'Could not save take off sheet');
+    } finally {
+      setSavingTakeoff(false);
+    }
+  };
+
   const printPdf = async () => {
     if (!sheetRef.current) {
       toast.error('Sheet not ready for print');
@@ -328,12 +428,37 @@ function TakeoffSheetPage() {
           Take Off Sheet
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Type directly into the sheet and export the exact layout to PDF.
+          Select a job at the top—sold-to, phone, and name & address come from that job’s customer (read-only). You can edit date, notes, bay, and the line items.
         </Typography>
       </Box>
 
       <Card>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+          <Autocomplete
+            sx={{ mb: 2 }}
+            options={jobs}
+            loading={loadingJobs}
+            value={jobId ? jobs.find((j) => String(j._id) === String(jobId)) || null : null}
+            onChange={(_, j) => {
+              if (j) setSearchParams({ jobId: String(j._id) });
+              else setSearchParams({});
+            }}
+            isOptionEqualToValue={(a, b) => String(a?._id) === String(b?._id)}
+            getOptionLabel={(j) => {
+              const custName =
+                j?.customerId && typeof j.customerId === 'object' ? j.customerId.name : '';
+              return `${j?.title || 'Job'}${custName ? ` — ${custName}` : ''}`;
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Job"
+                placeholder="Search jobs to link…"
+                helperText="Required to save. You can also open this page from a job card."
+              />
+            )}
+          />
+
           <Box sx={{ overflowX: 'auto' }}>
             <Box
               ref={sheetRef}
@@ -383,36 +508,21 @@ function TakeoffSheetPage() {
                     <Box sx={{ bgcolor: '#c2dff6', borderBottom: '1px solid #000', textAlign: 'center', py: 0.4, fontSize: 19 }}>
                       SOLD TO
                     </Box>
-                    <Autocomplete
-                      freeSolo
-                      options={customers}
-                      loading={loadingCustomers}
-                      value={form.customerId ? customers.find((c) => c._id === form.customerId) || null : null}
-                      inputValue={soldToInput}
-                      onChange={handleSoldToChange}
-                      onInputChange={handleSoldToInputChange}
-                      isOptionEqualToValue={(option, value) => String(option?._id) === String(value?._id)}
-                      getOptionLabel={(option) =>
-                        typeof option === 'string' ? option : option?.name || ''
-                      }
-                      filterOptions={(options, params) =>
-                        options.filter((c) =>
-                          (c.name || '').toLowerCase().includes(params.inputValue.toLowerCase())
-                        )
-                      }
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          variant="standard"
-                          InputProps={{
-                            ...params.InputProps,
-                            disableUnderline: true,
-                            sx: { fontSize: 16, px: 1, py: 0.7 },
-                          }}
-                          fullWidth
-                        />
-                      )}
-                    />
+                    {loadingJobSheet && jobId ? (
+                      <Box sx={{ px: 1, py: 0.7, fontSize: 16, color: 'text.disabled' }}>Loading…</Box>
+                    ) : (
+                      <TextField
+                        variant="standard"
+                        value={form.soldTo}
+                        placeholder={jobId ? '—' : 'Select a job above'}
+                        InputProps={{
+                          readOnly: true,
+                          disableUnderline: true,
+                          sx: { fontSize: 16, px: 1, py: 0.7 },
+                        }}
+                        fullWidth
+                      />
+                    )}
                   </Box>
                   <Box sx={{ borderRight: '1px solid #000' }}>
                     <Box sx={{ bgcolor: '#c2dff6', borderBottom: '1px solid #000', textAlign: 'center', py: 0.4, fontSize: 19 }}>
@@ -421,8 +531,11 @@ function TakeoffSheetPage() {
                     <TextField
                       variant="standard"
                       value={form.phoneNumber}
-                      onChange={(e) => setField('phoneNumber', e.target.value)}
-                      InputProps={{ disableUnderline: true, sx: { fontSize: 16, px: 1, py: 0.7 } }}
+                      InputProps={{
+                        readOnly: true,
+                        disableUnderline: true,
+                        sx: { fontSize: 16, px: 1, py: 0.7 },
+                      }}
                       fullWidth
                     />
                   </Box>
@@ -470,11 +583,10 @@ function TakeoffSheetPage() {
                       <TextField
                         variant="standard"
                         value={form.nameAddress}
-                        onChange={(e) => setField('nameAddress', e.target.value)}
-                        onBlur={normalizeNameAddressWrapping}
                         multiline
                         minRows={4}
                         InputProps={{
+                          readOnly: true,
                           disableUnderline: true,
                           sx: { fontSize: 15, px: 1, py: 0.7 },
                         }}
@@ -674,19 +786,40 @@ function TakeoffSheetPage() {
             </Box>
           </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
-            <Button startIcon={<AddIcon />} onClick={addRow}>
-              Add row
-            </Button>
-            <Button variant="outlined" color="error" onClick={removeLastRow} disabled={form.rows.length <= 1}>
-              Delete row
-            </Button>
-            <Button variant="contained" startIcon={<PictureAsPdfIcon />} onClick={downloadPdf}>
-              Download PDF
-            </Button>
-            <Button variant="outlined" onClick={printPdf}>
-              Print PDF
-            </Button>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mt: 2,
+              flexWrap: 'wrap',
+              gap: 1,
+            }}
+          >
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button startIcon={<AddIcon />} onClick={addRow}>
+                Add row
+              </Button>
+              <Button variant="outlined" color="error" onClick={removeLastRow} disabled={form.rows.length <= 1}>
+                Delete row
+              </Button>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={downloadPdf}>
+                Download PDF
+              </Button>
+              <Button variant="outlined" onClick={printPdf}>
+                Print PDF
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<SaveIcon />}
+                onClick={saveTakeoff}
+                disabled={savingTakeoff || loadingJobSheet || !jobId}
+              >
+                {savingTakeoff ? 'Saving…' : 'Save takeoff'}
+              </Button>
+            </Box>
           </Box>
 
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   Dialog,
   DialogTitle,
@@ -20,6 +21,7 @@ import {
   FormControl,
   InputLabel,
   Link as MuiLink,
+  Tooltip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -533,7 +535,28 @@ function JobDetailModal({
         },
       }}
     >
-      <DialogTitle sx={{ pb: 1 }}>
+      <DialogTitle sx={{ pb: 1, pt: 2 }}>
+        {job._id != null && String(job._id).trim() !== '' && (
+          <Box sx={{ textAlign: 'center', width: '100%', mb: 1.25 }}>
+            <Tooltip title={`Full job id: ${job._id}`} placement="bottom">
+              <Typography
+                variant="caption"
+                component="span"
+                sx={{
+                  color: 'text.disabled',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.04em',
+                  userSelect: 'all',
+                  cursor: 'default',
+                }}
+              >
+                ID{' '}
+                {String(job._id).length >= 8 ? String(job._id).slice(-8) : String(job._id)}
+              </Typography>
+            </Tooltip>
+          </Box>
+        )}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Box sx={{ flex: 1 }}>
             {isEditing ? (
@@ -947,6 +970,24 @@ function JobDetailModal({
                       Sent: {formatDate(job.estimate.sentAt)}
                     </Typography>
                   )}
+                  <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      component={RouterLink}
+                      to={`/finance?tab=estimates&jobId=${job._id}`}
+                    >
+                      Open estimate
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      component={RouterLink}
+                      to={`/takeoff-sheet?jobId=${job._id}`}
+                    >
+                      Open takeoff sheet
+                    </Button>
+                  </Box>
                 </Paper>
               </Grid>
             </Grid>

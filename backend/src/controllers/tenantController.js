@@ -135,7 +135,19 @@ async function getTenantBrandingLogo(req, res) {
 
     res.setHeader('Content-Type', resolved.logo.mimetype || 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=86400');
+    // Allow cross-origin <img> / fetch from Vite dev server (Firefox ORB / canvas use)
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
     const stream = await getFileStream(pseudoFile);
+    stream.on('error', (err) => {
+      console.error('getTenantBrandingLogo stream:', err);
+      if (!res.headersSent) {
+        res.status(500).end();
+      } else {
+        res.destroy();
+      }
+    });
     stream.pipe(res);
   } catch (error) {
     console.error('getTenantBrandingLogo:', error);

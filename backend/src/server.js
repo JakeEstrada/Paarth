@@ -19,6 +19,15 @@ function isLikelyObjectId(value) {
 const app = express();
 const httpServer = http.createServer(app);
 
+const LOCAL_DEV_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
 function parseCorsOrigins() {
   const raw = process.env.CORS_ORIGINS;
   if (!raw || !String(raw).trim()) return true;
@@ -26,7 +35,12 @@ function parseCorsOrigins() {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  return list.length ? list : true;
+  if (!list.length) return true;
+  // Non-production: merge Vite/preview dev origins so a production-only CORS_ORIGINS copy still allows local UI.
+  if (process.env.NODE_ENV !== 'production') {
+    return [...new Set([...list, ...LOCAL_DEV_ORIGINS])];
+  }
+  return list;
 }
 
 // Middleware — explicit headers so browser preflight (e.g. x-tenant-id) succeeds cross-origin.
@@ -58,7 +72,8 @@ app.use(async (req, res, next) => {
     req.path.startsWith('/uploads/') ||
     req.path.startsWith('/developer-tasks') ||
     req.path.startsWith('/auth') ||
-    req.path.startsWith('/twilio');
+    req.path.startsWith('/twilio') ||
+    req.path.startsWith('/tenants/branding');
 
   if (skipTenantDb) {
     return runWithTenantContext({ tenantId: null, bypassTenant: true }, () => next());

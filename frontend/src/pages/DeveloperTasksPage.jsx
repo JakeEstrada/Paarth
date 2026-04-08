@@ -49,7 +49,13 @@ function DeveloperTasksPage() {
       setTasks(response.data || []);
     } catch (error) {
       console.error('Error loading tasks:', error);
-      toast.error('Failed to load tasks');
+      if (error.code === 'ERR_NETWORK') {
+        toast.error(
+          `Cannot reach API at ${API_URL}. Start the backend (e.g. npm run dev in /backend) and ensure it is listening on port 4000.`
+        );
+      } else {
+        toast.error('Failed to load tasks');
+      }
     } finally {
       setLoading(false);
     }
@@ -74,7 +80,13 @@ function DeveloperTasksPage() {
       fetchTasks(); // Refresh tasks
     } catch (error) {
       console.error('Error adding task:', error);
-      toast.error('Failed to add task');
+      if (error.code === 'ERR_NETWORK') {
+        toast.error(
+          `Cannot reach API at ${API_URL}. Start the backend (e.g. npm run dev in /backend) on port 4000.`
+        );
+      } else {
+        toast.error('Failed to add task');
+      }
     }
   };
 
@@ -98,7 +110,13 @@ function DeveloperTasksPage() {
       fetchTasks(); // Refresh tasks
     } catch (error) {
       console.error('Error updating task:', error);
-      toast.error('Failed to update task');
+      if (error.code === 'ERR_NETWORK') {
+        toast.error(
+          `Cannot reach API at ${API_URL}. Start the backend (e.g. npm run dev in /backend) on port 4000.`
+        );
+      } else {
+        toast.error('Failed to update task');
+      }
     }
   };
 
@@ -110,7 +128,13 @@ function DeveloperTasksPage() {
         fetchTasks(); // Refresh tasks
       } catch (error) {
         console.error('Error deleting task:', error);
-        toast.error('Failed to delete task');
+        if (error.code === 'ERR_NETWORK') {
+          toast.error(
+            `Cannot reach API at ${API_URL}. Start the backend (e.g. npm run dev in /backend) on port 4000.`
+          );
+        } else {
+          toast.error('Failed to delete task');
+        }
       }
     }
   };
@@ -126,7 +150,13 @@ function DeveloperTasksPage() {
       fetchTasks(); // Refresh tasks
     } catch (error) {
       console.error('Error toggling task completion:', error);
-      toast.error('Failed to update task');
+      if (error.code === 'ERR_NETWORK') {
+        toast.error(
+          `Cannot reach API at ${API_URL}. Start the backend (e.g. npm run dev in /backend) on port 4000.`
+        );
+      } else {
+        toast.error('Failed to update task');
+      }
     }
   };
 

@@ -1,6 +1,15 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 
+const LOCAL_DEV_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
 function parseAllowedOrigins() {
   const raw = process.env.CORS_ORIGINS;
   if (!raw || !String(raw).trim()) return true;
@@ -8,7 +17,11 @@ function parseAllowedOrigins() {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  return list.length ? list : true;
+  if (!list.length) return true;
+  if (process.env.NODE_ENV !== 'production') {
+    return [...new Set([...list, ...LOCAL_DEV_ORIGINS])];
+  }
+  return list;
 }
 
 function canJoinRoom(socket, room) {

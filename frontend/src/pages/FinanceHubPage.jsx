@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Autocomplete,
   Box,
@@ -9,12 +10,18 @@ import {
   Container,
   Divider,
   IconButton,
+  Link,
   Tab,
   Tabs,
   TextField,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  PictureAsPdf as PictureAsPdfIcon,
+  Print as PrintIcon,
+} from '@mui/icons-material';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import axios from 'axios';
@@ -57,12 +64,6 @@ const TAB_DEFS = [
   },
 ];
 
-function parseCreateNewOptionName(option) {
-  if (!option || option._id !== 'new' || typeof option.name !== 'string') return '';
-  const m = /^Create "(.*)"$/.exec(option.name);
-  return m ? m[1] : '';
-}
-
 function readEstimateSequence() {
   if (typeof window === 'undefined') return 1;
   const raw = window.localStorage.getItem(ESTIMATE_SEQ_KEY);
@@ -79,12 +80,108 @@ function formatEstimateNumber(sequence) {
   return `${ESTIMATE_PREFIX}-${String(sequence).padStart(4, '0')}`;
 }
 
+/** Shown after colon in job picker: `Customer: Project · Stage` */
+const ESTIMATE_STAGE_LABELS = {
+  APPOINTMENT_SCHEDULED: 'Appointment',
+  ESTIMATE_IN_PROGRESS: 'Estimate current',
+  ESTIMATE_SENT: 'Estimate sent',
+  ENGAGED_DESIGN_REVIEW: 'Design review',
+  CONTRACT_OUT: 'Contract out',
+  CONTRACT_SIGNED: 'Contract signed',
+  DEPOSIT_PENDING: 'Deposit pending',
+  JOB_PREP: 'Job prep',
+  TAKEOFF_COMPLETE: 'Fabrication',
+  READY_TO_SCHEDULE: 'Ready to schedule',
+  SCHEDULED: 'Scheduled',
+  IN_PRODUCTION: 'In production',
+  INSTALLED: 'Installed',
+  FINAL_PAYMENT_CLOSED: 'Final payment closed',
+};
+
+/** Sentinel: save estimate as a new pipeline card even when other jobs exist. */
+const ESTIMATE_NEW_JOB_ID = '__estimate_new_job__';
+const ESTIMATE_NEW_JOB_OPTION = { _id: ESTIMATE_NEW_JOB_ID, __isNewJobOption: true };
+
+/** Text after first "|" in job title (e.g. site line); otherwise full title. */
+function jobTitleAfterPipe(rawTitle) {
+  const t = String(rawTitle || '').trim();
+  if (!t) return 'Untitled';
+  const i = t.indexOf('|');
+  if (i >= 0) {
+    const tail = t.slice(i + 1).trim();
+    return tail || t;
+  }
+  return t;
+}
+
+/**
+ * Picker line: Customer: <after | in title> | <description> · <stage> · ID <last 8 of _id>
+ * Trailing ID disambiguates duplicate titles/descriptions (worst case).
+ */
+function formatEstimateJobPickLabel(customerName, job) {
+  if (job?.__isNewJobOption) {
+    return `${(customerName || 'Customer').trim()}: (New job — separate pipeline card)`;
+  }
+  const cn = (customerName || 'Customer').trim();
+  const siteOrProject = jobTitleAfterPipe(job?.title);
+  const desc = String(job?.description || '').trim();
+  const stageLabel = ESTIMATE_STAGE_LABELS[job?.stage] || job?.stage || '';
+  const core = desc ? `${siteOrProject} | ${desc}` : siteOrProject;
+  const stagePart = stageLabel ? ` · ${stageLabel}` : '';
+  const idRaw = job?._id != null ? String(job._id) : '';
+  const idSuffix =
+    idRaw.length >= 8 ? ` · ID ${idRaw.slice(-8)}` : idRaw.length >= 1 ? ` · ID ${idRaw}` : '';
+  return `${cn}: ${core}${stagePart}${idSuffix}`;
+}
+
+const DEFAULT_LINE_ITEMS = () => [
+  { itemName: 'Staircase', description: '', quantity: 1, total: '' },
+  { itemName: 'Wall Rail', description: '', quantity: 1, total: '' },
+  { itemName: 'Additional', description: '', quantity: 1, total: '' },
+];
+
+function mapEstimateLineFromJob(row) {
+  if (!row) return { itemName: '', description: '', quantity: 1, total: '' };
+  const qty = row.quantity != null && row.quantity !== '' ? row.quantity : 1;
+  const tot = row.total != null && row.total !== '' ? String(row.total) : '';
+  if (row.itemName != null && String(row.itemName).trim() !== '') {
+    return {
+      itemName: String(row.itemName),
+      description: row.description != null ? String(row.description) : '',
+      quantity: qty,
+      total: tot,
+    };
+  }
+  const desc = String(row.description || '');
+  const sep = ' - ';
+  const idx = desc.indexOf(sep);
+  if (idx > 0) {
+    return {
+      itemName: desc.slice(0, idx).trim(),
+      description: desc.slice(idx + sep.length).trim(),
+      quantity: qty,
+      total: tot,
+    };
+  }
+  return { itemName: desc, description: '', quantity: qty, total: tot };
+}
+
 function FinanceHubPage() {
-  const [activeTab, setActiveTab] = useState(TAB_DEFS[0].key);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const estimateJobId = searchParams.get('jobId');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === 'undefined') return TAB_DEFS[0].key;
+    const t = new URLSearchParams(window.location.search).get('tab');
+    return t && TAB_DEFS.some((x) => x.key === t) ? t : TAB_DEFS[0].key;
+  });
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
-  const [customerInputValue, setCustomerInputValue] = useState('');
+  const [loadingJobEstimate, setLoadingJobEstimate] = useState(false);
   const [savingEstimate, setSavingEstimate] = useState(false);
+  const [editingJobSummary, setEditingJobSummary] = useState(null);
+  const [customerPipelineJobs, setCustomerPipelineJobs] = useState([]);
+  const [loadingCustomerJobs, setLoadingCustomerJobs] = useState(false);
+  const [estimateSaveTargetId, setEstimateSaveTargetId] = useState(null);
   const estimateCanvasRef = useRef(null);
   const [estimateForm, setEstimateForm] = useState(() => ({
     estimateNumber: formatEstimateNumber(readEstimateSequence()),
@@ -100,11 +197,7 @@ function FinanceHubPage() {
       zip: '',
     },
     projectName: '',
-    lineItems: [
-      { itemName: 'Staircase', description: '', quantity: 1, total: '' },
-      { itemName: 'Wall Rail', description: '', quantity: 1, total: '' },
-      { itemName: 'Additional', description: '', quantity: 1, total: '' },
-    ],
+    lineItems: DEFAULT_LINE_ITEMS(),
     footerNote: 'Customer acknowledges paint and stain are not included.',
   }));
 
@@ -122,6 +215,14 @@ function FinanceHubPage() {
     [estimateForm.lineItems]
   );
 
+  const tabParam = searchParams.get('tab');
+  const jobIdParam = searchParams.get('jobId');
+  useEffect(() => {
+    if (tabParam && TAB_DEFS.some((t) => t.key === tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam, jobIdParam]);
+
   useEffect(() => {
     if (activeTab !== 'estimates') return;
     const fetchCustomers = async () => {
@@ -137,6 +238,130 @@ function FinanceHubPage() {
     };
     fetchCustomers();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'estimates' || !estimateJobId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingJobEstimate(true);
+        const { data: job } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+        if (cancelled) return;
+        const cust = job.customerId;
+        if (cust && typeof cust === 'object' && cust._id) {
+          setCustomers((prev) =>
+            prev.some((c) => String(c._id) === String(cust._id)) ? prev : [cust, ...prev]
+          );
+        }
+        const est = job.estimate || {};
+        const sent = est.sentAt ? new Date(est.sentAt) : null;
+        const lineItems =
+          Array.isArray(est.lineItems) && est.lineItems.length > 0
+            ? est.lineItems.map(mapEstimateLineFromJob)
+            : DEFAULT_LINE_ITEMS();
+        setEstimateForm({
+          estimateNumber: est.number || formatEstimateNumber(readEstimateSequence()),
+          estimateDate:
+            est.estimateDate ||
+            (sent ? sent.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
+          customerId: typeof cust === 'object' && cust?._id ? cust._id : cust || null,
+          customerName: typeof cust === 'object' ? cust.name || '' : '',
+          customerPhone: typeof cust === 'object' ? cust.primaryPhone || '' : '',
+          customerEmail: typeof cust === 'object' ? cust.primaryEmail || '' : '',
+          customerAddress:
+            typeof cust === 'object' && cust.address
+              ? {
+                  street: cust.address.street || '',
+                  city: cust.address.city || '',
+                  state: cust.address.state || '',
+                  zip: cust.address.zip || '',
+                }
+              : job.jobAddress
+                ? {
+                    street: job.jobAddress.street || '',
+                    city: job.jobAddress.city || '',
+                    state: job.jobAddress.state || '',
+                    zip: job.jobAddress.zip || '',
+                  }
+                : { street: '', city: '', state: '', zip: '' },
+          projectName: est.projectName || job.title || '',
+          lineItems,
+          footerNote:
+            est.footerNote || 'Customer acknowledges paint and stain are not included.',
+        });
+        setEditingJobSummary({
+          _id: job._id,
+          title: job.title || '',
+          stage: job.stage || '',
+          description: job.description || '',
+        });
+      } catch (error) {
+        console.error('Error loading job for estimate:', error);
+        setEditingJobSummary(null);
+        toast.error(error.response?.data?.error || 'Could not load estimate from job');
+      } finally {
+        if (!cancelled) setLoadingJobEstimate(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, estimateJobId]);
+
+  useEffect(() => {
+    if (activeTab !== 'estimates' || !estimateForm.customerId) {
+      setCustomerPipelineJobs([]);
+      setEstimateSaveTargetId(null);
+      return undefined;
+    }
+    if (estimateJobId) {
+      setCustomerPipelineJobs([]);
+      setEstimateSaveTargetId(estimateJobId);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingCustomerJobs(true);
+        const { data } = await axios.get(`${API_URL}/jobs`, {
+          params: { customerId: estimateForm.customerId, limit: 100 },
+        });
+        const jobs = data.jobs || [];
+        if (cancelled) return;
+        setCustomerPipelineJobs(jobs);
+        if (jobs.length === 0) {
+          setEstimateSaveTargetId(null);
+        } else if (jobs.length === 1) {
+          setEstimateSaveTargetId(String(jobs[0]._id));
+        } else {
+          setEstimateSaveTargetId(null);
+        }
+      } catch (error) {
+        console.error('Error loading jobs for estimate target:', error);
+        if (!cancelled) {
+          setCustomerPipelineJobs([]);
+          setEstimateSaveTargetId(null);
+        }
+      } finally {
+        if (!cancelled) setLoadingCustomerJobs(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, estimateForm.customerId, estimateJobId]);
+
+  const estimateSaveTargetOption = useMemo(() => {
+    if (!estimateSaveTargetId) return null;
+    if (estimateSaveTargetId === ESTIMATE_NEW_JOB_ID) return ESTIMATE_NEW_JOB_OPTION;
+    return customerPipelineJobs.find((j) => String(j._id) === String(estimateSaveTargetId)) || null;
+  }, [estimateSaveTargetId, customerPipelineJobs]);
+
+  const estimateJobPickerOptions = useMemo(() => {
+    if (!estimateForm.customerId || estimateJobId) return [];
+    if (customerPipelineJobs.length <= 1) return [];
+    return [...customerPipelineJobs, ESTIMATE_NEW_JOB_OPTION];
+  }, [customerPipelineJobs, estimateForm.customerId, estimateJobId]);
 
   const setEstimateField = (field, value) => {
     setEstimateForm((prev) => ({ ...prev, [field]: value }));
@@ -172,92 +397,53 @@ function FinanceHubPage() {
 
   const handleEstimateCustomerChange = (_, newValue, reason) => {
     if (reason === 'selectOption' && newValue) {
-      if (newValue._id === 'new') {
-        const typedName = parseCreateNewOptionName(newValue);
-        setEstimateForm((prev) => ({
-          ...prev,
-          customerId: null,
-          customerName: typedName || prev.customerName,
-          customerPhone: '',
-          customerEmail: '',
-          customerAddress: { street: '', city: '', state: '', zip: '' },
-        }));
-        if (typedName) setCustomerInputValue(typedName);
-      } else {
-        setEstimateForm((prev) => ({
-          ...prev,
-          customerId: newValue._id,
-          customerName: newValue.name || '',
-          customerPhone: newValue.primaryPhone || '',
-          customerEmail: newValue.primaryEmail || '',
-          customerAddress: newValue.address || { street: '', city: '', state: '', zip: '' },
-        }));
-        setCustomerInputValue(newValue.name || '');
-      }
+      setEstimateForm((prev) => ({
+        ...prev,
+        customerId: newValue._id,
+        customerName: newValue.name || '',
+        customerPhone: newValue.primaryPhone || '',
+        customerEmail: newValue.primaryEmail || '',
+        customerAddress: newValue.address || { street: '', city: '', state: '', zip: '' },
+      }));
     } else if (reason === 'clear') {
       setEstimateForm((prev) => ({
         ...prev,
         customerId: null,
         customerName: '',
+        customerPhone: '',
+        customerEmail: '',
+        customerAddress: { street: '', city: '', state: '', zip: '' },
       }));
-      setCustomerInputValue('');
+      setCustomerPipelineJobs([]);
+      setEstimateSaveTargetId(null);
+      setEditingJobSummary(null);
     }
   };
 
-  const handleEstimateCustomerInputChange = (_, value) => {
-    setCustomerInputValue(value);
-    setEstimateForm((prev) => ({
-      ...prev,
-      customerName: value,
-      customerId: prev.customerName.toLowerCase() === value.toLowerCase() ? prev.customerId : null,
-    }));
-  };
-
-  const ensureCustomerForEstimate = async () => {
-    if (estimateForm.customerId) return estimateForm.customerId;
-    const name = estimateForm.customerName.trim();
-    if (!name) throw new Error('Customer name is required');
-
-    const existing = customers.find((c) => (c.name || '').toLowerCase() === name.toLowerCase());
-    if (existing?._id) return existing._id;
-
-    const payload = {
-      name,
-      primaryPhone: estimateForm.customerPhone || undefined,
-      primaryEmail: estimateForm.customerEmail || undefined,
-      address:
-        estimateForm.customerAddress.street || estimateForm.customerAddress.city
-          ? estimateForm.customerAddress
-          : undefined,
-      skipInitialJob: true,
-    };
-    const response = await axios.post(`${API_URL}/customers`, payload);
-    const newCustomer = response.data;
-    setCustomers((prev) => [newCustomer, ...prev]);
-    setEstimateForm((prev) => ({ ...prev, customerId: newCustomer._id }));
-    return newCustomer._id;
-  };
-
-  const createEstimateJob = async () => {
-    const customerId = await ensureCustomerForEstimate();
-    const estimateDateIso = new Date(`${estimateForm.estimateDate}T12:00:00.000Z`);
-    const normalizedRows = estimateForm.lineItems
+  const buildNormalizedEstimateRows = () =>
+    estimateForm.lineItems
       .filter((r) => r.itemName.trim() || r.description.trim())
       .map((r) => ({
-        description: `${r.itemName || 'Item'}${r.description ? ` - ${r.description}` : ''}`,
+        itemName: (r.itemName || 'Item').trim(),
+        description: (r.description || '').trim(),
         quantity: Number(r.quantity) || 0,
+        unitPrice: 0,
         total: Number(r.total) || 0,
       }));
 
-    const payload = {
-      title: `${estimateForm.customerName || 'Customer'} Estimate ${estimateForm.estimateNumber}`,
-      customerId,
-      stage: 'ESTIMATE_IN_PROGRESS',
+  /** Update estimate on a job without changing title, stage, or customer. */
+  const buildEstimatePatchPayload = () => {
+    const estimateDateIso = new Date(`${estimateForm.estimateDate}T12:00:00.000Z`);
+    const normalizedRows = buildNormalizedEstimateRows();
+    return {
       valueEstimated: estimateTotal || 0,
       estimate: {
         number: estimateForm.estimateNumber,
         amount: estimateTotal || 0,
         sentAt: estimateDateIso.toISOString(),
+        estimateDate: estimateForm.estimateDate,
+        projectName: estimateForm.projectName || '',
+        footerNote: estimateForm.footerNote || '',
         lineItems: normalizedRows,
       },
       jobAddress:
@@ -272,42 +458,107 @@ function FinanceHubPage() {
             }
           : undefined,
     };
+  };
 
-    await axios.post(`${API_URL}/jobs`, payload);
+  /** Brand-new job when the customer has no active pipeline job. */
+  const buildEstimateCreatePayload = () => ({
+    ...buildEstimatePatchPayload(),
+    title: `${estimateForm.customerName || 'Customer'} Estimate ${estimateForm.estimateNumber}`,
+    customerId: estimateForm.customerId,
+    stage: 'ESTIMATE_IN_PROGRESS',
+  });
+
+  const renderEstimatePdfDoc = async () => {
+    if (!estimateCanvasRef.current) {
+      throw new Error('Estimate canvas not ready');
+    }
+    const canvas = await html2canvas(estimateCanvasRef.current, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+    });
+    const imageData = canvas.toDataURL('image/png');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const pageW = 612;
+    const pageH = 792;
+    doc.addImage(imageData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+    return doc;
   };
 
   const downloadEstimatePdf = async () => {
-    if (!estimateForm.customerName.trim()) {
-      toast.error('Please choose or create a customer first');
+    if (!estimateForm.customerId) {
+      toast.error('Select an existing customer first');
       return;
     }
 
     try {
-      if (!estimateCanvasRef.current) {
-        toast.error('Estimate canvas not ready');
-        return;
-      }
-      const canvas = await html2canvas(estimateCanvasRef.current, {
-        backgroundColor: '#ffffff',
-        scale: 2,
-        useCORS: true,
-      });
-      const imageData = canvas.toDataURL('image/png');
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-      const pageW = 612;
-      const pageH = 792;
-      doc.addImage(imageData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+      const doc = await renderEstimatePdfDoc();
       doc.save(`Estimate-${estimateForm.estimateNumber}.pdf`);
       toast.success('Estimate PDF downloaded');
     } catch (error) {
       console.error('Error generating estimate PDF:', error);
-      toast.error('Failed to generate estimate PDF');
+      const message = error?.message === 'Estimate canvas not ready' ? error.message : 'Failed to generate estimate PDF';
+      toast.error(message);
     }
   };
 
-  const handleCreateEstimate = async () => {
-    if (!estimateForm.customerName.trim()) {
-      toast.error('Customer name is required');
+  const printEstimatePdf = async () => {
+    if (!estimateForm.customerId) {
+      toast.error('Select an existing customer first');
+      return;
+    }
+
+    try {
+      const doc = await renderEstimatePdfDoc();
+      const blobUrl = doc.output('bloburl');
+      const win = window.open(blobUrl, '_blank');
+      if (win) {
+        const trigger = () => {
+          try {
+            win.focus();
+            win.print();
+          } catch (e) {
+            console.warn('Print trigger failed:', e);
+          }
+        };
+        win.onload = trigger;
+        setTimeout(trigger, 700);
+      }
+      toast.success('Print view opened');
+    } catch (error) {
+      console.error('Error creating printable estimate:', error);
+      const message = error?.message === 'Estimate canvas not ready' ? error.message : 'Failed to open print view';
+      toast.error(message);
+    }
+  };
+
+  const estimatePrevJobIdRef = useRef(undefined);
+  useEffect(() => {
+    const prev = estimatePrevJobIdRef.current;
+    estimatePrevJobIdRef.current = estimateJobId;
+    if (activeTab !== 'estimates') return;
+    if (!estimateJobId && prev) {
+      setEstimateForm({
+        estimateNumber: formatEstimateNumber(readEstimateSequence()),
+        estimateDate: new Date().toISOString().slice(0, 10),
+        customerId: null,
+        customerName: '',
+        customerPhone: '',
+        customerEmail: '',
+        customerAddress: { street: '', city: '', state: '', zip: '' },
+        projectName: '',
+        lineItems: DEFAULT_LINE_ITEMS(),
+        footerNote: 'Customer acknowledges paint and stain are not included.',
+      });
+      setEditingJobSummary(null);
+      setCustomerPipelineJobs([]);
+      setEstimateSaveTargetId(null);
+    }
+  }, [estimateJobId, activeTab]);
+
+  const handleSaveEstimate = async () => {
+    if (!estimateForm.customerId) {
+      toast.error('Select an existing customer');
       return;
     }
     if (!estimateForm.estimateDate) {
@@ -316,18 +567,53 @@ function FinanceHubPage() {
     }
     try {
       setSavingEstimate(true);
-      await createEstimateJob();
-      const currentSeq = readEstimateSequence();
-      const nextSeq = currentSeq + 1;
-      writeEstimateSequence(nextSeq);
-      setEstimateForm((prev) => ({
-        ...prev,
-        estimateNumber: formatEstimateNumber(nextSeq),
-      }));
-      toast.success(`Estimate ${estimateForm.estimateNumber} created`);
+      const patchPayload = buildEstimatePatchPayload();
+      if (estimateJobId) {
+        await axios.patch(`${API_URL}/jobs/${estimateJobId}`, patchPayload);
+        toast.success(`Estimate ${estimateForm.estimateNumber} saved`);
+      } else {
+        const useNewCard =
+          customerPipelineJobs.length === 0 || estimateSaveTargetId === ESTIMATE_NEW_JOB_ID;
+        const existingId =
+          estimateSaveTargetId &&
+          estimateSaveTargetId !== ESTIMATE_NEW_JOB_ID &&
+          customerPipelineJobs.some((j) => String(j._id) === String(estimateSaveTargetId))
+            ? estimateSaveTargetId
+            : null;
+
+        if (!useNewCard && !existingId) {
+          toast.error(
+            'Select which job this estimate belongs to (list uses: Customer: project · stage).'
+          );
+          return;
+        }
+
+        if (useNewCard) {
+          const { data: created } = await axios.post(
+            `${API_URL}/jobs`,
+            buildEstimateCreatePayload()
+          );
+          const newId = created?._id;
+          const nextSeq = readEstimateSequence() + 1;
+          writeEstimateSequence(nextSeq);
+          if (newId) {
+            setSearchParams({ tab: 'estimates', jobId: String(newId) });
+          }
+          toast.success(`Estimate ${estimateForm.estimateNumber} saved to new job`);
+        } else {
+          await axios.patch(`${API_URL}/jobs/${existingId}`, patchPayload);
+          const nextSeq = readEstimateSequence() + 1;
+          writeEstimateSequence(nextSeq);
+          setSearchParams({ tab: 'estimates', jobId: String(existingId) });
+          const picked = customerPipelineJobs.find((j) => String(j._id) === String(existingId));
+          toast.success(
+            `Estimate ${estimateForm.estimateNumber} saved on ${formatEstimateJobPickLabel(estimateForm.customerName, picked)}`
+          );
+        }
+      }
     } catch (error) {
-      console.error('Error creating estimate:', error);
-      toast.error(error.response?.data?.error || error.message || 'Failed to create estimate');
+      console.error('Error saving estimate:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to save estimate');
     } finally {
       setSavingEstimate(false);
     }
@@ -379,46 +665,124 @@ function FinanceHubPage() {
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                New Estimate
+                {estimateJobId ? 'Edit estimate' : 'New estimate'}
               </Typography>
               <Chip size="small" color="primary" label={estimateForm.estimateNumber} />
             </Box>
 
             <Autocomplete
-              freeSolo
               options={customers}
-              loading={loadingCustomers}
-              value={estimateForm.customerId ? customers.find((c) => c._id === estimateForm.customerId) || null : null}
-              inputValue={customerInputValue}
+              loading={loadingCustomers || loadingJobEstimate}
+              value={
+                estimateForm.customerId
+                  ? customers.find((c) => String(c._id) === String(estimateForm.customerId)) || null
+                  : null
+              }
               onChange={handleEstimateCustomerChange}
-              onInputChange={handleEstimateCustomerInputChange}
               isOptionEqualToValue={(option, value) => String(option?._id) === String(value?._id)}
-              getOptionLabel={(option) => {
-                if (typeof option === 'string') return option;
-                if (option._id === 'new') return option.name;
-                return option.name || '';
-              }}
-              filterOptions={(options, params) => {
-                const filtered = options.filter((option) =>
-                  (option.name || '').toLowerCase().includes(params.inputValue.toLowerCase())
-                );
-                if (
-                  params.inputValue &&
-                  !options.some((opt) => (opt.name || '').toLowerCase() === params.inputValue.toLowerCase())
-                ) {
-                  return [{ _id: 'new', name: `Create "${params.inputValue}"` }, ...filtered];
-                }
-                return filtered;
-              }}
+              getOptionLabel={(option) => option?.name || ''}
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Customer (select or create)"
-                  helperText="Type a new name to create a customer when saving estimate"
+                  label="Customer"
+                  helperText="Pick the contractor, then the job. Labels use the text after | in the job title, then the job description, then stage (e.g. Customer: 223 Marfield Dr | Treads · Fabrication)."
                   fullWidth
                 />
               )}
             />
+
+            {estimateJobId && editingJobSummary && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Editing estimate on{' '}
+                <strong>
+                  {formatEstimateJobPickLabel(estimateForm.customerName, {
+                    _id: editingJobSummary._id,
+                    title: editingJobSummary.title,
+                    stage: editingJobSummary.stage,
+                    description: editingJobSummary.description,
+                  })}
+                </strong>
+              </Typography>
+            )}
+
+            {!estimateJobId &&
+              estimateForm.customerId &&
+              loadingCustomerJobs && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Loading jobs for this customer…
+                </Typography>
+              )}
+
+            {!estimateJobId &&
+              estimateForm.customerId &&
+              !loadingCustomerJobs &&
+              customerPipelineJobs.length === 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  No active pipeline jobs for this customer—save will create a new card.
+                </Typography>
+              )}
+
+            {!estimateJobId &&
+              estimateForm.customerId &&
+              !loadingCustomerJobs &&
+              customerPipelineJobs.length === 1 && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Save to:{' '}
+                    <strong>
+                      {formatEstimateJobPickLabel(estimateForm.customerName, customerPipelineJobs[0])}
+                    </strong>
+                  </Typography>
+                  {estimateSaveTargetId === ESTIMATE_NEW_JOB_ID ? (
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      <Link
+                        component="button"
+                        type="button"
+                        variant="body2"
+                        onClick={() => setEstimateSaveTargetId(String(customerPipelineJobs[0]._id))}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        Use the existing job instead
+                      </Link>
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      <Link
+                        component="button"
+                        type="button"
+                        variant="body2"
+                        onClick={() => setEstimateSaveTargetId(ESTIMATE_NEW_JOB_ID)}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        Use a new pipeline card instead
+                      </Link>
+                    </Typography>
+                  )}
+                </Box>
+              )}
+
+            {!estimateJobId && estimateForm.customerId && estimateJobPickerOptions.length > 1 && (
+              <Autocomplete
+                sx={{ mt: 1.5 }}
+                options={estimateJobPickerOptions}
+                loading={loadingCustomerJobs}
+                value={estimateSaveTargetOption}
+                onChange={(_, opt) => {
+                  if (!opt) setEstimateSaveTargetId(null);
+                  else setEstimateSaveTargetId(String(opt._id));
+                }}
+                getOptionLabel={(opt) => formatEstimateJobPickLabel(estimateForm.customerName, opt)}
+                isOptionEqualToValue={(a, b) => Boolean(a && b && String(a._id) === String(b._id))}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Which job?"
+                    helperText="Same site can be two contracts—use description to tell them apart. If still unclear, match the ID suffix to the job in Mongo or the job URL."
+                    required
+                  />
+                )}
+              />
+            )}
 
             <Divider sx={{ my: 2 }} />
 
@@ -596,20 +960,22 @@ function FinanceHubPage() {
                       <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000' }}>
                         <TextField
                           variant="standard"
-                          type="number"
+                          type="text"
                           value={row.quantity}
                           onChange={(e) => setLineItem(index, 'quantity', e.target.value)}
                           InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
+                          inputProps={{ inputMode: 'numeric' }}
                           fullWidth
                         />
                       </Box>
                       <Box sx={{ px: 0.75, py: 0.45, display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
                         <TextField
                           variant="standard"
-                          type="number"
+                          type="text"
                           value={row.total}
                           onChange={(e) => setLineItem(index, 'total', e.target.value)}
                           InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
+                          inputProps={{ inputMode: 'decimal' }}
                           fullWidth
                         />
                         <IconButton
@@ -651,7 +1017,7 @@ function FinanceHubPage() {
               </Box>
             </Box>
 
-            <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'flex-end', mt: 3 }}>
+            <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'flex-end', mt: 3, flexWrap: 'wrap' }}>
               <Button
                 variant="outlined"
                 startIcon={<PictureAsPdfIcon />}
@@ -659,8 +1025,23 @@ function FinanceHubPage() {
               >
                 Download PDF
               </Button>
-              <Button variant="contained" onClick={handleCreateEstimate} disabled={savingEstimate}>
-                {savingEstimate ? 'Saving...' : 'Save Estimate'}
+              <Button variant="outlined" startIcon={<PrintIcon />} onClick={printEstimatePdf}>
+                Print estimate
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleSaveEstimate}
+                disabled={
+                  savingEstimate ||
+                  loadingJobEstimate ||
+                  loadingCustomerJobs ||
+                  (!estimateJobId &&
+                    estimateForm.customerId &&
+                    customerPipelineJobs.length > 1 &&
+                    !estimateSaveTargetId)
+                }
+              >
+                {savingEstimate ? 'Saving...' : 'Save estimate'}
               </Button>
             </Box>
           </CardContent>

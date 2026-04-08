@@ -53,7 +53,12 @@ const jobSchema = new mongoose.Schema({
     number: String,
     amount: Number,
     sentAt: Date,
+    /** YYYY-MM-DD for Finance Hub form */
+    estimateDate: String,
+    projectName: String,
+    footerNote: String,
     lineItems: [{
+      itemName: String,
       description: String,
       quantity: Number,
       unitPrice: Number,
@@ -76,7 +81,10 @@ const jobSchema = new mongoose.Schema({
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     },
-    notes: String
+    notes: String,
+    /** Full Take Off Sheet form snapshot (soldTo, rows, etc.) */
+    sheetData: mongoose.Schema.Types.Mixed,
+    sheetUpdatedAt: Date
   },
   
   // Schedule details
