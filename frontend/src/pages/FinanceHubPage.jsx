@@ -465,6 +465,36 @@ function FinanceHubPage() {
         backgroundColor: '#ffffff',
         scale: 2,
         useCORS: true,
+        onclone: (_clonedDoc, cloned) => {
+          const table = cloned.querySelector('[data-estimate-line-table]');
+          if (!table) return;
+          const replaceWithWrappedText = (field) => {
+            const div = _clonedDoc.createElement('div');
+            div.textContent = field.value ?? '';
+            const isTotal = field.dataset?.estimateTotal === '1';
+            Object.assign(div.style, {
+              width: '100%',
+              boxSizing: 'border-box',
+              fontSize: '12.5px',
+              lineHeight: '1.35',
+              fontFamily: 'Arial, Helvetica, sans-serif',
+              color: '#000',
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+              ...(isTotal ? { textAlign: 'right' } : {}),
+            });
+            const root = field.closest('.MuiInputBase-root');
+            if (root) {
+              root.replaceChildren(div);
+            }
+          };
+          table.querySelectorAll('textarea').forEach(replaceWithWrappedText);
+          table.querySelectorAll('input').forEach((inp) => {
+            if (inp.type === 'hidden' || inp.type === 'date') return;
+            replaceWithWrappedText(inp);
+          });
+        },
       });
       const imageData = canvas.toDataURL('image/png');
       const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
@@ -893,7 +923,7 @@ function FinanceHubPage() {
                   </Box>
                 </Box>
 
-                <Box sx={{ mt: 3, border: '1px solid #000' }}>
+                <Box sx={{ mt: 3, border: '1px solid #000' }} data-estimate-line-table>
                   <Box sx={{ display: 'grid', gridTemplateColumns: '20% 48% 12% 20%', bgcolor: '#000', color: '#fff' }}>
                     <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Item</Box>
                     <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Description</Box>
@@ -1006,7 +1036,7 @@ function FinanceHubPage() {
                           value={row.total}
                           onChange={(e) => setLineItem(index, 'total', e.target.value)}
                           InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
-                          inputProps={{ inputMode: 'decimal' }}
+                          inputProps={{ inputMode: 'decimal', 'data-estimate-total': '1' }}
                           fullWidth
                         />
                         {!isEstimateExportMode && (
