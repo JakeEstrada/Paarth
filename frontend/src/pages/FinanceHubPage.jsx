@@ -919,14 +919,34 @@ function FinanceHubPage() {
                           fullWidth
                         />
                       </Box>
-                      <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000' }}>
+                      <Box
+                        sx={{
+                          px: 0.75,
+                          py: 0.45,
+                          borderRight: '1px solid #000',
+                          minWidth: 0,
+                          overflow: 'hidden',
+                        }}
+                      >
                         <TextField
                           variant="standard"
                           value={row.description}
                           onChange={(e) => setLineItem(index, 'description', e.target.value)}
                           multiline
                           minRows={2}
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
+                          InputProps={{
+                            disableUnderline: true,
+                            sx: {
+                              fontSize: 12.5,
+                              width: '100%',
+                              alignItems: 'flex-start',
+                              '& .MuiInputBase-inputMultiline': {
+                                whiteSpace: 'pre-wrap',
+                                overflowWrap: 'anywhere',
+                                wordBreak: 'break-word',
+                              },
+                            },
+                          }}
                           fullWidth
                         />
                       </Box>
