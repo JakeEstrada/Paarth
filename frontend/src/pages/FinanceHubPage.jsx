@@ -149,6 +149,41 @@ function cloneEstimateForm(f) {
   return JSON.parse(JSON.stringify(f));
 }
 
+/** Plain snapshot for localStorage (never throws on odd form shapes). */
+function buildStorableEstimateSnapshot(form, savedEstimateNumber) {
+  const num =
+    typeof savedEstimateNumber === 'string'
+      ? savedEstimateNumber
+      : savedEstimateNumber != null
+        ? String(savedEstimateNumber)
+        : '';
+  let customerId = form?.customerId;
+  if (customerId && typeof customerId === 'object' && customerId._id != null) {
+    customerId = customerId._id;
+  }
+  const lineItems = Array.isArray(form?.lineItems)
+    ? form.lineItems.map((r) => ({
+        itemName: r?.itemName != null ? String(r.itemName) : '',
+        description: r?.description != null ? String(r.description) : '',
+        quantity: r?.quantity != null ? r.quantity : 1,
+        total: r?.total != null ? String(r.total) : '',
+      }))
+    : [];
+  return {
+    estimateNumber: num || formatEstimateNumber(readEstimateSequence()),
+    estimateDate: form?.estimateDate != null ? String(form.estimateDate) : '',
+    customerId: customerId != null ? String(customerId) : null,
+    customerName: form?.customerName != null ? String(form.customerName) : '',
+    customerAddress: {
+      street: form?.customerAddress?.street != null ? String(form.customerAddress.street) : '',
+      city: form?.customerAddress?.city != null ? String(form.customerAddress.city) : '',
+    },
+    projectName: form?.projectName != null ? String(form.projectName) : '',
+    lineItems,
+    footerNote: form?.footerNote != null ? String(form.footerNote) : '',
+  };
+}
+
 function buildFreshEstimateDraftForm() {
   return {
     estimateNumber: formatEstimateNumber(readEstimateSequence()),
@@ -164,12 +199,15 @@ function buildFreshEstimateDraftForm() {
 
 function pushLocalEstimateSnapshot(form, savedEstimateNumber) {
   if (typeof window === 'undefined') return;
-  const snap = cloneEstimateForm(form);
-  snap.estimateNumber = savedEstimateNumber;
-  const arr = readLocalEstimateSnapshots();
-  arr.push(snap);
-  while (arr.length > LOCAL_EST_SNAPSHOT_MAX) arr.shift();
-  writeLocalEstimateSnapshots(arr);
+  try {
+    const snap = buildStorableEstimateSnapshot(form, savedEstimateNumber);
+    const arr = readLocalEstimateSnapshots();
+    arr.push(snap);
+    while (arr.length > LOCAL_EST_SNAPSHOT_MAX) arr.shift();
+    writeLocalEstimateSnapshots(arr);
+  } catch (e) {
+    console.error('Could not save estimate snapshot to local storage:', e);
+  }
 }
 
 function formatEstimateNumber(sequence) {
@@ -242,7 +280,9 @@ function revisionSnapshotNonEmpty(est) {
   return !!(
     (est.number && String(est.number).trim()) ||
     (Array.isArray(est.lineItems) && est.lineItems.length > 0) ||
-    (typeof est.amount === 'number' && est.amount > 0)
+    (typeof est.amount === 'number' && est.amount > 0) ||
+    est.sentAt != null ||
+    !!(est.estimateDate && String(est.estimateDate).trim())
   );
 }
 
@@ -408,6 +448,12 @@ function FinanceHubPage() {
       draftStashRef.current = null;
     }
   }, [estimateJobId]);
+
+  /** Re-read local snapshot list from storage when opening Estimates (e.g. after navigation). */
+  useEffect(() => {
+    if (activeTab !== 'estimates') return;
+    setLocalSnapshotsRevision((n) => n + 1);
+  }, [activeTab]);
 
   useEffect(() => {
     if (estimateJobId) return;
@@ -869,6 +915,8 @@ function FinanceHubPage() {
         const nextNum = formatEstimateNumber(readEstimateSequence());
         const patchPayload = buildEstimatePatchPayload({ estimateNumberOverride: nextNum });
         await axios.patch(`${API_URL}/jobs/${estimateJobId}`, patchPayload);
+        pushLocalEstimateSnapshot(estimateForm, nextNum);
+        setLocalSnapshotsRevision((n) => n + 1);
         const nextSeq = readEstimateSequence() + 1;
         writeEstimateSequence(nextSeq);
         const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
@@ -879,8 +927,6 @@ function FinanceHubPage() {
           estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
         );
         setEstimateDescHintsRev((n) => n + 1);
-        pushLocalEstimateSnapshot(estimateForm, nextNum);
-        setLocalSnapshotsRevision((n) => n + 1);
         toast.success(`Estimate ${nextNum} saved on this job`);
       } else {
         const useNewCard =
@@ -905,17 +951,17 @@ function FinanceHubPage() {
             buildEstimateCreatePayload()
           );
           const newId = created?._id;
+          pushLocalEstimateSnapshot(estimateForm, estimateForm.estimateNumber);
+          setLocalSnapshotsRevision((n) => n + 1);
           const nextSeq = readEstimateSequence() + 1;
           writeEstimateSequence(nextSeq);
-          if (newId) {
-            setSearchParams({ tab: 'estimates', jobId: String(newId) });
-          }
           mergeEstimateDescriptionHints(
             estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
           );
           setEstimateDescHintsRev((n) => n + 1);
-          pushLocalEstimateSnapshot(estimateForm, estimateForm.estimateNumber);
-          setLocalSnapshotsRevision((n) => n + 1);
+          if (newId) {
+            setSearchParams({ tab: 'estimates', jobId: String(newId) });
+          }
           toast.success(`Estimate ${estimateForm.estimateNumber} saved to new job`);
         } else {
           const nextNum = formatEstimateNumber(readEstimateSequence());
@@ -923,15 +969,15 @@ function FinanceHubPage() {
             `${API_URL}/jobs/${existingId}`,
             buildEstimatePatchPayload({ estimateNumberOverride: nextNum })
           );
+          pushLocalEstimateSnapshot(estimateForm, nextNum);
+          setLocalSnapshotsRevision((n) => n + 1);
           writeEstimateSequence(readEstimateSequence() + 1);
-          setSearchParams({ tab: 'estimates', jobId: String(existingId) });
-          const picked = customerPipelineJobs.find((j) => String(j._id) === String(existingId));
           mergeEstimateDescriptionHints(
             estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
           );
           setEstimateDescHintsRev((n) => n + 1);
-          pushLocalEstimateSnapshot(estimateForm, nextNum);
-          setLocalSnapshotsRevision((n) => n + 1);
+          setSearchParams({ tab: 'estimates', jobId: String(existingId) });
+          const picked = customerPipelineJobs.find((j) => String(j._id) === String(existingId));
           toast.success(
             `Estimate ${nextNum} saved on ${formatEstimateJobPickLabel(estimateForm.customerName, picked)}`
           );
@@ -1107,10 +1153,12 @@ function FinanceHubPage() {
 
             {!estimateJobId && localSavedSnapshots.length === 0 && !loadingJobEstimate && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                ← → stay usable after you save an estimate. Each save adds to history on{' '}
-                <strong>this browser</strong> so you can step back to 1102-0001, 0002, and so on. With
-                a job open in the address bar (Finance Hub Estimates plus jobId), arrows use the
-                server copy instead.
+                Saving writes to the database and also keeps a copy in <strong>this browser</strong>{' '}
+                for ← →. If you still see no history after a successful save, check that cookies /
+                site data are not blocked for this site. With a job open (Estimates tab includes{' '}
+                <strong>jobId</strong> in the URL), revision arrows use the job on the server—two
+                saves on the <strong>same</strong> job build that stack; two different pipeline cards
+                each have their own history.
               </Typography>
             )}
 
@@ -1124,8 +1172,11 @@ function FinanceHubPage() {
 
             {estimateJobId && estimateRevisions.length < 2 && !loadingJobEstimate && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                To browse older estimates, use <strong>Save estimate</strong> again on this job—each
-                save keeps the prior version in history. Then use ← → next to the revision counter.
+                To see 1102-0001 and 0002 together here, both saves must be on{' '}
+                <strong>this same job</strong> (same jobId). Each <strong>Save estimate</strong>{' '}
+                archives the previous version on the server; then use ← →. If you created two
+                separate pipeline cards, each card only shows its own latest estimate until you save
+                again on that card.
               </Typography>
             )}
 

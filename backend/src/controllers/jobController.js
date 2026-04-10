@@ -262,7 +262,9 @@ async function updateJob(req, res) {
         prior &&
         ((prior.number && String(prior.number).trim()) ||
           (Array.isArray(prior.lineItems) && prior.lineItems.length > 0) ||
-          (typeof prior.amount === 'number' && prior.amount > 0));
+          (typeof prior.amount === 'number' && prior.amount > 0) ||
+          prior.sentAt != null ||
+          !!(prior.estimateDate && String(prior.estimateDate).trim()));
       if (priorHas) {
         if (!Array.isArray(job.estimateHistory)) {
           job.estimateHistory = [];
