@@ -18,6 +18,8 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
   Delete as DeleteIcon,
   PictureAsPdf as PictureAsPdfIcon,
   Print as PrintIcon,
@@ -143,6 +145,64 @@ const DEFAULT_LINE_ITEMS = () => [
   { itemName: 'Additional', description: '', quantity: 1, total: '' },
 ];
 
+/** True if this snapshot is worth listing (matches server push heuristic). */
+function revisionSnapshotNonEmpty(est) {
+  if (!est || typeof est !== 'object') return false;
+  return !!(
+    (est.number && String(est.number).trim()) ||
+    (Array.isArray(est.lineItems) && est.lineItems.length > 0) ||
+    (typeof est.amount === 'number' && est.amount > 0)
+  );
+}
+
+/** Oldest → newest; current `job.estimate` is always last when non-empty. */
+function buildEstimateRevisions(job) {
+  const history = Array.isArray(job?.estimateHistory) ? job.estimateHistory : [];
+  const current = job?.estimate || {};
+  const revs = history.filter(revisionSnapshotNonEmpty).map((snap) => ({ ...snap }));
+  if (revisionSnapshotNonEmpty(current)) {
+    revs.push({ ...current });
+  }
+  return revs;
+}
+
+function computeEstimateFormFromJobSnapshot(job, snapshot) {
+  const cust = job.customerId;
+  const est = snapshot || {};
+  const sent = est.sentAt ? new Date(est.sentAt) : null;
+  const lineItems =
+    snapshot && Array.isArray(est.lineItems) && est.lineItems.length > 0
+      ? est.lineItems.map(mapEstimateLineFromJob)
+      : DEFAULT_LINE_ITEMS();
+  return {
+    estimateNumber:
+      snapshot && est.number
+        ? est.number
+        : formatEstimateNumber(readEstimateSequence()),
+    estimateDate:
+      est.estimateDate ||
+      (sent ? sent.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
+    customerId: typeof cust === 'object' && cust?._id ? cust._id : cust || null,
+    customerName: typeof cust === 'object' ? cust.name || '' : '',
+    customerAddress:
+      typeof cust === 'object' && cust.address
+        ? {
+            street: cust.address.street || '',
+            city: cust.address.city || '',
+          }
+        : job.jobAddress
+          ? {
+              street: job.jobAddress.street || '',
+              city: job.jobAddress.city || '',
+            }
+          : { street: '', city: '' },
+    projectName: est.projectName || job.title || '',
+    lineItems,
+    footerNote:
+      est.footerNote || 'Customer acknowledges paint and stain are not included.',
+  };
+}
+
 function mapEstimateLineFromJob(row) {
   if (!row) return { itemName: '', description: '', quantity: 1, total: '' };
   const qty = row.quantity != null && row.quantity !== '' ? row.quantity : 1;
@@ -187,6 +247,10 @@ function FinanceHubPage() {
   const [estimateSaveTargetId, setEstimateSaveTargetId] = useState(null);
   const [isEstimateExportMode, setIsEstimateExportMode] = useState(false);
   const estimateCanvasRef = useRef(null);
+  /** Full job JSON when editing via `jobId` (drives revision stack). */
+  const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
+  /** Index into `buildEstimateRevisions(loadedEstimateJob)` (0 = oldest). */
+  const [estimateRevisionIndex, setEstimateRevisionIndex] = useState(0);
   const [estimateForm, setEstimateForm] = useState(() => ({
     estimateNumber: formatEstimateNumber(readEstimateSequence()),
     estimateDate: new Date().toISOString().slice(0, 10),
@@ -215,6 +279,11 @@ function FinanceHubPage() {
     [estimateForm.lineItems]
   );
 
+  const estimateRevisions = useMemo(
+    () => (loadedEstimateJob ? buildEstimateRevisions(loadedEstimateJob) : []),
+    [loadedEstimateJob]
+  );
+
   const tabParam = searchParams.get('tab');
   const jobIdParam = searchParams.get('jobId');
   useEffect(() => {
@@ -240,7 +309,11 @@ function FinanceHubPage() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab !== 'estimates' || !estimateJobId) return undefined;
+    if (activeTab !== 'estimates' || !estimateJobId) {
+      setLoadedEstimateJob(null);
+      setEstimateRevisionIndex(0);
+      return undefined;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -253,36 +326,9 @@ function FinanceHubPage() {
             prev.some((c) => String(c._id) === String(cust._id)) ? prev : [cust, ...prev]
           );
         }
-        const est = job.estimate || {};
-        const sent = est.sentAt ? new Date(est.sentAt) : null;
-        const lineItems =
-          Array.isArray(est.lineItems) && est.lineItems.length > 0
-            ? est.lineItems.map(mapEstimateLineFromJob)
-            : DEFAULT_LINE_ITEMS();
-        setEstimateForm({
-          estimateNumber: est.number || formatEstimateNumber(readEstimateSequence()),
-          estimateDate:
-            est.estimateDate ||
-            (sent ? sent.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
-          customerId: typeof cust === 'object' && cust?._id ? cust._id : cust || null,
-          customerName: typeof cust === 'object' ? cust.name || '' : '',
-          customerAddress:
-            typeof cust === 'object' && cust.address
-              ? {
-                  street: cust.address.street || '',
-                  city: cust.address.city || '',
-                }
-              : job.jobAddress
-                ? {
-                    street: job.jobAddress.street || '',
-                    city: job.jobAddress.city || '',
-                  }
-                : { street: '', city: '' },
-          projectName: est.projectName || job.title || '',
-          lineItems,
-          footerNote:
-            est.footerNote || 'Customer acknowledges paint and stain are not included.',
-        });
+        setLoadedEstimateJob(job);
+        const revs = buildEstimateRevisions(job);
+        setEstimateRevisionIndex(revs.length > 0 ? revs.length - 1 : 0);
         setEditingJobSummary({
           _id: job._id,
           title: job.title || '',
@@ -291,6 +337,7 @@ function FinanceHubPage() {
         });
       } catch (error) {
         console.error('Error loading job for estimate:', error);
+        setLoadedEstimateJob(null);
         setEditingJobSummary(null);
         toast.error(error.response?.data?.error || 'Could not load estimate from job');
       } finally {
@@ -301,6 +348,24 @@ function FinanceHubPage() {
       cancelled = true;
     };
   }, [activeTab, estimateJobId]);
+
+  useEffect(() => {
+    if (activeTab !== 'estimates' || !estimateJobId || !loadedEstimateJob) return;
+    if (String(loadedEstimateJob._id) !== String(estimateJobId)) return;
+    const revs = buildEstimateRevisions(loadedEstimateJob);
+    const maxIdx = revs.length > 0 ? revs.length - 1 : 0;
+    const idx = revs.length > 0 ? Math.max(0, Math.min(estimateRevisionIndex, maxIdx)) : 0;
+    if (revs.length === 0 && estimateRevisionIndex !== 0) {
+      setEstimateRevisionIndex(0);
+      return;
+    }
+    if (revs.length > 0 && estimateRevisionIndex !== idx) {
+      setEstimateRevisionIndex(idx);
+      return;
+    }
+    const snapshot = revs.length > 0 ? revs[idx] : null;
+    setEstimateForm(computeEstimateFormFromJobSnapshot(loadedEstimateJob, snapshot));
+  }, [activeTab, estimateJobId, loadedEstimateJob, estimateRevisionIndex]);
 
   useEffect(() => {
     if (activeTab !== 'estimates' || !estimateForm.customerId) {
@@ -425,13 +490,14 @@ function FinanceHubPage() {
       }));
 
   /** Update estimate on a job without changing title, stage, or customer. */
-  const buildEstimatePatchPayload = () => {
+  const buildEstimatePatchPayload = (opts = {}) => {
+    const estimateNumber = opts.estimateNumberOverride ?? estimateForm.estimateNumber;
     const estimateDateIso = new Date(`${estimateForm.estimateDate}T12:00:00.000Z`);
     const normalizedRows = buildNormalizedEstimateRows();
     return {
       valueEstimated: estimateTotal || 0,
       estimate: {
-        number: estimateForm.estimateNumber,
+        number: estimateNumber,
         amount: estimateTotal || 0,
         sentAt: estimateDateIso.toISOString(),
         estimateDate: estimateForm.estimateDate,
@@ -560,6 +626,8 @@ function FinanceHubPage() {
     estimatePrevJobIdRef.current = estimateJobId;
     if (activeTab !== 'estimates') return;
     if (!estimateJobId && prev) {
+      setLoadedEstimateJob(null);
+      setEstimateRevisionIndex(0);
       setEstimateForm({
         estimateNumber: formatEstimateNumber(readEstimateSequence()),
         estimateDate: new Date().toISOString().slice(0, 10),
@@ -587,10 +655,17 @@ function FinanceHubPage() {
     }
     try {
       setSavingEstimate(true);
-      const patchPayload = buildEstimatePatchPayload();
       if (estimateJobId) {
+        const nextNum = formatEstimateNumber(readEstimateSequence());
+        const patchPayload = buildEstimatePatchPayload({ estimateNumberOverride: nextNum });
         await axios.patch(`${API_URL}/jobs/${estimateJobId}`, patchPayload);
-        toast.success(`Estimate ${estimateForm.estimateNumber} saved`);
+        const nextSeq = readEstimateSequence() + 1;
+        writeEstimateSequence(nextSeq);
+        const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+        setLoadedEstimateJob(refreshed);
+        const revs = buildEstimateRevisions(refreshed);
+        setEstimateRevisionIndex(revs.length > 0 ? revs.length - 1 : 0);
+        toast.success(`Estimate ${nextNum} saved on this job`);
       } else {
         const useNewCard =
           customerPipelineJobs.length === 0 || estimateSaveTargetId === ESTIMATE_NEW_JOB_ID;
@@ -621,13 +696,16 @@ function FinanceHubPage() {
           }
           toast.success(`Estimate ${estimateForm.estimateNumber} saved to new job`);
         } else {
-          await axios.patch(`${API_URL}/jobs/${existingId}`, patchPayload);
-          const nextSeq = readEstimateSequence() + 1;
-          writeEstimateSequence(nextSeq);
+          const nextNum = formatEstimateNumber(readEstimateSequence());
+          await axios.patch(
+            `${API_URL}/jobs/${existingId}`,
+            buildEstimatePatchPayload({ estimateNumberOverride: nextNum })
+          );
+          writeEstimateSequence(readEstimateSequence() + 1);
           setSearchParams({ tab: 'estimates', jobId: String(existingId) });
           const picked = customerPipelineJobs.find((j) => String(j._id) === String(existingId));
           toast.success(
-            `Estimate ${estimateForm.estimateNumber} saved on ${formatEstimateJobPickLabel(estimateForm.customerName, picked)}`
+            `Estimate ${nextNum} saved on ${formatEstimateJobPickLabel(estimateForm.customerName, picked)}`
           );
         }
       }
@@ -683,12 +761,67 @@ function FinanceHubPage() {
       ) : (
         <Card>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb: 2,
+                flexWrap: 'wrap',
+                gap: 1,
+              }}
+            >
               <Typography variant="h5" sx={{ fontWeight: 600 }}>
                 {estimateJobId ? 'Edit estimate' : 'New estimate'}
               </Typography>
-              <Chip size="small" color="primary" label={estimateForm.estimateNumber} />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                {estimateJobId && estimateRevisions.length > 1 && (
+                  <>
+                    <IconButton
+                      size="small"
+                      aria-label="Older estimate"
+                      disabled={loadingJobEstimate || savingEstimate || estimateRevisionIndex <= 0}
+                      onClick={() => setEstimateRevisionIndex((i) => Math.max(0, i - 1))}
+                    >
+                      <ChevronLeftIcon />
+                    </IconButton>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ minWidth: 72, textAlign: 'center' }}
+                    >
+                      {estimateRevisionIndex + 1} / {estimateRevisions.length}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      aria-label="Newer estimate"
+                      disabled={
+                        loadingJobEstimate ||
+                        savingEstimate ||
+                        estimateRevisionIndex >= estimateRevisions.length - 1
+                      }
+                      onClick={() =>
+                        setEstimateRevisionIndex((i) =>
+                          Math.min(estimateRevisions.length - 1, i + 1)
+                        )
+                      }
+                    >
+                      <ChevronRightIcon />
+                    </IconButton>
+                  </>
+                )}
+                <Chip size="small" color="primary" label={estimateForm.estimateNumber} />
+              </Box>
             </Box>
+
+            {estimateJobId &&
+              estimateRevisions.length > 1 &&
+              estimateRevisionIndex < estimateRevisions.length - 1 && (
+                <Typography variant="body2" color="warning.main" sx={{ mb: 1 }}>
+                  Viewing an earlier saved estimate. Save creates a new estimate number; the current
+                  (newest) version is archived in history.
+                </Typography>
+              )}
 
             <Autocomplete
               options={customers}

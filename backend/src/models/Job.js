@@ -1,6 +1,31 @@
 const mongoose = require('mongoose');
 const tenantScopePlugin = require('./plugins/tenantScopePlugin');
 
+const estimateLineItemSchema = new mongoose.Schema(
+  {
+    itemName: String,
+    description: String,
+    quantity: Number,
+    unitPrice: Number,
+    total: Number,
+  },
+  { _id: false }
+);
+
+/** One saved estimate snapshot (Finance Hub). */
+const estimateSnapshotSchema = new mongoose.Schema(
+  {
+    number: String,
+    amount: Number,
+    sentAt: Date,
+    estimateDate: String,
+    projectName: String,
+    footerNote: String,
+    lineItems: [estimateLineItemSchema],
+  },
+  { _id: false }
+);
+
 const jobSchema = new mongoose.Schema({
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -48,23 +73,10 @@ const jobSchema = new mongoose.Schema({
     notes: String
   },
   
-  // Estimate details
-  estimate: {
-    number: String,
-    amount: Number,
-    sentAt: Date,
-    /** YYYY-MM-DD for Finance Hub form */
-    estimateDate: String,
-    projectName: String,
-    footerNote: String,
-    lineItems: [{
-      itemName: String,
-      description: String,
-      quantity: Number,
-      unitPrice: Number,
-      total: Number
-    }]
-  },
+  // Estimate details (latest snapshot; older versions in estimateHistory)
+  estimate: estimateSnapshotSchema,
+  /** Older estimate snapshots, oldest first; current is always `estimate`. */
+  estimateHistory: { type: [estimateSnapshotSchema], default: [] },
   
   // Contract details
   contract: {

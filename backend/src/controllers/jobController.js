@@ -247,12 +247,37 @@ async function updateJob(req, res) {
     
     // Update the job (remove temporary _notesToUpdate field first)
     const { _notesToUpdate, ...jobUpdateData } = req.body;
+    // Stack prior estimate before replacing (Finance Hub — LIFO history on disk: oldest first)
+    if (jobUpdateData.estimateHistory !== undefined) {
+      delete jobUpdateData.estimateHistory;
+    }
+    if (jobUpdateData.estimate !== undefined) {
+      const prior =
+        job.estimate && typeof job.estimate.toObject === 'function'
+          ? job.estimate.toObject()
+          : job.estimate
+            ? { ...job.estimate }
+            : null;
+      const priorHas =
+        prior &&
+        ((prior.number && String(prior.number).trim()) ||
+          (Array.isArray(prior.lineItems) && prior.lineItems.length > 0) ||
+          (typeof prior.amount === 'number' && prior.amount > 0));
+      if (priorHas) {
+        if (!Array.isArray(job.estimateHistory)) {
+          job.estimateHistory = [];
+        }
+        job.estimateHistory.push(JSON.parse(JSON.stringify(prior)));
+        job.markModified('estimateHistory');
+      }
+    }
     Object.assign(job, jobUpdateData);
     if (jobUpdateData.takeoff !== undefined) {
       job.markModified('takeoff');
     }
     if (jobUpdateData.estimate !== undefined) {
       job.markModified('estimate');
+      job.markModified('estimateHistory');
     }
     await job.save();
     
