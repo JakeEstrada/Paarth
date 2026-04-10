@@ -17,8 +17,7 @@ import {
   TextField,
   Tooltip,
   Slider,
-  Stack,
-  Collapse,
+  Popover,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -109,7 +108,8 @@ function PipelinePage({ tvMode = false }) {
   const lockTimerRef = useRef(null);
 
   const [pipelineViewSettings, setPipelineViewSettings] = useState(() => readPipelineViewSettings());
-  const [pipelineSettingsOpen, setPipelineSettingsOpen] = useState(false);
+  /** Fullscreen pipeline view: tune icon opens popover with board options */
+  const [boardSettingsAnchorEl, setBoardSettingsAnchorEl] = useState(null);
 
   const handleJobCardHeightChange = useCallback((_, value) => {
     const n = Array.isArray(value) ? value[0] : value;
@@ -444,6 +444,25 @@ function PipelinePage({ tvMode = false }) {
     job => job.stage === 'FINAL_PAYMENT_CLOSED' && !job.isArchived && !job.isDeadEstimate
   ).length;
 
+  const boardThicknessSlider = (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+      <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+        Card thickness
+      </Typography>
+      <Slider
+        size="small"
+        value={pipelineViewSettings.jobCardMinHeightPx}
+        min={PIPELINE_CARD_MIN_HEIGHT_PX}
+        max={PIPELINE_CARD_MAX_HEIGHT_PX}
+        onChange={handleJobCardHeightChange}
+        valueLabelDisplay="auto"
+        valueLabelFormat={(v) => `${v}px`}
+        aria-label="Job card thickness"
+        sx={{ flex: 1 }}
+      />
+    </Box>
+  );
+
   return (
     <Box sx={{ minHeight: tvMode ? '100vh' : undefined }}>
       {/* Main Content */}
@@ -498,61 +517,66 @@ function PipelinePage({ tvMode = false }) {
                 </Button>
               )}
               {tvMode && (
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => {
-                    if (isShopViewRole) {
-                      requestExitUnlock();
-                      return;
-                    }
-                    navigate('/pipeline');
-                  }}
-                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-                >
-                  Exit Pipeline view
-                </Button>
+                <>
+                  <Tooltip title="Board settings — card thickness">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => setBoardSettingsAnchorEl(e.currentTarget)}
+                      aria-label="Open board settings"
+                      sx={{ color: 'text.primary' }}
+                    >
+                      <TuneIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Popover
+                    open={Boolean(boardSettingsAnchorEl)}
+                    anchorEl={boardSettingsAnchorEl}
+                    onClose={() => setBoardSettingsAnchorEl(null)}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                    slotProps={{ paper: { sx: { p: 2, minWidth: 280, maxWidth: 360 } } }}
+                  >
+                    <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+                      Board settings
+                    </Typography>
+                    {boardThicknessSlider}
+                  </Popover>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => {
+                      if (isShopViewRole) {
+                        requestExitUnlock();
+                        return;
+                      }
+                      navigate('/pipeline');
+                    }}
+                    sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                  >
+                    Exit Pipeline view
+                  </Button>
+                </>
               )}
             </Box>
           </Box>
         </Box>
 
         {!tvMode && (
-          <Box sx={{ mb: 2 }}>
-            <Button
-              size="small"
-              variant="text"
-              startIcon={<TuneIcon />}
-              onClick={() => setPipelineSettingsOpen((o) => !o)}
-              sx={{ color: 'text.secondary', mb: pipelineSettingsOpen ? 1 : 0 }}
-            >
+          <Paper
+            variant="outlined"
+            sx={{
+              mb: 2,
+              p: 2,
+              borderRadius: 2,
+              borderColor: 'divider',
+              bgcolor: theme.palette.mode === 'dark' ? 'action.hover' : 'background.paper',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
               Board settings
-            </Button>
-            <Collapse in={pipelineSettingsOpen}>
-              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-                  <Typography variant="subtitle2" sx={{ flexShrink: 0 }}>
-                    Job cards
-                  </Typography>
-                  <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
-                      Thickness
-                    </Typography>
-                    <Slider
-                      size="small"
-                      value={pipelineViewSettings.jobCardMinHeightPx}
-                      min={PIPELINE_CARD_MIN_HEIGHT_PX}
-                      max={PIPELINE_CARD_MAX_HEIGHT_PX}
-                      onChange={handleJobCardHeightChange}
-                      valueLabelDisplay="auto"
-                      valueLabelFormat={(v) => `${v}px`}
-                      aria-label="Job card thickness"
-                    />
-                  </Box>
-                </Stack>
-              </Paper>
-            </Collapse>
-          </Box>
+            </Typography>
+            {boardThicknessSlider}
+          </Paper>
         )}
 
         {/* Todos and Appointments — hidden in shop view or fullscreen pipeline view */}
