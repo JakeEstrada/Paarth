@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
 import { Card, CardContent, Typography, Box, Tooltip, useTheme } from '@mui/material';
+import { DEFAULT_JOB_CARD_MIN_HEIGHT_PX } from '../../utils/pipelineViewSettings';
 
-function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = 90 }) {
+function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = DEFAULT_JOB_CARD_MIN_HEIGHT_PX }) {
   const theme = useTheme();
   const [isDragging, setIsDragging] = useState(false);
   const cardRef = useRef(null);
@@ -69,6 +70,13 @@ function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = 
       'On bench: job is in a readiness stage and not yet scheduled on the calendar.';
   }
 
+  const compactCard = minHeightPx <= 56;
+  const ultraCompact = minHeightPx <= 48;
+  const contentPy = compactCard ? 0.75 : 1.5;
+  const titleFontRem = ultraCompact ? '0.75rem' : compactCard ? '0.8125rem' : '0.875rem';
+  const descFontRem = ultraCompact ? '0.6875rem' : '0.75rem';
+  const dotSize = ultraCompact ? 8 : 10;
+
   return (
     <Card
       ref={cardRef}
@@ -99,12 +107,13 @@ function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = 
     >
       <CardContent
         sx={{
-          p: 1.5,
+          py: contentPy,
+          px: compactCard ? 1 : 1.5,
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
-          '&:last-child': { pb: 1.5 },
+          '&:last-child': { pb: contentPy },
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
@@ -112,24 +121,24 @@ function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = 
           <Typography
             variant="body2"
             sx={{
-              fontSize: '0.875rem',
+              fontSize: titleFontRem,
               fontWeight: 500,
               color: theme.palette.text.primary,
-              lineHeight: 1.4,
+              lineHeight: 1.35,
               display: 'inline',
             }}
             title={job.title}
           >
-            {truncateTitle(job.title, 50)}
+            {truncateTitle(job.title, ultraCompact ? 36 : 50)}
           </Typography>
-          {job.description && (
+          {!ultraCompact && job.description && (
             <>
               <Typography 
                 component="span" 
                 sx={{ 
-                  mx: 0.75, 
+                  mx: compactCard ? 0.5 : 0.75, 
                   color: theme.palette.text.secondary,
-                  fontSize: '0.75rem'
+                  fontSize: descFontRem
                 }}
               >
                 |
@@ -138,11 +147,11 @@ function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = 
                 component="span"
                 variant="body2"
                 sx={{
-                  fontSize: '0.75rem',
+                  fontSize: descFontRem,
                   color: theme.palette.text.secondary,
                   fontStyle: 'italic',
                   fontWeight: 300,
-                  lineHeight: 1.4,
+                  lineHeight: 1.35,
                 }}
                 title={job.description}
               >
@@ -155,12 +164,12 @@ function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = 
           <Box
             sx={{
               flexShrink: 0,
-              width: 10,
-              height: 10,
+              width: dotSize,
+              height: dotSize,
               borderRadius: '50%',
               backgroundColor: statusColor,
               border: `2px solid ${theme.palette.background.paper}`,
-              mt: 0.5,
+              mt: ultraCompact ? 0.25 : 0.5,
             }}
           />
         </Tooltip>

@@ -3,19 +3,48 @@
  */
 const STORAGE_KEY = 'pipelineViewSettingsV1';
 
-const DEFAULTS = {
-  /** Minimum height of each job card on the board (px). */
-  jobCardMinHeightPx: 90,
-};
+/** Fixed sizes only (combo box); px is minimum card height on the board. */
+export const JOB_CARD_SIZE_PRESETS = [
+  { id: 'xs', label: 'Extra compact', px: 40 },
+  { id: 'sm', label: 'Compact', px: 52 },
+  { id: 'md', label: 'Medium', px: 66 },
+  { id: 'df', label: 'Default', px: 80 },
+  { id: 'lg', label: 'Comfortable', px: 96 },
+  { id: 'xl', label: 'Large', px: 120 },
+];
 
-const MIN_CARD_H = 56;
-const MAX_CARD_H = 220;
+const DEFAULT_PRESET_ID = 'md';
 
-function clampHeight(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return DEFAULTS.jobCardMinHeightPx;
-  return Math.min(MAX_CARD_H, Math.max(MIN_CARD_H, Math.round(x)));
+function presetById(id) {
+  return JOB_CARD_SIZE_PRESETS.find((x) => x.id === id) || JOB_CARD_SIZE_PRESETS.find((x) => x.id === DEFAULT_PRESET_ID);
 }
+
+export function presetPxById(id) {
+  return presetById(id).px;
+}
+
+/** Nearest preset when migrating old slider-only `jobCardMinHeightPx` saves. */
+export function nearestPresetIdFromPx(px) {
+  const x = Number(px);
+  if (!Number.isFinite(x)) return DEFAULT_PRESET_ID;
+  let best = JOB_CARD_SIZE_PRESETS[0];
+  let bestDist = Infinity;
+  for (const p of JOB_CARD_SIZE_PRESETS) {
+    const d = Math.abs(p.px - x);
+    if (d < bestDist) {
+      bestDist = d;
+      best = p;
+    }
+  }
+  return best.id;
+}
+
+export const DEFAULT_JOB_CARD_MIN_HEIGHT_PX = presetPxById(DEFAULT_PRESET_ID);
+
+const DEFAULTS = {
+  jobCardSizePreset: DEFAULT_PRESET_ID,
+  jobCardMinHeightPx: DEFAULT_JOB_CARD_MIN_HEIGHT_PX,
+};
 
 export function readPipelineViewSettings() {
   if (typeof window === 'undefined') {
@@ -27,10 +56,19 @@ export function readPipelineViewSettings() {
     if (typeof parsed !== 'object' || parsed === null) {
       return { ...DEFAULTS };
     }
+
+    let presetId =
+      typeof parsed.jobCardSizePreset === 'string' ? parsed.jobCardSizePreset.trim() : '';
+    if (!JOB_CARD_SIZE_PRESETS.some((x) => x.id === presetId)) {
+      presetId = nearestPresetIdFromPx(parsed.jobCardMinHeightPx);
+    }
+
+    const px = presetPxById(presetId);
     return {
       ...DEFAULTS,
       ...parsed,
-      jobCardMinHeightPx: clampHeight(parsed.jobCardMinHeightPx),
+      jobCardSizePreset: presetId,
+      jobCardMinHeightPx: px,
     };
   } catch {
     return { ...DEFAULTS };
@@ -41,14 +79,19 @@ export function writePipelineViewSettings(partial) {
   if (typeof window === 'undefined') return;
   try {
     const prev = readPipelineViewSettings();
-    const next = { ...prev, ...partial };
-    if (partial.jobCardMinHeightPx != null) {
-      next.jobCardMinHeightPx = clampHeight(partial.jobCardMinHeightPx);
+    let presetId = prev.jobCardSizePreset;
+    if (partial.jobCardSizePreset != null) {
+      presetId = presetById(String(partial.jobCardSizePreset)).id;
     }
+    const px = presetPxById(presetId);
+    const next = {
+      ...prev,
+      ...partial,
+      jobCardSizePreset: presetId,
+      jobCardMinHeightPx: px,
+    };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
     // ignore quota / private mode
   }
 }
-
-export { MIN_CARD_H as PIPELINE_CARD_MIN_HEIGHT_PX, MAX_CARD_H as PIPELINE_CARD_MAX_HEIGHT_PX };
