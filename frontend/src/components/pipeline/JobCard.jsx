@@ -131,7 +131,7 @@ function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = 
           >
             {truncateTitle(job.title, ultraCompact ? 36 : 50)}
           </Typography>
-          {!ultraCompact && job.description && (
+          {job.description && (
             <>
               <Typography 
                 component="span" 
@@ -155,7 +155,7 @@ function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = 
                 }}
                 title={job.description}
               >
-                {truncateTitle(job.description, 30)}
+                {truncateTitle(job.description, ultraCompact ? 18 : 30)}
               </Typography>
             </>
           )}

@@ -604,6 +604,10 @@ function PipelineBoard({
                 label="Job card size"
                 value={pipelineViewPrefs.jobCardSizePreset}
                 onChange={handleJobCardSizePresetChange}
+                MenuProps={{
+                  disablePortal: true,
+                  slotProps: { paper: { sx: { maxHeight: 280 } } },
+                }}
               >
                 {JOB_CARD_SIZE_PRESETS.map((p) => (
                   <MenuItem key={p.id} value={p.id}>
