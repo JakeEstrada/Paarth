@@ -39,13 +39,17 @@ const menuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
   { text: 'Pipeline', icon: <PipelineIcon />, path: '/pipeline' },
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
-  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
   { text: 'Projects / Tasks', icon: <TasksIcon />, path: '/tasks' },
+];
+
+const operationsItems = [
+  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
   { text: 'Documents', icon: <DocumentsIcon />, path: '/documents' },
-  { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
-  { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
+  { text: 'Users', icon: <UsersIcon />, path: '/users', adminOnly: true },
   { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance' },
+  { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
   { text: 'Take Off Sheet', icon: <TakeoffIcon />, path: '/takeoff-sheet' },
+  { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
 ];
 
 const archiveItems = [
@@ -70,6 +74,28 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     if (isMobile) {
       onMobileClose();
     }
+  };
+
+  const navButtonSx = {
+    mx: 1,
+    mb: 0.5,
+    borderRadius: '8px',
+    '&.Mui-selected': {
+      backgroundColor:
+        theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.16)' : '#E3F2FD',
+      color: theme.palette.primary.main,
+      '&:hover': {
+        backgroundColor:
+          theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.24)' : '#BBDEFB',
+      },
+      '& .MuiListItemIcon-root': {
+        color: theme.palette.primary.main,
+      },
+    },
+    '&:hover': {
+      backgroundColor:
+        theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : '#F5F5F5',
+    },
   };
 
   const drawerContent = (
@@ -100,30 +126,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             <ListItemButton
               onClick={() => handleNavigation(item.path)}
               selected={isActive(item.path)}
-              sx={{
-                mx: 1,
-                mb: 0.5,
-                borderRadius: '8px',
-                '&.Mui-selected': {
-                  backgroundColor: theme.palette.mode === 'dark' 
-                    ? 'rgba(25, 118, 210, 0.16)' 
-                    : '#E3F2FD',
-                  color: theme.palette.primary.main,
-                  '&:hover': {
-                    backgroundColor: theme.palette.mode === 'dark'
-                      ? 'rgba(25, 118, 210, 0.24)'
-                      : '#BBDEFB',
-                  },
-                  '& .MuiListItemIcon-root': {
-                    color: theme.palette.primary.main,
-                  },
-                },
-                '&:hover': {
-                  backgroundColor: theme.palette.mode === 'dark'
-                    ? 'rgba(255, 255, 255, 0.08)'
-                    : '#F5F5F5',
-                },
-              }}
+              sx={navButtonSx}
             >
               <ListItemIcon
                 sx={{
@@ -148,30 +151,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             <ListItemButton
               onClick={() => handleNavigation('/pipeline-view')}
               selected={isActive('/pipeline-view')}
-              sx={{
-                mx: 1,
-                mb: 0.5,
-                borderRadius: '8px',
-                '&.Mui-selected': {
-                  backgroundColor: theme.palette.mode === 'dark'
-                    ? 'rgba(25, 118, 210, 0.16)'
-                    : '#E3F2FD',
-                  color: theme.palette.primary.main,
-                  '&:hover': {
-                    backgroundColor: theme.palette.mode === 'dark'
-                      ? 'rgba(25, 118, 210, 0.24)'
-                      : '#BBDEFB',
-                  },
-                  '& .MuiListItemIcon-root': {
-                    color: theme.palette.primary.main,
-                  },
-                },
-                '&:hover': {
-                  backgroundColor: theme.palette.mode === 'dark'
-                    ? 'rgba(255, 255, 255, 0.08)'
-                    : '#F5F5F5',
-                },
-              }}
+              sx={navButtonSx}
             >
               <ListItemIcon
                 sx={{
@@ -191,54 +171,53 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             </ListItemButton>
           </ListItem>
         )}
-        {isAdmin() && (
-          <ListItem disablePadding>
-            <ListItemButton
-              onClick={() => handleNavigation('/users')}
-              selected={isActive('/users')}
-              sx={{
-                mx: 1,
-                mb: 0.5,
-                borderRadius: '8px',
-                '&.Mui-selected': {
-                  backgroundColor: theme.palette.mode === 'dark' 
-                    ? 'rgba(25, 118, 210, 0.16)' 
-                    : '#E3F2FD',
-                  color: theme.palette.primary.main,
-                  '&:hover': {
-                    backgroundColor: theme.palette.mode === 'dark'
-                      ? 'rgba(25, 118, 210, 0.24)'
-                      : '#BBDEFB',
-                  },
-                  '& .MuiListItemIcon-root': {
-                    color: theme.palette.primary.main,
-                  },
-                },
-                '&:hover': {
-                  backgroundColor: theme.palette.mode === 'dark'
-                    ? 'rgba(255, 255, 255, 0.08)'
-                    : '#F5F5F5',
-                },
-              }}
-            >
-              <ListItemIcon
-                sx={{
-                  minWidth: 40,
-                  color: isActive('/users') ? '#1976D2' : 'inherit',
-                }}
+      </List>
+
+      <Divider sx={{ my: 2 }} />
+
+      <Box sx={{ px: 2, pb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            fontWeight: 600,
+            color: theme.palette.text.secondary,
+            fontSize: '0.75rem',
+          }}
+        >
+          Operations Management
+        </Typography>
+      </Box>
+
+      <List>
+        {operationsItems
+          .filter((item) => !item.adminOnly || isAdmin())
+          .map((item) => (
+            <ListItem key={item.path} disablePadding>
+              <ListItemButton
+                onClick={() => handleNavigation(item.path)}
+                selected={isActive(item.path)}
+                sx={navButtonSx}
               >
-                <UsersIcon />
-              </ListItemIcon>
-              <ListItemText
-                primary="Users"
-                primaryTypographyProps={{
-                  fontSize: '0.9375rem',
-                  fontWeight: isActive('/users') ? 600 : 400,
-                }}
-              />
-            </ListItemButton>
-          </ListItem>
-        )}
+                <ListItemIcon
+                  sx={{
+                    minWidth: 40,
+                    color: isActive(item.path) ? theme.palette.primary.main : 'inherit',
+                  }}
+                >
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText
+                  primary={item.text}
+                  primaryTypographyProps={{
+                    fontSize: '0.9375rem',
+                    fontWeight: isActive(item.path) ? 600 : 400,
+                  }}
+                />
+              </ListItemButton>
+            </ListItem>
+          ))}
       </List>
 
       <Divider sx={{ my: 2 }} />
@@ -264,30 +243,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             <ListItemButton
               onClick={() => handleNavigation(item.path)}
               selected={isActive(item.path)}
-              sx={{
-                mx: 1,
-                mb: 0.5,
-                borderRadius: '8px',
-                '&.Mui-selected': {
-                  backgroundColor: theme.palette.mode === 'dark' 
-                    ? 'rgba(25, 118, 210, 0.16)' 
-                    : '#E3F2FD',
-                  color: theme.palette.primary.main,
-                  '&:hover': {
-                    backgroundColor: theme.palette.mode === 'dark'
-                      ? 'rgba(25, 118, 210, 0.24)'
-                      : '#BBDEFB',
-                  },
-                  '& .MuiListItemIcon-root': {
-                    color: theme.palette.primary.main,
-                  },
-                },
-                '&:hover': {
-                  backgroundColor: theme.palette.mode === 'dark'
-                    ? 'rgba(255, 255, 255, 0.08)'
-                    : '#F5F5F5',
-                },
-              }}
+              sx={navButtonSx}
             >
               <ListItemIcon
                 sx={{

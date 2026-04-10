@@ -17,6 +17,7 @@ import {
   Menu,
   ListItemIcon,
   ListItemText,
+  TextField,
   useTheme,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, Unarchive as UnarchiveIcon } from '@mui/icons-material';
@@ -36,6 +37,7 @@ function JobArchivePage() {
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [searchQuery, setSearchQuery] = useState('');
   const [contextMenu, setContextMenu] = useState(null);
   const [contextMenuJob, setContextMenuJob] = useState(null);
 
@@ -147,11 +149,32 @@ function JobArchivePage() {
     }
   };
 
+  const matchesArchiveSearch = (job, rawQuery) => {
+    const q = String(rawQuery || '').trim().toLowerCase();
+    if (!q) return true;
+    const haystack = [
+      job?.title,
+      job?.description,
+      job?.stage,
+      job?.customerId?.name,
+      job?.estimate?.number,
+      job?.estimate?.projectName,
+      job?.estimate?.sentAt ? new Date(job.estimate.sentAt).toLocaleDateString() : '',
+    ]
+      .map((x) => String(x || '').toLowerCase())
+      .join(' ');
+    return haystack.includes(q);
+  };
+
   // Reorganize data by year, then by month
   const organizedByYear = useMemo(() => {
     const byYear = {};
     
     deadEstimates.forEach((group) => {
+      const filteredJobs = (group.jobs || []).filter((job) => matchesArchiveSearch(job, searchQuery));
+      if (filteredJobs.length === 0) {
+        return;
+      }
       const year = group.year;
       if (!byYear[year]) {
         byYear[year] = {
@@ -159,7 +182,10 @@ function JobArchivePage() {
           months: []
         };
       }
-      byYear[year].months.push(group);
+      byYear[year].months.push({
+        ...group,
+        jobs: filteredJobs,
+      });
     });
     
     // Sort months within each year (most recent first)
@@ -171,7 +197,7 @@ function JobArchivePage() {
     });
     
     return byYear;
-  }, [deadEstimates]);
+  }, [deadEstimates, searchQuery]);
 
   // Get available years (sorted, most recent first)
   const availableYears = useMemo(() => {
@@ -209,8 +235,17 @@ function JobArchivePage() {
                 Dead estimates - estimates sent but no response after 7 days
               </Typography>
             </Box>
-            {availableYears.length > 0 && (
-              <FormControl sx={{ minWidth: 200 }}>
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+              <TextField
+                size="small"
+                label="Search archived jobs"
+                placeholder="Title, customer, estimate #..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                sx={{ minWidth: { xs: 220, sm: 300 } }}
+              />
+              {availableYears.length > 0 && (
+                <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel id="year-select-label">Year</InputLabel>
                 <Select
                   labelId="year-select-label"
@@ -225,8 +260,9 @@ function JobArchivePage() {
                     </MenuItem>
                   ))}
                 </Select>
-              </FormControl>
-            )}
+                </FormControl>
+              )}
+            </Box>
           </Box>
         </Box>
 
@@ -246,10 +282,14 @@ function JobArchivePage() {
         ) : selectedYearMonths.length === 0 ? (
           <Card sx={{ p: 4, textAlign: 'center' }}>
             <Typography variant="h6" color="text.secondary">
-              No archived jobs for {selectedYear}
+              {searchQuery.trim()
+                ? `No archived jobs found for "${searchQuery.trim()}"`
+                : `No archived jobs for ${selectedYear}`}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Select a different year to view archived jobs
+              {searchQuery.trim()
+                ? 'Try a different search term or clear search'
+                : 'Select a different year to view archived jobs'}
             </Typography>
           </Card>
         ) : (
