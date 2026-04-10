@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Card, CardContent, Typography, Box, Tooltip, useTheme } from '@mui/material';
 
-function JobCard({ job, onClick, onContextMenu, canModify = true }) {
+function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = 90 }) {
   const theme = useTheme();
   const [isDragging, setIsDragging] = useState(false);
   const cardRef = useRef(null);
@@ -79,6 +79,9 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
       onContextMenu={handleContextMenu}
       sx={{
         borderRadius: '8px',
+        minHeight: minHeightPx,
+        display: 'flex',
+        flexDirection: 'column',
         boxShadow: theme.palette.mode === 'dark'
           ? '0 1px 4px rgba(0, 0, 0, 0.3)'
           : '0 1px 4px rgba(0, 0, 0, 0.06)',
@@ -94,7 +97,16 @@ function JobCard({ job, onClick, onContextMenu, canModify = true }) {
         },
       }}
     >
-      <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+      <CardContent
+        sx={{
+          p: 1.5,
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          '&:last-child': { pb: 1.5 },
+        }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography

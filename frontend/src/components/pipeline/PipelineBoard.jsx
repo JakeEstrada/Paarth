@@ -114,6 +114,7 @@ function PipelineBoard({
   onCustomLayoutDeleted,
   hideSensitive = false,
   onRequestSensitiveUnlock,
+  jobCardMinHeightPx = 90,
 }) {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -388,6 +389,7 @@ function PipelineBoard({
               <JobCard
                 key={job._id}
                 job={job}
+                minHeightPx={jobCardMinHeightPx}
                 onClick={() => onJobClick && onJobClick(job._id)}
                 onUpdate={(updates) => onJobUpdate(job._id, updates)}
                 onStageChange={(toStage, note) => onStageChange(job._id, toStage, note)}

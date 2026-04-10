@@ -16,6 +16,9 @@ import {
   DialogContentText,
   TextField,
   Tooltip,
+  Slider,
+  Stack,
+  Collapse,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -23,6 +26,7 @@ import {
   Archive as ArchiveIcon,
   Lock as LockIcon,
   LockOpen as LockOpenIcon,
+  Tune as TuneIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -38,6 +42,12 @@ import AddJobModal from '../components/jobs/AddJobModal';
 import { useAuth } from '../context/AuthContext';
 import { fetchPipelineLayoutsList, createPipelineLayout } from '../utils/pipelineLayoutsApi';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import {
+  readPipelineViewSettings,
+  writePipelineViewSettings,
+  PIPELINE_CARD_MIN_HEIGHT_PX,
+  PIPELINE_CARD_MAX_HEIGHT_PX,
+} from '../utils/pipelineViewSettings';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const SHOP_VIEW_AUTO_LOCK_MS = 5 * 60 * 1000;
@@ -97,6 +107,15 @@ function PipelinePage({ tvMode = false }) {
   const [exitPinDialogOpen, setExitPinDialogOpen] = useState(false);
   const [exitPinInput, setExitPinInput] = useState('');
   const lockTimerRef = useRef(null);
+
+  const [pipelineViewSettings, setPipelineViewSettings] = useState(() => readPipelineViewSettings());
+  const [pipelineSettingsOpen, setPipelineSettingsOpen] = useState(false);
+
+  const handleJobCardHeightChange = useCallback((_, value) => {
+    const n = Array.isArray(value) ? value[0] : value;
+    setPipelineViewSettings((prev) => ({ ...prev, jobCardMinHeightPx: n }));
+    writePipelineViewSettings({ jobCardMinHeightPx: n });
+  }, []);
 
   useEffect(() => {
     setSensitiveUnlocked(!isShopViewRole);
@@ -498,6 +517,44 @@ function PipelinePage({ tvMode = false }) {
           </Box>
         </Box>
 
+        {!tvMode && (
+          <Box sx={{ mb: 2 }}>
+            <Button
+              size="small"
+              variant="text"
+              startIcon={<TuneIcon />}
+              onClick={() => setPipelineSettingsOpen((o) => !o)}
+              sx={{ color: 'text.secondary', mb: pipelineSettingsOpen ? 1 : 0 }}
+            >
+              Board settings
+            </Button>
+            <Collapse in={pipelineSettingsOpen}>
+              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+                  <Typography variant="subtitle2" sx={{ flexShrink: 0 }}>
+                    Job cards
+                  </Typography>
+                  <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                      Thickness
+                    </Typography>
+                    <Slider
+                      size="small"
+                      value={pipelineViewSettings.jobCardMinHeightPx}
+                      min={PIPELINE_CARD_MIN_HEIGHT_PX}
+                      max={PIPELINE_CARD_MAX_HEIGHT_PX}
+                      onChange={handleJobCardHeightChange}
+                      valueLabelDisplay="auto"
+                      valueLabelFormat={(v) => `${v}px`}
+                      aria-label="Job card thickness"
+                    />
+                  </Box>
+                </Stack>
+              </Paper>
+            </Collapse>
+          </Box>
+        )}
+
         {/* Todos and Appointments — hidden in shop view or fullscreen pipeline view */}
         {showTasksAndAppointments && (
         <Box sx={{ mb: 4 }}>
@@ -678,6 +735,7 @@ function PipelinePage({ tvMode = false }) {
             onCustomLayoutDeleted={handleCustomLayoutDeleted}
             hideSensitive={hideSensitive}
             onRequestSensitiveUnlock={requestSensitiveUnlock}
+            jobCardMinHeightPx={pipelineViewSettings.jobCardMinHeightPx}
           />
         )}
 
