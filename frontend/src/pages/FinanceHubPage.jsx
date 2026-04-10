@@ -16,6 +16,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { createFilterOptions } from '@mui/material/Autocomplete';
 import {
   Add as AddIcon,
   ChevronLeft as ChevronLeftIcon,
@@ -32,6 +33,49 @@ import toast from 'react-hot-toast';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const ESTIMATE_PREFIX = '1102';
 const ESTIMATE_SEQ_KEY = 'financeHubEstimateSequence';
+const ESTIMATE_DESC_HINTS_KEY = 'financeHubEstimateDescriptionHints';
+const ESTIMATE_DESC_HINTS_MAX = 250;
+
+const filterEstimateDescriptionOptions = createFilterOptions({
+  limit: 80,
+  stringify: (option) => option,
+});
+
+function readEstimateDescriptionHints() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(ESTIMATE_DESC_HINTS_KEY);
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string' && x.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Remember descriptions from saved estimates for autocomplete on this browser. */
+function mergeEstimateDescriptionHints(newDescriptions) {
+  if (typeof window === 'undefined') return;
+  const incoming = newDescriptions.map((d) => String(d || '').trim()).filter(Boolean);
+  if (incoming.length === 0) return;
+  const prev = readEstimateDescriptionHints();
+  const seen = new Set();
+  const merged = [];
+  for (const s of [...incoming, ...prev]) {
+    if (seen.has(s)) continue;
+    seen.add(s);
+    merged.push(s);
+    if (merged.length >= ESTIMATE_DESC_HINTS_MAX) break;
+  }
+  window.localStorage.setItem(ESTIMATE_DESC_HINTS_KEY, JSON.stringify(merged));
+}
+
+function collectDescriptionsFromEstimateSnapshot(est) {
+  if (!est?.lineItems || !Array.isArray(est.lineItems)) return [];
+  return est.lineItems
+    .map((li) => String(li.description || '').trim())
+    .filter(Boolean);
+}
+
 const COMPANY_PHONE = '951 491-1137';
 const COMPANY_EMAIL = 'office@sanclementewoodworking.com';
 const COMPANY_WEBSITE = 'www.sanclementewoodworking.com';
@@ -283,6 +327,37 @@ function FinanceHubPage() {
     () => (loadedEstimateJob ? buildEstimateRevisions(loadedEstimateJob) : []),
     [loadedEstimateJob]
   );
+
+  /** Bumps when localStorage description hints change so the list refreshes. */
+  const [estimateDescHintsRev, setEstimateDescHintsRev] = useState(0);
+
+  const descriptionAutocompleteOptions = useMemo(() => {
+    const out = [];
+    const seen = new Set();
+    const push = (s) => {
+      const t = String(s || '').trim();
+      if (!t || seen.has(t)) return;
+      seen.add(t);
+      out.push(t);
+    };
+    for (const row of estimateForm.lineItems) {
+      push(row.description);
+    }
+    if (loadedEstimateJob) {
+      for (const d of collectDescriptionsFromEstimateSnapshot(loadedEstimateJob.estimate)) {
+        push(d);
+      }
+      for (const h of loadedEstimateJob.estimateHistory || []) {
+        for (const d of collectDescriptionsFromEstimateSnapshot(h)) {
+          push(d);
+        }
+      }
+    }
+    for (const d of readEstimateDescriptionHints()) {
+      push(d);
+    }
+    return out;
+  }, [estimateForm.lineItems, loadedEstimateJob, estimateDescHintsRev]);
 
   const tabParam = searchParams.get('tab');
   const jobIdParam = searchParams.get('jobId');
@@ -665,6 +740,10 @@ function FinanceHubPage() {
         setLoadedEstimateJob(refreshed);
         const revs = buildEstimateRevisions(refreshed);
         setEstimateRevisionIndex(revs.length > 0 ? revs.length - 1 : 0);
+        mergeEstimateDescriptionHints(
+          estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+        );
+        setEstimateDescHintsRev((n) => n + 1);
         toast.success(`Estimate ${nextNum} saved on this job`);
       } else {
         const useNewCard =
@@ -694,6 +773,10 @@ function FinanceHubPage() {
           if (newId) {
             setSearchParams({ tab: 'estimates', jobId: String(newId) });
           }
+          mergeEstimateDescriptionHints(
+            estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+          );
+          setEstimateDescHintsRev((n) => n + 1);
           toast.success(`Estimate ${estimateForm.estimateNumber} saved to new job`);
         } else {
           const nextNum = formatEstimateNumber(readEstimateSequence());
@@ -704,6 +787,10 @@ function FinanceHubPage() {
           writeEstimateSequence(readEstimateSequence() + 1);
           setSearchParams({ tab: 'estimates', jobId: String(existingId) });
           const picked = customerPipelineJobs.find((j) => String(j._id) === String(existingId));
+          mergeEstimateDescriptionHints(
+            estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+          );
+          setEstimateDescHintsRev((n) => n + 1);
           toast.success(
             `Estimate ${nextNum} saved on ${formatEstimateJobPickLabel(estimateForm.customerName, picked)}`
           );
@@ -1120,34 +1207,53 @@ function FinanceHubPage() {
                           alignItems: 'flex-start',
                         }}
                       >
-                        <TextField
-                          variant="standard"
-                          value={row.description}
-                          onChange={(e) => setLineItem(index, 'description', e.target.value)}
-                          multiline
-                          minRows={2}
-                          maxRows={40}
-                          InputProps={{
-                            disableUnderline: true,
-                            sx: {
-                              fontSize: 12.5,
-                              width: '100%',
-                              alignItems: 'flex-start',
-                              overflow: 'visible',
-                              '& .MuiInputBase-root': {
-                                overflow: 'visible',
-                              },
-                              '& .MuiInputBase-inputMultiline': {
-                                whiteSpace: 'pre-wrap',
-                                overflowWrap: 'anywhere',
-                                wordBreak: 'break-word',
-                                overflow: 'visible !important',
-                                resize: 'none',
-                                fieldSizing: 'content',
-                              },
-                            },
+                        <Autocomplete
+                          freeSolo
+                          options={descriptionAutocompleteOptions}
+                          inputValue={row.description}
+                          onInputChange={(_, newInputValue, reason) => {
+                            if (reason === 'input' || reason === 'clear' || reason === 'reset') {
+                              setLineItem(index, 'description', newInputValue);
+                            }
                           }}
-                          fullWidth
+                          onChange={(_, newValue) => {
+                            if (typeof newValue === 'string') {
+                              setLineItem(index, 'description', newValue);
+                            }
+                          }}
+                          filterOptions={filterEstimateDescriptionOptions}
+                          sx={{ width: '100%' }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              variant="standard"
+                              multiline
+                              minRows={2}
+                              maxRows={40}
+                              InputProps={{
+                                ...params.InputProps,
+                                disableUnderline: true,
+                                sx: {
+                                  fontSize: 12.5,
+                                  width: '100%',
+                                  alignItems: 'flex-start',
+                                  overflow: 'visible',
+                                  '& .MuiInputBase-root': {
+                                    overflow: 'visible',
+                                  },
+                                  '& .MuiInputBase-inputMultiline': {
+                                    whiteSpace: 'pre-wrap',
+                                    overflowWrap: 'anywhere',
+                                    wordBreak: 'break-word',
+                                    overflow: 'visible !important',
+                                    resize: 'none',
+                                    fieldSizing: 'content',
+                                  },
+                                },
+                              }}
+                              fullWidth
+                            />
+                          )}
                         />
                       </Box>
                       <Box
