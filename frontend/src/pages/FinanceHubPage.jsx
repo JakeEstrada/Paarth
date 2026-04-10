@@ -360,6 +360,149 @@ function mapEstimateLineFromJob(row) {
   return { itemName: desc, description: '', quantity: qty, total: tot };
 }
 
+/** Revision arrows beside the estimate sheet (not in the page header). */
+function EstimateRevisionNav({
+  layout,
+  estimateJobId,
+  loadingJobEstimate,
+  savingEstimate,
+  estimateRevisions,
+  estimateRevisionIndex,
+  setEstimateRevisionIndex,
+  localSavedSnapshots,
+  localSlotCurrent,
+  localSlotTotal,
+  localSnapshotBrowseIndex,
+  goLocalEstimateOlder,
+  goLocalEstimateNewer,
+}) {
+  const vertical = layout === 'vertical';
+  const btnSize = vertical ? 'large' : 'medium';
+  const iconSize = vertical ? 'inherit' : 'small';
+
+  if (estimateJobId) {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: vertical ? 'column' : 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: vertical ? 0.25 : 1,
+          flexWrap: vertical ? 'nowrap' : 'wrap',
+        }}
+      >
+        <IconButton
+          size={btnSize}
+          aria-label="Older estimate"
+          title="Older estimate (←)"
+          disabled={
+            loadingJobEstimate ||
+            savingEstimate ||
+            estimateRevisions.length < 2 ||
+            estimateRevisionIndex <= 0
+          }
+          onClick={() => setEstimateRevisionIndex((i) => Math.max(0, i - 1))}
+        >
+          <ChevronLeftIcon fontSize={iconSize} />
+        </IconButton>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            minWidth: vertical ? 76 : 88,
+            maxWidth: vertical ? 88 : 'none',
+            textAlign: 'center',
+            fontSize: vertical ? '0.8rem' : '0.875rem',
+            lineHeight: 1.25,
+          }}
+        >
+          {estimateRevisions.length > 0
+            ? `Rev ${estimateRevisionIndex + 1} / ${estimateRevisions.length}`
+            : '—'}
+        </Typography>
+        <IconButton
+          size={btnSize}
+          aria-label="Newer estimate"
+          title="Newer estimate (→)"
+          disabled={
+            loadingJobEstimate ||
+            savingEstimate ||
+            estimateRevisions.length < 2 ||
+            estimateRevisionIndex >= estimateRevisions.length - 1
+          }
+          onClick={() =>
+            setEstimateRevisionIndex((i) => Math.min(estimateRevisions.length - 1, i + 1))
+          }
+        >
+          <ChevronRightIcon fontSize={iconSize} />
+        </IconButton>
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: vertical ? 'column' : 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: vertical ? 0.25 : 1,
+        flexWrap: vertical ? 'nowrap' : 'wrap',
+      }}
+    >
+      <IconButton
+        size={btnSize}
+        aria-label="Older saved estimate"
+        title={
+          localSavedSnapshots.length === 0
+            ? 'Save an estimate first—history is stored on this browser'
+            : 'Older saved estimate (←)'
+        }
+        disabled={
+          loadingJobEstimate ||
+          savingEstimate ||
+          localSavedSnapshots.length === 0 ||
+          (localSnapshotBrowseIndex !== null && localSnapshotBrowseIndex <= 0)
+        }
+        onClick={goLocalEstimateOlder}
+      >
+        <ChevronLeftIcon fontSize={iconSize} />
+      </IconButton>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{
+          minWidth: vertical ? 80 : 100,
+          textAlign: 'center',
+          fontSize: vertical ? '0.8rem' : '0.875rem',
+          lineHeight: 1.25,
+        }}
+      >
+        {localSavedSnapshots.length === 0
+          ? 'No history'
+          : `Saved ${localSlotCurrent} / ${localSlotTotal}`}
+      </Typography>
+      <IconButton
+        size={btnSize}
+        aria-label="Newer — toward current draft"
+        title={
+          localSnapshotBrowseIndex === null
+            ? 'Already on current draft'
+            : 'Newer (→) — toward current draft'
+        }
+        disabled={
+          loadingJobEstimate || savingEstimate || localSnapshotBrowseIndex === null
+        }
+        onClick={goLocalEstimateNewer}
+      >
+        <ChevronRightIcon fontSize={iconSize} />
+      </IconButton>
+    </Box>
+  );
+}
+
 function FinanceHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const estimateJobId = searchParams.get('jobId');
@@ -1054,101 +1197,7 @@ function FinanceHubPage() {
               <Typography variant="h5" sx={{ fontWeight: 600 }}>
                 {estimateJobId ? 'Edit estimate' : 'New estimate'}
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                {estimateJobId ? (
-                  <>
-                    <IconButton
-                      size="small"
-                      aria-label="Older estimate"
-                      title="Older estimate (←)"
-                      disabled={
-                        loadingJobEstimate ||
-                        savingEstimate ||
-                        estimateRevisions.length < 2 ||
-                        estimateRevisionIndex <= 0
-                      }
-                      onClick={() => setEstimateRevisionIndex((i) => Math.max(0, i - 1))}
-                    >
-                      <ChevronLeftIcon />
-                    </IconButton>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ minWidth: 88, textAlign: 'center' }}
-                    >
-                      {estimateRevisions.length > 0
-                        ? `Rev ${estimateRevisionIndex + 1} / ${estimateRevisions.length}`
-                        : '—'}
-                    </Typography>
-                    <IconButton
-                      size="small"
-                      aria-label="Newer estimate"
-                      title="Newer estimate (→)"
-                      disabled={
-                        loadingJobEstimate ||
-                        savingEstimate ||
-                        estimateRevisions.length < 2 ||
-                        estimateRevisionIndex >= estimateRevisions.length - 1
-                      }
-                      onClick={() =>
-                        setEstimateRevisionIndex((i) =>
-                          Math.min(estimateRevisions.length - 1, i + 1)
-                        )
-                      }
-                    >
-                      <ChevronRightIcon />
-                    </IconButton>
-                  </>
-                ) : (
-                  <>
-                    <IconButton
-                      size="small"
-                      aria-label="Older saved estimate"
-                      title={
-                        localSavedSnapshots.length === 0
-                          ? 'Save an estimate first—history is stored on this browser'
-                          : 'Older saved estimate (←)'
-                      }
-                      disabled={
-                        loadingJobEstimate ||
-                        savingEstimate ||
-                        localSavedSnapshots.length === 0 ||
-                        (localSnapshotBrowseIndex !== null && localSnapshotBrowseIndex <= 0)
-                      }
-                      onClick={goLocalEstimateOlder}
-                    >
-                      <ChevronLeftIcon />
-                    </IconButton>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ minWidth: 100, textAlign: 'center' }}
-                    >
-                      {localSavedSnapshots.length === 0
-                        ? 'No history'
-                        : `Saved ${localSlotCurrent} / ${localSlotTotal}`}
-                    </Typography>
-                    <IconButton
-                      size="small"
-                      aria-label="Newer — toward current draft"
-                      title={
-                        localSnapshotBrowseIndex === null
-                          ? 'Already on current draft'
-                          : 'Newer (→) — toward current draft'
-                      }
-                      disabled={
-                        loadingJobEstimate ||
-                        savingEstimate ||
-                        localSnapshotBrowseIndex === null
-                      }
-                      onClick={goLocalEstimateNewer}
-                    >
-                      <ChevronRightIcon />
-                    </IconButton>
-                  </>
-                )}
-                <Chip size="small" color="primary" label={estimateForm.estimateNumber} />
-              </Box>
+              <Chip size="small" color="primary" label={estimateForm.estimateNumber} />
             </Box>
 
             {!estimateJobId && localSavedSnapshots.length === 0 && !loadingJobEstimate && (
@@ -1305,7 +1354,48 @@ function FinanceHubPage() {
 
             <Divider sx={{ my: 2 }} />
 
-            <Box sx={{ overflowX: 'auto' }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: { xs: 1.5, md: 2 },
+                width: '100%',
+              }}
+            >
+              <Box
+                sx={{
+                  display: { xs: 'none', md: 'flex' },
+                  alignSelf: 'center',
+                  flexShrink: 0,
+                  py: 1,
+                  px: 0.75,
+                  borderRadius: 2,
+                  bgcolor: (t) =>
+                    t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                  border: 1,
+                  borderColor: 'divider',
+                }}
+              >
+                <EstimateRevisionNav
+                  layout="vertical"
+                  estimateJobId={estimateJobId}
+                  loadingJobEstimate={loadingJobEstimate}
+                  savingEstimate={savingEstimate}
+                  estimateRevisions={estimateRevisions}
+                  estimateRevisionIndex={estimateRevisionIndex}
+                  setEstimateRevisionIndex={setEstimateRevisionIndex}
+                  localSavedSnapshots={localSavedSnapshots}
+                  localSlotCurrent={localSlotCurrent}
+                  localSlotTotal={localSlotTotal}
+                  localSnapshotBrowseIndex={localSnapshotBrowseIndex}
+                  goLocalEstimateOlder={goLocalEstimateOlder}
+                  goLocalEstimateNewer={goLocalEstimateNewer}
+                />
+              </Box>
+
+              <Box sx={{ overflowX: 'auto', width: { xs: '100%', md: 'auto' } }}>
               <Box
                 ref={estimateCanvasRef}
                 sx={{
@@ -1595,6 +1685,41 @@ function FinanceHubPage() {
                   />
                   <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
                 </Box>
+              </Box>
+              </Box>
+
+              <Box
+                sx={{
+                  display: { xs: 'flex', md: 'none' },
+                  justifyContent: 'center',
+                  alignSelf: 'center',
+                  py: 1,
+                  px: 1,
+                  borderRadius: 2,
+                  bgcolor: (t) =>
+                    t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                  border: 1,
+                  borderColor: 'divider',
+                  width: '100%',
+                  maxWidth: 816,
+                  mx: 'auto',
+                }}
+              >
+                <EstimateRevisionNav
+                  layout="horizontal"
+                  estimateJobId={estimateJobId}
+                  loadingJobEstimate={loadingJobEstimate}
+                  savingEstimate={savingEstimate}
+                  estimateRevisions={estimateRevisions}
+                  estimateRevisionIndex={estimateRevisionIndex}
+                  setEstimateRevisionIndex={setEstimateRevisionIndex}
+                  localSavedSnapshots={localSavedSnapshots}
+                  localSlotCurrent={localSlotCurrent}
+                  localSlotTotal={localSlotTotal}
+                  localSnapshotBrowseIndex={localSnapshotBrowseIndex}
+                  goLocalEstimateOlder={goLocalEstimateOlder}
+                  goLocalEstimateNewer={goLocalEstimateNewer}
+                />
               </Box>
             </Box>
 
