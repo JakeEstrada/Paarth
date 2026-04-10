@@ -125,6 +125,53 @@ function writeEstimateSequence(next) {
   window.localStorage.setItem(ESTIMATE_SEQ_KEY, String(next));
 }
 
+/** Saved estimate forms for “New estimate” (no jobId) — browse with ← →. Oldest → newest. */
+const LOCAL_EST_SNAPSHOT_STACK_KEY = 'financeHubSavedEstimateSnapshots';
+const LOCAL_EST_SNAPSHOT_MAX = 40;
+
+function readLocalEstimateSnapshots() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(LOCAL_EST_SNAPSHOT_STACK_KEY);
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalEstimateSnapshots(arr) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(LOCAL_EST_SNAPSHOT_STACK_KEY, JSON.stringify(arr));
+}
+
+function cloneEstimateForm(f) {
+  return JSON.parse(JSON.stringify(f));
+}
+
+function buildFreshEstimateDraftForm() {
+  return {
+    estimateNumber: formatEstimateNumber(readEstimateSequence()),
+    estimateDate: new Date().toISOString().slice(0, 10),
+    customerId: null,
+    customerName: '',
+    customerAddress: { street: '', city: '' },
+    projectName: '',
+    lineItems: DEFAULT_LINE_ITEMS(),
+    footerNote: 'Customer acknowledges paint and stain are not included.',
+  };
+}
+
+function pushLocalEstimateSnapshot(form, savedEstimateNumber) {
+  if (typeof window === 'undefined') return;
+  const snap = cloneEstimateForm(form);
+  snap.estimateNumber = savedEstimateNumber;
+  const arr = readLocalEstimateSnapshots();
+  arr.push(snap);
+  while (arr.length > LOCAL_EST_SNAPSHOT_MAX) arr.shift();
+  writeLocalEstimateSnapshots(arr);
+}
+
 function formatEstimateNumber(sequence) {
   return `${ESTIMATE_PREFIX}-${String(sequence).padStart(4, '0')}`;
 }
@@ -331,6 +378,85 @@ function FinanceHubPage() {
   /** Bumps when localStorage description hints change so the list refreshes. */
   const [estimateDescHintsRev, setEstimateDescHintsRev] = useState(0);
 
+  /** Bumps when `financeHubSavedEstimateSnapshots` changes (new save or external). */
+  const [localSnapshotsRevision, setLocalSnapshotsRevision] = useState(0);
+  /**
+   * null = current draft (next estimate #). 0..n-1 = viewing saved snapshot (oldest first).
+   * Only used when `!estimateJobId`.
+   */
+  const [localSnapshotBrowseIndex, setLocalSnapshotBrowseIndex] = useState(null);
+  const draftStashRef = useRef(null);
+  const estimateFormRef = useRef(estimateForm);
+  const localBrowseIdxRef = useRef(null);
+
+  useEffect(() => {
+    estimateFormRef.current = estimateForm;
+  }, [estimateForm]);
+
+  useEffect(() => {
+    localBrowseIdxRef.current = localSnapshotBrowseIndex;
+  }, [localSnapshotBrowseIndex]);
+
+  const localSavedSnapshots = useMemo(
+    () => readLocalEstimateSnapshots(),
+    [localSnapshotsRevision]
+  );
+
+  useEffect(() => {
+    if (estimateJobId) {
+      setLocalSnapshotBrowseIndex(null);
+      draftStashRef.current = null;
+    }
+  }, [estimateJobId]);
+
+  useEffect(() => {
+    if (estimateJobId) return;
+    if (localSnapshotBrowseIndex === null) return;
+    const snaps = readLocalEstimateSnapshots();
+    const snap = snaps[localSnapshotBrowseIndex];
+    if (snap) {
+      setEstimateForm(cloneEstimateForm(snap));
+      if (snap.customerId) {
+        const cid = String(snap.customerId);
+        setCustomers((prev) =>
+          prev.some((c) => String(c._id) === cid)
+            ? prev
+            : [{ _id: snap.customerId, name: snap.customerName || 'Customer' }, ...prev]
+        );
+      }
+    }
+  }, [estimateJobId, localSnapshotBrowseIndex, localSnapshotsRevision]);
+
+  const goLocalEstimateOlder = () => {
+    const snaps = readLocalEstimateSnapshots();
+    if (snaps.length === 0) return;
+    const idx = localBrowseIdxRef.current;
+    if (idx === null) {
+      draftStashRef.current = cloneEstimateForm(estimateFormRef.current);
+      setLocalSnapshotBrowseIndex(snaps.length - 1);
+      return;
+    }
+    if (idx <= 0) return;
+    setLocalSnapshotBrowseIndex(idx - 1);
+  };
+
+  const goLocalEstimateNewer = () => {
+    const snaps = readLocalEstimateSnapshots();
+    const idx = localBrowseIdxRef.current;
+    if (idx === null) return;
+    if (idx >= snaps.length - 1) {
+      setEstimateForm(
+        draftStashRef.current
+          ? cloneEstimateForm(draftStashRef.current)
+          : buildFreshEstimateDraftForm()
+      );
+      draftStashRef.current = null;
+      setLocalSnapshotBrowseIndex(null);
+      return;
+    }
+    setLocalSnapshotBrowseIndex(idx + 1);
+  };
+
   const descriptionAutocompleteOptions = useMemo(() => {
     const out = [];
     const seen = new Set();
@@ -356,8 +482,15 @@ function FinanceHubPage() {
     for (const d of readEstimateDescriptionHints()) {
       push(d);
     }
+    for (const snap of localSavedSnapshots) {
+      if (snap?.lineItems) {
+        for (const row of snap.lineItems) {
+          push(row?.description);
+        }
+      }
+    }
     return out;
-  }, [estimateForm.lineItems, loadedEstimateJob, estimateDescHintsRev]);
+  }, [estimateForm.lineItems, loadedEstimateJob, estimateDescHintsRev, localSavedSnapshots]);
 
   const tabParam = searchParams.get('tab');
   const jobIdParam = searchParams.get('jobId');
@@ -703,6 +836,8 @@ function FinanceHubPage() {
     if (!estimateJobId && prev) {
       setLoadedEstimateJob(null);
       setEstimateRevisionIndex(0);
+      setLocalSnapshotBrowseIndex(null);
+      draftStashRef.current = null;
       setEstimateForm({
         estimateNumber: formatEstimateNumber(readEstimateSequence()),
         estimateDate: new Date().toISOString().slice(0, 10),
@@ -744,6 +879,8 @@ function FinanceHubPage() {
           estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
         );
         setEstimateDescHintsRev((n) => n + 1);
+        pushLocalEstimateSnapshot(estimateForm, nextNum);
+        setLocalSnapshotsRevision((n) => n + 1);
         toast.success(`Estimate ${nextNum} saved on this job`);
       } else {
         const useNewCard =
@@ -777,6 +914,8 @@ function FinanceHubPage() {
             estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
           );
           setEstimateDescHintsRev((n) => n + 1);
+          pushLocalEstimateSnapshot(estimateForm, estimateForm.estimateNumber);
+          setLocalSnapshotsRevision((n) => n + 1);
           toast.success(`Estimate ${estimateForm.estimateNumber} saved to new job`);
         } else {
           const nextNum = formatEstimateNumber(readEstimateSequence());
@@ -791,6 +930,8 @@ function FinanceHubPage() {
             estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
           );
           setEstimateDescHintsRev((n) => n + 1);
+          pushLocalEstimateSnapshot(estimateForm, nextNum);
+          setLocalSnapshotsRevision((n) => n + 1);
           toast.success(
             `Estimate ${nextNum} saved on ${formatEstimateJobPickLabel(estimateForm.customerName, picked)}`
           );
@@ -803,6 +944,12 @@ function FinanceHubPage() {
       setSavingEstimate(false);
     }
   };
+
+  const localSlotTotal = localSavedSnapshots.length + 1;
+  const localSlotCurrent =
+    localSnapshotBrowseIndex === null
+      ? localSlotTotal
+      : localSnapshotBrowseIndex + 1;
 
   return (
     <Container maxWidth="xl" sx={{ py: 2 }}>
@@ -862,7 +1009,7 @@ function FinanceHubPage() {
                 {estimateJobId ? 'Edit estimate' : 'New estimate'}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                {estimateJobId && (
+                {estimateJobId ? (
                   <>
                     <IconButton
                       size="small"
@@ -906,10 +1053,74 @@ function FinanceHubPage() {
                       <ChevronRightIcon />
                     </IconButton>
                   </>
+                ) : (
+                  <>
+                    <IconButton
+                      size="small"
+                      aria-label="Older saved estimate"
+                      title={
+                        localSavedSnapshots.length === 0
+                          ? 'Save an estimate first—history is stored on this browser'
+                          : 'Older saved estimate (←)'
+                      }
+                      disabled={
+                        loadingJobEstimate ||
+                        savingEstimate ||
+                        localSavedSnapshots.length === 0 ||
+                        (localSnapshotBrowseIndex !== null && localSnapshotBrowseIndex <= 0)
+                      }
+                      onClick={goLocalEstimateOlder}
+                    >
+                      <ChevronLeftIcon />
+                    </IconButton>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ minWidth: 100, textAlign: 'center' }}
+                    >
+                      {localSavedSnapshots.length === 0
+                        ? 'No history'
+                        : `Saved ${localSlotCurrent} / ${localSlotTotal}`}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      aria-label="Newer — toward current draft"
+                      title={
+                        localSnapshotBrowseIndex === null
+                          ? 'Already on current draft'
+                          : 'Newer (→) — toward current draft'
+                      }
+                      disabled={
+                        loadingJobEstimate ||
+                        savingEstimate ||
+                        localSnapshotBrowseIndex === null
+                      }
+                      onClick={goLocalEstimateNewer}
+                    >
+                      <ChevronRightIcon />
+                    </IconButton>
+                  </>
                 )}
                 <Chip size="small" color="primary" label={estimateForm.estimateNumber} />
               </Box>
             </Box>
+
+            {!estimateJobId && localSavedSnapshots.length === 0 && !loadingJobEstimate && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                ← → stay usable after you save an estimate. Each save adds to history on{' '}
+                <strong>this browser</strong> so you can step back to 1102-0001, 0002, and so on. With
+                a job open in the address bar (Finance Hub Estimates plus jobId), arrows use the
+                server copy instead.
+              </Typography>
+            )}
+
+            {!estimateJobId &&
+              localSavedSnapshots.length > 0 &&
+              localSnapshotBrowseIndex !== null && (
+                <Typography variant="body2" color="warning.main" sx={{ mb: 1 }}>
+                  Viewing a saved snapshot. → returns to your current draft (next estimate number).
+                </Typography>
+              )}
 
             {estimateJobId && estimateRevisions.length < 2 && !loadingJobEstimate && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
