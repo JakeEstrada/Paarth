@@ -775,12 +775,18 @@ function FinanceHubPage() {
                 {estimateJobId ? 'Edit estimate' : 'New estimate'}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                {estimateJobId && estimateRevisions.length > 1 && (
+                {estimateJobId && (
                   <>
                     <IconButton
                       size="small"
                       aria-label="Older estimate"
-                      disabled={loadingJobEstimate || savingEstimate || estimateRevisionIndex <= 0}
+                      title="Older estimate (←)"
+                      disabled={
+                        loadingJobEstimate ||
+                        savingEstimate ||
+                        estimateRevisions.length < 2 ||
+                        estimateRevisionIndex <= 0
+                      }
                       onClick={() => setEstimateRevisionIndex((i) => Math.max(0, i - 1))}
                     >
                       <ChevronLeftIcon />
@@ -788,16 +794,20 @@ function FinanceHubPage() {
                     <Typography
                       variant="body2"
                       color="text.secondary"
-                      sx={{ minWidth: 72, textAlign: 'center' }}
+                      sx={{ minWidth: 88, textAlign: 'center' }}
                     >
-                      {estimateRevisionIndex + 1} / {estimateRevisions.length}
+                      {estimateRevisions.length > 0
+                        ? `Rev ${estimateRevisionIndex + 1} / ${estimateRevisions.length}`
+                        : '—'}
                     </Typography>
                     <IconButton
                       size="small"
                       aria-label="Newer estimate"
+                      title="Newer estimate (→)"
                       disabled={
                         loadingJobEstimate ||
                         savingEstimate ||
+                        estimateRevisions.length < 2 ||
                         estimateRevisionIndex >= estimateRevisions.length - 1
                       }
                       onClick={() =>
@@ -813,6 +823,13 @@ function FinanceHubPage() {
                 <Chip size="small" color="primary" label={estimateForm.estimateNumber} />
               </Box>
             </Box>
+
+            {estimateJobId && estimateRevisions.length < 2 && !loadingJobEstimate && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                To browse older estimates, use <strong>Save estimate</strong> again on this job—each
+                save keeps the prior version in history. Then use ← → next to the revision counter.
+              </Typography>
+            )}
 
             {estimateJobId &&
               estimateRevisions.length > 1 &&
