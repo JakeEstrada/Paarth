@@ -424,11 +424,6 @@ function FinanceHubPage() {
   const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
   /** Index into merged browse list for this job (0 = oldest). See `buildJobEstimateBrowseRevisions`. */
   const [estimateRevisionIndex, setEstimateRevisionIndex] = useState(0);
-  /**
-   * Set true only when the user clicks ← on job revisions. The “older revision” banner keys off this
-   * so we don’t show it when the browse list length/index shifts (e.g. local snapshots) without user intent.
-   */
-  const [jobEstimateOlderNavFromUser, setJobEstimateOlderNavFromUser] = useState(false);
   const [estimateForm, setEstimateForm] = useState(() => ({
     estimateNumber: formatEstimateNumber(readEstimateSequence()),
     estimateDate: new Date().toISOString().slice(0, 10),
@@ -552,7 +547,6 @@ function FinanceHubPage() {
 
   /** Use live revision count so → never caps with a stale `estimateRevisions.length` from a past render. */
   const goJobEstimateRevisionOlder = useCallback(() => {
-    setJobEstimateOlderNavFromUser(true);
     setEstimateRevisionIndex((i) => Math.max(0, i - 1));
   }, []);
 
@@ -564,14 +558,6 @@ function FinanceHubPage() {
       return Math.min(maxIdx, i + 1);
     });
   }, [loadedEstimateJob]);
-
-  useEffect(() => {
-    if (!estimateJobId) return;
-    if (estimateRevisions.length < 2) return;
-    if (estimateRevisionIndex >= estimateRevisions.length - 1) {
-      setJobEstimateOlderNavFromUser(false);
-    }
-  }, [estimateJobId, estimateRevisionIndex, estimateRevisions.length]);
 
   const descriptionAutocompleteOptions = useMemo(() => {
     const out = [];
@@ -636,7 +622,6 @@ function FinanceHubPage() {
     if (activeTab !== 'estimates' || !estimateJobId) {
       setLoadedEstimateJob(null);
       setEstimateRevisionIndex(0);
-      setJobEstimateOlderNavFromUser(false);
       return undefined;
     }
     let cancelled = false;
@@ -654,7 +639,6 @@ function FinanceHubPage() {
         setLoadedEstimateJob(job);
         const revs = buildJobEstimateBrowseRevisions(job);
         setEstimateRevisionIndex(revs.length > 0 ? revs.length - 1 : 0);
-        setJobEstimateOlderNavFromUser(false);
         setEditingJobSummary({
           _id: job._id,
           title: job.title || '',
@@ -665,7 +649,6 @@ function FinanceHubPage() {
         console.error('Error loading job for estimate:', error);
         setLoadedEstimateJob(null);
         setEditingJobSummary(null);
-        setJobEstimateOlderNavFromUser(false);
         toast.error(error.response?.data?.error || 'Could not load estimate from job');
       } finally {
         if (!cancelled) setLoadingJobEstimate(false);
@@ -1016,7 +999,6 @@ function FinanceHubPage() {
         setLoadedEstimateJob(refreshed);
         const revs = buildJobEstimateBrowseRevisions(refreshed);
         setEstimateRevisionIndex(revs.length > 0 ? revs.length - 1 : 0);
-        setJobEstimateOlderNavFromUser(false);
         mergeEstimateDescriptionHints(
           estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
         );
@@ -1215,17 +1197,6 @@ function FinanceHubPage() {
                 again on that card.
               </Typography>
             )}
-
-            {estimateJobId &&
-              jobEstimateOlderNavFromUser &&
-              estimateRevisions.length > 1 &&
-              estimateRevisionIndex < estimateRevisions.length - 1 && (
-                <Typography variant="body2" color="warning.main" sx={{ mb: 1 }}>
-                  You moved to an older revision with ←. Use → to return to the newest. Saving from
-                  here still uses the <strong>next</strong> estimate number and archives the job’s
-                  previous latest estimate on the server.
-                </Typography>
-              )}
 
             <Autocomplete
               options={customers}
