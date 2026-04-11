@@ -13,7 +13,7 @@ export const JOB_CARD_SIZE_PRESETS = [
   { id: 'xl', label: 'Large', px: 120 },
 ];
 
-const DEFAULT_PRESET_ID = 'md';
+const DEFAULT_PRESET_ID = 'sm';
 
 function presetById(id) {
   return JOB_CARD_SIZE_PRESETS.find((x) => x.id === id) || JOB_CARD_SIZE_PRESETS.find((x) => x.id === DEFAULT_PRESET_ID);
