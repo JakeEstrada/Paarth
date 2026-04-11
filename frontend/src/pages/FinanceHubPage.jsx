@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Autocomplete,
@@ -502,6 +502,20 @@ function FinanceHubPage() {
     }
     setLocalSnapshotBrowseIndex(idx + 1);
   };
+
+  /** Use live revision count so → never caps with a stale `estimateRevisions.length` from a past render. */
+  const goJobEstimateRevisionOlder = useCallback(() => {
+    setEstimateRevisionIndex((i) => Math.max(0, i - 1));
+  }, []);
+
+  const goJobEstimateRevisionNewer = useCallback(() => {
+    setEstimateRevisionIndex((i) => {
+      if (!loadedEstimateJob) return i;
+      const revs = buildEstimateRevisions(loadedEstimateJob);
+      const maxIdx = revs.length > 0 ? revs.length - 1 : 0;
+      return Math.min(maxIdx, i + 1);
+    });
+  }, [loadedEstimateJob]);
 
   const descriptionAutocompleteOptions = useMemo(() => {
     const out = [];
@@ -1273,11 +1287,7 @@ function FinanceHubPage() {
                     aria-label={estimateJobId ? 'Older estimate' : 'Older saved estimate'}
                     title={estimateJobId ? 'Older estimate' : 'Older saved estimate'}
                     disabled={revOlderDisabled}
-                    onClick={
-                      estimateJobId
-                        ? () => setEstimateRevisionIndex((i) => Math.max(0, i - 1))
-                        : goLocalEstimateOlder
-                    }
+                    onClick={estimateJobId ? goJobEstimateRevisionOlder : goLocalEstimateOlder}
                     sx={{
                       color: 'text.secondary',
                       '&.Mui-disabled': { color: 'action.disabled' },
@@ -1586,14 +1596,7 @@ function FinanceHubPage() {
                     aria-label={estimateJobId ? 'Newer estimate' : 'Newer — toward current draft'}
                     title={estimateJobId ? 'Newer estimate' : 'Newer — toward current draft'}
                     disabled={revNewerDisabled}
-                    onClick={
-                      estimateJobId
-                        ? () =>
-                            setEstimateRevisionIndex((i) =>
-                              Math.min(estimateRevisions.length - 1, i + 1)
-                            )
-                        : goLocalEstimateNewer
-                    }
+                    onClick={estimateJobId ? goJobEstimateRevisionNewer : goLocalEstimateNewer}
                     sx={{
                       color: 'text.secondary',
                       '&.Mui-disabled': { color: 'action.disabled' },
