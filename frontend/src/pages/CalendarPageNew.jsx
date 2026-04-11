@@ -229,11 +229,9 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
 
   const fetchAvailableJobs = async () => {
     try {
-      const response = await axios.get(`${API_URL}/jobs`, {
-        params: { includeCompletedClosedOut: true },
-      });
+      const response = await axios.get(`${API_URL}/jobs`);
       const jobs = response.data.jobs || response.data || [];
-      setAvailableJobs(jobs.filter(j => !j.isArchived && !j.isDeadEstimate));
+      setAvailableJobs(jobs.filter((j) => !shouldExcludeJobFromCalendarSchedule(j)));
     } catch (error) {
       console.error('Error fetching jobs:', error);
     }
@@ -1290,6 +1288,14 @@ function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob }) {
   );
 }
 
+/** Jobs off the active pipeline should not appear as scheduled on the calendar. */
+function shouldExcludeJobFromCalendarSchedule(job) {
+  if (!job || job.isArchived || job.isDeadEstimate) return true;
+  if (job.stage === 'FINAL_PAYMENT_CLOSED') return true;
+  if (job.isCompletedClosedOut) return true;
+  return false;
+}
+
 function CalendarPageNew({ tvMode = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -1420,9 +1426,7 @@ function CalendarPageNew({ tvMode = false }) {
   const fetchJobs = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/jobs`, {
-        params: { includeCompletedClosedOut: true },
-      });
+      const response = await axios.get(`${API_URL}/jobs`);
       const allJobs = response.data.jobs || response.data || [];
 
       const jobHasCalendarSchedule = (job) => {
@@ -1440,11 +1444,12 @@ function CalendarPageNew({ tvMode = false }) {
         !jobHasCalendarSchedule(job)
       );
       
-      // Filter scheduled jobs
+      // Filter scheduled jobs (omit archived, dead estimates, final payment / closed-out)
       const scheduled = allJobs.filter(job => {
+        if (shouldExcludeJobFromCalendarSchedule(job)) return false;
         const hasSchedule = jobHasCalendarSchedule(job);
         const isScheduledStage = job.stage === 'SCHEDULED';
-        return (hasSchedule || isScheduledStage) && !job.isArchived && !job.isDeadEstimate;
+        return hasSchedule || isScheduledStage;
       });
       
       setBenchJobs(bench);
