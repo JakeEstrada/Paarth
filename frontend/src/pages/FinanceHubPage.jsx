@@ -125,91 +125,11 @@ function writeEstimateSequence(next) {
   window.localStorage.setItem(ESTIMATE_SEQ_KEY, String(next));
 }
 
-/** Saved estimate forms for “New estimate” (no jobId) — browse with ← →. Oldest → newest. */
+/** Legacy browser snapshot key kept for one-time cleanup migration. */
 const LOCAL_EST_SNAPSHOT_STACK_KEY = 'financeHubSavedEstimateSnapshots';
-const LOCAL_EST_SNAPSHOT_MAX = 40;
-
-function readLocalEstimateSnapshots() {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(LOCAL_EST_SNAPSHOT_STACK_KEY);
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeLocalEstimateSnapshots(arr) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(LOCAL_EST_SNAPSHOT_STACK_KEY, JSON.stringify(arr));
-}
 
 function cloneEstimateForm(f) {
   return JSON.parse(JSON.stringify(f));
-}
-
-/** Plain snapshot for localStorage (never throws on odd form shapes). */
-function buildStorableEstimateSnapshot(form, savedEstimateNumber, savedJobId = null) {
-  const num =
-    typeof savedEstimateNumber === 'string'
-      ? savedEstimateNumber
-      : savedEstimateNumber != null
-        ? String(savedEstimateNumber)
-        : '';
-  let customerId = form?.customerId;
-  if (customerId && typeof customerId === 'object' && customerId._id != null) {
-    customerId = customerId._id;
-  }
-  const lineItems = Array.isArray(form?.lineItems)
-    ? form.lineItems.map((r) => ({
-        itemName: r?.itemName != null ? String(r.itemName) : '',
-        description: r?.description != null ? String(r.description) : '',
-        quantity: r?.quantity != null ? r.quantity : 1,
-        total: r?.total != null ? String(r.total) : '',
-      }))
-    : [];
-  return {
-    estimateNumber: num || formatEstimateNumber(readEstimateSequence()),
-    estimateDate: form?.estimateDate != null ? String(form.estimateDate) : '',
-    customerId: customerId != null ? String(customerId) : null,
-    customerName: form?.customerName != null ? String(form.customerName) : '',
-    customerAddress: {
-      street: form?.customerAddress?.street != null ? String(form.customerAddress.street) : '',
-      city: form?.customerAddress?.city != null ? String(form.customerAddress.city) : '',
-    },
-    projectName: form?.projectName != null ? String(form.projectName) : '',
-    lineItems,
-    footerNote: form?.footerNote != null ? String(form.footerNote) : '',
-    savedJobId:
-      savedJobId != null && String(savedJobId).trim() !== '' ? String(savedJobId) : null,
-  };
-}
-
-function buildFreshEstimateDraftForm() {
-  return {
-    estimateNumber: formatEstimateNumber(readEstimateSequence()),
-    estimateDate: new Date().toISOString().slice(0, 10),
-    customerId: null,
-    customerName: '',
-    customerAddress: { street: '', city: '' },
-    projectName: '',
-    lineItems: DEFAULT_LINE_ITEMS(),
-    footerNote: 'Customer acknowledges paint and stain are not included.',
-  };
-}
-
-function pushLocalEstimateSnapshot(form, savedEstimateNumber, savedJobId = null) {
-  if (typeof window === 'undefined') return;
-  try {
-    const snap = buildStorableEstimateSnapshot(form, savedEstimateNumber, savedJobId);
-    const arr = readLocalEstimateSnapshots();
-    arr.push(snap);
-    while (arr.length > LOCAL_EST_SNAPSHOT_MAX) arr.shift();
-    writeLocalEstimateSnapshots(arr);
-  } catch (e) {
-    console.error('Could not save estimate snapshot to local storage:', e);
-  }
 }
 
 function formatEstimateNumber(sequence) {
@@ -310,34 +230,7 @@ function buildEstimateRevisions(job) {
  * (so you can browse after a single save).
  */
 function buildJobEstimateBrowseRevisions(job) {
-  if (!job) return [];
-  const server = buildEstimateRevisions(job);
-  if (!job._id || server.length >= 2) return server;
-  const locals = readLocalEstimateSnapshots().filter(
-    (s) => s.savedJobId && String(s.savedJobId) === String(job._id)
-  );
-  if (locals.length === 0) return server;
-  const fromLocal = locals.map((loc) => ({
-    number: loc.estimateNumber,
-    amount: undefined,
-    sentAt: loc.estimateDate
-      ? new Date(`${loc.estimateDate}T12:00:00.000Z`).toISOString()
-      : null,
-    estimateDate: loc.estimateDate,
-    projectName: loc.projectName != null ? String(loc.projectName) : '',
-    footerNote: loc.footerNote != null ? String(loc.footerNote) : '',
-    lineItems: Array.isArray(loc.lineItems)
-      ? loc.lineItems.map((row) => ({
-          itemName: row?.itemName,
-          description: row?.description,
-          quantity: row?.quantity,
-          total: row?.total,
-          unitPrice: 0,
-        }))
-      : [],
-  }));
-  // Prepend browser copies so ← → works after a single save (local + server may share the same #).
-  return [...fromLocal, ...server];
+  return buildEstimateRevisions(job);
 }
 
 function computeEstimateFormFromJobSnapshot(job, snapshot) {
@@ -422,7 +315,7 @@ function FinanceHubPage() {
   const estimateCanvasRef = useRef(null);
   /** Full job JSON when editing via `jobId` (drives revision stack). */
   const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
-  /** Index into merged browse list for this job (0 = oldest). See `buildJobEstimateBrowseRevisions`. */
+  /** Index into server revision list for this job (0 = oldest). */
   const [estimateRevisionIndex, setEstimateRevisionIndex] = useState(0);
   const [estimateForm, setEstimateForm] = useState(() => ({
     estimateNumber: formatEstimateNumber(readEstimateSequence()),
@@ -455,95 +348,22 @@ function FinanceHubPage() {
   /** Bumps when localStorage description hints change so the list refreshes. */
   const [estimateDescHintsRev, setEstimateDescHintsRev] = useState(0);
 
-  /** Bumps when `financeHubSavedEstimateSnapshots` changes (new save or external). */
-  const [localSnapshotsRevision, setLocalSnapshotsRevision] = useState(0);
-  /**
-   * null = current draft (next estimate #). 0..n-1 = viewing saved snapshot (oldest first).
-   * Only used when `!estimateJobId`.
-   */
-  const [localSnapshotBrowseIndex, setLocalSnapshotBrowseIndex] = useState(null);
-  const draftStashRef = useRef(null);
   const estimateFormRef = useRef(estimateForm);
-  const localBrowseIdxRef = useRef(null);
 
   useEffect(() => {
     estimateFormRef.current = estimateForm;
   }, [estimateForm]);
 
-  useEffect(() => {
-    localBrowseIdxRef.current = localSnapshotBrowseIndex;
-  }, [localSnapshotBrowseIndex]);
-
-  const localSavedSnapshots = useMemo(
-    () => readLocalEstimateSnapshots(),
-    [localSnapshotsRevision]
-  );
-
   const estimateRevisions = useMemo(
     () => (loadedEstimateJob ? buildJobEstimateBrowseRevisions(loadedEstimateJob) : []),
-    [loadedEstimateJob, localSnapshotsRevision]
+    [loadedEstimateJob]
   );
 
+  /** Clear legacy browser-only estimate snapshots; server revisions are authoritative. */
   useEffect(() => {
-    if (estimateJobId) {
-      setLocalSnapshotBrowseIndex(null);
-      draftStashRef.current = null;
-    }
-  }, [estimateJobId]);
-
-  /** Re-read local snapshot list from storage when opening Estimates (e.g. after navigation). */
-  useEffect(() => {
-    if (activeTab !== 'estimates') return;
-    setLocalSnapshotsRevision((n) => n + 1);
+    if (activeTab !== 'estimates' || typeof window === 'undefined') return;
+    window.localStorage.removeItem(LOCAL_EST_SNAPSHOT_STACK_KEY);
   }, [activeTab]);
-
-  useEffect(() => {
-    if (estimateJobId) return;
-    if (localSnapshotBrowseIndex === null) return;
-    const snaps = readLocalEstimateSnapshots();
-    const snap = snaps[localSnapshotBrowseIndex];
-    if (snap) {
-      setEstimateForm(cloneEstimateForm(snap));
-      if (snap.customerId) {
-        const cid = String(snap.customerId);
-        setCustomers((prev) =>
-          prev.some((c) => String(c._id) === cid)
-            ? prev
-            : [{ _id: snap.customerId, name: snap.customerName || 'Customer' }, ...prev]
-        );
-      }
-    }
-  }, [estimateJobId, localSnapshotBrowseIndex, localSnapshotsRevision]);
-
-  const goLocalEstimateOlder = () => {
-    const snaps = readLocalEstimateSnapshots();
-    if (snaps.length === 0) return;
-    const idx = localBrowseIdxRef.current;
-    if (idx === null) {
-      draftStashRef.current = cloneEstimateForm(estimateFormRef.current);
-      setLocalSnapshotBrowseIndex(snaps.length - 1);
-      return;
-    }
-    if (idx <= 0) return;
-    setLocalSnapshotBrowseIndex(idx - 1);
-  };
-
-  const goLocalEstimateNewer = () => {
-    const snaps = readLocalEstimateSnapshots();
-    const idx = localBrowseIdxRef.current;
-    if (idx === null) return;
-    if (idx >= snaps.length - 1) {
-      setEstimateForm(
-        draftStashRef.current
-          ? cloneEstimateForm(draftStashRef.current)
-          : buildFreshEstimateDraftForm()
-      );
-      draftStashRef.current = null;
-      setLocalSnapshotBrowseIndex(null);
-      return;
-    }
-    setLocalSnapshotBrowseIndex(idx + 1);
-  };
 
   /** Use live revision count so → never caps with a stale `estimateRevisions.length` from a past render. */
   const goJobEstimateRevisionOlder = useCallback(() => {
@@ -584,15 +404,8 @@ function FinanceHubPage() {
     for (const d of readEstimateDescriptionHints()) {
       push(d);
     }
-    for (const snap of localSavedSnapshots) {
-      if (snap?.lineItems) {
-        for (const row of snap.lineItems) {
-          push(row?.description);
-        }
-      }
-    }
     return out;
-  }, [estimateForm.lineItems, loadedEstimateJob, estimateDescHintsRev, localSavedSnapshots]);
+  }, [estimateForm.lineItems, loadedEstimateJob, estimateDescHintsRev]);
 
   const tabParam = searchParams.get('tab');
   const jobIdParam = searchParams.get('jobId');
@@ -675,7 +488,7 @@ function FinanceHubPage() {
     }
     const snapshot = revs.length > 0 ? revs[idx] : null;
     setEstimateForm(computeEstimateFormFromJobSnapshot(loadedEstimateJob, snapshot));
-  }, [activeTab, estimateJobId, loadedEstimateJob, estimateRevisionIndex, localSnapshotsRevision]);
+  }, [activeTab, estimateJobId, loadedEstimateJob, estimateRevisionIndex]);
 
   useEffect(() => {
     if (activeTab !== 'estimates' || !estimateForm.customerId) {
@@ -958,8 +771,6 @@ function FinanceHubPage() {
     if (!estimateJobId && prev) {
       setLoadedEstimateJob(null);
       setEstimateRevisionIndex(0);
-      setLocalSnapshotBrowseIndex(null);
-      draftStashRef.current = null;
       setEstimateForm({
         estimateNumber: formatEstimateNumber(readEstimateSequence()),
         estimateDate: new Date().toISOString().slice(0, 10),
@@ -991,8 +802,6 @@ function FinanceHubPage() {
         const nextNum = formatEstimateNumber(readEstimateSequence());
         const patchPayload = buildEstimatePatchPayload({ estimateNumberOverride: nextNum });
         await axios.patch(`${API_URL}/jobs/${estimateJobId}`, patchPayload);
-        pushLocalEstimateSnapshot(estimateForm, nextNum, estimateJobId);
-        setLocalSnapshotsRevision((n) => n + 1);
         const nextSeq = readEstimateSequence() + 1;
         writeEstimateSequence(nextSeq);
         const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
@@ -1027,8 +836,6 @@ function FinanceHubPage() {
             buildEstimateCreatePayload()
           );
           const newId = created?._id;
-          pushLocalEstimateSnapshot(estimateForm, estimateForm.estimateNumber, newId);
-          setLocalSnapshotsRevision((n) => n + 1);
           const nextSeq = readEstimateSequence() + 1;
           writeEstimateSequence(nextSeq);
           mergeEstimateDescriptionHints(
@@ -1045,8 +852,6 @@ function FinanceHubPage() {
             `${API_URL}/jobs/${existingId}`,
             buildEstimatePatchPayload({ estimateNumberOverride: nextNum })
           );
-          pushLocalEstimateSnapshot(estimateForm, nextNum, existingId);
-          setLocalSnapshotsRevision((n) => n + 1);
           writeEstimateSequence(readEstimateSequence() + 1);
           mergeEstimateDescriptionHints(
             estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
@@ -1067,12 +872,6 @@ function FinanceHubPage() {
     }
   };
 
-  const localSlotTotal = localSavedSnapshots.length + 1;
-  const localSlotCurrent =
-    localSnapshotBrowseIndex === null
-      ? localSlotTotal
-      : localSnapshotBrowseIndex + 1;
-
   const estimateRevisionRailSx = {
     flexShrink: 0,
     display: 'flex',
@@ -1088,26 +887,21 @@ function FinanceHubPage() {
     borderColor: 'divider',
   };
 
-  const revOlderDisabled = estimateJobId
-    ? loadingJobEstimate ||
-      savingEstimate ||
-      estimateRevisions.length < 2 ||
-      estimateRevisionIndex <= 0
-    : loadingJobEstimate ||
-      savingEstimate ||
-      localSavedSnapshots.length === 0 ||
-      (localSnapshotBrowseIndex !== null && localSnapshotBrowseIndex <= 0);
+  const revOlderDisabled =
+    !estimateJobId ||
+    loadingJobEstimate ||
+    savingEstimate ||
+    estimateRevisions.length < 2 ||
+    estimateRevisionIndex <= 0;
 
-  const revNewerDisabled = estimateJobId
-    ? loadingJobEstimate ||
-      savingEstimate ||
-      estimateRevisions.length < 2 ||
-      estimateRevisionIndex >= estimateRevisions.length - 1
-    : loadingJobEstimate || savingEstimate || localSnapshotBrowseIndex === null;
+  const revNewerDisabled =
+    !estimateJobId ||
+    loadingJobEstimate ||
+    savingEstimate ||
+    estimateRevisions.length < 2 ||
+    estimateRevisionIndex >= estimateRevisions.length - 1;
 
-  const showRevisionCaption = estimateJobId
-    ? estimateRevisions.length >= 2
-    : localSavedSnapshots.length > 0;
+  const showRevisionCaption = estimateJobId && estimateRevisions.length >= 2;
 
   return (
     <Container maxWidth="xl" sx={{ py: 2 }}>
@@ -1169,24 +963,12 @@ function FinanceHubPage() {
               <Chip size="small" color="primary" label={estimateForm.estimateNumber} />
             </Box>
 
-            {!estimateJobId && localSavedSnapshots.length === 0 && !loadingJobEstimate && (
+            {!estimateJobId && !loadingJobEstimate && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Saving writes to the database and also keeps a copy in <strong>this browser</strong>{' '}
-                for ← →. If you still see no history after a successful save, check that cookies /
-                site data are not blocked for this site. With a job open (Estimates tab includes{' '}
-                <strong>jobId</strong> in the URL), revision arrows use the job on the server—two
-                saves on the <strong>same</strong> job build that stack; two different pipeline cards
-                each have their own history.
+                Estimates are saved to the database and shared across devices. Use a specific job to
+                view and browse estimate revisions for that job.
               </Typography>
             )}
-
-            {!estimateJobId &&
-              localSavedSnapshots.length > 0 &&
-              localSnapshotBrowseIndex !== null && (
-                <Typography variant="body2" color="warning.main" sx={{ mb: 1 }}>
-                  Viewing a saved snapshot. → returns to your current draft (next estimate number).
-                </Typography>
-              )}
 
             {estimateJobId && estimateRevisions.length < 2 && !loadingJobEstimate && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -1337,10 +1119,10 @@ function FinanceHubPage() {
                 <Box sx={estimateRevisionRailSx}>
                   <IconButton
                     size="large"
-                    aria-label={estimateJobId ? 'Older estimate' : 'Older saved estimate'}
-                    title={estimateJobId ? 'Older estimate' : 'Older saved estimate'}
+                    aria-label="Older estimate"
+                    title="Older estimate"
                     disabled={revOlderDisabled}
-                    onClick={estimateJobId ? goJobEstimateRevisionOlder : goLocalEstimateOlder}
+                    onClick={goJobEstimateRevisionOlder}
                     sx={{
                       color: 'text.secondary',
                       '&.Mui-disabled': { color: 'action.disabled' },
@@ -1648,10 +1430,10 @@ function FinanceHubPage() {
                 <Box sx={estimateRevisionRailSx}>
                   <IconButton
                     size="large"
-                    aria-label={estimateJobId ? 'Newer estimate' : 'Newer — toward current draft'}
-                    title={estimateJobId ? 'Newer estimate' : 'Newer — toward current draft'}
+                    aria-label="Newer estimate"
+                    title="Newer estimate"
                     disabled={revNewerDisabled}
-                    onClick={estimateJobId ? goJobEstimateRevisionNewer : goLocalEstimateNewer}
+                    onClick={goJobEstimateRevisionNewer}
                     sx={{
                       color: 'text.secondary',
                       '&.Mui-disabled': { color: 'action.disabled' },
@@ -1668,9 +1450,7 @@ function FinanceHubPage() {
                   color="text.secondary"
                   sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
                 >
-                  {estimateJobId
-                    ? `Rev ${estimateRevisionIndex + 1} / ${estimateRevisions.length}`
-                    : `Saved ${localSlotCurrent} / ${localSlotTotal}`}
+                  {`Rev ${estimateRevisionIndex + 1} / ${estimateRevisions.length}`}
                 </Typography>
               )}
             </Box>
