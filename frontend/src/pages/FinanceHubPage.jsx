@@ -799,20 +799,42 @@ function FinanceHubPage() {
     try {
       setSavingEstimate(true);
       if (estimateJobId) {
-        const nextNum = formatEstimateNumber(readEstimateSequence());
-        const patchPayload = buildEstimatePatchPayload({ estimateNumberOverride: nextNum });
-        await axios.patch(`${API_URL}/jobs/${estimateJobId}`, patchPayload);
-        const nextSeq = readEstimateSequence() + 1;
-        writeEstimateSequence(nextSeq);
+        const isEditingOlderRevision =
+          estimateRevisions.length > 1 && estimateRevisionIndex < estimateRevisions.length - 1;
+
+        if (isEditingOlderRevision) {
+          const currentRevision = estimateRevisions[estimateRevisionIndex] || null;
+          const fixedNumber = currentRevision?.number || estimateForm.estimateNumber;
+          const patchPayload = buildEstimatePatchPayload({ estimateNumberOverride: fixedNumber });
+          await axios.patch(`${API_URL}/jobs/${estimateJobId}/estimate-revision`, {
+            revisionIndex: estimateRevisionIndex,
+            estimate: patchPayload.estimate,
+            valueEstimated: patchPayload.valueEstimated,
+            jobAddress: patchPayload.jobAddress,
+          });
+          toast.success(`Estimate ${fixedNumber} updated`);
+        } else {
+          const nextNum = formatEstimateNumber(readEstimateSequence());
+          const patchPayload = buildEstimatePatchPayload({ estimateNumberOverride: nextNum });
+          await axios.patch(`${API_URL}/jobs/${estimateJobId}`, patchPayload);
+          const nextSeq = readEstimateSequence() + 1;
+          writeEstimateSequence(nextSeq);
+          toast.success(`Estimate ${nextNum} saved on this job`);
+        }
+
         const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
         setLoadedEstimateJob(refreshed);
         const revs = buildJobEstimateBrowseRevisions(refreshed);
-        setEstimateRevisionIndex(revs.length > 0 ? revs.length - 1 : 0);
+        if (isEditingOlderRevision) {
+          const maxIdx = revs.length > 0 ? revs.length - 1 : 0;
+          setEstimateRevisionIndex(Math.max(0, Math.min(estimateRevisionIndex, maxIdx)));
+        } else {
+          setEstimateRevisionIndex(revs.length > 0 ? revs.length - 1 : 0);
+        }
         mergeEstimateDescriptionHints(
           estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
         );
         setEstimateDescHintsRev((n) => n + 1);
-        toast.success(`Estimate ${nextNum} saved on this job`);
       } else {
         const useNewCard =
           customerPipelineJobs.length === 0 || estimateSaveTargetId === ESTIMATE_NEW_JOB_ID;
