@@ -29,7 +29,7 @@ A comprehensive Operations Management System (OMS) built as a one-stop shop for 
 Paarth is a full-stack OMS solution built to run day-to-day operations for a small construction business from first lead to final payment. It is designed as the system you can run your business on, not just a project tracker. It provides end-to-end management of:
 
 - **Customer Relationships**: Centralized customer database with multiple contact methods and addresses
-- **Sales Pipeline**: Visual kanban board tracking jobs through 13 distinct stages from appointment to final payment
+- **Sales Pipeline**: Visual kanban board tracking jobs through 12 distinct stages from appointment to final payment
 - **Project Management**: Detailed job tracking with estimates, contracts, scheduling, and file management
 - **Calendar Integration**: Google Calendar sync for seamless scheduling with recurrence support
 - **Communications Hub**: Twilio integration for business messaging and communication workflows
@@ -48,7 +48,7 @@ This project is designed to showcase pragmatic, real-world problem solving as we
 
 - **Domain modelling for a complex sales pipeline**
   - Designed MongoDB/Mongoose models for customers, jobs, tasks, activities, files, and payroll entries with enums, validation, and indexes.
-  - Encoded a 13‑stage job pipeline (appointments → sales → readiness → execution) with soft‑delete style archiving and automatic movement of "dead estimates" after inactivity.
+  - Encoded a 12-stage job pipeline (appointments -> sales -> readiness -> execution) with soft-delete style archiving and automatic movement of "dead estimates" after inactivity.
 
 - **Rich audit logging system**
   - Implemented an `Activity` model with 20+ event types (e.g. `stage_change`, `estimate_sent`, `contract_signed`, `job_scheduled`, `task_completed`, `file_uploaded`).
@@ -549,7 +549,7 @@ backend/src/
 
 #### Sales Pipeline Management
 - **Visual Kanban Board**: Drag-and-drop interface for managing jobs through stages
-- **13 Job Stages**: From appointment scheduling to final payment
+- **12 Job Stages**: From appointment scheduling to final payment
 - **Stage Grouping**: Organized into Appointments, Sales, Readiness, and Execution phases
 - **Value Tracking**: Estimated and contracted values for revenue forecasting
 - **Source Tracking**: Track where leads come from (referral, Yelp, Instagram, etc.)
