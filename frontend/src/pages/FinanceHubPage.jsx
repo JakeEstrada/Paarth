@@ -1617,9 +1617,11 @@ function FinanceHubPage() {
                 </Box>
 
                 <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Button size="small" startIcon={<AddIcon />} onClick={addLineItem}>
-                    Add line
-                  </Button>
+                  {!isEstimateExportMode && (
+                    <Button size="small" startIcon={<AddIcon />} onClick={addLineItem}>
+                      Add line
+                    </Button>
+                  )}
                   <Box sx={{ width: 220, border: '1px solid #000', display: 'flex' }}>
                     <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
                       Total
