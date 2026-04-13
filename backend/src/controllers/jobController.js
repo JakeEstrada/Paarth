@@ -1336,6 +1336,35 @@ async function reopenFromCompleted(req, res) {
   }
 }
 
+/**
+ * Admin utility: wipe estimate snapshots across tenant jobs.
+ * Intended as a temporary reset action during estimate flow cleanup.
+ */
+async function resetAllEstimates(req, res) {
+  try {
+    if (req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only super admins can reset estimate history' });
+    }
+
+    const result = await Job.updateMany(
+      {},
+      {
+        $unset: { estimate: 1 },
+        $set: { estimateHistory: [], valueEstimated: 0 },
+      }
+    );
+
+    return res.json({
+      message: 'Estimate history reset for this organization',
+      matched: result?.matchedCount ?? 0,
+      modified: result?.modifiedCount ?? 0,
+    });
+  } catch (error) {
+    console.error('Error resetting estimates:', error);
+    return res.status(500).json({ error: error.message || 'Failed to reset estimates' });
+  }
+}
+
 module.exports = {
   getJobs,
   getJob,
@@ -1353,5 +1382,6 @@ module.exports = {
   unarchiveJob,
   archiveCompletedJobs,
   reopenFromCompleted,
+  resetAllEstimates,
   debugDeadEstimates
 };

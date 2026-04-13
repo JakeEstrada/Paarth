@@ -17,7 +17,8 @@ const {
   archiveJob,
   unarchiveJob,
   archiveCompletedJobs,
-  reopenFromCompleted
+  reopenFromCompleted,
+  resetAllEstimates
 } = require('../controllers/jobController');
 
 router.use(requireAuth);
@@ -31,6 +32,7 @@ router.get('/completed', getCompletedJobs);
 router.get('/dead-estimates/debug', require('../controllers/jobController').debugDeadEstimates);
 router.post('/dead-estimates/auto-move', autoMoveDeadEstimates);
 router.post('/archive-completed', archiveCompletedJobs);
+router.post('/admin/reset-estimates', resetAllEstimates);
 router.post('/:id/move-to-dead-estimates', moveToDeadEstimates);
 router.post('/:id/archive', archiveJob);
 router.post('/:id/unarchive', unarchiveJob);

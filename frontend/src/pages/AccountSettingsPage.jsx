@@ -56,6 +56,7 @@ function AccountSettingsPage() {
   });
   const [uploadingLogoLight, setUploadingLogoLight] = useState(false);
   const [uploadingLogoDark, setUploadingLogoDark] = useState(false);
+  const [resettingEstimates, setResettingEstimates] = useState(false);
 
   useEffect(() => {
     fetchUserData();
@@ -187,6 +188,40 @@ function AccountSettingsPage() {
       toast.error(error.response?.data?.error || 'Failed to change password');
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  const handleResetAllEstimates = async () => {
+    if (!isSuperAdmin()) return;
+    const confirmed = window.confirm(
+      'This will permanently remove ALL estimate snapshots/history for your organization. Continue?'
+    );
+    if (!confirmed) return;
+
+    try {
+      setResettingEstimates(true);
+      const token = localStorage.getItem('accessToken');
+      const { data } = await axios.post(
+        `${API_URL}/jobs/admin/reset-estimates`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      // Clear browser-only estimate caches on this machine.
+      localStorage.removeItem('financeHubSavedEstimateSnapshots');
+      localStorage.removeItem('financeHubEstimateSequence');
+      localStorage.removeItem('financeHubEstimateDescriptionHints');
+
+      toast.success(`Estimate data reset. Updated ${data?.modified ?? 0} job(s).`);
+    } catch (error) {
+      console.error('Error resetting estimate history:', error);
+      toast.error(error.response?.data?.error || 'Failed to reset estimate history');
+    } finally {
+      setResettingEstimates(false);
     }
   };
 
@@ -433,6 +468,20 @@ function AccountSettingsPage() {
               </Button>
             </Box>
           </Box>
+          <Divider sx={{ my: 3 }} />
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Temporary tool: clears all saved estimate history for your organization and resets estimate
+            numbering cache on this browser.
+          </Alert>
+          <Button
+            variant="outlined"
+            color="error"
+            onClick={handleResetAllEstimates}
+            disabled={resettingEstimates}
+          >
+            {resettingEstimates ? <CircularProgress size={18} sx={{ mr: 1 }} /> : null}
+            Reset all estimates
+          </Button>
         </Paper>
       )}
 
