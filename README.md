@@ -1,7 +1,7 @@
 <restored README content from git>
-# Paarth - San Clemente Woodworking OMS
+# Paarth - Comprehensive Construction Operations Platform
 
-A comprehensive Operations Management System (OMS) and project management system designed specifically for San Clemente Woodworking. This application helps manage the entire workflow from initial customer contact through project completion, including job tracking, scheduling, customer management, and payroll.
+A comprehensive Operations Management System (OMS) built as a one-stop shop for running a small construction business end-to-end. Paarth centralizes the entire operation in one platform, including sales pipeline, production workflows, scheduling, communications, financial tracking, payroll, and reporting context.
 
 ## 📋 Table of Contents
 
@@ -26,12 +26,14 @@ A comprehensive Operations Management System (OMS) and project management system
 
 ## 🎯 Overview
 
-Paarth is a full-stack OMS solution I built to streamline operations for a custom woodworking business. It provides end-to-end management of:
+Paarth is a full-stack OMS solution built to run day-to-day operations for a small construction business from first lead to final payment. It is designed as the system you can run your business on, not just a project tracker. It provides end-to-end management of:
 
 - **Customer Relationships**: Centralized customer database with multiple contact methods and addresses
 - **Sales Pipeline**: Visual kanban board tracking jobs through 13 distinct stages from appointment to final payment
 - **Project Management**: Detailed job tracking with estimates, contracts, scheduling, and file management
 - **Calendar Integration**: Google Calendar sync for seamless scheduling with recurrence support
+- **Communications Hub**: Twilio integration for business messaging and communication workflows
+- **Financial Operations**: Plaid integration for connected account visibility and financial tracking
 - **Task Management**: General todos and job-specific tasks with priority and due dates
 - **Payroll**: Timesheet tracking with hours, travel miles, receipts, and overtime calculations
 - **Activity Logging**: Comprehensive audit trail of all customer and job interactions
@@ -57,6 +59,14 @@ This project is designed to showcase pragmatic, real-world problem solving as we
   - Built calendar scheduling for jobs with recurrence rules (daily/weekly/monthly/yearly) and crew notes.
   - Integrated with Google Calendar via OAuth 2.0, mapping jobs to calendar events and storing `googleEventId` plus sync status for future updates/deletion.
   - Hardened the integration with explicit error states and clear configuration via environment variables.
+
+- **Twilio communications integration**
+  - Added Twilio support to power business communications from within operational workflows.
+  - Structured communication events so outreach and follow-up actions can be tracked alongside customer and job history.
+
+- **Plaid-powered financial tracking**
+  - Integrated Plaid to connect financial account data into the operations context.
+  - Extended the platform's finance view beyond job values by supporting bank-linked tracking workflows for a clearer business-wide financial picture.
 
 - **Task & priority system with urgent workflows**
   - Implemented a unified task model that can optionally attach to jobs and customers, with typed priorities and categories (e.g. follow‑up, schedule_install).
@@ -89,6 +99,12 @@ Paarth follows a **client-server architecture** with clear separation between fr
 ┌─────────────────┐         ┌─────────────────┐
 │   Material-UI    │         │  Google Calendar│
 │   Components     │         │  API (OAuth 2.0)│
+└─────────────────┘         └─────────────────┘
+         │                        │
+         ▼                        ▼
+┌─────────────────┐         ┌─────────────────┐
+│ Twilio API       │         │   Plaid API     │
+│ Communications   │         │ Financial Data   │
 └─────────────────┘         └─────────────────┘
 ```
 
@@ -139,6 +155,8 @@ frontend/src/
 - **JWT**: Token-based authentication
 - **Multer**: File upload handling
 - **Google APIs**: Calendar integration via OAuth 2.0
+- **Twilio**: Messaging and communication workflows
+- **Plaid**: Connected financial account tracking
 - **bcryptjs**: Password hashing
 
 **Structure:**
@@ -558,6 +576,16 @@ backend/src/
 - **Automatic Updates**: Calendar events update when job details change
 - **Crew Notes**: Add notes visible in calendar events
 
+#### Communications (Twilio)
+- **Integrated Messaging**: Support customer and team communication flows
+- **Operational Context**: Tie communication activity directly to job/customer workflows
+- **Follow-up Reliability**: Keep outreach visible within pipeline execution
+
+#### Financial Tracking (Plaid)
+- **Connected Accounts**: Integrate financial account data for business-level visibility
+- **Operations + Finance Link**: Tie project and payment activity into a broader financial view
+- **Cashflow Awareness**: Improve decision making with centralized financial tracking context
+
 #### Task Management
 - **General Tasks**: Create tasks independent of jobs
 - **Job-Linked Tasks**: Link tasks to specific jobs or customers
@@ -620,6 +648,8 @@ backend/src/
 - **JWT**: Authentication
 - **Multer**: File uploads
 - **Google APIs**: Calendar integration
+- **Twilio**: Messaging and communications
+- **Plaid**: Financial account data integration
 - **bcryptjs**: Password hashing
 
 ---
@@ -632,6 +662,8 @@ backend/src/
 - **MongoDB** (local installation or MongoDB Atlas account)
 - **npm** or **yarn**
 - **Google Cloud account** (optional, for Calendar integration)
+- **Twilio account** (optional, for communications integration)
+- **Plaid account** (optional, for financial tracking integration)
 
 ### Step 1: Clone Repository
 
@@ -679,6 +711,16 @@ GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 GOOGLE_REDIRECT_URI=http://localhost:4000/calendar/auth/callback
 GOOGLE_REFRESH_TOKEN=your_refresh_token
+
+# Twilio (Optional - communications integration)
+TWILIO_ACCOUNT_SID=your_twilio_account_sid
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_PHONE_NUMBER=your_twilio_phone_number
+
+# Plaid (Optional - financial tracking integration)
+PLAID_CLIENT_ID=your_plaid_client_id
+PLAID_SECRET=your_plaid_secret
+PLAID_ENV=sandbox
 
 # File Upload
 MAX_FILE_SIZE=10485760  # 10MB in bytes
@@ -1545,6 +1587,7 @@ The payroll page provides comprehensive timesheet management:
 - All dates are handled in local timezone
 - Jobs are archived (soft deleted) rather than permanently deleted
 - Dead estimates are automatically moved after 7 days of no response
+- Twilio and Plaid integrations are optional but recommended for full platform capability
 
 ---
 
@@ -1600,4 +1643,4 @@ Potential features for future releases:
 
 ---
 
-*Last updated: March 8, 2026*
+*Last updated: April 12, 2026*
