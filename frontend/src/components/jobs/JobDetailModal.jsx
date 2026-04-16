@@ -293,6 +293,7 @@ function JobDetailModal({
   const headerEstimatedValue = headerBaseEstimatedValue + headerChangeOrderValue;
   const headerDepositValue = headerEstimatedValue * 0.4;
   const headerFinalValue = headerEstimatedValue * 0.6;
+  const jobCardId = job?._id ? String(job._id).slice(-6).toUpperCase() : 'N/A';
 
   const handleFileDelete = async (fileId) => {
     if (!window.confirm('Are you sure you want to delete this file?')) {
@@ -887,6 +888,9 @@ function JobDetailModal({
                     </Typography>
                   </Box>
                   <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      Job Card #: {jobCardId}
+                    </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       {jobTasks.length} total
                     </Typography>
