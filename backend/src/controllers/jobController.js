@@ -247,6 +247,7 @@ async function updateJob(req, res) {
     
     // Update the job (remove temporary _notesToUpdate field first)
     const { _notesToUpdate, ...jobUpdateData } = req.body;
+    delete jobUpdateData.invoices;
     // Stack prior estimate before replacing (Finance Hub — LIFO history on disk: oldest first)
     if (jobUpdateData.estimateHistory !== undefined) {
       delete jobUpdateData.estimateHistory;
@@ -546,6 +547,71 @@ async function deleteEstimateRevision(req, res) {
   } catch (error) {
     console.error('Error deleting estimate revision:', error);
     return res.status(500).json({ error: error.message || 'Failed to delete estimate revision' });
+  }
+}
+
+function roundMoney(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round((x + Number.EPSILON) * 100) / 100;
+}
+
+/** Append a deposit (40%) or final (60%) invoice derived from an estimate total. */
+async function addJobInvoice(req, res) {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const kind = req.body?.kind;
+    if (kind !== 'deposit' && kind !== 'final') {
+      return res.status(400).json({ error: 'kind must be "deposit" or "final"' });
+    }
+
+    const contractTotal = Number(req.body?.contractTotal);
+    if (!Number.isFinite(contractTotal) || contractTotal <= 0) {
+      return res.status(400).json({ error: 'contractTotal must be a positive number' });
+    }
+
+    const estimateNumber = String(req.body?.estimateNumber || '').trim();
+    if (!estimateNumber) {
+      return res.status(400).json({ error: 'estimateNumber is required' });
+    }
+
+    let amount = Number(req.body?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      const pct = kind === 'deposit' ? 0.4 : 0.6;
+      amount = roundMoney(contractTotal * pct);
+    } else {
+      amount = roundMoney(amount);
+    }
+
+    const invoiceDate =
+      String(req.body?.invoiceDate || '').trim() || new Date().toISOString().slice(0, 10);
+
+    const label = kind === 'deposit' ? 'Deposit invoice (40%)' : 'Final invoice (60%)';
+
+    const entry = {
+      kind,
+      amount,
+      estimateNumber,
+      contractTotal: roundMoney(contractTotal),
+      invoiceDate,
+      label,
+    };
+
+    if (!Array.isArray(job.invoices)) {
+      job.invoices = [];
+    }
+    job.invoices.push(entry);
+    job.markModified('invoices');
+    await job.save();
+    await job.populate('customerId', 'name primaryPhone primaryEmail address');
+    await job.populate('assignedTo', 'name email');
+    const pushed = job.invoices[job.invoices.length - 1];
+    return res.status(201).json({ job, invoice: pushed });
+  } catch (error) {
+    console.error('Error adding job invoice:', error);
+    return res.status(500).json({ error: error.message || 'Failed to create invoice' });
   }
 }
 
@@ -1510,5 +1576,6 @@ module.exports = {
   resetAllEstimates,
   updateEstimateRevision,
   deleteEstimateRevision,
+  addJobInvoice,
   debugDeadEstimates
 };

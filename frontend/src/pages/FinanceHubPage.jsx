@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import {
   Autocomplete,
@@ -13,8 +14,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
   IconButton,
   Link,
+  Radio,
+  RadioGroup,
   Tab,
   Tabs,
   TextField,
@@ -28,6 +34,7 @@ import {
   Delete as DeleteIcon,
   PictureAsPdf as PictureAsPdfIcon,
   Print as PrintIcon,
+  ReceiptLong as ReceiptLongIcon,
 } from '@mui/icons-material';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -356,6 +363,11 @@ function FinanceHubPage() {
   const [estimateSaveTargetId, setEstimateSaveTargetId] = useState(null);
   const [isEstimateExportMode, setIsEstimateExportMode] = useState(false);
   const estimateCanvasRef = useRef(null);
+  const invoicePdfRef = useRef(null);
+  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
+  const [createInvoiceKind, setCreateInvoiceKind] = useState('deposit');
+  const [savingInvoice, setSavingInvoice] = useState(false);
+  const [invoicePdfPayload, setInvoicePdfPayload] = useState(null);
   /** Full job JSON when editing via `jobId` (drives revision stack). */
   const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
   /** Index into server revision list for this job (0 = oldest). */
@@ -407,6 +419,33 @@ function FinanceHubPage() {
     () => (loadedEstimateJob ? buildJobEstimateBrowseRevisions(loadedEstimateJob) : []),
     [loadedEstimateJob]
   );
+
+  const invoiceEstimateNumber = useMemo(() => {
+    if (isNewEstimateDraft) return estimateForm.estimateNumber;
+    const rev = estimateRevisions[estimateRevisionIndex];
+    return rev?.number || estimateForm.estimateNumber;
+  }, [
+    isNewEstimateDraft,
+    estimateForm.estimateNumber,
+    estimateRevisions,
+    estimateRevisionIndex,
+  ]);
+
+  const invoiceDepositPreview = useMemo(
+    () => Math.round((estimateTotal * 0.4 + Number.EPSILON) * 100) / 100,
+    [estimateTotal]
+  );
+  const invoiceFinalPreview = useMemo(
+    () => Math.round((estimateTotal * 0.6 + Number.EPSILON) * 100) / 100,
+    [estimateTotal]
+  );
+
+  const canCreateInvoice =
+    Boolean(estimateJobId) &&
+    !loadingJobEstimate &&
+    !isNewEstimateDraft &&
+    estimateTotal > 0 &&
+    Boolean(estimateForm.customerId);
 
   /** Clear legacy browser-only estimate snapshots; server revisions are authoritative. */
   useEffect(() => {
@@ -814,6 +853,89 @@ function FinanceHubPage() {
       console.error('Error creating printable estimate:', error);
       const message = error?.message === 'Estimate canvas not ready' ? error.message : 'Failed to open print view';
       toast.error(message);
+    }
+  };
+
+  const formatInvoiceMoney = (value) =>
+    Number(value || 0).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  const renderInvoicePdfDoc = async () => {
+    if (!invoicePdfRef.current) {
+      throw new Error('Invoice layout not ready');
+    }
+    const canvas = await html2canvas(invoicePdfRef.current, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+    });
+    const imageData = canvas.toDataURL('image/png');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const pageW = 612;
+    const pageH = 792;
+    doc.addImage(imageData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+    return doc;
+  };
+
+  const handleOpenCreateInvoice = () => {
+    setCreateInvoiceKind('deposit');
+    setCreateInvoiceOpen(true);
+  };
+
+  const handleConfirmCreateInvoice = async () => {
+    if (!estimateJobId || !canCreateInvoice) return;
+    try {
+      setSavingInvoice(true);
+      const { data } = await axios.post(`${API_URL}/jobs/${estimateJobId}/invoices`, {
+        kind: createInvoiceKind,
+        contractTotal: estimateTotal,
+        estimateNumber: invoiceEstimateNumber,
+        invoiceDate: estimateForm.estimateDate,
+      });
+
+      const inv = data.invoice;
+      const headline =
+        createInvoiceKind === 'deposit' ? 'DEPOSIT INVOICE' : 'FINAL PAYMENT INVOICE';
+      const payload = {
+        headline,
+        kind: createInvoiceKind,
+        amount: inv.amount,
+        contractTotal: inv.contractTotal,
+        estimateNumber: inv.estimateNumber,
+        invoiceDate: inv.invoiceDate,
+        customerName: estimateForm.customerName,
+        projectName: estimateForm.projectName,
+        customerAddress: estimateForm.customerAddress,
+      };
+
+      flushSync(() => {
+        setInvoicePdfPayload(payload);
+      });
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const doc = await renderInvoicePdfDoc();
+      doc.save(`Invoice-${createInvoiceKind}-${inv.estimateNumber}.pdf`);
+      flushSync(() => {
+        setInvoicePdfPayload(null);
+      });
+      setCreateInvoiceOpen(false);
+      toast.success(
+        createInvoiceKind === 'deposit'
+          ? 'Deposit invoice saved and downloaded'
+          : 'Final invoice saved and downloaded'
+      );
+
+      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+      setLoadedEstimateJob(refreshed);
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to create invoice');
+      flushSync(() => {
+        setInvoicePdfPayload(null);
+      });
+    } finally {
+      setSavingInvoice(false);
     }
   };
 
@@ -1617,6 +1739,14 @@ function FinanceHubPage() {
               >
                 Download PDF
               </Button>
+              <Button
+                variant="outlined"
+                startIcon={<ReceiptLongIcon />}
+                onClick={handleOpenCreateInvoice}
+                disabled={!canCreateInvoice || savingInvoice}
+              >
+                Create invoice
+              </Button>
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={printEstimatePdf}>
                 Print estimate
               </Button>
@@ -1658,6 +1788,153 @@ function FinanceHubPage() {
           </CardContent>
         </Card>
       )}
+
+      {invoicePdfPayload && (
+        <Box
+          ref={invoicePdfRef}
+          sx={{
+            position: 'fixed',
+            left: -12000,
+            top: 0,
+            width: 816,
+            minHeight: 720,
+            bgcolor: '#fff',
+            color: '#000',
+            p: 5,
+            boxSizing: 'border-box',
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            '& .MuiTypography-root': { color: '#000' },
+          }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Box
+                component="img"
+                src="/logo.png"
+                alt=""
+                sx={{ width: 56, height: 56, objectFit: 'contain', borderRadius: '50%' }}
+              />
+              <Box>
+                <Typography sx={{ fontWeight: 700, fontSize: 18 }}>San Clemente Woodworking</Typography>
+                <Typography sx={{ fontSize: 12 }}>1030 Calle Sombra, Unit F · San Clemente, CA 92673</Typography>
+                <Typography sx={{ fontSize: 12 }}>{COMPANY_PHONE}</Typography>
+                <Typography sx={{ fontSize: 12 }}>{COMPANY_EMAIL}</Typography>
+              </Box>
+            </Box>
+            <Box sx={{ textAlign: 'right' }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 22 }}>Invoice</Typography>
+              <Typography sx={{ fontSize: 12, mt: 0.5 }}>Date: {invoicePdfPayload.invoiceDate}</Typography>
+              <Typography sx={{ fontSize: 12 }}>Estimate #: {invoicePdfPayload.estimateNumber}</Typography>
+            </Box>
+          </Box>
+
+          <Typography
+            sx={{
+              fontWeight: 800,
+              fontSize: 17,
+              bgcolor: '#000',
+              color: '#fff',
+              textAlign: 'center',
+              py: 1.25,
+              mb: 2,
+              letterSpacing: 1,
+            }}
+          >
+            {invoicePdfPayload.headline}
+          </Typography>
+
+          <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.5 }}>Bill to</Typography>
+          <Typography sx={{ fontSize: 14, fontWeight: 600 }}>{invoicePdfPayload.customerName}</Typography>
+          {invoicePdfPayload.projectName ? (
+            <Typography sx={{ fontSize: 13 }}>Project: {invoicePdfPayload.projectName}</Typography>
+          ) : null}
+          <Typography sx={{ fontSize: 13 }}>
+            {[invoicePdfPayload.customerAddress?.street, invoicePdfPayload.customerAddress?.city]
+              .filter(Boolean)
+              .join(', ')}
+          </Typography>
+
+          <Box sx={{ mt: 3, border: '1px solid #000' }}>
+            <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12, p: 1 }}>
+              <Box sx={{ flex: 1 }}>Description</Box>
+              <Box sx={{ width: 128, textAlign: 'right' }}>Amount</Box>
+            </Box>
+            <Box sx={{ display: 'flex', p: 1.5, fontSize: 13, alignItems: 'flex-start' }}>
+              <Box sx={{ flex: 1, pr: 1 }}>
+                {invoicePdfPayload.kind === 'deposit'
+                  ? 'Deposit invoice — 40% of the contract total shown on the referenced estimate.'
+                  : 'Final payment invoice — 60% of the contract total shown on the referenced estimate.'}
+              </Box>
+              <Box sx={{ width: 128, textAlign: 'right', fontWeight: 700 }}>
+                ${formatInvoiceMoney(invoicePdfPayload.amount)}
+              </Box>
+            </Box>
+          </Box>
+
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+            <Box sx={{ border: '2px solid #000', px: 2, py: 1, minWidth: 200, textAlign: 'right' }}>
+              <Typography sx={{ fontSize: 11, color: '#444' }}>Total due</Typography>
+              <Typography sx={{ fontSize: 22, fontWeight: 800 }}>
+                ${formatInvoiceMoney(invoicePdfPayload.amount)}
+              </Typography>
+            </Box>
+          </Box>
+
+          <Typography sx={{ fontSize: 11, mt: 3, lineHeight: 1.5 }}>
+            Contract total (from estimate): ${formatInvoiceMoney(invoicePdfPayload.contractTotal)}. This invoice is
+            for the {invoicePdfPayload.kind === 'deposit' ? 'deposit (40%)' : 'final payment (60%)'} only and
+            references estimate {invoicePdfPayload.estimateNumber}.
+          </Typography>
+        </Box>
+      )}
+
+      <Dialog
+        open={createInvoiceOpen}
+        onClose={() => {
+          if (!savingInvoice) setCreateInvoiceOpen(false);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Create invoice from estimate</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Invoices are saved on this job. Choose deposit (typically 40% of the estimate total) or final (typically
+            60%). The PDF clearly states which type this is.
+          </Typography>
+          <FormControl component="fieldset" variant="standard" sx={{ width: '100%' }}>
+            <FormLabel component="legend">Invoice type</FormLabel>
+            <RadioGroup
+              value={createInvoiceKind}
+              onChange={(e) => setCreateInvoiceKind(e.target.value)}
+            >
+              <FormControlLabel
+                value="deposit"
+                control={<Radio />}
+                label={`Deposit — $${formatInvoiceMoney(invoiceDepositPreview)} (40% of $${formatInvoiceMoney(estimateTotal)} total)`}
+              />
+              <FormControlLabel
+                value="final"
+                control={<Radio />}
+                label={`Final — $${formatInvoiceMoney(invoiceFinalPreview)} (60% of $${formatInvoiceMoney(estimateTotal)} total)`}
+              />
+            </RadioGroup>
+          </FormControl>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+            Estimate # {invoiceEstimateNumber}
+            {estimateJobId ? ` · Job ${String(estimateJobId).slice(-8)}` : ''}. Save any estimate edits before
+            creating an invoice so totals match.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setCreateInvoiceOpen(false)} disabled={savingInvoice}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleConfirmCreateInvoice} disabled={savingInvoice}>
+            {savingInvoice ? 'Working…' : 'Create & download PDF'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={newEstimatePromptOpen} onClose={() => setNewEstimatePromptOpen(false)}>
         <DialogTitle>Unsaved estimate changes</DialogTitle>

@@ -51,6 +51,7 @@ import toast from 'react-hot-toast';
 import AddNoteModal from './AddNoteModal';
 import AddJobTaskModal from './AddJobTaskModal';
 import AddAppointmentModal from '../appointments/AddAppointmentModal';
+import JobContractPacketDialog from './JobContractPacketDialog';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -160,6 +161,7 @@ function JobDetailModal({
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
   const [jobTasks, setJobTasks] = useState([]);
+  const [contractPacketOpen, setContractPacketOpen] = useState(false);
 
   useEffect(() => {
     if (open && jobId) {
@@ -1080,6 +1082,14 @@ function JobDetailModal({
                     </Button>
                     <Button
                       size="small"
+                      variant="contained"
+                      color="primary"
+                      onClick={() => setContractPacketOpen(true)}
+                    >
+                      Create contract
+                    </Button>
+                    <Button
+                      size="small"
                       variant="outlined"
                       component={RouterLink}
                       to={`/takeoff-sheet?jobId=${job._id}`}
@@ -1440,6 +1450,14 @@ function JobDetailModal({
         }}
         job={job}
       />
+
+      {job && (
+        <JobContractPacketDialog
+          open={contractPacketOpen}
+          onClose={() => setContractPacketOpen(false)}
+          job={job}
+        />
+      )}
     </Dialog>
   );
 }
