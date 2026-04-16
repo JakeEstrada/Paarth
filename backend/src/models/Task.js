@@ -24,6 +24,11 @@ const taskSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  amount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   dueDate: {
     type: Date
   },

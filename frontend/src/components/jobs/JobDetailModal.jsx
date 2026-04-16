@@ -159,6 +159,7 @@ function JobDetailModal({
   const [addNoteOpen, setAddNoteOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
+  const [jobTasks, setJobTasks] = useState([]);
 
   useEffect(() => {
     if (open && jobId) {
@@ -185,6 +186,13 @@ function JobDetailModal({
       setJob(response.data);
       setEditedJob(response.data);
       setIsEditing(false);
+      try {
+        const tasksResponse = await axios.get(`${API_URL}/tasks/job/${jobId}`);
+        setJobTasks(Array.isArray(tasksResponse.data) ? tasksResponse.data : []);
+      } catch (taskError) {
+        console.error('Error fetching job tasks:', taskError);
+        setJobTasks([]);
+      }
       // Fetch files for this job
       if (!hideSensitive) {
         await fetchFiles();
@@ -280,7 +288,9 @@ function JobDetailModal({
     }
   };
 
-  const headerEstimatedValue = Number((isEditing ? editedJob?.valueEstimated : job?.valueEstimated) || 0);
+  const headerBaseEstimatedValue = Number((isEditing ? editedJob?.valueEstimated : job?.valueEstimated) || 0);
+  const headerChangeOrderValue = jobTasks.reduce((sum, task) => sum + (Number(task.amount) || 0), 0);
+  const headerEstimatedValue = headerBaseEstimatedValue + headerChangeOrderValue;
   const headerDepositValue = headerEstimatedValue * 0.4;
   const headerFinalValue = headerEstimatedValue * 0.6;
 
@@ -622,27 +632,41 @@ function JobDetailModal({
                   )}
                 </Box>
               ) : isEditing ? (
-                <TextField
-                  type="number"
-                  value={editedJob?.valueEstimated || 0}
-                  onChange={(e) => handleFieldChange('valueEstimated', parseFloat(e.target.value) || 0)}
-                  variant="outlined"
-                  size="small"
-                  sx={{ width: '150px' }}
-                  InputProps={{
-                    startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>,
-                  }}
-                />
+                <>
+                  <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
+                    {formatCurrency(headerEstimatedValue)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    Total Price
+                  </Typography>
+                  <TextField
+                    type="number"
+                    value={editedJob?.valueEstimated || 0}
+                    onChange={(e) => handleFieldChange('valueEstimated', parseFloat(e.target.value) || 0)}
+                    variant="outlined"
+                    size="small"
+                    sx={{ width: '150px', mt: 1 }}
+                    InputProps={{
+                      startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>,
+                    }}
+                  />
+                </>
               ) : (
                 <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
-                  {formatCurrency(job.valueEstimated)}
+                  {formatCurrency(headerEstimatedValue)}
                 </Typography>
               )}
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                Estimated Value
+                {isEditing ? 'Base Estimate' : 'Total Price'}
               </Typography>
               {!hideSensitive && (
                 <>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
+                    Base Estimate: {formatCurrency(headerBaseEstimatedValue)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
+                    Change Orders: {formatCurrency(headerChangeOrderValue)}
+                  </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
                     Deposit (40%): {formatCurrency(headerDepositValue)}
                   </Typography>
@@ -850,6 +874,77 @@ function JobDetailModal({
                     </Box>
                   )}
                 </Box>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Paper sx={{ p: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <MoneyIcon sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      Change Orders
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {jobTasks.length} total
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Added value: {formatCurrency(headerChangeOrderValue)}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                {jobTasks.length > 0 ? (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: 320, overflowY: 'auto' }}>
+                    {jobTasks
+                      .slice()
+                      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+                      .map((task) => (
+                        <Box
+                          key={task._id}
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 1,
+                            bgcolor: 'action.hover',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            gap: 2,
+                          }}
+                        >
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {task.title}
+                            </Typography>
+                            {task.description && (
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                {task.description}
+                              </Typography>
+                            )}
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                              {formatDateTime(task.createdAt)}
+                            </Typography>
+                          </Box>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 700,
+                              whiteSpace: 'nowrap',
+                              color: Number(task.amount) > 0 ? 'success.main' : 'text.secondary',
+                            }}
+                          >
+                            {formatCurrency(task.amount || 0)}
+                          </Typography>
+                        </Box>
+                      ))}
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No change orders yet. Use Add Change Order / Task to add as many as needed.
+                  </Typography>
+                )}
               </Paper>
             </Grid>
 
@@ -1200,7 +1295,7 @@ function JobDetailModal({
                 onClick={() => setAddTaskOpen(true)}
                 sx={{ borderRadius: '8px', textTransform: 'none' }}
               >
-                Add Task
+                Add Change Order / Task
               </Button>
               <Button
                 variant="outlined"

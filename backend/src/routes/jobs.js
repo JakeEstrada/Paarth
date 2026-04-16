@@ -19,7 +19,8 @@ const {
   archiveCompletedJobs,
   reopenFromCompleted,
   resetAllEstimates,
-  updateEstimateRevision
+  updateEstimateRevision,
+  deleteEstimateRevision
 } = require('../controllers/jobController');
 
 router.use(requireAuth);
@@ -35,6 +36,7 @@ router.post('/dead-estimates/auto-move', autoMoveDeadEstimates);
 router.post('/archive-completed', archiveCompletedJobs);
 router.post('/admin/reset-estimates', resetAllEstimates);
 router.patch('/:id/estimate-revision', updateEstimateRevision);
+router.post('/:id/estimate-revision/delete', deleteEstimateRevision);
 router.post('/:id/move-to-dead-estimates', moveToDeadEstimates);
 router.post('/:id/archive', archiveJob);
 router.post('/:id/unarchive', unarchiveJob);

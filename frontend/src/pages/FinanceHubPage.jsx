@@ -9,6 +9,10 @@ import {
   Chip,
   Container,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   Link,
   Tab,
@@ -295,6 +299,45 @@ function mapEstimateLineFromJob(row) {
   return { itemName: desc, description: '', quantity: qty, total: tot };
 }
 
+function normalizeEstimateFormForCompare(form) {
+  if (!form || typeof form !== 'object') return {};
+  return {
+    estimateNumber: String(form.estimateNumber || ''),
+    estimateDate: String(form.estimateDate || ''),
+    customerId:
+      form.customerId != null && typeof form.customerId === 'object'
+        ? String(form.customerId?._id || '')
+        : String(form.customerId || ''),
+    customerName: String(form.customerName || ''),
+    customerAddress: {
+      street: String(form.customerAddress?.street || ''),
+      city: String(form.customerAddress?.city || ''),
+    },
+    projectName: String(form.projectName || ''),
+    lineItems: Array.isArray(form.lineItems)
+      ? form.lineItems.map((row) => ({
+          itemName: String(row?.itemName || ''),
+          description: String(row?.description || ''),
+          quantity: Number(row?.quantity) || 0,
+          total: String(row?.total || ''),
+        }))
+      : [],
+    footerNote: String(form.footerNote || ''),
+  };
+}
+
+function buildFreshEstimateDraftForJob(job, nextEstimateNumber) {
+  const base = computeEstimateFormFromJobSnapshot(job, null);
+  return {
+    ...base,
+    estimateNumber: nextEstimateNumber,
+    estimateDate: new Date().toISOString().slice(0, 10),
+    projectName: '',
+    lineItems: DEFAULT_LINE_ITEMS(),
+    footerNote: 'Customer acknowledges paint and stain are not included.',
+  };
+}
+
 function FinanceHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const estimateJobId = searchParams.get('jobId');
@@ -317,6 +360,9 @@ function FinanceHubPage() {
   const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
   /** Index into server revision list for this job (0 = oldest). */
   const [estimateRevisionIndex, setEstimateRevisionIndex] = useState(0);
+  /** True when user clicked "New estimate" and is editing a fresh unsaved estimate draft. */
+  const [isNewEstimateDraft, setIsNewEstimateDraft] = useState(false);
+  const [newEstimatePromptOpen, setNewEstimatePromptOpen] = useState(false);
   const [estimateForm, setEstimateForm] = useState(() => ({
     estimateNumber: formatEstimateNumber(readEstimateSequence()),
     estimateDate: new Date().toISOString().slice(0, 10),
@@ -349,6 +395,9 @@ function FinanceHubPage() {
   const [estimateDescHintsRev, setEstimateDescHintsRev] = useState(0);
 
   const estimateFormRef = useRef(estimateForm);
+  const [lastSyncedEstimateForm, setLastSyncedEstimateForm] = useState(() =>
+    normalizeEstimateFormForCompare(estimateForm)
+  );
 
   useEffect(() => {
     estimateFormRef.current = estimateForm;
@@ -452,6 +501,8 @@ function FinanceHubPage() {
         setLoadedEstimateJob(job);
         const revs = buildJobEstimateBrowseRevisions(job);
         setEstimateRevisionIndex(revs.length > 0 ? revs.length - 1 : 0);
+        setIsNewEstimateDraft(false);
+        setNewEstimatePromptOpen(false);
         setEditingJobSummary({
           _id: job._id,
           title: job.title || '',
@@ -487,7 +538,10 @@ function FinanceHubPage() {
       return;
     }
     const snapshot = revs.length > 0 ? revs[idx] : null;
-    setEstimateForm(computeEstimateFormFromJobSnapshot(loadedEstimateJob, snapshot));
+    const nextForm = computeEstimateFormFromJobSnapshot(loadedEstimateJob, snapshot);
+    setEstimateForm(nextForm);
+    setLastSyncedEstimateForm(normalizeEstimateFormForCompare(nextForm));
+    setIsNewEstimateDraft(false);
   }, [activeTab, estimateJobId, loadedEstimateJob, estimateRevisionIndex]);
 
   useEffect(() => {
@@ -771,7 +825,7 @@ function FinanceHubPage() {
     if (!estimateJobId && prev) {
       setLoadedEstimateJob(null);
       setEstimateRevisionIndex(0);
-      setEstimateForm({
+      const fresh = {
         estimateNumber: formatEstimateNumber(readEstimateSequence()),
         estimateDate: new Date().toISOString().slice(0, 10),
         customerId: null,
@@ -780,118 +834,188 @@ function FinanceHubPage() {
         projectName: '',
         lineItems: DEFAULT_LINE_ITEMS(),
         footerNote: 'Customer acknowledges paint and stain are not included.',
-      });
+      };
+      setEstimateForm(fresh);
+      setLastSyncedEstimateForm(normalizeEstimateFormForCompare(fresh));
+      setIsNewEstimateDraft(false);
+      setNewEstimatePromptOpen(false);
       setEditingJobSummary(null);
       setCustomerPipelineJobs([]);
       setEstimateSaveTargetId(null);
     }
   }, [estimateJobId, activeTab]);
 
-  const handleSaveEstimate = async () => {
+  const estimateFormIsDirty = useMemo(() => {
+    return (
+      JSON.stringify(normalizeEstimateFormForCompare(estimateForm)) !==
+      JSON.stringify(lastSyncedEstimateForm)
+    );
+  }, [estimateForm, lastSyncedEstimateForm]);
+
+  const startNewEstimateDraft = useCallback(() => {
+    if (!loadedEstimateJob || !estimateJobId) return;
+    const nextNum = formatEstimateNumber(readEstimateSequence());
+    const draft = buildFreshEstimateDraftForJob(loadedEstimateJob, nextNum);
+    setEstimateForm(draft);
+    setLastSyncedEstimateForm(normalizeEstimateFormForCompare(draft));
+    setIsNewEstimateDraft(true);
+    setEstimateRevisionIndex(Math.max(0, estimateRevisions.length - 1));
+  }, [loadedEstimateJob, estimateJobId, estimateRevisions.length]);
+
+  const saveEstimateOnCurrentContext = async () => {
     if (!estimateForm.customerId) {
       toast.error('Select an existing customer');
-      return;
+      return false;
     }
     if (!estimateForm.estimateDate) {
       toast.error('Estimate date is required');
-      return;
+      return false;
     }
+
+    if (estimateJobId) {
+      if (isNewEstimateDraft) {
+        const newNum = estimateForm.estimateNumber || formatEstimateNumber(readEstimateSequence());
+        const patchPayload = buildEstimatePatchPayload({ estimateNumberOverride: newNum });
+        await axios.patch(`${API_URL}/jobs/${estimateJobId}`, patchPayload);
+        writeEstimateSequence(readEstimateSequence() + 1);
+        toast.success(`Estimate ${newNum} saved on this job`);
+      } else {
+        const currentRevision = estimateRevisions[estimateRevisionIndex] || null;
+        const fixedNumber = currentRevision?.number || estimateForm.estimateNumber;
+        const patchPayload = buildEstimatePatchPayload({ estimateNumberOverride: fixedNumber });
+        await axios.patch(`${API_URL}/jobs/${estimateJobId}/estimate-revision`, {
+          revisionIndex: estimateRevisionIndex,
+          estimate: patchPayload.estimate,
+          valueEstimated: patchPayload.valueEstimated,
+          jobAddress: patchPayload.jobAddress,
+        });
+        toast.success(`Estimate ${fixedNumber} updated`);
+      }
+
+      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+      setLoadedEstimateJob(refreshed);
+      const revs = buildJobEstimateBrowseRevisions(refreshed);
+      setEstimateRevisionIndex(revs.length > 0 ? revs.length - 1 : 0);
+      setIsNewEstimateDraft(false);
+      mergeEstimateDescriptionHints(
+        estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+      );
+      setEstimateDescHintsRev((n) => n + 1);
+      return true;
+    }
+
+    const useNewCard = customerPipelineJobs.length === 0 || estimateSaveTargetId === ESTIMATE_NEW_JOB_ID;
+    const existingId =
+      estimateSaveTargetId &&
+      estimateSaveTargetId !== ESTIMATE_NEW_JOB_ID &&
+      customerPipelineJobs.some((j) => String(j._id) === String(estimateSaveTargetId))
+        ? estimateSaveTargetId
+        : null;
+
+    if (!useNewCard && !existingId) {
+      toast.error(
+        'Select which job this estimate belongs to (list uses: Customer: project · stage).'
+      );
+      return false;
+    }
+
+    if (useNewCard) {
+      const { data: created } = await axios.post(`${API_URL}/jobs`, buildEstimateCreatePayload());
+      const newId = created?._id;
+      writeEstimateSequence(readEstimateSequence() + 1);
+      mergeEstimateDescriptionHints(
+        estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+      );
+      setEstimateDescHintsRev((n) => n + 1);
+      if (newId) {
+        setSearchParams({ tab: 'estimates', jobId: String(newId) });
+      }
+      toast.success(`Estimate ${estimateForm.estimateNumber} saved to new job`);
+      return true;
+    }
+
+    await axios.patch(
+      `${API_URL}/jobs/${existingId}`,
+      buildEstimatePatchPayload({ estimateNumberOverride: estimateForm.estimateNumber })
+    );
+    mergeEstimateDescriptionHints(
+      estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+    );
+    setEstimateDescHintsRev((n) => n + 1);
+    setSearchParams({ tab: 'estimates', jobId: String(existingId) });
+    const picked = customerPipelineJobs.find((j) => String(j._id) === String(existingId));
+    toast.success(
+      `Estimate ${estimateForm.estimateNumber} saved on ${formatEstimateJobPickLabel(estimateForm.customerName, picked)}`
+    );
+    return true;
+  };
+
+  const handleSaveEstimate = async () => {
     try {
       setSavingEstimate(true);
-      if (estimateJobId) {
-        const isEditingOlderRevision =
-          estimateRevisions.length > 1 && estimateRevisionIndex < estimateRevisions.length - 1;
-
-        if (isEditingOlderRevision) {
-          const currentRevision = estimateRevisions[estimateRevisionIndex] || null;
-          const fixedNumber = currentRevision?.number || estimateForm.estimateNumber;
-          const patchPayload = buildEstimatePatchPayload({ estimateNumberOverride: fixedNumber });
-          await axios.patch(`${API_URL}/jobs/${estimateJobId}/estimate-revision`, {
-            revisionIndex: estimateRevisionIndex,
-            estimate: patchPayload.estimate,
-            valueEstimated: patchPayload.valueEstimated,
-            jobAddress: patchPayload.jobAddress,
-          });
-          toast.success(`Estimate ${fixedNumber} updated`);
-        } else {
-          const nextNum = formatEstimateNumber(readEstimateSequence());
-          const patchPayload = buildEstimatePatchPayload({ estimateNumberOverride: nextNum });
-          await axios.patch(`${API_URL}/jobs/${estimateJobId}`, patchPayload);
-          const nextSeq = readEstimateSequence() + 1;
-          writeEstimateSequence(nextSeq);
-          toast.success(`Estimate ${nextNum} saved on this job`);
-        }
-
-        const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
-        setLoadedEstimateJob(refreshed);
-        const revs = buildJobEstimateBrowseRevisions(refreshed);
-        if (isEditingOlderRevision) {
-          const maxIdx = revs.length > 0 ? revs.length - 1 : 0;
-          setEstimateRevisionIndex(Math.max(0, Math.min(estimateRevisionIndex, maxIdx)));
-        } else {
-          setEstimateRevisionIndex(revs.length > 0 ? revs.length - 1 : 0);
-        }
-        mergeEstimateDescriptionHints(
-          estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
-        );
-        setEstimateDescHintsRev((n) => n + 1);
-      } else {
-        const useNewCard =
-          customerPipelineJobs.length === 0 || estimateSaveTargetId === ESTIMATE_NEW_JOB_ID;
-        const existingId =
-          estimateSaveTargetId &&
-          estimateSaveTargetId !== ESTIMATE_NEW_JOB_ID &&
-          customerPipelineJobs.some((j) => String(j._id) === String(estimateSaveTargetId))
-            ? estimateSaveTargetId
-            : null;
-
-        if (!useNewCard && !existingId) {
-          toast.error(
-            'Select which job this estimate belongs to (list uses: Customer: project · stage).'
-          );
-          return;
-        }
-
-        if (useNewCard) {
-          const { data: created } = await axios.post(
-            `${API_URL}/jobs`,
-            buildEstimateCreatePayload()
-          );
-          const newId = created?._id;
-          const nextSeq = readEstimateSequence() + 1;
-          writeEstimateSequence(nextSeq);
-          mergeEstimateDescriptionHints(
-            estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
-          );
-          setEstimateDescHintsRev((n) => n + 1);
-          if (newId) {
-            setSearchParams({ tab: 'estimates', jobId: String(newId) });
-          }
-          toast.success(`Estimate ${estimateForm.estimateNumber} saved to new job`);
-        } else {
-          const nextNum = formatEstimateNumber(readEstimateSequence());
-          await axios.patch(
-            `${API_URL}/jobs/${existingId}`,
-            buildEstimatePatchPayload({ estimateNumberOverride: nextNum })
-          );
-          writeEstimateSequence(readEstimateSequence() + 1);
-          mergeEstimateDescriptionHints(
-            estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
-          );
-          setEstimateDescHintsRev((n) => n + 1);
-          setSearchParams({ tab: 'estimates', jobId: String(existingId) });
-          const picked = customerPipelineJobs.find((j) => String(j._id) === String(existingId));
-          toast.success(
-            `Estimate ${nextNum} saved on ${formatEstimateJobPickLabel(estimateForm.customerName, picked)}`
-          );
-        }
-      }
+      await saveEstimateOnCurrentContext();
     } catch (error) {
       console.error('Error saving estimate:', error);
       toast.error(error.response?.data?.error || error.message || 'Failed to save estimate');
     } finally {
       setSavingEstimate(false);
     }
+  };
+
+  const handleDeleteEstimate = async () => {
+    if (!estimateJobId) return;
+    if (estimateRevisions.length === 0) {
+      toast.error('No estimate revision to delete');
+      return;
+    }
+    const ok = window.confirm('Delete this estimate revision? This cannot be undone.');
+    if (!ok) return;
+    try {
+      setSavingEstimate(true);
+      await axios.post(`${API_URL}/jobs/${estimateJobId}/estimate-revision/delete`, {
+        revisionIndex: estimateRevisionIndex,
+      });
+      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+      setLoadedEstimateJob(refreshed);
+      const revs = buildJobEstimateBrowseRevisions(refreshed);
+      const maxIdx = revs.length > 0 ? revs.length - 1 : 0;
+      setEstimateRevisionIndex(Math.max(0, Math.min(estimateRevisionIndex, maxIdx)));
+      setIsNewEstimateDraft(false);
+      toast.success('Estimate revision deleted');
+    } catch (error) {
+      console.error('Error deleting estimate revision:', error);
+      toast.error(error.response?.data?.error || 'Failed to delete estimate revision');
+    } finally {
+      setSavingEstimate(false);
+    }
+  };
+
+  const handleStartNewEstimate = async () => {
+    if (!estimateJobId || !loadedEstimateJob) return;
+    if (estimateFormIsDirty) {
+      setNewEstimatePromptOpen(true);
+      return;
+    }
+    startNewEstimateDraft();
+  };
+
+  const handleCreateNewAfterSave = async () => {
+    setNewEstimatePromptOpen(false);
+    try {
+      setSavingEstimate(true);
+      const saved = await saveEstimateOnCurrentContext();
+      if (saved) startNewEstimateDraft();
+    } catch (error) {
+      console.error('Error saving before new estimate:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to save estimate');
+    } finally {
+      setSavingEstimate(false);
+    }
+  };
+
+  const handleCreateNewDiscardCurrent = () => {
+    setNewEstimatePromptOpen(false);
+    startNewEstimateDraft();
   };
 
   const estimateRevisionRailSx = {
@@ -911,6 +1035,7 @@ function FinanceHubPage() {
 
   const revOlderDisabled =
     !estimateJobId ||
+    isNewEstimateDraft ||
     loadingJobEstimate ||
     savingEstimate ||
     estimateRevisions.length < 2 ||
@@ -918,12 +1043,13 @@ function FinanceHubPage() {
 
   const revNewerDisabled =
     !estimateJobId ||
+    isNewEstimateDraft ||
     loadingJobEstimate ||
     savingEstimate ||
     estimateRevisions.length < 2 ||
     estimateRevisionIndex >= estimateRevisions.length - 1;
 
-  const showRevisionCaption = estimateJobId && estimateRevisions.length >= 2;
+  const showRevisionCaption = estimateJobId && !isNewEstimateDraft && estimateRevisions.length >= 2;
 
   return (
     <Container maxWidth="xl" sx={{ py: 2 }}>
@@ -999,6 +1125,12 @@ function FinanceHubPage() {
                 archives the previous version on the server; then use ← →. If you created two
                 separate pipeline cards, each card only shows its own latest estimate until you save
                 again on that card.
+              </Typography>
+            )}
+
+            {estimateJobId && isNewEstimateDraft && (
+              <Typography variant="body2" color="warning.main" sx={{ mb: 1 }}>
+                New estimate draft. Save to create estimate <strong>{estimateForm.estimateNumber}</strong>.
               </Typography>
             )}
 
@@ -1488,6 +1620,25 @@ function FinanceHubPage() {
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={printEstimatePdf}>
                 Print estimate
               </Button>
+              {estimateJobId && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={handleDeleteEstimate}
+                  disabled={savingEstimate || loadingJobEstimate || estimateRevisions.length === 0}
+                >
+                  Delete estimate
+                </Button>
+              )}
+              {estimateJobId && (
+                <Button
+                  variant="outlined"
+                  onClick={handleStartNewEstimate}
+                  disabled={savingEstimate || loadingJobEstimate}
+                >
+                  New estimate
+                </Button>
+              )}
               <Button
                 variant="contained"
                 onClick={handleSaveEstimate}
@@ -1501,12 +1652,31 @@ function FinanceHubPage() {
                     !estimateSaveTargetId)
                 }
               >
-                {savingEstimate ? 'Saving...' : 'Save estimate'}
+                {savingEstimate ? 'Saving...' : isNewEstimateDraft ? 'Create estimate' : 'Save estimate'}
               </Button>
             </Box>
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={newEstimatePromptOpen} onClose={() => setNewEstimatePromptOpen(false)}>
+        <DialogTitle>Unsaved estimate changes</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            You have unsaved edits. Save this estimate first, or discard these changes and start a
+            fresh estimate draft.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNewEstimatePromptOpen(false)}>Cancel</Button>
+          <Button color="warning" onClick={handleCreateNewDiscardCurrent}>
+            Discard & start new
+          </Button>
+          <Button variant="contained" onClick={handleCreateNewAfterSave} disabled={savingEstimate}>
+            Save & start new
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

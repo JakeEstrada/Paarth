@@ -19,6 +19,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function AddJobTaskModal({ open, onClose, onSuccess, job }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -27,6 +28,7 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
     if (open && job) {
       setTitle('');
       setDescription('');
+      setAmount('');
       setIsUrgent(false);
     }
   }, [open, job]);
@@ -55,6 +57,7 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
       const taskData = {
         title: title.trim(),
         description: description.trim(),
+        amount: Number(amount) || 0,
         jobId: job._id,
         isUrgent: isUrgent,
       };
@@ -66,6 +69,7 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
       // Reset form
       setTitle('');
       setDescription('');
+      setAmount('');
       setIsUrgent(false);
       
       onSuccess?.();
@@ -82,6 +86,7 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
     if (!loading) {
       setTitle('');
       setDescription('');
+      setAmount('');
       setIsUrgent(false);
       onClose();
     }
@@ -120,6 +125,16 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
               placeholder="Describe the change order or task"
             />
 
+            <TextField
+              label="Amount"
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              fullWidth
+              inputProps={{ min: 0, step: '0.01' }}
+              placeholder="0.00"
+            />
+
             <FormControlLabel
               control={
                 <Checkbox
@@ -146,7 +161,7 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
             disabled={loading}
             sx={{ borderRadius: '8px' }}
           >
-            {loading ? 'Adding...' : 'Add Task'}
+            {loading ? 'Adding...' : 'Add Change Order / Task'}
           </Button>
         </DialogActions>
       </form>

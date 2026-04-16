@@ -2,6 +2,15 @@ const Task = require('../models/Task');
 const Activity = require('../models/Activity');
 const { publishTaskCreated, publishTaskUpdated } = require('../services/eventBus');
 
+function formatCurrency(value) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(Number(value) || 0);
+}
+
 // Get all tasks for a job
 async function getJobTasks(req, res) {
   try {
@@ -126,15 +135,16 @@ async function createTask(req, res) {
         console.log(`📝 Task creation: Got customerId from job: ${customerId}`);
       }
       
+      const amountNote = Number(task.amount) > 0 ? ` (${formatCurrency(task.amount)})` : '';
       // Build activity note with title and description
       const activityNote = task.description 
-        ? `${task.title} - ${task.description}`
-        : task.title;
+        ? `${task.title}${amountNote} - ${task.description}`
+        : `${task.title}${amountNote}`;
       
       // Add note to job's notes array with timestamp
       const noteContent = task.description 
-        ? `${task.title} - ${task.description}`
-        : task.title;
+        ? `${task.title}${amountNote} - ${task.description}`
+        : `${task.title}${amountNote}`;
       
       job.notes.push({
         content: noteContent,

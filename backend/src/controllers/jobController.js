@@ -485,6 +485,70 @@ async function updateEstimateRevision(req, res) {
   }
 }
 
+// Delete one estimate revision by browse index (oldest = 0).
+async function deleteEstimateRevision(req, res) {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const revisionIndex = Number(req.body?.revisionIndex);
+    if (!Number.isInteger(revisionIndex) || revisionIndex < 0) {
+      return res.status(400).json({ error: 'revisionIndex must be a non-negative integer' });
+    }
+
+    const history = Array.isArray(job.estimateHistory) ? job.estimateHistory : [];
+    const hasCurrentEstimate =
+      !!(
+        job.estimate &&
+        ((job.estimate.number && String(job.estimate.number).trim()) ||
+          (Array.isArray(job.estimate.lineItems) && job.estimate.lineItems.length > 0) ||
+          (typeof job.estimate.amount === 'number' && job.estimate.amount > 0) ||
+          job.estimate.sentAt != null ||
+          !!(job.estimate.estimateDate && String(job.estimate.estimateDate).trim()))
+      );
+    const totalRevisions = history.length + (hasCurrentEstimate ? 1 : 0);
+    if (totalRevisions === 0) {
+      return res.status(400).json({ error: 'No estimate revisions exist on this job' });
+    }
+    if (revisionIndex >= totalRevisions) {
+      return res.status(400).json({ error: 'revisionIndex is out of range for this job' });
+    }
+
+    if (revisionIndex < history.length) {
+      history.splice(revisionIndex, 1);
+      job.estimateHistory = history;
+      job.markModified('estimateHistory');
+    } else if (history.length > 0) {
+      // Deleting newest/current: promote previous history entry to current estimate.
+      const promoted = history.pop();
+      job.estimateHistory = history;
+      job.estimate = promoted || undefined;
+      job.markModified('estimateHistory');
+      job.markModified('estimate');
+    } else {
+      // Last remaining estimate removed completely.
+      job.estimate = undefined;
+      job.estimateHistory = [];
+      job.markModified('estimate');
+      job.markModified('estimateHistory');
+    }
+
+    const nextAmount =
+      job.estimate && typeof job.estimate.amount === 'number' && Number.isFinite(job.estimate.amount)
+        ? job.estimate.amount
+        : 0;
+    job.valueEstimated = nextAmount;
+
+    await job.save();
+    await job.populate('customerId', 'name primaryPhone primaryEmail');
+    await job.populate('assignedTo', 'name email');
+    return res.json(job);
+  } catch (error) {
+    console.error('Error deleting estimate revision:', error);
+    return res.status(500).json({ error: error.message || 'Failed to delete estimate revision' });
+  }
+}
+
 // Move job to different stage
 async function moveJobStage(req, res) {
   try {
@@ -1445,5 +1509,6 @@ module.exports = {
   reopenFromCompleted,
   resetAllEstimates,
   updateEstimateRevision,
+  deleteEstimateRevision,
   debugDeadEstimates
 };
