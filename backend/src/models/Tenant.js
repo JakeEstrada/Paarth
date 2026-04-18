@@ -43,6 +43,15 @@ const tenantSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: undefined,
     },
+    /** Plaid Item for this org (Finance Hub / register). accessToken is not selected by default. */
+    plaidLink: {
+      itemId: { type: String },
+      accessToken: { type: String, select: false },
+      institutionId: { type: String },
+      institutionName: { type: String },
+      linkedAt: { type: Date },
+      linkedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    },
   },
   {
     timestamps: true,
