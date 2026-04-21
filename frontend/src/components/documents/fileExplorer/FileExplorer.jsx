@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Box,
   Breadcrumbs,
   Button,
@@ -59,6 +60,8 @@ export default function FileExplorer() {
   const [gridSelection, setGridSelection] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dropCrumbId, setDropCrumbId] = useState(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [activeDropFolderId, setActiveDropFolderId] = useState(null);
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -383,6 +386,13 @@ export default function FileExplorer() {
 
   const menuRow = menuState?.row || (selectedRows.length === 1 ? selectedRows[0] : null);
 
+  useEffect(() => {
+    document.body.style.cursor = isDraggingFile ? 'grabbing' : '';
+    return () => {
+      document.body.style.cursor = '';
+    };
+  }, [isDraggingFile]);
+
   if (loading && !folders.length && !files.length) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 320 }}>
@@ -396,6 +406,10 @@ export default function FileExplorer() {
       sx={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0, flex: 1 }}
       onContextMenu={(e) => openContextMenu(e, null)}
     >
+      <Alert severity="info" sx={{ fontWeight: 700 }}>
+        DRAG AND DROP ENABLED
+      </Alert>
+
       <input
         ref={fileInputRef}
         type="file"
@@ -441,6 +455,7 @@ export default function FileExplorer() {
                 if (![...e.dataTransfer.types].includes(FILE_DRAG_MIME)) return;
                 e.preventDefault();
                 setDropCrumbId(crumbDropId);
+                setActiveDropFolderId(c.id ? String(c.id) : null);
               }}
               onDragLeave={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget)) {
@@ -451,6 +466,7 @@ export default function FileExplorer() {
                 e.preventDefault();
                 const fileId = e.dataTransfer.getData(FILE_DRAG_MIME);
                 setDropCrumbId(null);
+                setActiveDropFolderId(null);
                 handleFileDroppedOnFolder(fileId, c.id);
               }}
               sx={{
@@ -458,7 +474,11 @@ export default function FileExplorer() {
                 border: dropCrumbId === crumbDropId ? '1px dashed' : 'none',
                 borderColor: 'primary.main',
                 borderRadius: 1,
-                px: 0.5,
+                px: 1,
+                py: 0.5,
+                display: 'inline-flex',
+                alignItems: 'center',
+                minHeight: 30,
                 textAlign: 'left',
                 font: 'inherit',
               }}
@@ -490,6 +510,9 @@ export default function FileExplorer() {
               selectedFolderId={selectedFolderId}
               onFolderSelect={setSelectedFolderId}
               onFileDroppedOnFolder={handleFileDroppedOnFolder}
+              isDraggingFile={isDraggingFile}
+              onDragTargetChange={setActiveDropFolderId}
+              activeDropFolderId={activeDropFolderId}
               width={268}
               height={treeHeight}
             />
@@ -510,6 +533,14 @@ export default function FileExplorer() {
               onDownloadFile={handleDownloadFile}
               onContextMenuRow={openContextMenu}
               onDropFileOnFolderRow={handleFileDroppedOnFolder}
+              onFileDragStart={() => setIsDraggingFile(true)}
+              onFileDragEnd={() => {
+                setIsDraggingFile(false);
+                setDropCrumbId(null);
+                setActiveDropFolderId(null);
+              }}
+              onFolderRowDragEnter={(folderId) => setActiveDropFolderId(folderId)}
+              activeDropFolderId={activeDropFolderId}
             />
           </Box>
         </Paper>

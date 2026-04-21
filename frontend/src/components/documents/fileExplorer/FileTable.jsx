@@ -62,6 +62,10 @@ function NoRowsOverlay() {
  *   onDownloadFile: (row: object) => void,
  *   onContextMenuRow: (event: MouseEvent, row: object) => void,
  *   onDropFileOnFolderRow: (fileId: string, folderId: string) => void,
+ *   onFileDragStart: () => void,
+ *   onFileDragEnd: () => void,
+ *   onFolderRowDragEnter: (folderId: string) => void,
+ *   activeDropFolderId: string | null,
  * }} props
  */
 export default function FileTable({
@@ -73,6 +77,10 @@ export default function FileTable({
   onDownloadFile,
   onContextMenuRow,
   onDropFileOnFolderRow,
+  onFileDragStart,
+  onFileDragEnd,
+  onFolderRowDragEnter,
+  activeDropFolderId,
 }) {
   const columns = [
     {
@@ -96,12 +104,20 @@ export default function FileTable({
             if (params.row.kind !== 'file') return;
             e.dataTransfer.setData(FILE_DRAG_MIME, params.row.entityId);
             e.dataTransfer.effectAllowed = 'move';
+            onFileDragStart();
           }}
+          onDragEnd={() => onFileDragEnd()}
           onDragOver={(e) => {
             if (params.row.kind !== 'folder') return;
             if (![...e.dataTransfer.types].includes(FILE_DRAG_MIME)) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
+          }}
+          onDragEnter={(e) => {
+            if (params.row.kind !== 'folder') return;
+            if (![...e.dataTransfer.types].includes(FILE_DRAG_MIME)) return;
+            e.preventDefault();
+            onFolderRowDragEnter(params.row.entityId);
           }}
           onDrop={(e) => {
             if (params.row.kind !== 'folder') return;
@@ -109,7 +125,9 @@ export default function FileTable({
             if (!fileId) return;
             e.preventDefault();
             onDropFileOnFolderRow(fileId, params.row.entityId);
+            onFileDragEnd();
           }}
+          title={params.row.kind === 'folder' ? 'Drop file here to move' : ''}
         >
           {typeIcon(params.row)}
           <Typography variant="body2" noWrap title={params.row.name}>
@@ -160,6 +178,9 @@ export default function FileTable({
       columns={columns}
       loading={loading}
       getRowId={(row) => row.id}
+      getRowClassName={(params) =>
+        params.row.kind === 'folder' && activeDropFolderId === params.row.entityId ? 'drop-target-row' : ''
+      }
       checkboxSelection
       disableRowSelectionOnClick
       rowSelectionModel={{ type: 'include', ids: new Set(selectionModel) }}
@@ -180,6 +201,15 @@ export default function FileTable({
         height: '100%',
         minHeight: 320,
         '& .MuiDataGrid-columnHeaders': { bgcolor: 'action.hover' },
+        '& .drop-target-row': {
+          bgcolor: 'action.selected',
+          outline: '1px dashed',
+          outlineColor: 'primary.main',
+          outlineOffset: '-1px',
+        },
+        '& .MuiDataGrid-cell': {
+          py: 0.75,
+        },
       }}
     />
   );
