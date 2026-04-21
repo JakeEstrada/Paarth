@@ -108,56 +108,65 @@ export default function RegisterLedgerSection({ active }) {
   if (!active) return null;
 
   return (
-    <Box sx={{ mt: 2 }}>
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 1.5 }}>
-        <FormControl size="small" sx={{ minWidth: 280 }}>
-          <InputLabel id="register-account-label">Account</InputLabel>
-          <Select
-            labelId="register-account-label"
-            value={accountId}
-            label="Account"
-            onChange={(e) => setAccountId(String(e.target.value))}
-          >
-            {accounts.map((a) => (
-              <MenuItem key={a.account_id} value={a.account_id}>
-                {(a.official_name || a.name) + (a.mask ? ` ••••${a.mask}` : '')}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+    <Box sx={{ mt: 1.25 }}>
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        spacing={1}
+        alignItems={{ xs: 'stretch', md: 'center' }}
+        justifyContent="space-between"
+        sx={{ mb: 1 }}
+      >
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1, minWidth: 0 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 240 }, maxWidth: { sm: 360 } }}>
+            <InputLabel id="register-account-label">Account</InputLabel>
+            <Select
+              labelId="register-account-label"
+              value={accountId}
+              label="Account"
+              onChange={(e) => setAccountId(String(e.target.value))}
+            >
+              {accounts.map((a) => (
+                <MenuItem key={a.account_id} value={a.account_id}>
+                  {(a.official_name || a.name) + (a.mask ? ` ••••${a.mask}` : '')}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
-        <FormControl size="small" sx={{ minWidth: 140 }}>
-          <InputLabel id="register-days-label">Window</InputLabel>
-          <Select
-            labelId="register-days-label"
-            value={days}
-            label="Window"
-            onChange={(e) => setDays(Number(e.target.value))}
-          >
-            <MenuItem value={30}>30 days</MenuItem>
-            <MenuItem value={90}>90 days</MenuItem>
-            <MenuItem value={180}>180 days</MenuItem>
-            <MenuItem value={365}>365 days</MenuItem>
-          </Select>
-        </FormControl>
+          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 120 } }}>
+            <InputLabel id="register-days-label">Window</InputLabel>
+            <Select
+              labelId="register-days-label"
+              value={days}
+              label="Window"
+              onChange={(e) => setDays(Number(e.target.value))}
+            >
+              <MenuItem value={30}>30 days</MenuItem>
+              <MenuItem value={90}>90 days</MenuItem>
+              <MenuItem value={180}>180 days</MenuItem>
+              <MenuItem value={365}>365 days</MenuItem>
+            </Select>
+          </FormControl>
 
-        <ToggleButtonGroup
-          size="small"
-          value={sort}
-          exclusive
-          onChange={(_, v) => v && setSort(v)}
-          aria-label="transaction sort order"
-        >
-          <ToggleButton value="asc">Oldest first</ToggleButton>
-          <ToggleButton value="desc">Newest first</ToggleButton>
-        </ToggleButtonGroup>
+          <ToggleButtonGroup
+            size="small"
+            value={sort}
+            exclusive
+            onChange={(_, v) => v && setSort(v)}
+            aria-label="transaction sort order"
+            sx={{ alignSelf: { xs: 'stretch', sm: 'center' } }}
+          >
+            <ToggleButton value="asc">Oldest first</ToggleButton>
+            <ToggleButton value="desc">Newest first</ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+
+        {selectedAccount ? (
+          <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap', alignSelf: { xs: 'flex-end', md: 'center' } }}>
+            Balance ${money(selectedAccount?.balances?.current)}
+          </Typography>
+        ) : null}
       </Stack>
-
-      {selectedAccount && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          Current balance: ${money(selectedAccount?.balances?.current)}
-        </Typography>
-      )}
 
       {errorText ? (
         <Alert severity="warning">{errorText}</Alert>

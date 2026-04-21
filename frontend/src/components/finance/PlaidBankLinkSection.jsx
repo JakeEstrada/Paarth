@@ -10,7 +10,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const LINK_ROLES = new Set(['super_admin', 'admin', 'manager']);
 
-function PlaidBankLinkSection({ active }) {
+function PlaidBankLinkSection({ active, variant = 'default' }) {
   const { user } = useAuth();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -91,20 +91,24 @@ function PlaidBankLinkSection({ active }) {
 
   if (!active) return null;
 
+  const isCompact = variant === 'compact';
+
   return (
-    <Box sx={{ mt: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-        <AccountBalanceIcon color="primary" />
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          Plaid (bank connection)
-        </Typography>
-        {status?.environment && (
-          <Chip size="small" label={status.environment} variant="outlined" sx={{ textTransform: 'capitalize' }} />
-        )}
-      </Box>
+    <Box sx={{ mt: isCompact ? 0 : 2 }}>
+      {!isCompact && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <AccountBalanceIcon color="primary" />
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Plaid (bank connection)
+          </Typography>
+          {status?.environment && (
+            <Chip size="small" label={status.environment} variant="outlined" sx={{ textTransform: 'capitalize' }} />
+          )}
+        </Box>
+      )}
 
       {loading && (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: isCompact ? 0.25 : 1 }}>
           <CircularProgress size={20} />
           <Typography variant="body2" color="text.secondary">
             Checking Plaid status…
@@ -113,7 +117,7 @@ function PlaidBankLinkSection({ active }) {
       )}
 
       {!loading && status && !status.configured && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: isCompact ? 0.5 : 1 }}>
           Server is missing Plaid credentials. In <strong>backend/.env</strong> set{' '}
           <code>PLAID_CLIENT_ID</code>, then either <code>SANDBOX_SECRET</code> (recommended for testing) or set{' '}
           <code>PLAID_ENV=production</code> with <code>PRODUCTION_SECRET</code>. Optionally set{' '}
@@ -130,32 +134,63 @@ function PlaidBankLinkSection({ active }) {
       {!loading && status?.configured && canManage && (
         <>
           {status.linked ? (
-            <Box sx={{ mb: 1 }}>
-              <Typography variant="body2" sx={{ mb: 1 }}>
-                Linked{status.institutionName ? `: ${status.institutionName}` : ''}.
-                {status.linkedAt && (
-                  <Box component="span" sx={{ color: 'text.secondary', ml: 0.5 }}>
-                    ({new Date(status.linkedAt).toLocaleString()})
-                  </Box>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                flexWrap: 'wrap',
+                mb: isCompact ? 0 : 1,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
+                {isCompact && <AccountBalanceIcon color="primary" sx={{ fontSize: 20 }} />}
+                {isCompact && status?.environment && (
+                  <Chip size="small" label={status.environment} variant="outlined" sx={{ textTransform: 'capitalize' }} />
                 )}
-              </Typography>
+                <Typography variant={isCompact ? 'caption' : 'body2'} color="text.secondary" sx={{ lineHeight: 1.4 }}>
+                  <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
+                    Plaid
+                  </Box>
+                  {status.institutionName ? `: ${status.institutionName}` : ': Linked'}
+                  {status.linkedAt ? (
+                    <Box component="span" sx={{ color: 'text.secondary', ml: 0.5 }}>
+                      · {new Date(status.linkedAt).toLocaleString()}
+                    </Box>
+                  ) : null}
+                </Typography>
+              </Box>
               <Button
                 variant="outlined"
                 color="warning"
+                size={isCompact ? 'small' : 'medium'}
                 startIcon={<LinkOffIcon />}
                 onClick={handleDisconnect}
                 disabled={busy}
               >
-                Disconnect bank
+                {isCompact ? 'Disconnect' : 'Disconnect bank'}
               </Button>
             </Box>
           ) : (
-            <Box sx={{ mb: 1 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                Connect a bank account through Plaid (sandbox or production depends on{' '}
-                <code>PLAID_ENV</code> on the server). You can reconnect to replace the current link.
-              </Typography>
-              <Button variant="contained" onClick={handleStartLink} disabled={busy}>
+            <Box sx={{ mb: isCompact ? 0 : 1 }}>
+              {!isCompact && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                  Connect a bank account through Plaid (sandbox or production depends on{' '}
+                  <code>PLAID_ENV</code> on the server). You can reconnect to replace the current link.
+                </Typography>
+              )}
+              {isCompact && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
+                  {status?.environment && (
+                    <Chip size="small" label={status.environment} variant="outlined" sx={{ textTransform: 'capitalize' }} />
+                  )}
+                  <Typography variant="caption" color="text.secondary">
+                    No bank linked yet.
+                  </Typography>
+                </Box>
+              )}
+              <Button variant="contained" size={isCompact ? 'small' : 'medium'} onClick={handleStartLink} disabled={busy}>
                 {busy ? 'Opening…' : 'Connect bank with Plaid'}
               </Button>
             </Box>

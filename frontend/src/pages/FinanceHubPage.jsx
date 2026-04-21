@@ -1204,17 +1204,29 @@ function FinanceHubPage() {
 
       {activeTab === 'register' ? (
         <Card>
-          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>
+          <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'baseline',
+                flexWrap: 'wrap',
+                gap: 1,
+                rowGap: 0.5,
+                mb: 1,
+                pb: 1,
+                borderBottom: 1,
+                borderColor: 'divider',
+              }}
+            >
+              <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600 }}>
                 {activeSection.label}
               </Typography>
               <Chip size="small" color="primary" label="New" />
+              <Typography variant="caption" color="text.secondary" sx={{ width: '100%', mt: -0.25 }}>
+                {activeSection.subtitle}
+              </Typography>
             </Box>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              {activeSection.subtitle}
-            </Typography>
-            <PlaidBankLinkSection active />
+            <PlaidBankLinkSection active variant="compact" />
             <RegisterLedgerSection active />
           </CardContent>
         </Card>
