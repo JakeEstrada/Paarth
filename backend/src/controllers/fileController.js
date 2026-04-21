@@ -11,6 +11,18 @@ const { s3Client, BUCKET_NAME, isS3Configured } = require('../config/s3');
 // Use environment variable if set, otherwise use relative path
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
 const DOCUMENT_TEXT_DIR = path.join(UPLOADS_DIR, 'documents-text');
+const ALLOWED_DOCUMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'text/plain',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
 
 function sanitizePathSegment(segment) {
   return String(segment || '')
@@ -422,8 +434,7 @@ async function uploadDocument(req, res) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Only allow PDFs
-    if (req.file.mimetype !== 'application/pdf') {
+    if (!ALLOWED_DOCUMENT_MIME_TYPES.has(req.file.mimetype)) {
       // Delete uploaded file
       if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
@@ -438,7 +449,7 @@ async function uploadDocument(req, res) {
           console.error('Error deleting file from S3:', s3Error);
         }
       }
-      return res.status(400).json({ error: 'Only PDF files are allowed' });
+      return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, TXT, PNG, JPG, WEBP, GIF, DOC, DOCX, XLS, XLSX' });
     }
 
     const { fileType = 'other', folderId } = req.body;

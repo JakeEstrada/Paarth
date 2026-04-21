@@ -156,9 +156,104 @@ async function disconnectPlaid(req, res) {
   }
 }
 
+function toIsoDateOnly(date) {
+  return new Date(date).toISOString().slice(0, 10);
+}
+
+async function getRegisterData(req, res) {
+  try {
+    if (!req.user?.tenantId) {
+      return res.status(400).json({ error: 'User is not associated with an organization.' });
+    }
+    if (!isPlaidConfigured()) {
+      return res.status(503).json({ error: 'Plaid is not configured on the server.' });
+    }
+
+    const tenant = await Tenant.findById(req.user.tenantId).select('+plaidLink.accessToken');
+    const accessToken = tenant?.plaidLink?.accessToken;
+    if (!accessToken) {
+      return res.status(409).json({ error: 'No linked bank account for this organization.' });
+    }
+
+    const client = getPlaidApi();
+    const accountId = req.query?.accountId ? String(req.query.accountId).trim() : '';
+    const sort = String(req.query?.sort || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+
+    const rawDays = Number(req.query?.days);
+    const days = Number.isFinite(rawDays) ? Math.max(1, Math.min(730, Math.floor(rawDays))) : 90;
+    const endDate = new Date();
+    const startDate = new Date(endDate);
+    startDate.setDate(endDate.getDate() - days);
+
+    const accountsResp = await client.accountsGet({ access_token: accessToken });
+    const accounts = Array.isArray(accountsResp?.data?.accounts) ? accountsResp.data.accounts : [];
+
+    const txOptions = { count: 500, offset: 0 };
+    if (accountId) txOptions.account_ids = [accountId];
+    const txReqBase = {
+      access_token: accessToken,
+      start_date: toIsoDateOnly(startDate),
+      end_date: toIsoDateOnly(endDate),
+    };
+
+    let allTransactions = [];
+    // Plaid transactionsGet is paginated via options.offset/count.
+    while (true) {
+      const txResp = await client.transactionsGet({
+        ...txReqBase,
+        options: txOptions,
+      });
+      const page = Array.isArray(txResp?.data?.transactions) ? txResp.data.transactions : [];
+      allTransactions = allTransactions.concat(page);
+      const total = Number(txResp?.data?.total_transactions || 0);
+      txOptions.offset += page.length;
+      if (txOptions.offset >= total || page.length === 0) break;
+    }
+
+    const normalized = allTransactions.map((t) => ({
+      transaction_id: t.transaction_id,
+      account_id: t.account_id,
+      date: t.date,
+      name: t.name || t.merchant_name || 'Transaction',
+      amount: Number(t.amount || 0),
+      pending: Boolean(t.pending),
+      category: Array.isArray(t.category) ? t.category : [],
+    }));
+
+    normalized.sort((a, b) => {
+      if (a.date === b.date) return String(a.transaction_id).localeCompare(String(b.transaction_id));
+      return sort === 'asc' ? String(a.date).localeCompare(String(b.date)) : String(b.date).localeCompare(String(a.date));
+    });
+
+    return res.json({
+      sort,
+      range: {
+        start: toIsoDateOnly(startDate),
+        end: toIsoDateOnly(endDate),
+        days,
+      },
+      accounts: accounts.map((a) => ({
+        account_id: a.account_id,
+        name: a.name,
+        official_name: a.official_name,
+        subtype: a.subtype,
+        type: a.type,
+        mask: a.mask,
+        balances: a.balances || {},
+      })),
+      transactions: normalized,
+    });
+  } catch (error) {
+    console.error('getRegisterData:', error?.response?.data || error);
+    const plaidMsg = error?.response?.data?.error_message || error?.message;
+    return res.status(500).json({ error: plaidMsg || 'Failed to load register transactions' });
+  }
+}
+
 module.exports = {
   getPlaidStatus,
   createLinkToken,
   exchangePublicToken,
   disconnectPlaid,
+  getRegisterData,
 };

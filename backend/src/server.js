@@ -73,7 +73,8 @@ app.use(async (req, res, next) => {
     req.path.startsWith('/developer-tasks') ||
     req.path.startsWith('/auth') ||
     req.path.startsWith('/twilio') ||
-    req.path.startsWith('/tenants/branding');
+    req.path.startsWith('/tenants/branding') ||
+    req.path.startsWith('/api/tenants/branding');
 
   if (skipTenantDb) {
     return runWithTenantContext({ tenantId: null, bypassTenant: true }, () => next());
@@ -137,7 +138,9 @@ app.use((req, res, next) => {
     req.path.startsWith('/uploads/') ||
     req.path.startsWith('/developer-tasks') ||
     req.path.startsWith('/auth') ||
-    req.path.startsWith('/twilio')
+    req.path.startsWith('/twilio') ||
+    req.path.startsWith('/tenants/branding') ||
+    req.path.startsWith('/api/tenants/branding')
   ) {
     return next();
   }
@@ -185,6 +188,18 @@ app.use('/pipeline-layouts', pipelineLayoutRoutes);
 app.use('/twilio', twilioRoutes);
 app.use('/plaid', plaidRoutes);
 // Some deployments expose the API under `/api` without stripping the prefix from the path.
+app.use('/api/auth', authRoutes);
+app.use('/api/tenants', tenantRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/jobs', jobRoutes);
+app.use('/api/activities', activityRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/appointments', appointmentRoutes);
+app.use('/api/files', fileRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/developer-tasks', developerTasksRoutes);
+app.use('/api/bills', billRoutes);
 app.use('/api/pipeline-layouts', pipelineLayoutRoutes);
 app.use('/api/twilio', twilioRoutes);
 app.use('/api/plaid', plaidRoutes);

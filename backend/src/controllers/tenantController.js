@@ -1,6 +1,12 @@
 const Tenant = require('../models/Tenant');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
 
+// 1x1 transparent PNG — used when a tenant has no logo yet so <img> requests don't 404 cross-origin.
+const TRANSPARENT_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ZkAAAAASUVORK5CYII=',
+  'base64'
+);
+
 function logoPayloadFromMulterFile(file) {
   if (!file) return null;
   if (file.key) {
@@ -124,7 +130,13 @@ async function getTenantBrandingLogo(req, res) {
 
     const tenant = await Tenant.findById(tenantId).select('logo logoLight logoDark');
     const resolved = resolveLogoObject(tenant, themeMode);
-    if (!resolved.logo) return res.status(404).end();
+    if (!resolved.logo) {
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return res.status(200).end(TRANSPARENT_PNG);
+    }
 
     const pseudoFile = {
       filename: resolved.logo.filename,

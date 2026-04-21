@@ -68,17 +68,21 @@ async function getDeveloperTasks(req, res) {
 // Create a new developer task
 async function createDeveloperTask(req, res) {
   try {
-    const { title, description } = req.body;
+    const { title, description, priorityDots } = req.body;
     
     if (!title || !title.trim()) {
       return res.status(400).json({ error: 'Task title is required' });
     }
+
+    const parsedPriority = Number(priorityDots);
+    const normalizedPriority = [1, 2, 3].includes(parsedPriority) ? parsedPriority : 1;
 
     const tasks = readTasks();
     const newTask = {
       id: Date.now().toString(),
       title: title.trim(),
       description: (description || '').trim(),
+      priorityDots: normalizedPriority,
       completed: false,
       createdAt: new Date().toISOString(),
     };
@@ -114,7 +118,7 @@ async function createDeveloperTask(req, res) {
 async function updateDeveloperTask(req, res) {
   try {
     const { id } = req.params;
-    const { title, description, completed } = req.body;
+    const { title, description, completed, priorityDots } = req.body;
 
     const tasks = readTasks();
     const taskIndex = tasks.findIndex((task) => task.id === id);
@@ -133,6 +137,10 @@ async function updateDeveloperTask(req, res) {
     }
     if (completed !== undefined) {
       tasks[taskIndex].completed = completed;
+    }
+    if (priorityDots !== undefined) {
+      const parsedPriority = Number(priorityDots);
+      tasks[taskIndex].priorityDots = [1, 2, 3].includes(parsedPriority) ? parsedPriority : 1;
     }
 
     const writeSuccess = writeTasks(tasks);
