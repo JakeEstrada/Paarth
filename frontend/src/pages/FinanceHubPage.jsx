@@ -40,6 +40,7 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import PlaidBankLinkSection from '../components/finance/PlaidBankLinkSection';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const ESTIMATE_PREFIX = '1102';
@@ -1200,7 +1201,22 @@ function FinanceHubPage() {
         </Tabs>
       </Card>
 
-      {activeTab !== 'estimates' ? (
+      {activeTab === 'register' ? (
+        <Card>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+              <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                {activeSection.label}
+              </Typography>
+              <Chip size="small" color="primary" label="New" />
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {activeSection.subtitle}
+            </Typography>
+            <PlaidBankLinkSection active />
+          </CardContent>
+        </Card>
+      ) : activeTab !== 'estimates' ? (
         <Card>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>

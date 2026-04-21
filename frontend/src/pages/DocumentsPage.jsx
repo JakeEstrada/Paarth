@@ -1,8 +1,9 @@
-import DocumentExplorer from '../components/documents/DocumentExplorer';
+import FileExplorer from '../components/documents/fileExplorer/FileExplorer';
 
 function DocumentsPage() {
-  return <DocumentExplorer />;
+  return (
+    <FileExplorer />
+  );
 }
 
 export default DocumentsPage;
-

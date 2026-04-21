@@ -24,6 +24,15 @@ function ensureTxtExtension(name) {
   return name.toLowerCase().endsWith('.txt') ? name : `${name}.txt`;
 }
 
+function sanitizeDisplayFilename(raw) {
+  const base = path.basename(String(raw || '').trim());
+  if (!base) return '';
+  return base
+    .replace(/[<>:"\\|?*\x00-\x1F]/g, '_')
+    .replace(/\s+/g, ' ')
+    .slice(0, 220);
+}
+
 async function resolveFolderPath(folderPath, createdBy) {
   if (!folderPath) return null;
   const segments = String(folderPath)
@@ -815,9 +824,14 @@ async function getFile(req, res) {
   }
 }
 
-// Update file (e.g., description)
+// Update file (e.g., description, move, display name for standalone library files)
 async function updateFile(req, res) {
   try {
+    const existing = await File.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
     const update = {};
     if (req.body.description !== undefined) {
       update.description = req.body.description ? String(req.body.description).trim() : '';
@@ -831,16 +845,25 @@ async function updateFile(req, res) {
       update.folderId = nextFolderId;
     }
 
+    if (req.body.originalName !== undefined) {
+      const isStandalone = !existing.jobId && !existing.taskId;
+      if (!isStandalone) {
+        return res.status(400).json({ error: 'Renaming is only supported for library documents' });
+      }
+      let next = sanitizeDisplayFilename(req.body.originalName);
+      if (!next) return res.status(400).json({ error: 'Invalid file name' });
+      if (existing.mimetype === 'text/plain') {
+        next = ensureTxtExtension(sanitizePathSegment(next.replace(/\.txt$/i, '')) || 'untitled');
+      }
+      update.originalName = next;
+    }
+
     const file = await File.findByIdAndUpdate(req.params.id, update, {
       new: true,
       runValidators: true,
     })
       .populate('uploadedBy', 'name email')
       .populate('folderId', 'name parentId');
-
-    if (!file) {
-      return res.status(404).json({ error: 'File not found' });
-    }
 
     res.json(file);
   } catch (error) {
