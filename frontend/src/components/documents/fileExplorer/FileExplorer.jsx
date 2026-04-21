@@ -9,6 +9,8 @@ import {
   DialogContent,
   DialogTitle,
   Link,
+  Menu,
+  MenuItem,
   Paper,
   TextField,
   Typography,
@@ -67,6 +69,7 @@ export default function FileExplorer() {
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTargets, setDeleteTargets] = useState([]);
+  const [menuState, setMenuState] = useState(null);
 
   useEffect(() => {
     refresh();
@@ -158,10 +161,18 @@ export default function FileExplorer() {
     [gridRows, gridSelection]
   );
 
-  const handleOpenFolderRow = useCallback((row) => {
-    if (row.kind !== 'folder') return;
-    setSelectedFolderId(row.entityId);
+  const handleOpenFile = useCallback((row) => {
+    if (row.kind !== 'file') return;
+    window.open(`${API_URL}/files/${row.entityId}`, '_blank', 'noopener,noreferrer');
   }, []);
+
+  const handleOpenRow = useCallback((row) => {
+    if (row.kind === 'folder') {
+      setSelectedFolderId(row.entityId);
+      return;
+    }
+    handleOpenFile(row);
+  }, [handleOpenFile]);
 
   const handleDownloadFile = useCallback(async (row) => {
     try {
@@ -229,6 +240,13 @@ export default function FileExplorer() {
     setRenameOpen(true);
   }, [selectedRows]);
 
+  const openRenameForRow = useCallback((row) => {
+    if (!row) return;
+    setRenameTarget(row);
+    setRenameValue(row.name || '');
+    setRenameOpen(true);
+  }, []);
+
   const submitRename = useCallback(async () => {
     const name = renameValue.trim();
     if (!renameTarget || !name) return;
@@ -252,6 +270,12 @@ export default function FileExplorer() {
     setDeleteTargets(selectedRows);
     setDeleteOpen(true);
   }, [selectedRows]);
+
+  const openDeleteForRows = useCallback((rows) => {
+    if (!rows?.length) return;
+    setDeleteTargets(rows);
+    setDeleteOpen(true);
+  }, []);
 
   const submitDelete = useCallback(async () => {
     try {
@@ -284,6 +308,24 @@ export default function FileExplorer() {
     }
   }, [newFolderName, selectedFolderId, createFolder]);
 
+  const openContextMenu = useCallback((event, row = null) => {
+    event.preventDefault();
+    if (row) {
+      setGridSelection([row.id]);
+    }
+    setMenuState({
+      mouseX: event.clientX + 2,
+      mouseY: event.clientY - 6,
+      row,
+    });
+  }, []);
+
+  const closeContextMenu = useCallback(() => {
+    setMenuState(null);
+  }, []);
+
+  const menuRow = menuState?.row || (selectedRows.length === 1 ? selectedRows[0] : null);
+
   if (loading && !folders.length && !files.length) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 320 }}>
@@ -293,7 +335,10 @@ export default function FileExplorer() {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0, flex: 1 }}>
+    <Box
+      sx={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0, flex: 1 }}
+      onContextMenu={(e) => openContextMenu(e, null)}
+    >
       <input
         ref={fileInputRef}
         type="file"
@@ -404,8 +449,10 @@ export default function FileExplorer() {
               loading={loading}
               selectionModel={gridSelection}
               onSelectionModelChange={setGridSelection}
-              onOpenFolder={handleOpenFolderRow}
+              onOpenRow={handleOpenRow}
               onDownloadFile={handleDownloadFile}
+              onContextMenuRow={openContextMenu}
+              onDropFileOnFolderRow={handleFileDroppedOnFolder}
             />
           </Box>
         </Paper>
@@ -467,6 +514,84 @@ export default function FileExplorer() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Menu
+        open={Boolean(menuState)}
+        onClose={closeContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          menuState ? { top: menuState.mouseY, left: menuState.mouseX } : undefined
+        }
+      >
+        {menuRow ? (
+          <MenuItem
+            onClick={() => {
+              if (menuRow.kind === 'folder') {
+                setSelectedFolderId(menuRow.entityId);
+              } else {
+                handleOpenFile(menuRow);
+              }
+              closeContextMenu();
+            }}
+          >
+            Open
+          </MenuItem>
+        ) : null}
+        <MenuItem
+          onClick={() => {
+            setNewFolderOpen(true);
+            closeContextMenu();
+          }}
+        >
+          New folder
+        </MenuItem>
+        {menuRow?.kind === 'file' ? (
+          <MenuItem
+            onClick={() => {
+              handleDownloadFile(menuRow);
+              closeContextMenu();
+            }}
+          >
+            Download
+          </MenuItem>
+        ) : null}
+        {menuRow ? (
+          <MenuItem
+            onClick={() => {
+              openRenameForRow(menuRow);
+              closeContextMenu();
+            }}
+          >
+            Edit / Rename
+          </MenuItem>
+        ) : null}
+        {menuRow ? (
+          <MenuItem
+            onClick={() => {
+              openDeleteForRows([menuRow]);
+              closeContextMenu();
+            }}
+          >
+            Delete
+          </MenuItem>
+        ) : null}
+        <MenuItem
+          onClick={() => {
+            fileInputRef.current?.click();
+            closeContextMenu();
+          }}
+        >
+          Upload here
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            refresh();
+            closeContextMenu();
+          }}
+        >
+          Refresh
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

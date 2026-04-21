@@ -58,8 +58,10 @@ function NoRowsOverlay() {
  *   loading: boolean,
  *   selectionModel: string[],
  *   onSelectionModelChange: (ids: string[]) => void,
- *   onOpenFolder: (row: object) => void,
+ *   onOpenRow: (row: object) => void,
  *   onDownloadFile: (row: object) => void,
+ *   onContextMenuRow: (event: MouseEvent, row: object) => void,
+ *   onDropFileOnFolderRow: (fileId: string, folderId: string) => void,
  * }} props
  */
 export default function FileTable({
@@ -67,8 +69,10 @@ export default function FileTable({
   loading,
   selectionModel,
   onSelectionModelChange,
-  onOpenFolder,
+  onOpenRow,
   onDownloadFile,
+  onContextMenuRow,
+  onDropFileOnFolderRow,
 }) {
   const columns = [
     {
@@ -92,6 +96,19 @@ export default function FileTable({
             if (params.row.kind !== 'file') return;
             e.dataTransfer.setData(FILE_DRAG_MIME, params.row.entityId);
             e.dataTransfer.effectAllowed = 'move';
+          }}
+          onDragOver={(e) => {
+            if (params.row.kind !== 'folder') return;
+            if (![...e.dataTransfer.types].includes(FILE_DRAG_MIME)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+          }}
+          onDrop={(e) => {
+            if (params.row.kind !== 'folder') return;
+            const fileId = e.dataTransfer.getData(FILE_DRAG_MIME);
+            if (!fileId) return;
+            e.preventDefault();
+            onDropFileOnFolderRow(fileId, params.row.entityId);
           }}
         >
           {typeIcon(params.row)}
@@ -148,7 +165,12 @@ export default function FileTable({
       rowSelectionModel={{ type: 'include', ids: new Set(selectionModel) }}
       onRowSelectionModelChange={(model) => onSelectionModelChange(model?.ids ? [...model.ids] : [])}
       onRowDoubleClick={(params) => {
-        if (params.row.kind === 'folder') onOpenFolder(params.row);
+        onOpenRow(params.row);
+      }}
+      onRowContextMenu={(params, event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onContextMenuRow(event, params.row);
       }}
       hideFooter
       slots={{ noRowsOverlay: NoRowsOverlay }}
