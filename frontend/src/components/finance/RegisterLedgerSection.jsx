@@ -22,6 +22,27 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+function stripTrailingSlash(s) {
+  return String(s || '').replace(/\/+$/, '');
+}
+
+function apiOrigin() {
+  return stripTrailingSlash(API_URL).replace(/\/api$/i, '');
+}
+
+async function getRegisterPayload(params) {
+  const origin = apiOrigin();
+  const primary = `${origin}/plaid/register-data`;
+  try {
+    return await axios.get(primary, { params });
+  } catch (e) {
+    if (e?.response?.status === 404) {
+      return await axios.get(`${origin}/api/plaid/register-data`, { params });
+    }
+    throw e;
+  }
+}
+
 function money(n) {
   return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -45,8 +66,10 @@ export default function RegisterLedgerSection({ active }) {
     try {
       setLoading(true);
       setErrorText('');
-      const { data } = await axios.get(`${API_URL}/plaid/register-data`, {
-        params: { accountId: accountId || undefined, sort, days },
+      const { data } = await getRegisterPayload({
+        accountId: accountId || undefined,
+        sort,
+        days,
       });
       const nextAccounts = Array.isArray(data?.accounts) ? data.accounts : [];
       setAccounts(nextAccounts);
