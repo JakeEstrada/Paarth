@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Box,
   Breadcrumbs,
   Button,
@@ -339,6 +340,10 @@ export default function FileExplorer() {
       sx={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0, flex: 1 }}
       onContextMenu={(e) => openContextMenu(e, null)}
     >
+      <Alert severity="success" sx={{ fontWeight: 700 }}>
+        NEW FILE EXPLORER ACTIVE
+      </Alert>
+
       <input
         ref={fileInputRef}
         type="file"
