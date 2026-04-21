@@ -13,6 +13,10 @@ import {
   DialogContent,
   DialogActions,
   Checkbox,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   useTheme,
 } from '@mui/material';
 import {
@@ -36,6 +40,7 @@ function DeveloperTasksPage() {
   const [editingTask, setEditingTask] = useState(null);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
+  const [taskPriorityDots, setTaskPriorityDots] = useState(1);
 
   // Load tasks from API on mount
   useEffect(() => {
@@ -71,10 +76,12 @@ function DeveloperTasksPage() {
       const response = await axios.post(`${API_URL}/developer-tasks`, {
         title: taskTitle.trim(),
         description: taskDescription.trim() || '',
+        priorityDots: taskPriorityDots,
       });
 
       setTaskTitle('');
       setTaskDescription('');
+      setTaskPriorityDots(1);
       setAddTaskOpen(false);
       toast.success('Task added');
       fetchTasks(); // Refresh tasks
@@ -100,10 +107,12 @@ function DeveloperTasksPage() {
       await axios.patch(`${API_URL}/developer-tasks/${editingTask.id}`, {
         title: taskTitle.trim(),
         description: taskDescription.trim() || '',
+        priorityDots: taskPriorityDots,
       });
 
       setTaskTitle('');
       setTaskDescription('');
+      setTaskPriorityDots(1);
       setEditingTask(null);
       setEditTaskOpen(false);
       toast.success('Task updated');
@@ -164,26 +173,49 @@ function DeveloperTasksPage() {
     setEditingTask(task);
     setTaskTitle(task.title);
     setTaskDescription(task.description || '');
+    setTaskPriorityDots([1, 2, 3].includes(Number(task.priorityDots)) ? Number(task.priorityDots) : 1);
     setEditTaskOpen(true);
   };
 
   const handleAddClick = () => {
     setTaskTitle('');
     setTaskDescription('');
+    setTaskPriorityDots(1);
     setAddTaskOpen(true);
   };
 
   const handleCloseAdd = () => {
     setTaskTitle('');
     setTaskDescription('');
+    setTaskPriorityDots(1);
     setAddTaskOpen(false);
   };
 
   const handleCloseEdit = () => {
     setTaskTitle('');
     setTaskDescription('');
+    setTaskPriorityDots(1);
     setEditingTask(null);
     setEditTaskOpen(false);
+  };
+
+  const renderPriorityDots = (task) => {
+    const count = [1, 2, 3].includes(Number(task.priorityDots)) ? Number(task.priorityDots) : 1;
+    return (
+      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+        {Array.from({ length: count }).map((_, i) => (
+          <Box
+            key={`${task.id}-dot-${i}`}
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              bgcolor: 'success.main',
+            }}
+          />
+        ))}
+      </Box>
+    );
   };
 
   const incompleteTasks = tasks.filter((task) => !task.completed);
@@ -248,6 +280,7 @@ function DeveloperTasksPage() {
                   <Typography variant="body1" sx={{ fontWeight: 500 }}>
                     {task.title}
                   </Typography>
+                  <Box sx={{ mt: 0.75 }}>{renderPriorityDots(task)}</Box>
                   {task.description && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                       {task.description}
@@ -320,6 +353,7 @@ function DeveloperTasksPage() {
                   >
                     {task.title}
                   </Typography>
+                  <Box sx={{ mt: 0.75 }}>{renderPriorityDots(task)}</Box>
                   {task.description && (
                     <Typography
                       variant="body2"
@@ -394,6 +428,19 @@ function DeveloperTasksPage() {
               rows={3}
               placeholder="Add any additional details..."
             />
+            <FormControl fullWidth>
+              <InputLabel id="add-priority-dots-label">Priority Dots</InputLabel>
+              <Select
+                labelId="add-priority-dots-label"
+                value={taskPriorityDots}
+                label="Priority Dots"
+                onChange={(e) => setTaskPriorityDots(Number(e.target.value))}
+              >
+                <MenuItem value={1}>1 dot</MenuItem>
+                <MenuItem value={2}>2 dots</MenuItem>
+                <MenuItem value={3}>3 dots</MenuItem>
+              </Select>
+            </FormControl>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -425,6 +472,19 @@ function DeveloperTasksPage() {
               multiline
               rows={3}
             />
+            <FormControl fullWidth>
+              <InputLabel id="edit-priority-dots-label">Priority Dots</InputLabel>
+              <Select
+                labelId="edit-priority-dots-label"
+                value={taskPriorityDots}
+                label="Priority Dots"
+                onChange={(e) => setTaskPriorityDots(Number(e.target.value))}
+              >
+                <MenuItem value={1}>1 dot</MenuItem>
+                <MenuItem value={2}>2 dots</MenuItem>
+                <MenuItem value={3}>3 dots</MenuItem>
+              </Select>
+            </FormControl>
           </Box>
         </DialogContent>
         <DialogActions>
