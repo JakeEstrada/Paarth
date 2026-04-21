@@ -71,6 +71,9 @@ export default function FileExplorer() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTargets, setDeleteTargets] = useState([]);
   const [menuState, setMenuState] = useState(null);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveTarget, setMoveTarget] = useState(null);
+  const [moveDestination, setMoveDestination] = useState('');
 
   useEffect(() => {
     refresh();
@@ -117,6 +120,25 @@ export default function FileExplorer() {
     chain.reverse().forEach((f) => items.push({ id: String(f._id), name: f.name || 'Folder' }));
     return items;
   }, [selectedFolderId, folderById]);
+
+  const folderPathById = useMemo(() => {
+    const map = new Map();
+    const buildPath = (id) => {
+      if (!id) return 'Root';
+      if (map.has(id)) return map.get(id);
+      const folder = folderById.get(id);
+      if (!folder) return 'Root';
+      const parentId = parentFolderKey(folder);
+      const parentPath = buildPath(parentId);
+      const path = parentPath === 'Root' ? folder.name || 'Folder' : `${parentPath} / ${folder.name || 'Folder'}`;
+      map.set(id, path);
+      return path;
+    };
+    for (const folder of folders) {
+      buildPath(String(folder._id));
+    }
+    return map;
+  }, [folders, folderById]);
 
   const treeData = useMemo(() => buildArboristFolderData(folders), [folders]);
 
@@ -308,6 +330,41 @@ export default function FileExplorer() {
       toast.error(error.response?.data?.error || 'Could not create folder');
     }
   }, [newFolderName, selectedFolderId, createFolder]);
+
+  const openMoveForRow = useCallback((row) => {
+    if (!row) return;
+    setMoveTarget(row);
+    if (row.kind === 'file') {
+      const source = files.find((f) => String(f._id) === String(row.entityId));
+      const currentFolder = source ? fileFolderKey(source) || '' : '';
+      setMoveDestination(currentFolder);
+    } else {
+      const source = folders.find((f) => String(f._id) === String(row.entityId));
+      const currentParent = source ? parentFolderKey(source) || '' : '';
+      setMoveDestination(currentParent);
+    }
+    setMoveOpen(true);
+  }, [files, folders]);
+
+  const submitMove = useCallback(async () => {
+    if (!moveTarget) return;
+    try {
+      const nextFolderId = moveDestination || null;
+      if (moveTarget.kind === 'file') {
+        await moveFile(moveTarget.entityId, nextFolderId);
+      } else {
+        await axios.patch(`${API_URL}/files/documents/folders/${moveTarget.entityId}`, { parentId: nextFolderId });
+        toast.success('Folder moved');
+        await refresh();
+      }
+      setMoveOpen(false);
+      setMoveTarget(null);
+      setMoveDestination('');
+      setGridSelection([]);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Move failed');
+    }
+  }, [moveTarget, moveDestination, moveFile, refresh]);
 
   const openContextMenu = useCallback((event, row = null) => {
     event.preventDefault();
@@ -563,6 +620,16 @@ export default function FileExplorer() {
         {menuRow ? (
           <MenuItem
             onClick={() => {
+              openMoveForRow(menuRow);
+              closeContextMenu();
+            }}
+          >
+            Move to folder...
+          </MenuItem>
+        ) : null}
+        {menuRow ? (
+          <MenuItem
+            onClick={() => {
               openRenameForRow(menuRow);
               closeContextMenu();
             }}
@@ -597,6 +664,40 @@ export default function FileExplorer() {
           Refresh
         </MenuItem>
       </Menu>
+
+      <Dialog open={moveOpen} onClose={() => setMoveOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Move {moveTarget?.kind === 'folder' ? 'folder' : 'file'}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Destination for <strong>{moveTarget?.name}</strong>
+          </Typography>
+          <TextField
+            select
+            fullWidth
+            label="Destination folder"
+            value={moveDestination}
+            onChange={(e) => setMoveDestination(e.target.value)}
+          >
+            <MenuItem value="">Root</MenuItem>
+            {folders
+              .filter((f) => !(moveTarget?.kind === 'folder' && String(f._id) === String(moveTarget?.entityId)))
+              .map((folder) => {
+                const id = String(folder._id);
+                return (
+                  <MenuItem key={id} value={id}>
+                    {folderPathById.get(id) || folder.name || 'Folder'}
+                  </MenuItem>
+                );
+              })}
+          </TextField>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMoveOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={submitMove}>
+            Move
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
