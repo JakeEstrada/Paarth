@@ -55,6 +55,7 @@ export default function RegisterLedgerSection({ active }) {
   const [accountId, setAccountId] = useState('');
   const [sort, setSort] = useState('asc');
   const [days, setDays] = useState(90);
+  const [registerSync, setRegisterSync] = useState(null);
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.account_id === accountId) || null,
@@ -77,11 +78,13 @@ export default function RegisterLedgerSection({ active }) {
         setAccountId(nextAccounts[0].account_id);
       }
       setTransactions(Array.isArray(data?.transactions) ? data.transactions : []);
+      setRegisterSync(data?.registerSync && typeof data.registerSync === 'object' ? data.registerSync : null);
     } catch (e) {
       const msg = e.response?.data?.error || 'Failed to load register data';
       setErrorText(msg);
       setAccounts([]);
       setTransactions([]);
+      setRegisterSync(null);
     } finally {
       setLoading(false);
     }
@@ -167,6 +170,18 @@ export default function RegisterLedgerSection({ active }) {
           </Typography>
         ) : null}
       </Stack>
+
+      {registerSync?.syncedAt ? (
+        <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: -0.5, mb: 1, lineHeight: 1.5 }}>
+          Register is stored on the server; Plaid is called at most once per 24 hours for your organization.
+          Last bank pull{' '}
+          {new Date(registerSync.syncedAt).toLocaleString()}
+          {registerSync.source === 'plaid' ? ' (live)' : ' (saved copy)'}
+          {registerSync.nextPlaidRefreshAfter
+            ? `. Next live sync after ${new Date(registerSync.nextPlaidRefreshAfter).toLocaleString()}.`
+            : '.'}
+        </Typography>
+      ) : null}
 
       {errorText ? (
         <Alert severity="warning">{errorText}</Alert>

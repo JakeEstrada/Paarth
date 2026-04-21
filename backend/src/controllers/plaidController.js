@@ -1,4 +1,5 @@
 const Tenant = require('../models/Tenant');
+const PlaidRegisterCache = require('../models/PlaidRegisterCache');
 const { Products, CountryCode } = require('plaid');
 const { getPlaidApi, isPlaidConfigured, resolvePlaidEnvKey } = require('../services/plaidClient');
 
@@ -114,6 +115,7 @@ async function exchangePublicToken(req, res) {
       linkedBy: req.user._id,
     };
     await tenant.save();
+    await PlaidRegisterCache.deleteMany({ tenantId: req.user.tenantId });
 
     return res.status(201).json({
       ok: true,
@@ -138,6 +140,7 @@ async function disconnectPlaid(req, res) {
     const tenant = await Tenant.findById(req.user.tenantId).select('+plaidLink.accessToken');
     if (!tenant?.plaidLink?.accessToken) {
       await Tenant.updateOne({ _id: req.user.tenantId }, { $unset: { plaidLink: 1 } });
+      await PlaidRegisterCache.deleteMany({ tenantId: req.user.tenantId });
       return res.json({ ok: true, message: 'No bank link to remove.' });
     }
 
@@ -149,6 +152,7 @@ async function disconnectPlaid(req, res) {
     }
 
     await Tenant.updateOne({ _id: req.user.tenantId }, { $unset: { plaidLink: 1 } });
+    await PlaidRegisterCache.deleteMany({ tenantId: req.user.tenantId });
     return res.json({ ok: true });
   } catch (error) {
     console.error('disconnectPlaid:', error);
@@ -158,6 +162,91 @@ async function disconnectPlaid(req, res) {
 
 function toIsoDateOnly(date) {
   return new Date(date).toISOString().slice(0, 10);
+}
+
+/** At most one Plaid pull per tenant per this window; responses otherwise come from MongoDB. */
+const REGISTER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/** Always fetch this many days from Plaid when refreshing so UI can narrow without another Plaid call. */
+const REGISTER_PLAID_FETCH_DAYS = 730;
+
+function filterCachedTransactions(transactions, days, accountId) {
+  const endDate = new Date();
+  const startDate = new Date(endDate);
+  startDate.setDate(endDate.getDate() - days);
+  const startStr = toIsoDateOnly(startDate);
+  const endStr = toIsoDateOnly(endDate);
+  let rows = transactions.filter((t) => t.date >= startStr && t.date <= endStr);
+  if (accountId) rows = rows.filter((t) => t.account_id === accountId);
+  return rows;
+}
+
+function sortRegisterTransactions(transactions, sort) {
+  const copy = [...transactions];
+  copy.sort((a, b) => {
+    if (a.date === b.date) return String(a.transaction_id).localeCompare(String(b.transaction_id));
+    return sort === 'asc' ? String(a.date).localeCompare(String(b.date)) : String(b.date).localeCompare(String(a.date));
+  });
+  return copy;
+}
+
+async function fetchRegisterSnapshotFromPlaid(client, accessToken, fetchedDays) {
+  const endDate = new Date();
+  const startDate = new Date(endDate);
+  startDate.setDate(endDate.getDate() - fetchedDays);
+
+  const accountsResp = await client.accountsGet({ access_token: accessToken });
+  const accounts = Array.isArray(accountsResp?.data?.accounts) ? accountsResp.data.accounts : [];
+
+  const txReqBase = {
+    access_token: accessToken,
+    start_date: toIsoDateOnly(startDate),
+    end_date: toIsoDateOnly(endDate),
+  };
+  const txOptions = { count: 500, offset: 0 };
+  let allTransactions = [];
+  while (true) {
+    const txResp = await client.transactionsGet({
+      ...txReqBase,
+      options: txOptions,
+    });
+    const page = Array.isArray(txResp?.data?.transactions) ? txResp.data.transactions : [];
+    allTransactions = allTransactions.concat(page);
+    const total = Number(txResp?.data?.total_transactions || 0);
+    txOptions.offset += page.length;
+    if (txOptions.offset >= total || page.length === 0) break;
+  }
+
+  const normalized = allTransactions.map((t) => ({
+    transaction_id: t.transaction_id,
+    account_id: t.account_id,
+    date: t.date,
+    name: t.name || t.merchant_name || 'Transaction',
+    amount: Number(t.amount || 0),
+    pending: Boolean(t.pending),
+    category: Array.isArray(t.category) ? t.category : [],
+  }));
+  normalized.sort((a, b) => {
+    if (a.date === b.date) return String(a.transaction_id).localeCompare(String(b.transaction_id));
+    return String(a.date).localeCompare(String(b.date));
+  });
+
+  return {
+    accounts: accounts.map((a) => ({
+      account_id: a.account_id,
+      name: a.name,
+      official_name: a.official_name,
+      subtype: a.subtype,
+      type: a.type,
+      mask: a.mask,
+      balances: a.balances || {},
+    })),
+    transactions: normalized,
+    range: {
+      start: toIsoDateOnly(startDate),
+      end: toIsoDateOnly(endDate),
+      fetchedDays,
+    },
+  };
 }
 
 async function getRegisterData(req, res) {
@@ -181,68 +270,59 @@ async function getRegisterData(req, res) {
 
     const rawDays = Number(req.query?.days);
     const days = Number.isFinite(rawDays) ? Math.max(1, Math.min(730, Math.floor(rawDays))) : 90;
+
     const endDate = new Date();
     const startDate = new Date(endDate);
     startDate.setDate(endDate.getDate() - days);
 
-    const accountsResp = await client.accountsGet({ access_token: accessToken });
-    const accounts = Array.isArray(accountsResp?.data?.accounts) ? accountsResp.data.accounts : [];
+    const tenantId = req.user.tenantId;
+    const now = Date.now();
+    const cache = await PlaidRegisterCache.findOne({ tenantId }).lean();
 
-    const txOptions = { count: 500, offset: 0 };
-    if (accountId) txOptions.account_ids = [accountId];
-    const txReqBase = {
-      access_token: accessToken,
-      start_date: toIsoDateOnly(startDate),
-      end_date: toIsoDateOnly(endDate),
+    const buildPayload = (accounts, allTransactions, syncedAt, source) => {
+      const filtered = filterCachedTransactions(allTransactions, days, accountId);
+      const transactions = sortRegisterTransactions(filtered, sort);
+      const nextAfter = new Date(new Date(syncedAt).getTime() + REGISTER_CACHE_TTL_MS).toISOString();
+      return {
+        sort,
+        range: {
+          start: toIsoDateOnly(startDate),
+          end: toIsoDateOnly(endDate),
+          days,
+        },
+        accounts,
+        transactions,
+        registerSync: {
+          syncedAt: new Date(syncedAt).toISOString(),
+          source,
+          nextPlaidRefreshAfter: nextAfter,
+        },
+      };
     };
 
-    let allTransactions = [];
-    // Plaid transactionsGet is paginated via options.offset/count.
-    while (true) {
-      const txResp = await client.transactionsGet({
-        ...txReqBase,
-        options: txOptions,
-      });
-      const page = Array.isArray(txResp?.data?.transactions) ? txResp.data.transactions : [];
-      allTransactions = allTransactions.concat(page);
-      const total = Number(txResp?.data?.total_transactions || 0);
-      txOptions.offset += page.length;
-      if (txOptions.offset >= total || page.length === 0) break;
+    if (cache?.syncedAt && now - new Date(cache.syncedAt).getTime() < REGISTER_CACHE_TTL_MS) {
+      return res.json(
+        buildPayload(cache.accounts || [], cache.transactions || [], cache.syncedAt, 'cache')
+      );
     }
 
-    const normalized = allTransactions.map((t) => ({
-      transaction_id: t.transaction_id,
-      account_id: t.account_id,
-      date: t.date,
-      name: t.name || t.merchant_name || 'Transaction',
-      amount: Number(t.amount || 0),
-      pending: Boolean(t.pending),
-      category: Array.isArray(t.category) ? t.category : [],
-    }));
+    const syncedAt = new Date();
+    const snapshot = await fetchRegisterSnapshotFromPlaid(client, accessToken, REGISTER_PLAID_FETCH_DAYS);
 
-    normalized.sort((a, b) => {
-      if (a.date === b.date) return String(a.transaction_id).localeCompare(String(b.transaction_id));
-      return sort === 'asc' ? String(a.date).localeCompare(String(b.date)) : String(b.date).localeCompare(String(a.date));
-    });
-
-    return res.json({
-      sort,
-      range: {
-        start: toIsoDateOnly(startDate),
-        end: toIsoDateOnly(endDate),
-        days,
+    await PlaidRegisterCache.findOneAndUpdate(
+      { tenantId },
+      {
+        $set: {
+          syncedAt,
+          accounts: snapshot.accounts,
+          transactions: snapshot.transactions,
+          range: snapshot.range,
+        },
       },
-      accounts: accounts.map((a) => ({
-        account_id: a.account_id,
-        name: a.name,
-        official_name: a.official_name,
-        subtype: a.subtype,
-        type: a.type,
-        mask: a.mask,
-        balances: a.balances || {},
-      })),
-      transactions: normalized,
-    });
+      { upsert: true }
+    );
+
+    return res.json(buildPayload(snapshot.accounts, snapshot.transactions, syncedAt, 'plaid'));
   } catch (error) {
     console.error('getRegisterData:', error?.response?.data || error);
     const plaidMsg = error?.response?.data?.error_message || error?.message;
