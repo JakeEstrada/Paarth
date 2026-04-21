@@ -41,6 +41,7 @@ import { jsPDF } from 'jspdf';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import PlaidBankLinkSection from '../components/finance/PlaidBankLinkSection';
+import RegisterLedgerSection from '../components/finance/RegisterLedgerSection';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const ESTIMATE_PREFIX = '1102';
@@ -1214,6 +1215,7 @@ function FinanceHubPage() {
               {activeSection.subtitle}
             </Typography>
             <PlaidBankLinkSection active />
+            <RegisterLedgerSection active />
           </CardContent>
         </Card>
       ) : activeTab !== 'estimates' ? (
