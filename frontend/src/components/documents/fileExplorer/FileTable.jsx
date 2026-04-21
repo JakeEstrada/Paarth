@@ -7,7 +7,7 @@ import Folder from '@mui/icons-material/Folder';
 import Download from '@mui/icons-material/Download';
 import { DataGrid } from '@mui/x-data-grid';
 import { format } from 'date-fns';
-import { FILE_DRAG_MIME } from './constants';
+import { FILE_DRAG_MIME, FOLDER_DRAG_MIME } from './constants';
 
 function formatBytes(bytes) {
   if (bytes == null || Number.isNaN(bytes)) return '—';
@@ -62,8 +62,11 @@ function NoRowsOverlay() {
  *   onDownloadFile: (row: object) => void,
  *   onContextMenuRow: (event: MouseEvent, row: object) => void,
  *   onDropFileOnFolderRow: (fileId: string, folderId: string) => void,
+ *   onDropFolderOnFolderRow: (folderId: string, folderId: string) => void,
  *   onFileDragStart: () => void,
  *   onFileDragEnd: () => void,
+ *   onFolderDragStart: () => void,
+ *   onFolderDragEnd: () => void,
  *   onFolderRowDragEnter: (folderId: string) => void,
  *   activeDropFolderId: string | null,
  * }} props
@@ -77,8 +80,11 @@ export default function FileTable({
   onDownloadFile,
   onContextMenuRow,
   onDropFileOnFolderRow,
+  onDropFolderOnFolderRow,
   onFileDragStart,
   onFileDragEnd,
+  onFolderDragStart,
+  onFolderDragEnd,
   onFolderRowDragEnter,
   activeDropFolderId,
 }) {
@@ -99,33 +105,45 @@ export default function FileTable({
             minWidth: 0,
             width: '100%',
           }}
-          draggable={params.row.kind === 'file'}
+          draggable={params.row.kind === 'file' || params.row.kind === 'folder'}
           onDragStart={(e) => {
-            if (params.row.kind !== 'file') return;
-            e.dataTransfer.setData(FILE_DRAG_MIME, params.row.entityId);
+            if (params.row.kind === 'file') {
+              e.dataTransfer.setData(FILE_DRAG_MIME, params.row.entityId);
+              onFileDragStart();
+            } else if (params.row.kind === 'folder') {
+              e.dataTransfer.setData(FOLDER_DRAG_MIME, params.row.entityId);
+              onFolderDragStart();
+            } else {
+              return;
+            }
             e.dataTransfer.effectAllowed = 'move';
-            onFileDragStart();
           }}
-          onDragEnd={() => onFileDragEnd()}
+          onDragEnd={() => {
+            onFileDragEnd();
+            onFolderDragEnd();
+          }}
           onDragOver={(e) => {
             if (params.row.kind !== 'folder') return;
-            if (![...e.dataTransfer.types].includes(FILE_DRAG_MIME)) return;
+            if (![...e.dataTransfer.types].some((t) => t === FILE_DRAG_MIME || t === FOLDER_DRAG_MIME)) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
           }}
           onDragEnter={(e) => {
             if (params.row.kind !== 'folder') return;
-            if (![...e.dataTransfer.types].includes(FILE_DRAG_MIME)) return;
+            if (![...e.dataTransfer.types].some((t) => t === FILE_DRAG_MIME || t === FOLDER_DRAG_MIME)) return;
             e.preventDefault();
             onFolderRowDragEnter(params.row.entityId);
           }}
           onDrop={(e) => {
             if (params.row.kind !== 'folder') return;
             const fileId = e.dataTransfer.getData(FILE_DRAG_MIME);
-            if (!fileId) return;
+            const draggedFolderId = e.dataTransfer.getData(FOLDER_DRAG_MIME);
+            if (!fileId && !draggedFolderId) return;
             e.preventDefault();
-            onDropFileOnFolderRow(fileId, params.row.entityId);
+            if (fileId) onDropFileOnFolderRow(fileId, params.row.entityId);
+            if (draggedFolderId) onDropFolderOnFolderRow(draggedFolderId, params.row.entityId);
             onFileDragEnd();
+            onFolderDragEnd();
           }}
           title={params.row.kind === 'folder' ? 'Drop file here to move' : ''}
         >

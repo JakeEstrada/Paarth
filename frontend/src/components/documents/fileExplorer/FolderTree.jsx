@@ -3,7 +3,7 @@ import { Box, Typography } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { Tree } from 'react-arborist';
-import { FILE_DRAG_MIME, ROOT_TREE_ID } from './constants';
+import { FILE_DRAG_MIME, FOLDER_DRAG_MIME, ROOT_TREE_ID } from './constants';
 
 function FolderTreeNode({
   node,
@@ -12,8 +12,10 @@ function FolderTreeNode({
   dropTargetId,
   setDropTargetId,
   onFileDroppedOnFolder,
+  onFolderDroppedOnFolder,
   onDragTargetChange,
   isDraggingFile,
+  isDraggingFolder,
 }) {
   const isRoot = node.id === ROOT_TREE_ID;
   const targetFolderId = isRoot ? null : node.id;
@@ -25,13 +27,13 @@ function FolderTreeNode({
       style={style}
       ref={dragHandle}
       onDragOver={(e) => {
-        if (![...e.dataTransfer.types].includes(FILE_DRAG_MIME)) return;
+        if (![...e.dataTransfer.types].some((t) => t === FILE_DRAG_MIME || t === FOLDER_DRAG_MIME)) return;
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = 'move';
       }}
       onDragEnter={(e) => {
-        if (![...e.dataTransfer.types].includes(FILE_DRAG_MIME)) return;
+        if (![...e.dataTransfer.types].some((t) => t === FILE_DRAG_MIME || t === FOLDER_DRAG_MIME)) return;
         e.preventDefault();
         setDropTargetId(node.id);
         onDragTargetChange(targetFolderId);
@@ -45,10 +47,11 @@ function FolderTreeNode({
         e.preventDefault();
         e.stopPropagation();
         const fileId = e.dataTransfer.getData(FILE_DRAG_MIME);
+        const draggedFolderId = e.dataTransfer.getData(FOLDER_DRAG_MIME);
         setDropTargetId(null);
         onDragTargetChange(null);
-        if (!fileId) return;
-        onFileDroppedOnFolder(fileId, targetFolderId);
+        if (fileId) onFileDroppedOnFolder(fileId, targetFolderId);
+        if (draggedFolderId) onFolderDroppedOnFolder(draggedFolderId, targetFolderId);
       }}
       sx={{
         display: 'flex',
@@ -61,7 +64,7 @@ function FolderTreeNode({
         bgcolor: highlighted ? 'action.selected' : 'transparent',
         border: highlighted ? '1px dashed' : '1px solid transparent',
         borderColor: highlighted ? 'primary.main' : 'transparent',
-        cursor: isDraggingFile ? 'copy' : 'pointer',
+        cursor: (isDraggingFile || isDraggingFolder) ? 'copy' : 'pointer',
         '&:hover': { bgcolor: 'action.hover' },
       }}
     >
@@ -79,8 +82,10 @@ function FolderTreeNode({
  *   selectedFolderId: string | null,
  *   onFolderSelect: (id: string | null) => void,
  *   onFileDroppedOnFolder: (fileId: string, folderId: string | null) => void,
+ *   onFolderDroppedOnFolder: (folderId: string, folderId: string | null) => void,
  *   onDragTargetChange: (id: string | null) => void,
  *   isDraggingFile: boolean,
+ *   isDraggingFolder: boolean,
  *   width?: number,
  *   height: number,
  *   activeDropFolderId?: string | null,
@@ -91,8 +96,10 @@ export default function FolderTree({
   selectedFolderId,
   onFolderSelect,
   onFileDroppedOnFolder,
+  onFolderDroppedOnFolder,
   onDragTargetChange,
   isDraggingFile,
+  isDraggingFolder,
   width = 280,
   height,
 }) {
@@ -105,11 +112,13 @@ export default function FolderTree({
         dropTargetId={dropTargetId}
         setDropTargetId={setDropTargetId}
         onFileDroppedOnFolder={onFileDroppedOnFolder}
+        onFolderDroppedOnFolder={onFolderDroppedOnFolder}
         onDragTargetChange={onDragTargetChange}
         isDraggingFile={isDraggingFile}
+        isDraggingFolder={isDraggingFolder}
       />
     ),
-    [dropTargetId, onFileDroppedOnFolder, onDragTargetChange, isDraggingFile]
+    [dropTargetId, onFileDroppedOnFolder, onFolderDroppedOnFolder, onDragTargetChange, isDraggingFile, isDraggingFolder]
   );
 
   return (

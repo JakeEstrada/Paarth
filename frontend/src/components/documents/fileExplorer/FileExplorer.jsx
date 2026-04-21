@@ -21,7 +21,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { buildArboristFolderData } from './buildFolderTree';
-import { API_URL, FILE_DRAG_MIME, ROOT_TREE_ID } from './constants';
+import { API_URL, FILE_DRAG_MIME, FOLDER_DRAG_MIME, ROOT_TREE_ID } from './constants';
 import { useDocumentsApi } from './useDocumentsApi';
 import FolderTree from './FolderTree';
 import FileTable, { formatBytes, typeLabel } from './FileTable';
@@ -61,6 +61,7 @@ export default function FileExplorer() {
   const [uploading, setUploading] = useState(false);
   const [dropCrumbId, setDropCrumbId] = useState(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [isDraggingFolder, setIsDraggingFolder] = useState(false);
   const [activeDropFolderId, setActiveDropFolderId] = useState(null);
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -231,6 +232,26 @@ export default function FileExplorer() {
     [files, moveFile]
   );
 
+  const handleFolderDroppedOnFolder = useCallback(
+    async (folderId, targetFolderId) => {
+      if (!folderId) return;
+      const movingFolder = folders.find((f) => String(f._id) === String(folderId));
+      if (!movingFolder) return;
+      const sourceParentId = parentFolderKey(movingFolder) || null;
+      const nextParentId = targetFolderId || null;
+      if (String(folderId) === String(nextParentId)) return;
+      if (sourceParentId === nextParentId) return;
+      try {
+        await axios.patch(`${API_URL}/files/documents/folders/${folderId}`, { parentId: nextParentId });
+        toast.success('Folder moved');
+        await refresh();
+      } catch (error) {
+        toast.error(error.response?.data?.error || 'Move failed');
+      }
+    },
+    [folders, refresh]
+  );
+
   const handleUploadFiles = useCallback(
     async (fileList) => {
       if (!fileList?.length) return;
@@ -387,11 +408,11 @@ export default function FileExplorer() {
   const menuRow = menuState?.row || (selectedRows.length === 1 ? selectedRows[0] : null);
 
   useEffect(() => {
-    document.body.style.cursor = isDraggingFile ? 'grabbing' : '';
+    document.body.style.cursor = (isDraggingFile || isDraggingFolder) ? 'grabbing' : '';
     return () => {
       document.body.style.cursor = '';
     };
-  }, [isDraggingFile]);
+  }, [isDraggingFile, isDraggingFolder]);
 
   if (loading && !folders.length && !files.length) {
     return (
@@ -447,12 +468,12 @@ export default function FileExplorer() {
               color="inherit"
               onClick={() => setSelectedFolderId(c.id)}
               onDragOver={(e) => {
-                if (![...e.dataTransfer.types].includes(FILE_DRAG_MIME)) return;
+                if (![...e.dataTransfer.types].some((t) => t === FILE_DRAG_MIME || t === FOLDER_DRAG_MIME)) return;
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
               }}
               onDragEnter={(e) => {
-                if (![...e.dataTransfer.types].includes(FILE_DRAG_MIME)) return;
+                if (![...e.dataTransfer.types].some((t) => t === FILE_DRAG_MIME || t === FOLDER_DRAG_MIME)) return;
                 e.preventDefault();
                 setDropCrumbId(crumbDropId);
                 setActiveDropFolderId(c.id ? String(c.id) : null);
@@ -465,9 +486,11 @@ export default function FileExplorer() {
               onDrop={(e) => {
                 e.preventDefault();
                 const fileId = e.dataTransfer.getData(FILE_DRAG_MIME);
+                const folderId = e.dataTransfer.getData(FOLDER_DRAG_MIME);
                 setDropCrumbId(null);
                 setActiveDropFolderId(null);
-                handleFileDroppedOnFolder(fileId, c.id);
+                if (fileId) handleFileDroppedOnFolder(fileId, c.id);
+                if (folderId) handleFolderDroppedOnFolder(folderId, c.id);
               }}
               sx={{
                 cursor: 'pointer',
@@ -510,7 +533,9 @@ export default function FileExplorer() {
               selectedFolderId={selectedFolderId}
               onFolderSelect={setSelectedFolderId}
               onFileDroppedOnFolder={handleFileDroppedOnFolder}
+              onFolderDroppedOnFolder={handleFolderDroppedOnFolder}
               isDraggingFile={isDraggingFile}
+              isDraggingFolder={isDraggingFolder}
               onDragTargetChange={setActiveDropFolderId}
               activeDropFolderId={activeDropFolderId}
               width={268}
@@ -533,9 +558,16 @@ export default function FileExplorer() {
               onDownloadFile={handleDownloadFile}
               onContextMenuRow={openContextMenu}
               onDropFileOnFolderRow={handleFileDroppedOnFolder}
+              onDropFolderOnFolderRow={handleFolderDroppedOnFolder}
               onFileDragStart={() => setIsDraggingFile(true)}
               onFileDragEnd={() => {
                 setIsDraggingFile(false);
+                setDropCrumbId(null);
+                setActiveDropFolderId(null);
+              }}
+              onFolderDragStart={() => setIsDraggingFolder(true)}
+              onFolderDragEnd={() => {
+                setIsDraggingFolder(false);
                 setDropCrumbId(null);
                 setActiveDropFolderId(null);
               }}
