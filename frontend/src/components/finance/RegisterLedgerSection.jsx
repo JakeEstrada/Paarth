@@ -3,6 +3,7 @@ import axios from 'axios';
 import {
   Alert,
   Box,
+  Chip,
   FormControl,
   InputLabel,
   MenuItem,
@@ -19,6 +20,8 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
+import PlaidBankLinkSection from './PlaidBankLinkSection';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -47,7 +50,8 @@ function money(n) {
   return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function RegisterLedgerSection({ active }) {
+export default function RegisterLedgerSection({ active, headerTitle, headerSubtitle }) {
+  const showFinanceHeader = Boolean(headerTitle);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [accounts, setAccounts] = useState([]);
@@ -110,8 +114,124 @@ export default function RegisterLedgerSection({ active }) {
 
   if (!active) return null;
 
+  const balanceValue = Number(selectedAccount?.balances?.current ?? 0);
+  const balanceNonNegative = balanceValue >= 0;
+
+  const accountSelect = (
+    <FormControl
+      size="small"
+      sx={{
+        minWidth: { xs: '100%', sm: 280 },
+        maxWidth: 420,
+        ...(showFinanceHeader ? { width: { md: 'min(100%, 400px)' } } : {}),
+      }}
+    >
+      <InputLabel id="register-account-label">Account</InputLabel>
+      <Select
+        labelId="register-account-label"
+        value={accountId}
+        label="Account"
+        onChange={(e) => setAccountId(String(e.target.value))}
+      >
+        {accounts.map((a) => (
+          <MenuItem key={a.account_id} value={a.account_id}>
+            {(a.official_name || a.name) + (a.mask ? ` ••••${a.mask}` : '')}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  );
+
   return (
-    <Box sx={{ mt: 1.25 }}>
+    <Box sx={{ mt: showFinanceHeader ? 0 : 1.25 }}>
+      {showFinanceHeader ? (
+        <Box
+          sx={{
+            mb: 1.5,
+            pb: 1.5,
+            borderBottom: 1,
+            borderColor: 'divider',
+          }}
+        >
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: 'minmax(160px,1fr) minmax(220px,auto) minmax(160px,1fr)' },
+              gap: { xs: 1.5, md: 2 },
+              alignItems: 'start',
+            }}
+          >
+            <Box sx={{ minWidth: 0, pr: { md: 1 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600 }}>
+                  {headerTitle}
+                </Typography>
+                <Chip size="small" color="primary" label="New" />
+              </Box>
+              {headerSubtitle ? (
+                <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.35, mb: 0, lineHeight: 1.4 }}>
+                  {headerSubtitle}
+                </Typography>
+              ) : null}
+            </Box>
+
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'flex-start',
+                width: '100%',
+              }}
+            >
+              {accountSelect}
+            </Box>
+
+            <Box
+              sx={{
+                justifySelf: { xs: 'stretch', md: 'end' },
+                textAlign: { xs: 'left', md: 'right' },
+                minWidth: 0,
+                width: '100%',
+              }}
+            >
+              <PlaidBankLinkSection active variant="titleRight" />
+            </Box>
+          </Box>
+
+          {selectedAccount ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+              <Paper
+                elevation={0}
+                sx={(theme) => {
+                  const tone = balanceNonNegative ? theme.palette.success : theme.palette.error;
+                  return {
+                    px: { xs: 2, sm: 3 },
+                    py: { xs: 1.25, sm: 1.5 },
+                    borderRadius: 2,
+                    border: '2px solid',
+                    borderColor: tone.main,
+                    bgcolor: alpha(tone.main, theme.palette.mode === 'dark' ? 0.22 : 0.1),
+                  };
+                }}
+              >
+                <Typography
+                  variant="h5"
+                  sx={(theme) => ({
+                    fontWeight: 800,
+                    fontSize: { xs: '1.35rem', sm: '1.6rem' },
+                    color: balanceNonNegative ? theme.palette.success.main : theme.palette.error.main,
+                    letterSpacing: 0.02,
+                    textAlign: 'center',
+                  })}
+                >
+                  Balance ${money(selectedAccount?.balances?.current)}
+                </Typography>
+              </Paper>
+            </Box>
+          ) : null}
+        </Box>
+      ) : null}
+
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         spacing={1}
@@ -120,21 +240,7 @@ export default function RegisterLedgerSection({ active }) {
         sx={{ mb: 1 }}
       >
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1, minWidth: 0 }}>
-          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 240 }, maxWidth: { sm: 360 } }}>
-            <InputLabel id="register-account-label">Account</InputLabel>
-            <Select
-              labelId="register-account-label"
-              value={accountId}
-              label="Account"
-              onChange={(e) => setAccountId(String(e.target.value))}
-            >
-              {accounts.map((a) => (
-                <MenuItem key={a.account_id} value={a.account_id}>
-                  {(a.official_name || a.name) + (a.mask ? ` ••••${a.mask}` : '')}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          {!showFinanceHeader ? accountSelect : null}
 
           <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 120 } }}>
             <InputLabel id="register-days-label">Window</InputLabel>
@@ -164,7 +270,7 @@ export default function RegisterLedgerSection({ active }) {
           </ToggleButtonGroup>
         </Stack>
 
-        {selectedAccount ? (
+        {!showFinanceHeader && selectedAccount ? (
           <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap', alignSelf: { xs: 'flex-end', md: 'center' } }}>
             Balance ${money(selectedAccount?.balances?.current)}
           </Typography>

@@ -40,7 +40,6 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import PlaidBankLinkSection from '../components/finance/PlaidBankLinkSection';
 import RegisterLedgerSection from '../components/finance/RegisterLedgerSection';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -1205,29 +1204,11 @@ function FinanceHubPage() {
       {activeTab === 'register' ? (
         <Card>
           <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'baseline',
-                flexWrap: 'wrap',
-                gap: 1,
-                rowGap: 0.5,
-                mb: 1,
-                pb: 1,
-                borderBottom: 1,
-                borderColor: 'divider',
-              }}
-            >
-              <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600 }}>
-                {activeSection.label}
-              </Typography>
-              <Chip size="small" color="primary" label="New" />
-              <Typography variant="caption" color="text.secondary" sx={{ width: '100%', mt: -0.25 }}>
-                {activeSection.subtitle}
-              </Typography>
-            </Box>
-            <PlaidBankLinkSection active variant="compact" />
-            <RegisterLedgerSection active />
+            <RegisterLedgerSection
+              active
+              headerTitle={activeSection.label}
+              headerSubtitle={activeSection.subtitle}
+            />
           </CardContent>
         </Card>
       ) : activeTab !== 'estimates' ? (
