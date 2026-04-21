@@ -47,7 +47,7 @@ export function ThemeProvider({ children }) {
             : {
                 // Light mode palette
                 background: {
-                  default: 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
+                  default: '#F5F7FA',
                   paper: '#FFFFFF',
                 },
                 text: {
