@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import {
   Alert,
   Box,
   Chip,
   FormControl,
+  IconButton,
   InputLabel,
   MenuItem,
   Paper,
@@ -18,9 +19,11 @@ import {
   TableRow,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
+import { Fullscreen, FullscreenExit } from '@mui/icons-material';
 import PlaidBankLinkSection from './PlaidBankLinkSection';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -57,9 +60,11 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
   const [accounts, setAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [accountId, setAccountId] = useState('');
-  const [sort, setSort] = useState('asc');
+  const [sort, setSort] = useState('desc');
   const [days, setDays] = useState(90);
   const [registerSync, setRegisterSync] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const panelRef = useRef(null);
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.account_id === accountId) || null,
@@ -98,6 +103,14 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
     if (!active) return;
     loadRegister();
   }, [active, loadRegister]);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
 
   const rows = useMemo(() => {
     let running = 0;
@@ -142,8 +155,34 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
     </FormControl>
   );
 
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      if (panelRef.current?.requestFullscreen) {
+        await panelRef.current.requestFullscreen();
+      }
+    } catch (e) {
+      console.error('toggleFullscreen:', e);
+    }
+  };
+
   return (
-    <Box sx={{ mt: showFinanceHeader ? 0 : 1.25 }}>
+    <Box
+      ref={panelRef}
+      sx={{
+        mt: showFinanceHeader ? 0 : 1.25,
+        ...(isFullscreen
+          ? {
+              bgcolor: 'background.default',
+              p: 2,
+              overflow: 'auto',
+            }
+          : {}),
+      }}
+    >
       {showFinanceHeader ? (
         <Box
           sx={{
@@ -254,6 +293,7 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
               <MenuItem value={90}>90 days</MenuItem>
               <MenuItem value={180}>180 days</MenuItem>
               <MenuItem value={365}>365 days</MenuItem>
+              <MenuItem value={730}>730 days</MenuItem>
             </Select>
           </FormControl>
 
@@ -268,6 +308,12 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
             <ToggleButton value="asc">Oldest first</ToggleButton>
             <ToggleButton value="desc">Newest first</ToggleButton>
           </ToggleButtonGroup>
+
+          <Tooltip title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+            <IconButton onClick={toggleFullscreen} size="small" aria-label="toggle register fullscreen">
+              {isFullscreen ? <FullscreenExit fontSize="small" /> : <Fullscreen fontSize="small" />}
+            </IconButton>
+          </Tooltip>
         </Stack>
 
         {!showFinanceHeader && selectedAccount ? (

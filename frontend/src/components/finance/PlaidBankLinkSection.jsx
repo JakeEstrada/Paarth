@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Box, Button, Chip, CircularProgress, Typography } from '@mui/material';
-import { AccountBalance as AccountBalanceIcon, LinkOff as LinkOffIcon } from '@mui/icons-material';
+import { Box, Button, Chip, CircularProgress, IconButton, Menu, MenuItem, Tooltip, Typography } from '@mui/material';
+import {
+  AccountBalance as AccountBalanceIcon,
+  LinkOff as LinkOffIcon,
+  Settings as SettingsIcon,
+} from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { openPlaidLink } from '../../utils/plaidLink';
@@ -15,8 +19,11 @@ function PlaidBankLinkSection({ active, variant = 'default' }) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [menuAnchorEl, setMenuAnchorEl] = useState(null);
 
   const canManage = user && LINK_ROLES.has(user.role);
+  const menuOpen = Boolean(menuAnchorEl);
+  const linked = Boolean(status?.linked);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -89,9 +96,29 @@ function PlaidBankLinkSection({ active, variant = 'default' }) {
     }
   };
 
+  const handleOpenMenu = (event) => setMenuAnchorEl(event.currentTarget);
+  const handleCloseMenu = () => setMenuAnchorEl(null);
+
+  const handleMenuConnect = async () => {
+    handleCloseMenu();
+    await handleStartLink();
+  };
+
+  const handleMenuDisconnect = async () => {
+    handleCloseMenu();
+    await handleDisconnect();
+  };
+
   if (!active) return null;
 
+  const headline = !status?.configured
+    ? 'Plaid unavailable'
+    : !linked
+      ? 'Plaid: No bank linked'
+      : `Plaid: ${status.institutionName || 'Linked'}${status.linkedAt ? ` · ${new Date(status.linkedAt).toLocaleString()}` : ''}`;
+
   if (variant === 'titleRight') {
+
     return (
       <Box sx={{ mt: 0, minWidth: 0, width: '100%' }}>
         {loading && (
@@ -116,52 +143,9 @@ function PlaidBankLinkSection({ active, variant = 'default' }) {
         )}
 
         {!loading && status?.configured && canManage && (
-          <>
-            {status.linked ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.75 }}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    gap: 0.75,
-                    flexWrap: 'wrap',
-                    textAlign: 'right',
-                  }}
-                >
-                  {status.environment ? (
-                    <Chip
-                      size="small"
-                      label={status.environment}
-                      variant="outlined"
-                      sx={{ textTransform: 'capitalize' }}
-                    />
-                  ) : null}
-                  <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
-                    <Box component="span" sx={{ color: 'text.primary' }}>
-                      Plaid: {status.institutionName || 'Linked'}
-                    </Box>
-                    {status.linkedAt ? (
-                      <Box component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}>
-                        {' · '}
-                        {new Date(status.linkedAt).toLocaleString()}
-                      </Box>
-                    ) : null}
-                  </Typography>
-                </Box>
-                <Button
-                  variant="outlined"
-                  color="warning"
-                  size="small"
-                  startIcon={<LinkOffIcon />}
-                  onClick={handleDisconnect}
-                  disabled={busy}
-                >
-                  Disconnect
-                </Button>
-              </Box>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.75 }}>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 0.5 }}>
+            <Box sx={{ textAlign: 'right' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.75, flexWrap: 'wrap' }}>
                 {status.environment ? (
                   <Chip
                     size="small"
@@ -170,12 +154,31 @@ function PlaidBankLinkSection({ active, variant = 'default' }) {
                     sx={{ textTransform: 'capitalize' }}
                   />
                 ) : null}
-                <Button variant="contained" size="small" onClick={handleStartLink} disabled={busy}>
-                  {busy ? 'Opening…' : 'Connect bank'}
-                </Button>
+                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                  {headline}
+                </Typography>
               </Box>
-            )}
-          </>
+            </Box>
+            <Tooltip title="Plaid settings">
+              <span>
+                <IconButton size="small" onClick={handleOpenMenu} disabled={busy}>
+                  <SettingsIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Menu anchorEl={menuAnchorEl} open={menuOpen} onClose={handleCloseMenu}>
+              {!linked ? (
+                <MenuItem onClick={handleMenuConnect} disabled={busy}>
+                  {busy ? 'Opening...' : 'Connect account'}
+                </MenuItem>
+              ) : null}
+              {linked ? (
+                <MenuItem onClick={handleMenuDisconnect} disabled={busy}>
+                  Disconnect account
+                </MenuItem>
+              ) : null}
+            </Menu>
+          </Box>
         )}
       </Box>
     );
