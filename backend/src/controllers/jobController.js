@@ -1,7 +1,126 @@
 const mongoose = require('mongoose');
 const Job = require('../models/Job');
 const Activity = require('../models/Activity');
+const File = require('../models/File');
+const Customer = require('../models/Customer');
+const DocumentFolder = require('../models/DocumentFolder');
 const { publishProjectCreated, publishProjectUpdated } = require('../services/eventBus');
+const fs = require('fs');
+const path = require('path');
+
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
+const DOCUMENT_TEXT_DIR = path.join(UPLOADS_DIR, 'documents-text');
+
+function sanitizeFolderName(name) {
+  return String(name || '')
+    .trim()
+    .replace(/[<>:"\\|?*\x00-\x1F]/g, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/\.+$/g, '');
+}
+
+function toIso(value) {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toISOString();
+}
+
+async function findOrCreateFolder(parentId, name, createdBy) {
+  let folder = await DocumentFolder.findOne({ parentId, name });
+  if (folder) return folder;
+  folder = await DocumentFolder.create({ parentId, name, createdBy });
+  return folder;
+}
+
+function buildTakeoffDocumentContent(job) {
+  const t = job?.takeoff || {};
+  const lines = [
+    `Job: ${job.title || 'Untitled'}`,
+    `Completed At: ${toIso(t.completedAt)}`,
+    `Notes: ${t.notes || '-'}`,
+    `Sheet Updated At: ${toIso(t.sheetUpdatedAt)}`,
+  ];
+  if (t.sheetData != null) {
+    lines.push('', 'Sheet Data JSON:', JSON.stringify(t.sheetData, null, 2));
+  }
+  return lines.join('\n');
+}
+
+async function syncTakeoffToDocuments(job, actorId) {
+  const customerId = job?.customerId;
+  if (!customerId) return;
+  if (!job?.takeoff) return;
+
+  const hasTakeoffData =
+    Boolean(job.takeoff.completedAt) ||
+    Boolean(String(job.takeoff.notes || '').trim()) ||
+    Boolean(job.takeoff.sheetUpdatedAt) ||
+    job.takeoff.sheetData != null;
+  if (!hasTakeoffData) return;
+
+  const customer = await Customer.findById(customerId).select('name');
+  if (!customer) return;
+
+  const createdBy = actorId || job.createdBy;
+  if (!createdBy) return;
+
+  const customersRoot = await findOrCreateFolder(null, 'Customers', createdBy);
+  const customerFolderName = sanitizeFolderName(customer.name) || `Customer-${String(customerId).slice(-6)}`;
+  const customerFolder = await findOrCreateFolder(customersRoot._id, customerFolderName, createdBy);
+
+  const marker = `[AUTO_DOC:takeoff] customer:${String(customerId)} job:${String(job._id)}`;
+  const content = buildTakeoffDocumentContent(job);
+  const originalName = `${sanitizeFolderName(job.title) || 'Job'} - Takeoff.txt`;
+  const fileSize = Buffer.byteLength(content, 'utf8');
+
+  fs.mkdirSync(DOCUMENT_TEXT_DIR, { recursive: true });
+  const existing = await File.findOne({
+    customerId,
+    jobId: null,
+    taskId: null,
+    description: marker,
+  });
+
+  if (existing) {
+    const existingPath = String(existing.path || '');
+    let writePath = existingPath;
+    if (!path.isAbsolute(writePath)) {
+      writePath = path.resolve(__dirname, '../../', writePath);
+    }
+    if (!writePath || !path.isAbsolute(writePath)) {
+      const diskName = `${sanitizeFolderName(originalName.replace(/\.txt$/i, '')) || 'takeoff'}-${Date.now()}.txt`;
+      writePath = path.join(DOCUMENT_TEXT_DIR, diskName);
+    }
+    fs.writeFileSync(writePath, content, 'utf8');
+    existing.path = writePath;
+    existing.folderId = customerFolder._id;
+    existing.originalName = originalName;
+    existing.size = fileSize;
+    existing.description = marker;
+    await existing.save();
+    return;
+  }
+
+  const diskName = `${sanitizeFolderName(originalName.replace(/\.txt$/i, '')) || 'takeoff'}-${Date.now()}.txt`;
+  const diskPath = path.join(DOCUMENT_TEXT_DIR, diskName);
+  fs.writeFileSync(diskPath, content, 'utf8');
+
+  await File.create({
+    customerId,
+    folderId: customerFolder._id,
+    jobId: undefined,
+    taskId: undefined,
+    filename: diskName,
+    originalName,
+    mimetype: 'text/plain',
+    size: fileSize,
+    path: diskPath,
+    fileType: 'other',
+    uploadedBy: createdBy,
+    description: marker,
+  });
+}
 
 // Get all jobs
 async function getJobs(req, res) {
@@ -275,6 +394,7 @@ async function updateJob(req, res) {
       }
     }
     Object.assign(job, jobUpdateData);
+    const shouldSyncTakeoffDocument = jobUpdateData.takeoff !== undefined;
     if (jobUpdateData.takeoff !== undefined) {
       job.markModified('takeoff');
     }
@@ -283,6 +403,14 @@ async function updateJob(req, res) {
       job.markModified('estimateHistory');
     }
     await job.save();
+
+    if (shouldSyncTakeoffDocument) {
+      try {
+        await syncTakeoffToDocuments(job, createdBy);
+      } catch (docSyncError) {
+        console.error('syncTakeoffToDocuments:', docSyncError?.message || docSyncError);
+      }
+    }
     
     // Track ALL field changes (excluding notes which we handle separately)
     const changes = trackChanges(
