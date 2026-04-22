@@ -1,50 +1,59 @@
 const fs = require('fs');
 const path = require('path');
 const Activity = require('../models/Activity');
+const DeveloperTask = require('../models/DeveloperTask');
 const User = require('../models/User');
 
 const TASKS_FILE = path.join(__dirname, '../../developer-tasks.json');
 
-// Ensure file exists
-function ensureFileExists() {
-  if (!fs.existsSync(TASKS_FILE)) {
-    fs.writeFileSync(TASKS_FILE, JSON.stringify([], null, 2));
-  }
+let migrationAttempted = false;
+
+function normalizePriority(priorityDots) {
+  const parsedPriority = Number(priorityDots);
+  return [1, 2, 3].includes(parsedPriority) ? parsedPriority : 1;
 }
 
-// Read tasks from file
-function readTasks() {
-  ensureFileExists();
-  try {
-    const data = fs.readFileSync(TASKS_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error reading tasks file:', error);
-    return [];
-  }
+function mapTaskDoc(doc) {
+  return {
+    id: String(doc._id),
+    title: doc.title,
+    description: doc.description || '',
+    priorityDots: normalizePriority(doc.priorityDots),
+    completed: Boolean(doc.completed),
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
 }
 
-// Write tasks to file
-function writeTasks(tasks) {
-  ensureFileExists();
+async function migrateTasksFromJsonIfNeeded() {
+  if (migrationAttempted) return;
+  migrationAttempted = true;
+
   try {
-    // Use atomic write: write to temp file first, then rename
-    const tempFile = TASKS_FILE + '.tmp';
-    fs.writeFileSync(tempFile, JSON.stringify(tasks, null, 2), 'utf8');
-    fs.renameSync(tempFile, TASKS_FILE);
-    return true;
+    const existingCount = await DeveloperTask.countDocuments();
+    if (existingCount > 0) return;
+    if (!fs.existsSync(TASKS_FILE)) return;
+
+    const raw = fs.readFileSync(TASKS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return;
+
+    const docs = parsed
+      .filter((t) => t && typeof t === 'object' && String(t.title || '').trim())
+      .map((t) => ({
+        title: String(t.title || '').trim(),
+        description: String(t.description || '').trim(),
+        priorityDots: normalizePriority(t.priorityDots),
+        completed: Boolean(t.completed),
+        createdAt: t.createdAt ? new Date(t.createdAt) : undefined,
+        updatedAt: t.updatedAt ? new Date(t.updatedAt) : undefined,
+      }));
+
+    if (!docs.length) return;
+    await DeveloperTask.insertMany(docs, { ordered: false });
+    console.log(`Migrated ${docs.length} developer tasks from JSON file to MongoDB.`);
   } catch (error) {
-    console.error('Error writing tasks file:', error);
-    // Clean up temp file if it exists
-    try {
-      const tempFile = TASKS_FILE + '.tmp';
-      if (fs.existsSync(tempFile)) {
-        fs.unlinkSync(tempFile);
-      }
-    } catch (cleanupError) {
-      console.error('Error cleaning up temp file:', cleanupError);
-    }
-    return false;
+    console.error('Developer tasks migration skipped due to error:', error?.message || error);
   }
 }
 
@@ -58,8 +67,9 @@ async function getActivityUserId(req) {
 // Get all developer tasks
 async function getDeveloperTasks(req, res) {
   try {
-    const tasks = readTasks();
-    res.json(tasks);
+    await migrateTasksFromJsonIfNeeded();
+    const tasks = await DeveloperTask.find({}).sort({ createdAt: -1 }).lean();
+    res.json(tasks.map(mapTaskDoc));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -69,29 +79,18 @@ async function getDeveloperTasks(req, res) {
 async function createDeveloperTask(req, res) {
   try {
     const { title, description, priorityDots } = req.body;
-    
+
     if (!title || !title.trim()) {
       return res.status(400).json({ error: 'Task title is required' });
     }
 
-    const parsedPriority = Number(priorityDots);
-    const normalizedPriority = [1, 2, 3].includes(parsedPriority) ? parsedPriority : 1;
-
-    const tasks = readTasks();
-    const newTask = {
-      id: Date.now().toString(),
+    const taskDoc = await DeveloperTask.create({
       title: title.trim(),
       description: (description || '').trim(),
-      priorityDots: normalizedPriority,
+      priorityDots: normalizePriority(priorityDots),
       completed: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    tasks.unshift(newTask); // Add to beginning
-    const writeSuccess = writeTasks(tasks);
-    if (!writeSuccess) {
-      return res.status(500).json({ error: 'Failed to save task to file' });
-    }
+    });
+    const newTask = mapTaskDoc(taskDoc);
 
     // Log developer task creation to Activity / Recent Activity
     try {
@@ -119,43 +118,36 @@ async function updateDeveloperTask(req, res) {
   try {
     const { id } = req.params;
     const { title, description, completed, priorityDots } = req.body;
+    const taskDoc = await DeveloperTask.findById(id);
 
-    const tasks = readTasks();
-    const taskIndex = tasks.findIndex((task) => task.id === id);
-
-    if (taskIndex === -1) {
+    if (!taskDoc) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    const originalTask = { ...tasks[taskIndex] };
-    
+    const originalTask = mapTaskDoc(taskDoc.toObject());
+
     if (title !== undefined) {
-      tasks[taskIndex].title = title.trim();
+      taskDoc.title = String(title).trim();
     }
     if (description !== undefined) {
-      tasks[taskIndex].description = description.trim();
+      taskDoc.description = String(description).trim();
     }
     if (completed !== undefined) {
-      tasks[taskIndex].completed = completed;
+      taskDoc.completed = Boolean(completed);
     }
     if (priorityDots !== undefined) {
-      const parsedPriority = Number(priorityDots);
-      tasks[taskIndex].priorityDots = [1, 2, 3].includes(parsedPriority) ? parsedPriority : 1;
+      taskDoc.priorityDots = normalizePriority(priorityDots);
     }
 
-    const writeSuccess = writeTasks(tasks);
-    if (!writeSuccess) {
-      return res.status(500).json({ error: 'Failed to save task to file' });
-    }
-
-    const updatedTask = tasks[taskIndex];
+    await taskDoc.save();
+    const updatedTask = mapTaskDoc(taskDoc.toObject());
 
     // Log developer task update / completion
     try {
       const createdBy = await getActivityUserId(req);
       if (createdBy) {
         // Completion toggle
-        if (completed !== undefined && completed && !originalTask.completed) {
+        if (completed !== undefined && updatedTask.completed && !originalTask.completed) {
           await Activity.create({
             type: 'developer_task_completed',
             note: `[Dev Task] Completed: ${updatedTask.title}`,
@@ -187,19 +179,13 @@ async function updateDeveloperTask(req, res) {
 async function deleteDeveloperTask(req, res) {
   try {
     const { id } = req.params;
+    const taskDoc = await DeveloperTask.findById(id).lean();
 
-    const tasks = readTasks();
-    const taskToDelete = tasks.find((task) => task.id === id);
-    const filteredTasks = tasks.filter((task) => task.id !== id);
-
-    if (!taskToDelete) {
+    if (!taskDoc) {
       return res.status(404).json({ error: 'Task not found' });
     }
-
-    const writeSuccess = writeTasks(filteredTasks);
-    if (!writeSuccess) {
-      return res.status(500).json({ error: 'Failed to save task deletion to file' });
-    }
+    await DeveloperTask.deleteOne({ _id: id });
+    const taskToDelete = mapTaskDoc(taskDoc);
 
     // Log developer task deletion
     try {
