@@ -427,7 +427,7 @@ async function deleteStoredFileBinary(file) {
 
 async function resolveCreatedBy(req, fallbackUserId = null) {
   const User = require('../models/User');
-  let createdBy = req.user?._id || req.body.createdBy || fallbackUserId || null;
+  let createdBy = req.user?._id || req.body?.createdBy || fallbackUserId || null;
   if (!createdBy) {
     const defaultUser = await User.findOne({ isActive: true });
     if (defaultUser) createdBy = defaultUser._id;
