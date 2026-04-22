@@ -9,14 +9,18 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   Link,
   Menu,
   MenuItem,
   Paper,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import NavigateNext from '@mui/icons-material/NavigateNext';
+import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
+import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -43,6 +47,8 @@ export default function FileExplorer() {
   const treeWrapRef = useRef(null);
   const fileInputRef = useRef(null);
   const [treeHeight, setTreeHeight] = useState(420);
+  const [treeKey, setTreeKey] = useState(0);
+  const [openStateSeed, setOpenStateSeed] = useState({ [ROOT_TREE_ID]: true });
 
   const {
     folders,
@@ -144,6 +150,13 @@ export default function FileExplorer() {
   }, [folders, folderById]);
 
   const treeData = useMemo(() => buildArboristFolderData(folders), [folders]);
+  const allExpandedTreeState = useMemo(() => {
+    const state = { [ROOT_TREE_ID]: true };
+    folders.forEach((folder) => {
+      state[String(folder._id)] = true;
+    });
+    return state;
+  }, [folders]);
 
   const gridRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -405,6 +418,17 @@ export default function FileExplorer() {
     setMenuState(null);
   }, []);
 
+  const expandAllFolders = useCallback(() => {
+    setOpenStateSeed(allExpandedTreeState);
+    setTreeKey((k) => k + 1);
+  }, [allExpandedTreeState]);
+
+  const collapseAllFolders = useCallback(() => {
+    setOpenStateSeed({ [ROOT_TREE_ID]: true });
+    setTreeKey((k) => k + 1);
+    setSelectedFolderId(null);
+  }, []);
+
   const menuRow = menuState?.row || (selectedRows.length === 1 ? selectedRows[0] : null);
 
   useEffect(() => {
@@ -512,7 +536,18 @@ export default function FileExplorer() {
         })}
       </Breadcrumbs>
 
-      <Box sx={{ display: 'flex', gap: 2, flex: 1, minHeight: 480, alignItems: 'stretch' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          gap: 2,
+          flex: 1,
+          minHeight: 0,
+          height: { xs: '60vh', md: 'calc(100vh - 260px)' },
+          maxHeight: 'calc(100vh - 180px)',
+          alignItems: 'stretch',
+        }}
+      >
         <Paper
           variant="outlined"
           sx={{
@@ -522,13 +557,30 @@ export default function FileExplorer() {
             flexDirection: 'column',
             minHeight: 0,
             p: 1,
+            overflow: 'hidden',
           }}
         >
-          <Typography variant="subtitle2" color="text.secondary" sx={{ px: 0.5, pb: 1 }}>
-            Folders
-          </Typography>
-          <Box ref={treeWrapRef} sx={{ flex: 1, minHeight: 200 }}>
+          <Box sx={{ px: 0.5, pb: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Folders
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+              <Tooltip title="Expand all folders">
+                <IconButton size="small" onClick={expandAllFolders} aria-label="Expand all folders">
+                  <UnfoldMoreIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Collapse all folders">
+                <IconButton size="small" onClick={collapseAllFolders} aria-label="Collapse all folders">
+                  <UnfoldLessIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          </Box>
+          <Box ref={treeWrapRef} sx={{ flex: 1, minHeight: 0 }}>
             <FolderTree
+              treeKey={`folder-tree-${treeKey}`}
+              openStateSeed={openStateSeed}
               treeData={treeData}
               selectedFolderId={selectedFolderId}
               onFolderSelect={setSelectedFolderId}

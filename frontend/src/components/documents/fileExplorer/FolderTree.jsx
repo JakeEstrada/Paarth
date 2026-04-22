@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { Tree } from 'react-arborist';
 import { FILE_DRAG_MIME, FOLDER_DRAG_MIME, ROOT_TREE_ID } from './constants';
 
@@ -67,7 +69,18 @@ function FolderTreeNode({
         cursor: (isDraggingFile || isDraggingFolder) ? 'copy' : 'pointer',
         '&:hover': { bgcolor: 'action.hover' },
       }}
+      onClick={() => {
+        node.toggle();
+        if (isRoot) onDragTargetChange(null);
+      }}
     >
+      {node.isLeaf ? (
+        <Box sx={{ width: 16, flexShrink: 0 }} />
+      ) : node.isOpen ? (
+        <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.secondary', flexShrink: 0 }} />
+      ) : (
+        <ChevronRightIcon sx={{ fontSize: 16, color: 'text.secondary', flexShrink: 0 }} />
+      )}
       <Icon sx={{ fontSize: 18, color: 'warning.light', flexShrink: 0 }} />
       <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>
         {node.data.name}
@@ -88,7 +101,8 @@ function FolderTreeNode({
  *   isDraggingFolder: boolean,
  *   width?: number,
  *   height: number,
- *   activeDropFolderId?: string | null,
+ *   openStateSeed?: Record<string, boolean>,
+ *   treeKey?: string,
  * }} props
  */
 export default function FolderTree({
@@ -102,6 +116,8 @@ export default function FolderTree({
   isDraggingFolder,
   width = 280,
   height,
+  openStateSeed,
+  treeKey,
 }) {
   const [dropTargetId, setDropTargetId] = useState(null);
 
@@ -123,6 +139,7 @@ export default function FolderTree({
 
   return (
     <Tree
+      key={treeKey}
       data={treeData}
       width={width}
       height={height}
@@ -130,7 +147,7 @@ export default function FolderTree({
       rowHeight={34}
       overscanCount={8}
       openByDefault={false}
-      initialOpenState={{ [ROOT_TREE_ID]: true }}
+      initialOpenState={openStateSeed || { [ROOT_TREE_ID]: true }}
       selection={selectedFolderId == null ? ROOT_TREE_ID : String(selectedFolderId)}
       disableDrag
       disableDrop
