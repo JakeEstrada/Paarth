@@ -176,11 +176,22 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
         mt: showFinanceHeader ? 0 : 1.25,
         ...(isFullscreen
           ? {
+              width: '100vw',
+              height: '100vh',
+              boxSizing: 'border-box',
               bgcolor: 'background.default',
               p: 2,
               overflow: 'auto',
             }
           : {}),
+        '&:fullscreen': {
+          width: '100vw',
+          height: '100vh',
+        },
+        '&:-webkit-full-screen': {
+          width: '100vw',
+          height: '100vh',
+        },
       }}
     >
       {showFinanceHeader ? (
@@ -338,7 +349,11 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
       {errorText ? (
         <Alert severity="warning">{errorText}</Alert>
       ) : (
-        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 520 }}>
+        <TableContainer
+          component={Paper}
+          variant="outlined"
+          sx={{ maxHeight: isFullscreen ? 'calc(100vh - 280px)' : 520 }}
+        >
           <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
@@ -368,11 +383,28 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
                   const acct = accounts.find((a) => a.account_id === r.account_id);
                   const debit = r.amount > 0 ? r.amount : 0;
                   const credit = r.amount < 0 ? Math.abs(r.amount) : 0;
+                  const txnType = String(r.transactionCode || '').toLowerCase();
+                  const isCheckTxn = txnType === 'check' || /^check$/i.test(String(r.name || '').trim());
+                  const checkRef = String(r.checkNumber || r.referenceNumber || '').trim();
+                  const description = isCheckTxn && checkRef ? `${r.name} #${checkRef}` : r.name;
+                  const imageHref = String(r.imageUrl || r.website || '').trim();
                   return (
                     <TableRow key={r.transaction_id} hover>
                       <TableCell>{r.date}</TableCell>
                       <TableCell>
-                        <Typography variant="body2">{r.name}</Typography>
+                        <Typography variant="body2">{description}</Typography>
+                        {imageHref ? (
+                          <Typography
+                            component="a"
+                            href={imageHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            variant="caption"
+                            sx={{ display: 'block' }}
+                          >
+                            View image
+                          </Typography>
+                        ) : null}
                         {r.pending ? <Typography variant="caption" color="warning.main">Pending</Typography> : null}
                       </TableCell>
                       <TableCell>{acct?.name || acct?.official_name || '—'}</TableCell>

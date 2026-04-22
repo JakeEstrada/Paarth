@@ -224,6 +224,12 @@ async function fetchRegisterSnapshotFromPlaid(client, accessToken, fetchedDays) 
     amount: Number(t.amount || 0),
     pending: Boolean(t.pending),
     category: Array.isArray(t.category) ? t.category : [],
+    transactionCode: t.transaction_code || '',
+    checkNumber: t.check_number || t.payment_meta?.check_number || t.payment_meta?.reference_number || '',
+    referenceNumber: t.payment_meta?.reference_number || '',
+    paymentChannel: t.payment_channel || '',
+    imageUrl: t.logo_url || t.merchant_logo_url || '',
+    website: t.website || '',
   }));
   normalized.sort((a, b) => {
     if (a.date === b.date) return String(a.transaction_id).localeCompare(String(b.transaction_id));
