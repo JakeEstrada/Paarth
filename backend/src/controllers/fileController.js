@@ -1,6 +1,7 @@
 const File = require('../models/File');
 const DocumentFolder = require('../models/DocumentFolder');
 const Job = require('../models/Job');
+const Customer = require('../models/Customer');
 const Activity = require('../models/Activity');
 const fs = require('fs');
 const path = require('path');
@@ -45,6 +46,16 @@ function sanitizeDisplayFilename(raw) {
     .slice(0, 220);
 }
 
+function hasAnyValue(input) {
+  if (input == null) return false;
+  if (typeof input === 'string') return input.trim().length > 0;
+  if (typeof input === 'number') return Number.isFinite(input);
+  if (typeof input === 'boolean') return input;
+  if (Array.isArray(input)) return input.length > 0 && input.some((v) => hasAnyValue(v));
+  if (typeof input === 'object') return Object.values(input).some((v) => hasAnyValue(v));
+  return false;
+}
+
 async function resolveFolderPath(folderPath, createdBy) {
   if (!folderPath) return null;
   const segments = String(folderPath)
@@ -66,6 +77,246 @@ async function resolveFolderPath(folderPath, createdBy) {
   }
 
   return parentId;
+}
+
+async function findOrCreateFolderByName(parentId, name, createdBy) {
+  let folder = await DocumentFolder.findOne({ parentId, name });
+  if (folder) return folder;
+  folder = await DocumentFolder.create({ name, parentId, createdBy });
+  return folder;
+}
+
+function formatDateOrDash(value) {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toISOString();
+}
+
+function buildEstimateSummary(job) {
+  const e = job?.estimate || {};
+  const lineItems = Array.isArray(e.lineItems) ? e.lineItems : [];
+  const lines = [
+    `Job: ${job.title || 'Untitled'}`,
+    `Estimate Number: ${e.number || '-'}`,
+    `Estimate Date: ${e.estimateDate || '-'}`,
+    `Amount: ${e.amount != null ? e.amount : '-'}`,
+    `Sent At: ${formatDateOrDash(e.sentAt)}`,
+    `Project Name: ${e.projectName || '-'}`,
+    '',
+    'Line Items:',
+  ];
+  if (!lineItems.length) {
+    lines.push('- (none)');
+  } else {
+    lineItems.forEach((li, i) => {
+      lines.push(
+        `${i + 1}. ${li.itemName || li.description || 'Item'} | Qty: ${li.quantity ?? '-'} | Unit: ${li.unitPrice ?? '-'} | Total: ${li.total ?? '-'}`
+      );
+    });
+  }
+  if (e.footerNote) {
+    lines.push('', 'Footer Note:', e.footerNote);
+  }
+  return lines.join('\n');
+}
+
+function buildContractSummary(job) {
+  const c = job?.contract || {};
+  return [
+    `Job: ${job.title || 'Untitled'}`,
+    `Signed At: ${formatDateOrDash(c.signedAt)}`,
+    `Deposit Required: ${c.depositRequired ?? '-'}`,
+    `Deposit Received: ${c.depositReceived ?? '-'}`,
+    `Deposit Received At: ${formatDateOrDash(c.depositReceivedAt)}`,
+  ].join('\n');
+}
+
+function buildInvoicesSummary(job) {
+  const invoices = Array.isArray(job?.invoices) ? job.invoices : [];
+  const lines = [`Job: ${job.title || 'Untitled'}`, '', 'Invoices:'];
+  invoices.forEach((inv, idx) => {
+    lines.push(
+      `${idx + 1}. ${inv.kind || 'invoice'} | ${inv.label || '-'} | Amount: ${inv.amount ?? '-'} | Estimate: ${inv.estimateNumber || '-'} | Date: ${inv.invoiceDate || '-'}`
+    );
+  });
+  return lines.join('\n');
+}
+
+function buildTakeoffSummary(job) {
+  const t = job?.takeoff || {};
+  const lines = [
+    `Job: ${job.title || 'Untitled'}`,
+    `Completed At: ${formatDateOrDash(t.completedAt)}`,
+    `Notes: ${t.notes || '-'}`,
+    `Sheet Updated At: ${formatDateOrDash(t.sheetUpdatedAt)}`,
+  ];
+  if (t.sheetData != null) {
+    lines.push('', 'Sheet Data JSON:', JSON.stringify(t.sheetData, null, 2));
+  }
+  return lines.join('\n');
+}
+
+async function upsertGeneratedTextDocument({
+  customerId,
+  jobId,
+  kind,
+  folderId,
+  createdBy,
+  originalName,
+  content,
+}) {
+  const marker = `[AUTO_DOC:${kind}] customer:${String(customerId)} job:${String(jobId)}`;
+  const existing = await File.findOne({
+    customerId,
+    jobId: null,
+    taskId: null,
+    description: marker,
+  });
+
+  fs.mkdirSync(DOCUMENT_TEXT_DIR, { recursive: true });
+
+  if (existing) {
+    const filePath = findLocalFilePath(existing) || existing.path;
+    if (filePath && path.isAbsolute(filePath)) {
+      fs.writeFileSync(filePath, content, 'utf8');
+      existing.path = filePath;
+    }
+    existing.originalName = originalName;
+    existing.folderId = folderId;
+    existing.size = Buffer.byteLength(content, 'utf8');
+    existing.description = marker;
+    await existing.save();
+    return;
+  }
+
+  const baseName = sanitizePathSegment(originalName.replace(/\.txt$/i, '')) || `${kind}-summary`;
+  const diskName = `${baseName}-${Date.now()}.txt`;
+  const diskPath = path.join(DOCUMENT_TEXT_DIR, diskName);
+  fs.writeFileSync(diskPath, content, 'utf8');
+
+  await File.create({
+    jobId: undefined,
+    taskId: undefined,
+    customerId,
+    folderId,
+    filename: diskName,
+    originalName,
+    mimetype: 'text/plain',
+    size: Buffer.byteLength(content, 'utf8'),
+    path: diskPath,
+    fileType: 'other',
+    uploadedBy: createdBy,
+    description: marker,
+  });
+}
+
+async function ensureCustomerDocumentLibrary(createdBy) {
+  if (!createdBy) return;
+
+  const customers = await Customer.find({}, '_id name').sort({ name: 1 }).lean();
+  if (!customers.length) return;
+
+  const customersRoot = await findOrCreateFolderByName(null, 'Customers', createdBy);
+  const foldersUnderRoot = await DocumentFolder.find({ parentId: customersRoot._id }, '_id name').lean();
+  const folderByName = new Map(foldersUnderRoot.map((f) => [f.name, String(f._id)]));
+  const customerFolderById = new Map();
+  const usedNames = new Set(foldersUnderRoot.map((f) => f.name));
+
+  for (const customer of customers) {
+    const preferred = sanitizePathSegment(customer.name) || `Customer-${String(customer._id).slice(-6)}`;
+    let folderName = preferred;
+    if (usedNames.has(folderName) && !folderByName.has(folderName)) {
+      folderName = `${preferred} (${String(customer._id).slice(-6)})`;
+    }
+    if (!folderByName.has(folderName) && usedNames.has(folderName)) {
+      folderName = `${preferred} (${String(customer._id).slice(-6)})`;
+    }
+    if (!folderByName.has(folderName)) {
+      const folder = await findOrCreateFolderByName(customersRoot._id, folderName, createdBy);
+      folderByName.set(folderName, String(folder._id));
+      usedNames.add(folderName);
+    }
+    customerFolderById.set(String(customer._id), folderByName.get(folderName));
+  }
+
+  const filesWithCustomer = await File.find(
+    {
+      customerId: { $in: customers.map((c) => c._id) },
+      folderId: null,
+    },
+    '_id customerId'
+  ).lean();
+  if (filesWithCustomer.length) {
+    const bulk = filesWithCustomer
+      .map((f) => {
+        const folderId = customerFolderById.get(String(f.customerId));
+        if (!folderId) return null;
+        return {
+          updateOne: {
+            filter: { _id: f._id },
+            update: { $set: { folderId } },
+          },
+        };
+      })
+      .filter(Boolean);
+    if (bulk.length) await File.bulkWrite(bulk);
+  }
+
+  const jobs = await Job.find(
+    { customerId: { $in: customers.map((c) => c._id) } },
+    'customerId title estimate contract invoices takeoff'
+  ).lean();
+
+  for (const job of jobs) {
+    const folderId = customerFolderById.get(String(job.customerId));
+    if (!folderId) continue;
+
+    if (hasAnyValue(job.estimate)) {
+      await upsertGeneratedTextDocument({
+        customerId: job.customerId,
+        jobId: job._id,
+        kind: 'estimate',
+        folderId,
+        createdBy,
+        originalName: `${sanitizePathSegment(job.title) || 'Job'} - Estimate.txt`,
+        content: buildEstimateSummary(job),
+      });
+    }
+    if (hasAnyValue(job.contract)) {
+      await upsertGeneratedTextDocument({
+        customerId: job.customerId,
+        jobId: job._id,
+        kind: 'contract',
+        folderId,
+        createdBy,
+        originalName: `${sanitizePathSegment(job.title) || 'Job'} - Contract.txt`,
+        content: buildContractSummary(job),
+      });
+    }
+    if (Array.isArray(job.invoices) && job.invoices.length > 0) {
+      await upsertGeneratedTextDocument({
+        customerId: job.customerId,
+        jobId: job._id,
+        kind: 'invoices',
+        folderId,
+        createdBy,
+        originalName: `${sanitizePathSegment(job.title) || 'Job'} - Invoices.txt`,
+        content: buildInvoicesSummary(job),
+      });
+    }
+    if (hasAnyValue(job.takeoff)) {
+      await upsertGeneratedTextDocument({
+        customerId: job.customerId,
+        jobId: job._id,
+        kind: 'takeoff',
+        folderId,
+        createdBy,
+        originalName: `${sanitizePathSegment(job.title) || 'Job'} - Takeoff.txt`,
+        content: buildTakeoffSummary(job),
+      });
+    }
+  }
 }
 
 // Helper function to check if file is stored in S3
@@ -551,11 +802,10 @@ async function uploadDocument(req, res) {
 async function getDocuments(req, res) {
   try {
     const { folderId = null } = req.query;
-    const query = {
-      jobId: null,
-      taskId: null,
-    };
+    const query = {};
     if (folderId === 'root' || folderId === '' || folderId === 'null' || folderId === null) {
+      query.jobId = null;
+      query.taskId = null;
       query.folderId = null;
     } else if (folderId) {
       query.folderId = folderId;
@@ -674,12 +924,20 @@ async function updateTextDocument(req, res) {
 
 async function getDocumentTree(req, res) {
   try {
+    const createdBy = await resolveCreatedBy(req);
+    await ensureCustomerDocumentLibrary(createdBy);
+
     const [folders, files] = await Promise.all([
       DocumentFolder.find({})
         .populate('createdBy', 'name email')
         .sort({ name: 1 })
         .lean(),
-      File.find({ jobId: null, taskId: null })
+      File.find({
+        $or: [
+          { jobId: null, taskId: null },
+          { folderId: { $ne: null } },
+        ],
+      })
         .populate('uploadedBy', 'name email')
         .populate('folderId', 'name parentId')
         .sort({ createdAt: -1 })
@@ -764,7 +1022,7 @@ async function deleteDocumentFolder(req, res) {
     if (!recursive) {
       const [childFoldersCount, childFilesCount] = await Promise.all([
         DocumentFolder.countDocuments({ parentId: folder._id }),
-        File.countDocuments({ jobId: null, taskId: null, folderId: folder._id }),
+        File.countDocuments({ folderId: folder._id }),
       ]);
       if (childFoldersCount > 0 || childFilesCount > 0) {
         return res.status(400).json({ error: 'Folder is not empty. Use recursive delete.' });
@@ -775,8 +1033,6 @@ async function deleteDocumentFolder(req, res) {
 
     const folderIds = await getDescendantFolderIds(folder._id);
     const filesToDelete = await File.find({
-      jobId: null,
-      taskId: null,
       folderId: { $in: folderIds },
     });
     for (const file of filesToDelete) {
