@@ -26,6 +26,29 @@ function toIso(value) {
   return d.toISOString();
 }
 
+function toPrintable(value) {
+  const s = String(value ?? '').trim();
+  return s || '-';
+}
+
+function appendTakeoffRows(lines, sheetData) {
+  const rows = Array.isArray(sheetData?.rows) ? sheetData.rows : [];
+  lines.push('', 'Takeoff Items:');
+  if (!rows.length) {
+    lines.push('- (none)');
+    return;
+  }
+  rows.forEach((row, idx) => {
+    const item = toPrintable(row?.item);
+    const qty = toPrintable(row?.qty);
+    const material = toPrintable(row?.material);
+    const description = toPrintable(row?.description);
+    if ([item, qty, material, description].every((v) => v === '-')) return;
+    lines.push(`${idx + 1}. Item: ${item} | Qty: ${qty} | Material: ${material}`);
+    lines.push(`   Description: ${description}`);
+  });
+}
+
 async function findOrCreateFolder(parentId, name, createdBy) {
   let folder = await DocumentFolder.findOne({ parentId, name });
   if (folder) return folder;
@@ -35,14 +58,23 @@ async function findOrCreateFolder(parentId, name, createdBy) {
 
 function buildTakeoffDocumentContent(job) {
   const t = job?.takeoff || {};
+  const s = t.sheetData || {};
   const lines = [
     `Job: ${job.title || 'Untitled'}`,
+    `Sold To: ${toPrintable(s.soldTo)}`,
+    `Phone: ${toPrintable(s.phoneNumber)}`,
+    `Date: ${toPrintable(s.date)}`,
+    `Name/Address: ${toPrintable(s.nameAddress)}`,
+    `Bay: ${toPrintable(s.bay)}`,
     `Completed At: ${toIso(t.completedAt)}`,
     `Notes: ${t.notes || '-'}`,
     `Sheet Updated At: ${toIso(t.sheetUpdatedAt)}`,
   ];
+  if (s.notes && String(s.notes).trim()) {
+    lines.push(`Sheet Notes: ${String(s.notes).trim()}`);
+  }
   if (t.sheetData != null) {
-    lines.push('', 'Sheet Data JSON:', JSON.stringify(t.sheetData, null, 2));
+    appendTakeoffRows(lines, s);
   }
   return lines.join('\n');
 }

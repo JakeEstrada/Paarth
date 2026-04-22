@@ -93,6 +93,29 @@ function formatDateOrDash(value) {
   return d.toISOString();
 }
 
+function printable(value) {
+  const s = String(value ?? '').trim();
+  return s || '-';
+}
+
+function appendTakeoffItems(lines, sheetData) {
+  const rows = Array.isArray(sheetData?.rows) ? sheetData.rows : [];
+  lines.push('', 'Takeoff Items:');
+  if (!rows.length) {
+    lines.push('- (none)');
+    return;
+  }
+  rows.forEach((row, idx) => {
+    const item = printable(row?.item);
+    const qty = printable(row?.qty);
+    const material = printable(row?.material);
+    const description = printable(row?.description);
+    if ([item, qty, material, description].every((v) => v === '-')) return;
+    lines.push(`${idx + 1}. Item: ${item} | Qty: ${qty} | Material: ${material}`);
+    lines.push(`   Description: ${description}`);
+  });
+}
+
 function buildEstimateSummary(job) {
   const e = job?.estimate || {};
   const lineItems = Array.isArray(e.lineItems) ? e.lineItems : [];
@@ -145,14 +168,23 @@ function buildInvoicesSummary(job) {
 
 function buildTakeoffSummary(job) {
   const t = job?.takeoff || {};
+  const s = t.sheetData || {};
   const lines = [
     `Job: ${job.title || 'Untitled'}`,
+    `Sold To: ${printable(s.soldTo)}`,
+    `Phone: ${printable(s.phoneNumber)}`,
+    `Date: ${printable(s.date)}`,
+    `Name/Address: ${printable(s.nameAddress)}`,
+    `Bay: ${printable(s.bay)}`,
     `Completed At: ${formatDateOrDash(t.completedAt)}`,
     `Notes: ${t.notes || '-'}`,
     `Sheet Updated At: ${formatDateOrDash(t.sheetUpdatedAt)}`,
   ];
+  if (s.notes && String(s.notes).trim()) {
+    lines.push(`Sheet Notes: ${String(s.notes).trim()}`);
+  }
   if (t.sheetData != null) {
-    lines.push('', 'Sheet Data JSON:', JSON.stringify(t.sheetData, null, 2));
+    appendTakeoffItems(lines, s);
   }
   return lines.join('\n');
 }
