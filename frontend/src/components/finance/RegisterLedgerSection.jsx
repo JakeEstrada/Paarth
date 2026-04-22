@@ -387,7 +387,7 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
                   const isCheckTxn = txnType === 'check' || /^check$/i.test(String(r.name || '').trim());
                   const checkRef = String(r.checkNumber || r.referenceNumber || '').trim();
                   const description = isCheckTxn && checkRef ? `${r.name} #${checkRef}` : r.name;
-                  const imageHref = String(r.imageUrl || r.website || '').trim();
+                  const imageHref = isCheckTxn ? String(r.imageUrl || '').trim() : '';
                   return (
                     <TableRow key={r.transaction_id} hover>
                       <TableCell>{r.date}</TableCell>

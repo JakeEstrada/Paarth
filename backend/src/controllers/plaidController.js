@@ -228,8 +228,8 @@ async function fetchRegisterSnapshotFromPlaid(client, accessToken, fetchedDays) 
     checkNumber: t.check_number || t.payment_meta?.check_number || t.payment_meta?.reference_number || '',
     referenceNumber: t.payment_meta?.reference_number || '',
     paymentChannel: t.payment_channel || '',
-    imageUrl: t.logo_url || t.merchant_logo_url || '',
-    website: t.website || '',
+    // Intentionally do NOT use merchant logos/websites here; only true transaction attachments/check images.
+    imageUrl: t.check_image_url || t.payment_meta?.image_url || '',
   }));
   normalized.sort((a, b) => {
     if (a.date === b.date) return String(a.transaction_id).localeCompare(String(b.transaction_id));
