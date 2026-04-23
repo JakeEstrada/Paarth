@@ -164,10 +164,58 @@ function toIsoDateOnly(date) {
   return new Date(date).toISOString().slice(0, 10);
 }
 
-/** At most one Plaid pull per tenant per this window; responses otherwise come from MongoDB. */
-const REGISTER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 /** Always fetch this many days from Plaid when refreshing so UI can narrow without another Plaid call. */
 const REGISTER_PLAID_FETCH_DAYS = 730;
+/** Daily scheduled refresh hour in Pacific Time (06:00 PT). */
+const REGISTER_REFRESH_HOUR = 6;
+const REGISTER_REFRESH_TIMEZONE = 'America/Los_Angeles';
+
+const pacificFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: REGISTER_REFRESH_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+function getPacificClock(date = new Date()) {
+  const parts = pacificFormatter.formatToParts(date);
+  const get = (type) => parts.find((p) => p.type === type)?.value || '';
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: Number(get('hour') || 0),
+    minute: Number(get('minute') || 0),
+  };
+}
+
+function pacificDayKey(clock) {
+  return `${clock.year}-${clock.month}-${clock.day}`;
+}
+
+function shouldRefreshAtScheduledTime(syncedAt, now = new Date()) {
+  if (!syncedAt) return true;
+  const synced = new Date(syncedAt);
+  if (Number.isNaN(synced.getTime())) return true;
+  const nowClock = getPacificClock(now);
+  if (nowClock.hour < REGISTER_REFRESH_HOUR) return false;
+
+  const syncedClock = getPacificClock(synced);
+  const nowKey = pacificDayKey(nowClock);
+  const syncedKey = pacificDayKey(syncedClock);
+  if (syncedKey < nowKey) return true;
+  if (syncedKey > nowKey) return false;
+  return syncedClock.hour < REGISTER_REFRESH_HOUR;
+}
+
+function getNextScheduledRefreshLabel(now = new Date()) {
+  const c = getPacificClock(now);
+  if (c.hour < REGISTER_REFRESH_HOUR) return 'Today at 6:00 AM PT';
+  return 'Tomorrow at 6:00 AM PT';
+}
 
 function filterCachedTransactions(transactions, days, accountId) {
   const endDate = new Date();
@@ -282,13 +330,18 @@ async function getRegisterData(req, res) {
     startDate.setDate(endDate.getDate() - days);
 
     const tenantId = req.user.tenantId;
-    const now = Date.now();
+    const now = new Date();
+    const forceRefresh =
+      req.query?.refresh === '1' ||
+      req.query?.refresh === 'true' ||
+      req.query?.forceRefresh === '1' ||
+      req.query?.forceRefresh === 'true';
     const cache = await PlaidRegisterCache.findOne({ tenantId }).lean();
 
     const buildPayload = (accounts, allTransactions, syncedAt, source) => {
       const filtered = filterCachedTransactions(allTransactions, days, accountId);
       const transactions = sortRegisterTransactions(filtered, sort);
-      const nextAfter = new Date(new Date(syncedAt).getTime() + REGISTER_CACHE_TTL_MS).toISOString();
+      const nextAfterLabel = getNextScheduledRefreshLabel(now);
       return {
         sort,
         range: {
@@ -301,12 +354,13 @@ async function getRegisterData(req, res) {
         registerSync: {
           syncedAt: new Date(syncedAt).toISOString(),
           source,
-          nextPlaidRefreshAfter: nextAfter,
+          refreshSchedule: `Daily at ${String(REGISTER_REFRESH_HOUR).padStart(2, '0')}:00 PT`,
+          nextPlaidRefreshLabel: nextAfterLabel,
         },
       };
     };
 
-    if (cache?.syncedAt && now - new Date(cache.syncedAt).getTime() < REGISTER_CACHE_TTL_MS) {
+    if (!forceRefresh && cache?.syncedAt && !shouldRefreshAtScheduledTime(cache.syncedAt, now)) {
       return res.json(
         buildPayload(cache.accounts || [], cache.transactions || [], cache.syncedAt, 'cache')
       );

@@ -23,7 +23,7 @@ import {
   Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { Fullscreen, FullscreenExit } from '@mui/icons-material';
+import { Fullscreen, FullscreenExit, Refresh } from '@mui/icons-material';
 import PlaidBankLinkSection from './PlaidBankLinkSection';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -71,7 +71,7 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
     [accounts, accountId]
   );
 
-  const loadRegister = useCallback(async () => {
+  const loadRegister = useCallback(async ({ forceRefresh = false } = {}) => {
     if (!active) return;
     try {
       setLoading(true);
@@ -80,6 +80,7 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
         accountId: accountId || undefined,
         sort,
         days,
+        refresh: forceRefresh ? 1 : undefined,
       });
       const nextAccounts = Array.isArray(data?.accounts) ? data.accounts : [];
       setAccounts(nextAccounts);
@@ -167,6 +168,10 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
     } catch (e) {
       console.error('toggleFullscreen:', e);
     }
+  };
+
+  const handleManualRefresh = async () => {
+    await loadRegister({ forceRefresh: true });
   };
 
   return (
@@ -325,6 +330,19 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
               {isFullscreen ? <FullscreenExit fontSize="small" /> : <Fullscreen fontSize="small" />}
             </IconButton>
           </Tooltip>
+
+          <Tooltip title="Refresh register now">
+            <span>
+              <IconButton
+                onClick={handleManualRefresh}
+                size="small"
+                aria-label="refresh register data"
+                disabled={loading}
+              >
+                <Refresh fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
         </Stack>
 
         {!showFinanceHeader && selectedAccount ? (
@@ -336,13 +354,16 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
 
       {registerSync?.syncedAt ? (
         <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: -0.5, mb: 1, lineHeight: 1.5 }}>
-          Register is stored on the server; Plaid is called at most once per 24 hours for your organization.
-          Last bank pull{' '}
-          {new Date(registerSync.syncedAt).toLocaleString()}
-          {registerSync.source === 'plaid' ? ' (live)' : ' (saved copy)'}
-          {registerSync.nextPlaidRefreshAfter
-            ? `. Next live sync after ${new Date(registerSync.nextPlaidRefreshAfter).toLocaleString()}.`
-            : '.'}
+          Register was last updated {new Date(registerSync.syncedAt).toLocaleString()}.
+          {' '}
+          {registerSync.refreshSchedule ? `Auto-refresh schedule: ${registerSync.refreshSchedule}. ` : ''}
+          {registerSync.source === 'plaid' ? '(Fetched live from Plaid.) ' : '(Loaded from saved copy.) '}
+          Next automatic refresh after{' '}
+          {registerSync.nextPlaidRefreshLabel
+            ? `${registerSync.nextPlaidRefreshLabel}.`
+            : registerSync.nextPlaidRefreshAfter
+              ? `${new Date(registerSync.nextPlaidRefreshAfter).toLocaleString()}.`
+            : 'the next schedule window.'}
         </Typography>
       ) : null}
 
