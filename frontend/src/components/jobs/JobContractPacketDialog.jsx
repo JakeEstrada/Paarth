@@ -110,12 +110,7 @@ function buildProjectLocationLine(job) {
 }
 
 function contractAmounts(job, estimateDoc) {
-  const revs = Array.isArray(estimateDoc?.revisions) ? estimateDoc.revisions : [];
-  const current =
-    revs.find((r) => String(r?._id || '') === String(estimateDoc?.currentRevisionId || '')) ||
-    revs[revs.length - 1] ||
-    null;
-  const estimateTotal = Number(current?.grandTotal || estimateDoc?.latestAmount || 0);
+  const estimateTotal = Number(estimateDoc?.grandTotal || 0);
   const raw = Number(job?.valueContracted) || estimateTotal || Number(job?.valueEstimated) || 0;
   const total = Math.round(raw * 100) / 100;
   const totalDisplay = Number.isInteger(total) ? String(Math.round(total)) : total.toFixed(2);

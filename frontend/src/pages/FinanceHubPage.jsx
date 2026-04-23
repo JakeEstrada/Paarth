@@ -192,26 +192,29 @@ function hasMeaningfulJobSiteAddress(addr) {
 }
 
 function mapEstimateDocToLegacySnapshots(estimateDoc) {
-  if (!estimateDoc || !Array.isArray(estimateDoc.revisions)) return { history: [], current: null };
-  const sorted = [...estimateDoc.revisions].sort(
-    (a, b) => Number(a?.revisionNumber || 0) - Number(b?.revisionNumber || 0)
-  );
-  const snapshots = sorted.map((rev) => ({
-    number: estimateDoc.estimateNumber || '',
-    amount: Number(rev?.grandTotal || 0),
-    sentAt: rev?.sentAt || null,
-    estimateDate: rev?.estimateDate ? new Date(rev.estimateDate).toISOString().slice(0, 10) : '',
-    projectName: rev?.projectName || estimateDoc.projectName || '',
-    footerNote: rev?.footerNote || estimateDoc.footerNote || '',
-    lineItems: Array.isArray(rev?.lineItems) ? rev.lineItems : [],
-    __revisionId: rev?._id || null,
-    __estimateId: estimateDoc._id || null,
-  }));
-  if (!snapshots.length) return { history: [], current: null };
+  if (!estimateDoc) return { history: [], current: null };
   return {
-    history: snapshots.slice(0, -1),
-    current: snapshots[snapshots.length - 1],
+    history: [],
+    current: {
+    number: estimateDoc.estimateNumber || '',
+    amount: Number(estimateDoc?.grandTotal || 0),
+    sentAt: estimateDoc?.sentAt || null,
+    estimateDate: estimateDoc?.estimateDate ? new Date(estimateDoc.estimateDate).toISOString().slice(0, 10) : '',
+    projectName: estimateDoc?.projectName || '',
+    footerNote: estimateDoc?.footerNote || '',
+    lineItems: Array.isArray(estimateDoc?.lineItems) ? estimateDoc.lineItems : [],
+    __estimateId: estimateDoc._id || null,
+    },
   };
+}
+
+function estimateNumberSortValue(estimateNumber) {
+  const raw = String(estimateNumber || '').trim();
+  const m = raw.match(/^(\d+)-(\d+)$/);
+  if (!m) return Number.MAX_SAFE_INTEGER;
+  const prefix = Number(m[1]) || 0;
+  const seq = Number(m[2]) || 0;
+  return prefix * 100000 + seq;
 }
 
 function computeEstimateFormFromJobSnapshot(job, snapshot) {
@@ -328,6 +331,7 @@ function FinanceHubPage() {
   const [estimateBrowserRows, setEstimateBrowserRows] = useState([]);
   const [loadingEstimateBrowser, setLoadingEstimateBrowser] = useState(false);
   const [estimateJumpNumber, setEstimateJumpNumber] = useState('');
+  const [showEstimateBrowserList, setShowEstimateBrowserList] = useState(false);
   const [customerPipelineJobs, setCustomerPipelineJobs] = useState([]);
   const [loadingCustomerJobs, setLoadingCustomerJobs] = useState(false);
   const [estimateSaveTargetId, setEstimateSaveTargetId] = useState(null);
@@ -341,8 +345,6 @@ function FinanceHubPage() {
   const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
   /** First-class estimate source of truth for current job context. */
   const [loadedEstimateDoc, setLoadedEstimateDoc] = useState(null);
-  /** Selected revision id (stable), replacing index-based selection. */
-  const [selectedRevisionId, setSelectedRevisionId] = useState(null);
   /** True when user clicked "New estimate" and is editing a fresh unsaved estimate draft. */
   const [isNewEstimateDraft, setIsNewEstimateDraft] = useState(false);
   const [newEstimatePromptOpen, setNewEstimatePromptOpen] = useState(false);
@@ -418,29 +420,34 @@ function FinanceHubPage() {
     [setSearchParams]
   );
 
-  const estimateRevisions = useMemo(() => {
-    if (!loadedEstimateDoc) return [];
-    const mapped = mapEstimateDocToLegacySnapshots(loadedEstimateDoc);
-    return [...mapped.history, mapped.current].filter(Boolean);
+  const selectedEstimateSnapshot = useMemo(() => {
+    if (!loadedEstimateDoc) return null;
+    return mapEstimateDocToLegacySnapshots(loadedEstimateDoc).current || null;
   }, [loadedEstimateDoc]);
-
-  const selectedRevisionIndex = useMemo(() => {
-    if (!estimateRevisions.length) return -1;
-    if (!selectedRevisionId) return estimateRevisions.length - 1;
-    const idx = estimateRevisions.findIndex((r) => String(r.__revisionId || '') === String(selectedRevisionId));
-    return idx >= 0 ? idx : estimateRevisions.length - 1;
-  }, [estimateRevisions, selectedRevisionId]);
-
-  const selectedRevision = selectedRevisionIndex >= 0 ? estimateRevisions[selectedRevisionIndex] : null;
+  const orderedEstimateBrowserRows = useMemo(() => {
+    return [...estimateBrowserRows].sort((a, b) => {
+      const av = estimateNumberSortValue(a?.estimateNumber);
+      const bv = estimateNumberSortValue(b?.estimateNumber);
+      if (av !== bv) return av - bv;
+      const ad = new Date(a?.createdAt || 0).getTime();
+      const bd = new Date(b?.createdAt || 0).getTime();
+      return ad - bd;
+    });
+  }, [estimateBrowserRows]);
+  const currentEstimateDocIndex = useMemo(() => {
+    if (!loadedEstimateDoc?._id) return -1;
+    return orderedEstimateBrowserRows.findIndex(
+      (r) => String(r?._id || '') === String(loadedEstimateDoc._id)
+    );
+  }, [orderedEstimateBrowserRows, loadedEstimateDoc]);
 
   const invoiceEstimateNumber = useMemo(() => {
     if (isNewEstimateDraft) return estimateForm.estimateNumber || 'TBD';
-    const rev = selectedRevision;
-    return rev?.number || estimateForm.estimateNumber || 'TBD';
+    return selectedEstimateSnapshot?.number || estimateForm.estimateNumber || 'TBD';
   }, [
     isNewEstimateDraft,
     estimateForm.estimateNumber,
-    selectedRevision,
+    selectedEstimateSnapshot,
   ]);
 
   const canCreateInvoice =
@@ -463,29 +470,23 @@ function FinanceHubPage() {
     }
   }, []);
 
-  /** Clear legacy browser-only estimate snapshots; server revisions are authoritative. */
+  /** Clear legacy browser-only estimate snapshots. */
   useEffect(() => {
     if (activeTab !== 'estimates' || typeof window === 'undefined') return;
     window.localStorage.removeItem(LOCAL_EST_SNAPSHOT_STACK_KEY);
   }, [activeTab]);
 
-  /** Use live revision count so → never caps with a stale `estimateRevisions.length` from a past render. */
-  const goJobEstimateRevisionOlder = useCallback(() => {
-    if (!estimateRevisions.length) return;
-    const idx = selectedRevisionIndex >= 0 ? selectedRevisionIndex : estimateRevisions.length - 1;
-    const nextIdx = Math.max(0, idx - 1);
-    const next = estimateRevisions[nextIdx];
-    setSelectedRevisionId(next?.__revisionId || null);
-  }, [estimateRevisions, selectedRevisionIndex]);
+  const goEstimateDocOlder = useCallback(() => {
+    if (currentEstimateDocIndex <= 0) return;
+    const target = orderedEstimateBrowserRows[currentEstimateDocIndex - 1];
+    if (target) openEstimateFromBrowser(target);
+  }, [currentEstimateDocIndex, orderedEstimateBrowserRows, openEstimateFromBrowser]);
 
-  const goJobEstimateRevisionNewer = useCallback(() => {
-    if (!estimateRevisions.length) return;
-    const idx = selectedRevisionIndex >= 0 ? selectedRevisionIndex : estimateRevisions.length - 1;
-    const maxIdx = estimateRevisions.length - 1;
-    const nextIdx = Math.min(maxIdx, idx + 1);
-    const next = estimateRevisions[nextIdx];
-    setSelectedRevisionId(next?.__revisionId || null);
-  }, [estimateRevisions, selectedRevisionIndex]);
+  const goEstimateDocNewer = useCallback(() => {
+    if (currentEstimateDocIndex < 0 || currentEstimateDocIndex >= orderedEstimateBrowserRows.length - 1) return;
+    const target = orderedEstimateBrowserRows[currentEstimateDocIndex + 1];
+    if (target) openEstimateFromBrowser(target);
+  }, [currentEstimateDocIndex, orderedEstimateBrowserRows, openEstimateFromBrowser]);
 
   const descriptionAutocompleteOptions = useMemo(() => {
     const out = [];
@@ -499,8 +500,8 @@ function FinanceHubPage() {
     for (const row of estimateForm.lineItems) {
       push(row.description);
     }
-    for (const rev of estimateRevisions) {
-      for (const d of collectDescriptionsFromEstimateSnapshot(rev)) {
+    if (selectedEstimateSnapshot) {
+      for (const d of collectDescriptionsFromEstimateSnapshot(selectedEstimateSnapshot)) {
         push(d);
       }
     }
@@ -508,7 +509,7 @@ function FinanceHubPage() {
       push(d);
     }
     return out;
-  }, [estimateForm.lineItems, estimateRevisions, estimateDescHintsRev]);
+  }, [estimateForm.lineItems, selectedEstimateSnapshot, estimateDescHintsRev]);
 
   const tabParam = searchParams.get('tab');
   const jobIdParam = searchParams.get('jobId');
@@ -543,7 +544,6 @@ function FinanceHubPage() {
     if (activeTab !== 'estimates' || !estimateJobId) {
       setLoadedEstimateJob(null);
       setLoadedEstimateDoc(null);
-      setSelectedRevisionId(null);
       return undefined;
     }
     let cancelled = false;
@@ -562,9 +562,6 @@ function FinanceHubPage() {
         }
         setLoadedEstimateJob(hydrated.job);
         setLoadedEstimateDoc(hydrated.estimateDoc || null);
-        const mapped = hydrated.estimateDoc ? mapEstimateDocToLegacySnapshots(hydrated.estimateDoc) : { history: [], current: null };
-        const revs = [...mapped.history, mapped.current].filter(Boolean);
-        setSelectedRevisionId(revs.length > 0 ? revs[revs.length - 1].__revisionId || null : null);
         setIsNewEstimateDraft(false);
         setNewEstimatePromptOpen(false);
         setEditingJobSummary({
@@ -577,7 +574,6 @@ function FinanceHubPage() {
         console.error('Error loading job for estimate:', error);
         setLoadedEstimateJob(null);
         setLoadedEstimateDoc(null);
-        setSelectedRevisionId(null);
         setEditingJobSummary(null);
         toast.error(error.response?.data?.error || 'Could not load estimate from job');
       } finally {
@@ -592,24 +588,11 @@ function FinanceHubPage() {
   useEffect(() => {
     if (activeTab !== 'estimates' || !estimateJobId || !loadedEstimateJob) return;
     if (String(loadedEstimateJob._id) !== String(estimateJobId)) return;
-    if (!estimateRevisions.length) {
-      const nextForm = computeEstimateFormFromJobSnapshot(loadedEstimateJob, null);
-      setEstimateForm(nextForm);
-      setLastSyncedEstimateForm(normalizeEstimateFormForCompare(nextForm));
-      setIsNewEstimateDraft(false);
-      return;
-    }
-    const activeRevision =
-      estimateRevisions.find((r) => String(r.__revisionId || '') === String(selectedRevisionId || '')) ||
-      estimateRevisions[estimateRevisions.length - 1];
-    if (!selectedRevisionId && activeRevision?.__revisionId) {
-      setSelectedRevisionId(activeRevision.__revisionId);
-    }
-    const nextForm = computeEstimateFormFromJobSnapshot(loadedEstimateJob, activeRevision);
+    const nextForm = computeEstimateFormFromJobSnapshot(loadedEstimateJob, selectedEstimateSnapshot);
     setEstimateForm(nextForm);
     setLastSyncedEstimateForm(normalizeEstimateFormForCompare(nextForm));
     setIsNewEstimateDraft(false);
-  }, [activeTab, estimateJobId, loadedEstimateJob, estimateRevisions, selectedRevisionId]);
+  }, [activeTab, estimateJobId, loadedEstimateJob, selectedEstimateSnapshot]);
 
   useEffect(() => {
     if (activeTab !== 'estimates' || !estimateForm.customerId) {
@@ -769,7 +752,6 @@ function FinanceHubPage() {
       taxRate,
       discountAmount,
       notes: '',
-      changeSummary: opts.changeSummary || '',
       subtotal,
       taxAmount,
       grandTotal,
@@ -837,6 +819,7 @@ function FinanceHubPage() {
 
     try {
       const doc = await renderEstimatePdfDoc();
+      await persistEstimatePdfArtifact(doc, 'download');
       doc.save(`Estimate-${invoiceEstimateNumber || 'Draft'}.pdf`);
       toast.success('Estimate PDF downloaded');
     } catch (error) {
@@ -854,6 +837,7 @@ function FinanceHubPage() {
 
     try {
       const doc = await renderEstimatePdfDoc();
+      await persistEstimatePdfArtifact(doc, 'print');
       const blobUrl = doc.output('bloburl');
       const win = window.open(blobUrl, '_blank');
       if (win) {
@@ -882,6 +866,28 @@ function FinanceHubPage() {
       maximumFractionDigits: 2,
     });
 
+  const persistEstimatePdfArtifact = async (doc, exportKind) => {
+    if (!doc || !loadedEstimateDoc?._id || !estimateForm.customerId) return;
+    try {
+      const estimateNumber = invoiceEstimateNumber || loadedEstimateDoc?.estimateNumber || 'Draft';
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const safeKind = String(exportKind || 'export').toLowerCase();
+      const filename = `Estimate-${estimateNumber}-${safeKind}-${stamp}.pdf`;
+      const blob = doc.output('blob');
+      const formData = new FormData();
+      formData.append('file', new File([blob], filename, { type: 'application/pdf' }));
+      formData.append('customerId', String(estimateForm.customerId));
+      formData.append('fileType', 'estimate');
+      formData.append(
+        'description',
+        `Immutable estimate PDF artifact (${safeKind}) for estimate ${estimateNumber} [estimateId=${loadedEstimateDoc._id}]`
+      );
+      await axios.post(`${API_URL}/files/upload-document`, formData);
+    } catch (error) {
+      console.warn('Failed to persist immutable estimate PDF artifact:', error);
+    }
+  };
+
   const renderInvoicePdfDoc = async () => {
     if (!invoicePdfRef.current) {
       throw new Error('Invoice layout not ready');
@@ -900,14 +906,12 @@ function FinanceHubPage() {
   };
 
   const handleConfirmCreateInvoice = async () => {
-    if (!estimateJobId || !canCreateInvoice || !loadedEstimateDoc?._id || !selectedRevision?.__revisionId) return;
+    if (!estimateJobId || !canCreateInvoice || !loadedEstimateDoc?._id) return;
     try {
       setSavingInvoice(true);
       const { data } = await axios.post(
         `${API_URL}/estimates/${loadedEstimateDoc._id}/generate-invoice`,
-        {
-          revisionId: selectedRevision.__revisionId,
-        }
+        {}
       );
 
       const inv = data?.invoice;
@@ -940,9 +944,6 @@ function FinanceHubPage() {
       const hydrated = await hydrateJobWithEstimate(refreshed);
       setLoadedEstimateJob(hydrated.job);
       setLoadedEstimateDoc(hydrated.estimateDoc || null);
-      const mapped = hydrated.estimateDoc ? mapEstimateDocToLegacySnapshots(hydrated.estimateDoc) : { history: [], current: null };
-      const revs = [...mapped.history, mapped.current].filter(Boolean);
-      setSelectedRevisionId(revs.length > 0 ? revs[revs.length - 1].__revisionId || null : null);
     } catch (error) {
       console.error('Error creating invoice:', error);
       toast.error(error.response?.data?.error || error.message || 'Failed to create invoice');
@@ -955,14 +956,12 @@ function FinanceHubPage() {
   };
 
   const handleGenerateContract = async () => {
-    if (!estimateJobId || !loadedEstimateDoc?._id || !selectedRevision?.__revisionId) return;
+    if (!estimateJobId || !loadedEstimateDoc?._id) return;
     try {
       setSavingInvoice(true);
       const { data } = await axios.post(
         `${API_URL}/estimates/${loadedEstimateDoc._id}/generate-contract`,
-        {
-          revisionId: selectedRevision.__revisionId,
-        }
+        {}
       );
       toast.success(`Contract ${data?.contract?.contractNumber || ''} created`);
       const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
@@ -985,7 +984,6 @@ function FinanceHubPage() {
     if (!estimateJobId && prev) {
       setLoadedEstimateJob(null);
       setLoadedEstimateDoc(null);
-      setSelectedRevisionId(null);
       const fresh = {
         estimateNumber: '',
         estimateDate: new Date().toISOString().slice(0, 10),
@@ -1019,8 +1017,7 @@ function FinanceHubPage() {
     setEstimateForm(draft);
     setLastSyncedEstimateForm(normalizeEstimateFormForCompare(draft));
     setIsNewEstimateDraft(true);
-    setSelectedRevisionId(selectedRevision?.__revisionId || null);
-  }, [loadedEstimateJob, estimateJobId, selectedRevision]);
+  }, [loadedEstimateJob, estimateJobId]);
 
   const saveEstimateOnCurrentContext = async () => {
     if (!estimateForm.customerId) {
@@ -1034,10 +1031,7 @@ function FinanceHubPage() {
 
     if (estimateJobId) {
       const estimateDocId = loadedEstimateDoc?._id || null;
-      const currentRevision = selectedRevision;
-      const estimatePayload = buildEstimateApiPayload({
-        changeSummary: isNewEstimateDraft ? 'New revision saved from Finance Hub' : 'Revision edited from Finance Hub',
-      });
+      const estimatePayload = buildEstimateApiPayload({});
 
       if (!estimateDocId) {
         const { data: createdEstimate } = await axios.post(`${API_URL}/estimates`, {
@@ -1047,27 +1041,23 @@ function FinanceHubPage() {
           ...estimatePayload,
         });
         toast.success(`Estimate ${createdEstimate?.estimateNumber || ''} saved on this job`);
-      } else if (isNewEstimateDraft) {
-        const { data: updatedEstimate } = await axios.post(`${API_URL}/estimates/${estimateDocId}/revisions`, estimatePayload);
-        toast.success(`Estimate ${updatedEstimate?.estimateNumber || ''} revision saved`);
-      } else if (currentRevision?.__revisionId) {
-        const { data: updatedEstimate } = await axios.patch(
-          `${API_URL}/estimates/${estimateDocId}/revisions/${currentRevision.__revisionId}`,
-          estimatePayload
-        );
+      } else if (!isNewEstimateDraft) {
+        const { data: updatedEstimate } = await axios.patch(`${API_URL}/estimates/${estimateDocId}`, estimatePayload);
         toast.success(`Estimate ${updatedEstimate?.estimateNumber || ''} updated`);
       } else {
-        const { data: updatedEstimate } = await axios.post(`${API_URL}/estimates/${estimateDocId}/revisions`, estimatePayload);
-        toast.success(`Estimate ${updatedEstimate?.estimateNumber || ''} revision saved`);
+        const { data: createdEstimate } = await axios.post(`${API_URL}/estimates`, {
+          customerId: estimateForm.customerId,
+          jobId: estimateJobId,
+          status: 'draft',
+          ...estimatePayload,
+        });
+        toast.success(`Estimate ${createdEstimate?.estimateNumber || ''} saved on this job`);
       }
 
       const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
       const hydrated = await hydrateJobWithEstimate(refreshed);
       setLoadedEstimateJob(hydrated.job);
       setLoadedEstimateDoc(hydrated.estimateDoc || null);
-      const mapped = hydrated.estimateDoc ? mapEstimateDocToLegacySnapshots(hydrated.estimateDoc) : { history: [], current: null };
-      const revs = [...mapped.history, mapped.current].filter(Boolean);
-      setSelectedRevisionId(revs.length > 0 ? revs[revs.length - 1].__revisionId || null : null);
       setIsNewEstimateDraft(false);
       mergeEstimateDescriptionHints(
         estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
@@ -1104,7 +1094,7 @@ function FinanceHubPage() {
           customerId: estimateForm.customerId,
           jobId: newId,
           status: 'draft',
-          ...buildEstimateApiPayload({ changeSummary: 'Initial estimate created from Finance Hub' }),
+          ...buildEstimateApiPayload({}),
         });
       }
       mergeEstimateDescriptionHints(
@@ -1128,13 +1118,10 @@ function FinanceHubPage() {
         customerId: estimateForm.customerId,
         jobId: existingId,
         status: 'draft',
-        ...buildEstimateApiPayload({ changeSummary: 'Initial estimate attached to existing job' }),
+        ...buildEstimateApiPayload({}),
       });
     } else {
-      await axios.post(
-        `${API_URL}/estimates/${existingEstimate._id}/revisions`,
-        buildEstimateApiPayload({ changeSummary: 'New revision from Finance Hub' })
-      );
+      await axios.patch(`${API_URL}/estimates/${existingEstimate._id}`, buildEstimateApiPayload({}));
     }
     mergeEstimateDescriptionHints(
       estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
@@ -1162,32 +1149,27 @@ function FinanceHubPage() {
 
   const handleDeleteEstimate = async () => {
     if (!estimateJobId) return;
-    if (estimateRevisions.length === 0) {
-      toast.error('No estimate revision to delete');
+    if (!loadedEstimateDoc?._id) {
+      toast.error('No estimate to delete');
       return;
     }
-    const ok = window.confirm('Delete this estimate revision? This cannot be undone.');
+    const ok = window.confirm('Delete this estimate? This cannot be undone.');
     if (!ok) return;
     try {
       setSavingEstimate(true);
       const estimateDocId = loadedEstimateDoc?._id || null;
-      const currentRevision = selectedRevision;
-      if (estimateDocId && currentRevision?.__revisionId) {
-        await axios.delete(`${API_URL}/estimates/${estimateDocId}/revisions/${currentRevision.__revisionId}`);
+      if (estimateDocId) {
+        await axios.delete(`${API_URL}/estimates/${estimateDocId}`);
       }
       const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
       const hydrated = await hydrateJobWithEstimate(refreshed);
       setLoadedEstimateJob(hydrated.job);
       setLoadedEstimateDoc(hydrated.estimateDoc || null);
-      const mapped = hydrated.estimateDoc ? mapEstimateDocToLegacySnapshots(hydrated.estimateDoc) : { history: [], current: null };
-      const revs = [...mapped.history, mapped.current].filter(Boolean);
-      const nextIdx = revs.length > 0 ? Math.max(0, Math.min(selectedRevisionIndex, revs.length - 1)) : -1;
-      setSelectedRevisionId(nextIdx >= 0 ? revs[nextIdx].__revisionId || null : null);
       setIsNewEstimateDraft(false);
-      toast.success('Estimate revision deleted');
+      toast.success('Estimate deleted');
     } catch (error) {
-      console.error('Error deleting estimate revision:', error);
-      toast.error(error.response?.data?.error || 'Failed to delete estimate revision');
+      console.error('Error deleting estimate:', error);
+      toast.error(error.response?.data?.error || 'Failed to delete estimate');
     } finally {
       setSavingEstimate(false);
     }
@@ -1236,25 +1218,22 @@ function FinanceHubPage() {
     borderColor: 'divider',
   };
 
-  const revOlderDisabled =
+  const docOlderDisabled =
     !estimateJobId ||
     isNewEstimateDraft ||
     loadingJobEstimate ||
     savingEstimate ||
-    estimateRevisions.length < 2 ||
-    selectedRevisionIndex <= 0;
+    currentEstimateDocIndex <= 0;
 
-  const revNewerDisabled =
+  const docNewerDisabled =
     !estimateJobId ||
     isNewEstimateDraft ||
     loadingJobEstimate ||
     savingEstimate ||
-    estimateRevisions.length < 2 ||
-    selectedRevisionIndex >= estimateRevisions.length - 1;
+    currentEstimateDocIndex < 0 ||
+    currentEstimateDocIndex >= orderedEstimateBrowserRows.length - 1;
 
-  const showRevisionCaption = estimateJobId && !isNewEstimateDraft && estimateRevisions.length >= 2;
-  const showSingleRevisionHint =
-    estimateJobId && !isNewEstimateDraft && !loadingJobEstimate && estimateRevisions.length <= 1;
+  const showArrowHint = estimateJobId && !isNewEstimateDraft && !loadingJobEstimate;
 
   const handleJumpToEstimateNumber = async () => {
     const q = String(estimateJumpNumber || '').trim();
@@ -1344,25 +1323,18 @@ function FinanceHubPage() {
               <Typography variant="h5" sx={{ fontWeight: 600 }}>
                 {estimateJobId ? 'Edit estimate' : 'New estimate'}
               </Typography>
-              <Chip size="small" color="primary" label={invoiceEstimateNumber || 'Pending number'} />
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Chip size="small" color="primary" label={invoiceEstimateNumber || 'Pending number'} />
+              </Box>
             </Box>
 
             {!estimateJobId && !loadingJobEstimate && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 Estimates are saved to the database and shared across devices. Use a specific job to
-                view and browse estimate revisions for that job.
+                view and browse estimate documents for that job.
               </Typography>
             )}
 
-            {estimateJobId && estimateRevisions.length < 2 && !loadingJobEstimate && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                To see 1102-0001 and 0002 together here, both saves must be on{' '}
-                <strong>this same job</strong> (same jobId). Each <strong>Save estimate</strong>{' '}
-                archives the previous version on the server; then use ← →. If you created two
-                separate pipeline cards, each card only shows its own latest estimate until you save
-                again on that card.
-              </Typography>
-            )}
 
             {estimateJobId && isNewEstimateDraft && (
               <Typography variant="body2" color="warning.main" sx={{ mb: 1 }}>
@@ -1402,7 +1374,11 @@ function FinanceHubPage() {
                 <Button variant="text" onClick={() => loadEstimateBrowser()}>
                   Refresh list
                 </Button>
+                <Button variant="text" onClick={() => setShowEstimateBrowserList((v) => !v)}>
+                  {showEstimateBrowserList ? 'Hide list' : 'Show list'}
+                </Button>
               </Box>
+              {showEstimateBrowserList && (
               <Box sx={{ maxHeight: 180, overflowY: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
                 {loadingEstimateBrowser ? (
                   <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
@@ -1416,7 +1392,6 @@ function FinanceHubPage() {
                   estimateBrowserRows.slice(0, 120).map((row) => {
                     const jobLabel = row?.jobId?.title || row?.jobId || 'No job';
                     const customerLabel = row?.customerId?.name || row?.customerId || 'Unknown customer';
-                    const revCount = Number(row?.revisionCount || row?.revisions?.length || 0);
                     const updated = row?.updatedAt
                       ? new Date(row.updatedAt).toLocaleString()
                       : row?.createdAt
@@ -1441,7 +1416,7 @@ function FinanceHubPage() {
                         onClick={() => openEstimateFromBrowser(row)}
                       >
                         <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                          {row?.estimateNumber || 'No number'} · {row?.status || '-'} · Rev {revCount}
+                          {row?.estimateNumber || 'No number'} · {row?.status || '-'}
                         </Typography>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                           {customerLabel} · {jobLabel}
@@ -1454,6 +1429,7 @@ function FinanceHubPage() {
                   })
                 )}
               </Box>
+              )}
             </Box>
 
             <Autocomplete
@@ -1596,9 +1572,9 @@ function FinanceHubPage() {
                   <IconButton
                     size="large"
                     aria-label="Older estimate"
-                    title="Older estimate"
-                    disabled={revOlderDisabled}
-                    onClick={goJobEstimateRevisionOlder}
+                    title="Previous estimate number"
+                    disabled={docOlderDisabled}
+                    onClick={goEstimateDocOlder}
                     sx={{
                       color: 'text.secondary',
                       '&.Mui-disabled': { color: 'action.disabled' },
@@ -1907,9 +1883,9 @@ function FinanceHubPage() {
                   <IconButton
                     size="large"
                     aria-label="Newer estimate"
-                    title="Newer estimate"
-                    disabled={revNewerDisabled}
-                    onClick={goJobEstimateRevisionNewer}
+                    title="Next estimate number"
+                    disabled={docNewerDisabled}
+                    onClick={goEstimateDocNewer}
                     sx={{
                       color: 'text.secondary',
                       '&.Mui-disabled': { color: 'action.disabled' },
@@ -1920,23 +1896,13 @@ function FinanceHubPage() {
                 </Box>
               </Box>
 
-              {showRevisionCaption && (
+              {showArrowHint && (
                 <Typography
                   variant="caption"
                   color="text.secondary"
                   sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
                 >
-                  {`Rev ${Math.max(1, selectedRevisionIndex + 1)} / ${estimateRevisions.length}`}
-                </Typography>
-              )}
-              {showSingleRevisionHint && (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
-                >
-                  Arrows navigate revisions for this estimate only. Previous estimate numbers may belong
-                  to different jobs.
+                  Arrows navigate estimate numbers across documents.
                 </Typography>
               )}
             </Box>
@@ -1972,7 +1938,7 @@ function FinanceHubPage() {
                   variant="outlined"
                   color="error"
                   onClick={handleDeleteEstimate}
-                  disabled={savingEstimate || loadingJobEstimate || estimateRevisions.length === 0}
+                  disabled={savingEstimate || loadingJobEstimate || !loadedEstimateDoc?._id}
                 >
                   Delete estimate
                 </Button>
@@ -2077,7 +2043,7 @@ function FinanceHubPage() {
               <Box sx={{ width: 128, textAlign: 'right' }}>Amount</Box>
             </Box>
             <Box sx={{ display: 'flex', p: 1.5, fontSize: 13, alignItems: 'flex-start' }}>
-              <Box sx={{ flex: 1, pr: 1 }}>Invoice generated from selected estimate revision.</Box>
+              <Box sx={{ flex: 1, pr: 1 }}>Invoice generated from the current estimate document.</Box>
               <Box sx={{ width: 128, textAlign: 'right', fontWeight: 700 }}>
                 ${formatInvoiceMoney(invoicePdfPayload.amount)}
               </Box>
@@ -2111,7 +2077,7 @@ function FinanceHubPage() {
         <DialogTitle>Create invoice from estimate</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            This generates a first-class invoice from the currently selected estimate revision.
+            This generates a first-class invoice from the current estimate document.
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
             Estimate # {invoiceEstimateNumber}

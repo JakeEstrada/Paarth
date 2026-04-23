@@ -2,7 +2,13 @@ const Estimate = require('../models/Estimate');
 const Invoice = require('../models/Invoice');
 const Contract = require('../models/Contract');
 const Job = require('../models/Job');
+const File = require('../models/File');
+const fs = require('fs');
+const path = require('path');
 const { getNextDocumentNumber, initializeSequence, formatDocumentNumber } = require('../utils/documentSequence');
+
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
+const DOCUMENT_TEXT_DIR = path.join(UPLOADS_DIR, 'documents-text');
 
 function parseLineItems(lineItems = []) {
   if (!Array.isArray(lineItems)) return [];
@@ -30,13 +36,72 @@ function computeTotals({ lineItems = [], taxRate = 0, discountAmount = 0 }) {
   };
 }
 
-function estimateSummaryFromRevision(revision) {
-  return {
-    latestAmount: Number(revision?.grandTotal || 0),
-    latestEstimateDate: revision?.estimateDate || null,
-    projectName: revision?.projectName || '',
-    footerNote: revision?.footerNote || '',
-  };
+function formatIsoDate(value) {
+  try {
+    if (!value) return '-';
+    return new Date(value).toISOString();
+  } catch {
+    return '-';
+  }
+}
+
+function buildSentEstimateArtifactContent(estimate) {
+  const lineItems = Array.isArray(estimate?.lineItems) ? estimate.lineItems : [];
+  const lines = [
+    'IMMUTABLE ESTIMATE ARTIFACT',
+    `Estimate ID: ${String(estimate?._id || '')}`,
+    `Estimate Number: ${String(estimate?.estimateNumber || '')}`,
+    `Status: ${String(estimate?.status || '')}`,
+    `Customer ID: ${String(estimate?.customerId || '')}`,
+    `Job ID: ${String(estimate?.jobId || '')}`,
+    `Sent At: ${formatIsoDate(estimate?.sentAt)}`,
+    `Estimate Date: ${formatIsoDate(estimate?.estimateDate)}`,
+    `Project Name: ${String(estimate?.projectName || '')}`,
+    `Footer Note: ${String(estimate?.footerNote || '')}`,
+    `Notes: ${String(estimate?.notes || '')}`,
+    `Subtotal: ${Number(estimate?.subtotal || 0)}`,
+    `Tax Rate: ${Number(estimate?.taxRate || 0)}`,
+    `Tax Amount: ${Number(estimate?.taxAmount || 0)}`,
+    `Discount Amount: ${Number(estimate?.discountAmount || 0)}`,
+    `Grand Total: ${Number(estimate?.grandTotal || 0)}`,
+    '',
+    'Line Items:',
+  ];
+  lineItems.forEach((li, idx) => {
+    lines.push(
+      `${idx + 1}. itemName=${String(li?.itemName || '')} | description=${String(li?.description || '')} | quantity=${Number(li?.quantity || 0)} | unitPrice=${Number(li?.unitPrice || 0)} | total=${Number(li?.total || 0)}`
+    );
+  });
+  return lines.join('\n');
+}
+
+async function ensureSentEstimateArtifact(estimate, userId) {
+  if (!estimate?._id || String(estimate?.status || '') !== 'sent' || !estimate?.sentAt) return null;
+  const marker = `[IMMUTABLE_ESTIMATE_SENT] estimateId:${String(estimate._id)} sentAt:${new Date(estimate.sentAt).toISOString()}`;
+  const existing = await File.findOne({ description: marker }).select('_id').lean();
+  if (existing) return existing;
+
+  fs.mkdirSync(DOCUMENT_TEXT_DIR, { recursive: true });
+  const safeEstimateNumber = String(estimate.estimateNumber || 'estimate').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const diskName = `estimate-sent-${safeEstimateNumber}-${Date.now()}.txt`;
+  const diskPath = path.join(DOCUMENT_TEXT_DIR, diskName);
+  const content = buildSentEstimateArtifactContent(estimate);
+  fs.writeFileSync(diskPath, content, 'utf8');
+
+  return File.create({
+    jobId: estimate.jobId || undefined,
+    customerId: estimate.customerId || undefined,
+    filename: diskName,
+    originalName: `Estimate-${estimate.estimateNumber || 'unknown'}-sent-artifact.txt`,
+    mimetype: 'text/plain',
+    size: Buffer.byteLength(content, 'utf8'),
+    path: diskPath,
+    fileType: 'estimate',
+    uploadedBy: userId || estimate.updatedBy || estimate.createdBy,
+    description: `${marker} estimateNumber:${String(estimate.estimateNumber || '')} jobId:${String(
+      estimate.jobId || ''
+    )} customerId:${String(estimate.customerId || '')}`,
+  });
 }
 
 async function listEstimates(req, res) {
@@ -75,21 +140,6 @@ async function createEstimate(req, res) {
       taxRate: req.body?.taxRate,
       discountAmount: req.body?.discountAmount,
     });
-    const revision = {
-      revisionNumber: 1,
-      revisionLabel: 'Rev 1',
-      estimateDate: req.body?.estimateDate ? new Date(req.body.estimateDate) : new Date(),
-      sentAt: req.body?.sentAt ? new Date(req.body.sentAt) : null,
-      projectName: String(req.body?.projectName || '').trim(),
-      footerNote: String(req.body?.footerNote || '').trim(),
-      lineItems,
-      notes: String(req.body?.notes || '').trim(),
-      changeSummary: 'Initial estimate',
-      createdBy: req.user?._id || null,
-      isCurrent: true,
-      ...totals,
-    };
-
     const estimate = await Estimate.create({
       customerId,
       jobId: jobId || undefined,
@@ -97,19 +147,22 @@ async function createEstimate(req, res) {
       estimateNumber: numbering.display,
       prefix: numbering.prefix,
       sequenceNumber: numbering.sequenceNumber,
-      revisions: [revision],
-      currentRevisionId: revision._id,
-      revisionCount: 1,
+      estimateDate: req.body?.estimateDate ? new Date(req.body.estimateDate) : new Date(),
+      lineItems,
+      notes: String(req.body?.notes || '').trim(),
+      ...totals,
+      projectName: String(req.body?.projectName || '').trim(),
+      footerNote: String(req.body?.footerNote || '').trim(),
       sourceType: 'manual',
       createdBy: req.user?._id || null,
       updatedBy: req.user?._id || null,
-      ...estimateSummaryFromRevision(revision),
+      sentAt: req.body?.sentAt ? new Date(req.body.sentAt) : null,
     });
 
     if (jobId) {
       await Job.findByIdAndUpdate(jobId, {
         $set: {
-          valueEstimated: Number(revision.grandTotal || 0),
+          valueEstimated: Number(estimate.grandTotal || 0),
         },
       });
     }
@@ -137,150 +190,58 @@ async function patchEstimate(req, res) {
     const estimate = await Estimate.findById(req.params.id);
     if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
 
-    const updatable = ['status', 'projectName', 'footerNote', 'jobId', 'customerId'];
+    if (req.body.lineItems !== undefined) estimate.lineItems = parseLineItems(req.body.lineItems);
+    const updatable = [
+      'status',
+      'projectName',
+      'footerNote',
+      'jobId',
+      'customerId',
+      'notes',
+      'estimateDate',
+      'sentAt',
+      'taxRate',
+      'discountAmount',
+    ];
     updatable.forEach((key) => {
-      if (req.body[key] !== undefined) estimate[key] = req.body[key];
+      if (req.body[key] !== undefined) {
+        if (key === 'estimateDate' || key === 'sentAt') {
+          estimate[key] = req.body[key] ? new Date(req.body[key]) : null;
+        } else {
+          estimate[key] = req.body[key];
+        }
+      }
     });
+    const totals = computeTotals({
+      lineItems: estimate.lineItems || [],
+      taxRate: estimate.taxRate,
+      discountAmount: estimate.discountAmount,
+    });
+    Object.assign(estimate, totals);
     estimate.updatedBy = req.user?._id || estimate.updatedBy;
     await estimate.save();
+    if (estimate.jobId) {
+      await Job.findByIdAndUpdate(estimate.jobId, { $set: { valueEstimated: Number(estimate.grandTotal || 0) } });
+    }
     res.json(estimate);
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to update estimate' });
   }
 }
 
-async function createEstimateRevision(req, res) {
+async function deleteEstimate(req, res) {
   try {
     const estimate = await Estimate.findById(req.params.id);
     if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
-
-    estimate.revisions.forEach((r) => {
-      r.isCurrent = false;
-    });
-
-    const nextRevisionNumber = (estimate.revisionCount || estimate.revisions.length || 0) + 1;
-    const lineItems = parseLineItems(req.body?.lineItems || []);
-    const totals = computeTotals({
-      lineItems,
-      taxRate: req.body?.taxRate,
-      discountAmount: req.body?.discountAmount,
-    });
-    const revision = {
-      revisionNumber: nextRevisionNumber,
-      revisionLabel: `Rev ${nextRevisionNumber}`,
-      estimateDate: req.body?.estimateDate ? new Date(req.body.estimateDate) : new Date(),
-      sentAt: req.body?.sentAt ? new Date(req.body.sentAt) : null,
-      projectName: String(req.body?.projectName || estimate.projectName || '').trim(),
-      footerNote: String(req.body?.footerNote || estimate.footerNote || '').trim(),
-      lineItems,
-      notes: String(req.body?.notes || '').trim(),
-      changeSummary: String(req.body?.changeSummary || '').trim(),
-      createdBy: req.user?._id || null,
-      isCurrent: true,
-      ...totals,
-    };
-
-    estimate.revisions.push(revision);
-    estimate.currentRevisionId = revision._id;
-    estimate.revisionCount = nextRevisionNumber;
-    Object.assign(estimate, estimateSummaryFromRevision(revision));
-    estimate.updatedBy = req.user?._id || estimate.updatedBy;
-    await estimate.save();
-
-    if (estimate.jobId) {
-      await Job.findByIdAndUpdate(estimate.jobId, { $set: { valueEstimated: Number(revision.grandTotal || 0) } });
+    const jobId = estimate.jobId ? String(estimate.jobId) : null;
+    await Estimate.deleteOne({ _id: estimate._id });
+    if (jobId) {
+      const replacement = await Estimate.findOne({ jobId }).sort({ createdAt: -1 }).lean();
+      await Job.findByIdAndUpdate(jobId, { $set: { valueEstimated: Number(replacement?.grandTotal || 0) } });
     }
-    res.status(201).json(estimate);
+    res.json({ deleted: true, estimateId: req.params.id });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to create estimate revision' });
-  }
-}
-
-async function getEstimateRevision(req, res) {
-  try {
-    const estimate = await Estimate.findById(req.params.id);
-    if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
-    const revision = estimate.revisions.id(req.params.revisionId);
-    if (!revision) return res.status(404).json({ error: 'Revision not found' });
-    res.json(revision);
-  } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to fetch revision' });
-  }
-}
-
-async function patchEstimateRevision(req, res) {
-  try {
-    const estimate = await Estimate.findById(req.params.id);
-    if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
-    const revision = estimate.revisions.id(req.params.revisionId);
-    if (!revision) return res.status(404).json({ error: 'Revision not found' });
-
-    if (req.body.lineItems !== undefined) revision.lineItems = parseLineItems(req.body.lineItems);
-    const updatable = ['estimateDate', 'sentAt', 'projectName', 'footerNote', 'notes', 'changeSummary', 'taxRate', 'discountAmount'];
-    updatable.forEach((key) => {
-      if (req.body[key] !== undefined) revision[key] = req.body[key];
-    });
-    const totals = computeTotals({
-      lineItems: revision.lineItems || [],
-      taxRate: revision.taxRate,
-      discountAmount: revision.discountAmount,
-    });
-    Object.assign(revision, totals);
-
-    if (String(estimate.currentRevisionId || '') === String(revision._id)) {
-      Object.assign(estimate, estimateSummaryFromRevision(revision));
-      if (estimate.jobId) {
-        await Job.findByIdAndUpdate(estimate.jobId, { $set: { valueEstimated: Number(revision.grandTotal || 0) } });
-      }
-    }
-
-    estimate.updatedBy = req.user?._id || estimate.updatedBy;
-    await estimate.save();
-    res.json(estimate);
-  } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to patch revision' });
-  }
-}
-
-async function deleteEstimateRevision(req, res) {
-  try {
-    const estimate = await Estimate.findById(req.params.id);
-    if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
-    const revision = estimate.revisions.id(req.params.revisionId);
-    if (!revision) return res.status(404).json({ error: 'Revision not found' });
-
-    if (estimate.revisions.length <= 1) {
-      return res.status(400).json({ error: 'Cannot delete the only revision' });
-    }
-
-    const removingCurrent = String(estimate.currentRevisionId || '') === String(revision._id);
-    revision.deleteOne();
-    estimate.revisionCount = Math.max(0, estimate.revisions.length);
-
-    if (removingCurrent) {
-      const sorted = [...estimate.revisions].sort(
-        (a, b) => Number(a?.revisionNumber || 0) - Number(b?.revisionNumber || 0)
-      );
-      const nextCurrent = sorted[sorted.length - 1] || null;
-      estimate.revisions.forEach((r) => {
-        r.isCurrent = nextCurrent ? String(r._id) === String(nextCurrent._id) : false;
-      });
-      estimate.currentRevisionId = nextCurrent?._id || null;
-      if (nextCurrent) {
-        Object.assign(estimate, estimateSummaryFromRevision(nextCurrent));
-      }
-      if (estimate.jobId) {
-        await Job.findByIdAndUpdate(estimate.jobId, {
-          $set: { valueEstimated: Number(nextCurrent?.grandTotal || 0) },
-        });
-      }
-    }
-
-    estimate.updatedBy = req.user?._id || estimate.updatedBy;
-    await estimate.save();
-    res.json(estimate);
-  } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to delete revision' });
+    res.status(500).json({ error: error.message || 'Failed to delete estimate' });
   }
 }
 
@@ -290,6 +251,7 @@ async function updateEstimateStatus(req, res) {
     if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
     const nextStatus = String(req.body?.status || '').trim();
     if (!nextStatus) return res.status(400).json({ error: 'status is required' });
+    const previousStatus = estimate.status;
     estimate.status = nextStatus;
     if (nextStatus === 'sent') estimate.sentAt = new Date();
     if (nextStatus === 'approved') estimate.approvedAt = new Date();
@@ -297,6 +259,9 @@ async function updateEstimateStatus(req, res) {
     if (nextStatus === 'archived') estimate.archivedAt = new Date();
     estimate.updatedBy = req.user?._id || estimate.updatedBy;
     await estimate.save();
+    if (nextStatus === 'sent' && previousStatus !== 'sent') {
+      await ensureSentEstimateArtifact(estimate, req.user?._id || null);
+    }
     res.json(estimate);
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to update status' });
@@ -307,36 +272,33 @@ async function generateInvoiceFromEstimate(req, res) {
   try {
     const estimate = await Estimate.findById(req.params.id);
     if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
-    const revisionId = req.body?.revisionId || estimate.currentRevisionId;
-    const revision = estimate.revisions.id(revisionId);
-    if (!revision) return res.status(404).json({ error: 'Revision not found' });
 
     const numbering = await getNextDocumentNumber({ documentType: 'invoice', prefix: estimate.prefix || '1102' });
     const invoice = await Invoice.create({
       customerId: estimate.customerId,
       jobId: estimate.jobId,
       estimateId: estimate._id,
-      estimateRevisionId: revision._id,
+      estimateRevisionId: undefined,
       invoiceNumber: numbering.display,
       prefix: numbering.prefix,
       sequenceNumber: numbering.sequenceNumber,
       status: 'draft',
       issuedAt: new Date(),
-      lineItems: revision.lineItems || [],
-      subtotal: revision.subtotal || 0,
-      taxRate: revision.taxRate || 0,
-      taxAmount: revision.taxAmount || 0,
-      discountAmount: revision.discountAmount || 0,
-      total: revision.grandTotal || 0,
-      balanceDue: revision.grandTotal || 0,
+      lineItems: estimate.lineItems || [],
+      subtotal: estimate.subtotal || 0,
+      taxRate: estimate.taxRate || 0,
+      taxAmount: estimate.taxAmount || 0,
+      discountAmount: estimate.discountAmount || 0,
+      total: estimate.grandTotal || 0,
+      balanceDue: estimate.grandTotal || 0,
       notes: `Generated from estimate ${estimate.estimateNumber}`,
       sourceType: 'derived_from_estimate',
       createdBy: req.user?._id || null,
       updatedBy: req.user?._id || null,
     });
-    revision.derivedDocuments = revision.derivedDocuments || {};
-    revision.derivedDocuments.invoiceIds = revision.derivedDocuments.invoiceIds || [];
-    revision.derivedDocuments.invoiceIds.push(invoice._id);
+    estimate.derivedDocuments = estimate.derivedDocuments || {};
+    estimate.derivedDocuments.invoiceIds = estimate.derivedDocuments.invoiceIds || [];
+    estimate.derivedDocuments.invoiceIds.push(invoice._id);
     estimate.status = 'converted_to_invoice';
     estimate.updatedBy = req.user?._id || estimate.updatedBy;
     await estimate.save();
@@ -350,34 +312,31 @@ async function generateContractFromEstimate(req, res) {
   try {
     const estimate = await Estimate.findById(req.params.id);
     if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
-    const revisionId = req.body?.revisionId || estimate.currentRevisionId;
-    const revision = estimate.revisions.id(revisionId);
-    if (!revision) return res.status(404).json({ error: 'Revision not found' });
 
     const numbering = await getNextDocumentNumber({ documentType: 'contract', prefix: estimate.prefix || '1102' });
     const contract = await Contract.create({
       customerId: estimate.customerId,
       jobId: estimate.jobId,
       estimateId: estimate._id,
-      estimateRevisionId: revision._id,
+      estimateRevisionId: undefined,
       contractNumber: numbering.display,
       prefix: numbering.prefix,
       sequenceNumber: numbering.sequenceNumber,
       status: 'draft',
       contractDate: new Date(),
       terms: String(req.body?.terms || '').trim(),
-      scopeOfWork: String(req.body?.scopeOfWork || revision.projectName || '').trim(),
-      lineItems: revision.lineItems || [],
-      total: revision.grandTotal || 0,
+      scopeOfWork: String(req.body?.scopeOfWork || estimate.projectName || '').trim(),
+      lineItems: estimate.lineItems || [],
+      total: estimate.grandTotal || 0,
       depositRequired: Number(req.body?.depositRequired || 0),
       depositReceived: Number(req.body?.depositReceived || 0),
       sourceType: 'derived_from_estimate',
       createdBy: req.user?._id || null,
       updatedBy: req.user?._id || null,
     });
-    revision.derivedDocuments = revision.derivedDocuments || {};
-    revision.derivedDocuments.contractIds = revision.derivedDocuments.contractIds || [];
-    revision.derivedDocuments.contractIds.push(contract._id);
+    estimate.derivedDocuments = estimate.derivedDocuments || {};
+    estimate.derivedDocuments.contractIds = estimate.derivedDocuments.contractIds || [];
+    estimate.derivedDocuments.contractIds.push(contract._id);
     estimate.status = 'converted_to_contract';
     estimate.updatedBy = req.user?._id || estimate.updatedBy;
     await estimate.save();
@@ -540,10 +499,7 @@ module.exports = {
   createEstimate,
   getEstimate,
   patchEstimate,
-  createEstimateRevision,
-  getEstimateRevision,
-  patchEstimateRevision,
-  deleteEstimateRevision,
+  deleteEstimate,
   updateEstimateStatus,
   generateInvoiceFromEstimate,
   generateContractFromEstimate,

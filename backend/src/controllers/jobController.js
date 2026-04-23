@@ -587,24 +587,6 @@ async function updateJob(req, res) {
   }
 }
 
-// Update a specific estimate revision in-place (does not create a new estimate number/history entry)
-async function updateEstimateRevision(req, res) {
-  warnLegacyEstimateUsage('legacy updateEstimateRevision route called', { jobId: req.params.id });
-  return res.status(410).json({
-    error: 'Legacy job-embedded estimate revisions are deprecated',
-    hint: 'Use /estimates/:id/revisions/:revisionId',
-  });
-}
-
-// Delete one estimate revision by browse index (oldest = 0).
-async function deleteEstimateRevision(req, res) {
-  warnLegacyEstimateUsage('legacy deleteEstimateRevision route called', { jobId: req.params.id });
-  return res.status(410).json({
-    error: 'Legacy job-embedded estimate revisions are deprecated',
-    hint: 'Use DELETE /estimates/:id/revisions/:revisionId',
-  });
-}
-
 function roundMoney(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return 0;
@@ -1657,8 +1639,6 @@ module.exports = {
   archiveCompletedJobs,
   reopenFromCompleted,
   resetAllEstimates,
-  updateEstimateRevision,
-  deleteEstimateRevision,
   addJobInvoice,
   debugDeadEstimates
 };

@@ -124,19 +124,14 @@ function warnLegacyEstimateUsage(context, details = {}) {
 }
 
 function buildEstimateSummary(job, estimateDoc) {
-  const revs = Array.isArray(estimateDoc?.revisions) ? estimateDoc.revisions : [];
-  const current =
-    revs.find((r) => String(r?._id || '') === String(estimateDoc?.currentRevisionId || '')) ||
-    revs[revs.length - 1] ||
-    null;
-  const lineItems = Array.isArray(current?.lineItems) ? current.lineItems : [];
+  const lineItems = Array.isArray(estimateDoc?.lineItems) ? estimateDoc.lineItems : [];
   const lines = [
     `Job: ${job.title || 'Untitled'}`,
     `Estimate Number: ${estimateDoc?.estimateNumber || '-'}`,
-    `Estimate Date: ${current?.estimateDate ? new Date(current.estimateDate).toISOString().slice(0, 10) : '-'}`,
-    `Amount: ${current?.grandTotal != null ? current.grandTotal : '-'}`,
-    `Sent At: ${formatDateOrDash(estimateDoc?.sentAt || current?.sentAt)}`,
-    `Project Name: ${current?.projectName || estimateDoc?.projectName || '-'}`,
+    `Estimate Date: ${estimateDoc?.estimateDate ? new Date(estimateDoc.estimateDate).toISOString().slice(0, 10) : '-'}`,
+    `Amount: ${estimateDoc?.grandTotal != null ? estimateDoc.grandTotal : '-'}`,
+    `Sent At: ${formatDateOrDash(estimateDoc?.sentAt)}`,
+    `Project Name: ${estimateDoc?.projectName || '-'}`,
     '',
     'Line Items:',
   ];
@@ -149,8 +144,8 @@ function buildEstimateSummary(job, estimateDoc) {
       );
     });
   }
-  if (current?.footerNote || estimateDoc?.footerNote) {
-    lines.push('', 'Footer Note:', current?.footerNote || estimateDoc?.footerNote);
+  if (estimateDoc?.footerNote) {
+    lines.push('', 'Footer Note:', estimateDoc.footerNote);
   }
   return lines.join('\n');
 }

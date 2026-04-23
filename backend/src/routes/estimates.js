@@ -6,10 +6,7 @@ const {
   createEstimate,
   getEstimate,
   patchEstimate,
-  createEstimateRevision,
-  getEstimateRevision,
-  patchEstimateRevision,
-  deleteEstimateRevision,
+  deleteEstimate,
   updateEstimateStatus,
   generateInvoiceFromEstimate,
   generateContractFromEstimate,
@@ -29,10 +26,7 @@ router.post('/admin/remediate/mark-legacy/:id', markEstimateAsLegacy);
 router.post('/', createEstimate);
 router.get('/:id', getEstimate);
 router.patch('/:id', patchEstimate);
-router.post('/:id/revisions', createEstimateRevision);
-router.get('/:id/revisions/:revisionId', getEstimateRevision);
-router.patch('/:id/revisions/:revisionId', patchEstimateRevision);
-router.delete('/:id/revisions/:revisionId', deleteEstimateRevision);
+router.delete('/:id', deleteEstimate);
 router.post('/:id/status', updateEstimateStatus);
 router.post('/:id/generate-invoice', generateInvoiceFromEstimate);
 router.post('/:id/generate-contract', generateContractFromEstimate);

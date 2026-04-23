@@ -66,32 +66,10 @@ async function migrate() {
 
     const firstNumber = snapshots.find((s) => s?.number)?.number || '';
     const legacy = deriveLegacySequence(firstNumber);
-    const revisions = snapshots.map((s, idx) => {
-      const lineItems = normalizeLineItems(s.lineItems || []);
-      const subtotal = lineItems.reduce((sum, li) => sum + (Number(li.total) || 0), 0);
-      const amount = Number(s.amount || subtotal || 0);
-      return {
-        revisionNumber: idx + 1,
-        revisionLabel: `Rev ${idx + 1}`,
-        estimateDate: s.estimateDate ? new Date(s.estimateDate) : null,
-        sentAt: s.sentAt ? new Date(s.sentAt) : null,
-        projectName: String(s.projectName || '').trim(),
-        footerNote: String(s.footerNote || '').trim(),
-        lineItems,
-        subtotal,
-        taxRate: 0,
-        taxAmount: 0,
-        discountAmount: 0,
-        grandTotal: amount,
-        notes: '',
-        changeSummary: 'Migrated from legacy Job.estimate structure',
-        createdBy: job.createdBy || null,
-        createdAt: job.updatedAt || job.createdAt || new Date(),
-        isCurrent: idx === snapshots.length - 1,
-      };
-    });
-
-    const currentRevision = revisions[revisions.length - 1];
+    const latest = snapshots[snapshots.length - 1] || {};
+    const lineItems = normalizeLineItems(latest.lineItems || []);
+    const subtotal = lineItems.reduce((sum, li) => sum + (Number(li.total) || 0), 0);
+    const amount = Number(latest.amount || subtotal || 0);
     const doc = await Estimate.create({
       tenantId: job.tenantId || undefined,
       customerId: job.customerId,
@@ -100,15 +78,18 @@ async function migrate() {
       estimateNumber: String(current?.number || firstNumber || `MIG-${job._id}`),
       prefix: legacy?.prefix || '1102',
       sequenceNumber: legacy?.seq || 0,
-      // Let model invariants resolve the current revision from `isCurrent` flags.
-      currentRevisionId: null,
-      revisionCount: revisions.length,
-      latestAmount: Number(currentRevision?.grandTotal || 0),
-      latestEstimateDate: currentRevision?.estimateDate || null,
-      projectName: currentRevision?.projectName || '',
-      footerNote: currentRevision?.footerNote || '',
+      estimateDate: latest.estimateDate ? new Date(latest.estimateDate) : null,
+      lineItems,
+      subtotal,
+      taxRate: 0,
+      taxAmount: 0,
+      discountAmount: 0,
+      grandTotal: amount,
+      notes: '',
+      projectName: String(latest.projectName || '').trim(),
+      footerNote: String(latest.footerNote || '').trim(),
       sourceType: 'migrated',
-      revisions,
+      sentAt: latest.sentAt ? new Date(latest.sentAt) : null,
       createdBy: job.createdBy || null,
       updatedBy: job.createdBy || null,
     });
