@@ -1,4 +1,4 @@
-import { useRef, useMemo, useCallback, useState } from 'react';
+import { useRef, useMemo, useCallback, useState, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import {
   Box,
@@ -14,6 +14,9 @@ import { format } from 'date-fns';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import toast from 'react-hot-toast';
+import axios from 'axios';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const COMPANY_NAME = 'San Clemente Woodworking';
 const COMPANY_STREET = '1030 Calle Sombra, F San Clemente, CA. 92673';
@@ -106,8 +109,14 @@ function buildProjectLocationLine(job) {
   return [c.street, c.city, c.state, c.zip].map((x) => String(x || '').trim()).filter(Boolean).join(', ') || '______________________________';
 }
 
-function contractAmounts(job) {
-  const raw = Number(job?.valueContracted) || Number(job?.estimate?.amount) || Number(job?.valueEstimated) || 0;
+function contractAmounts(job, estimateDoc) {
+  const revs = Array.isArray(estimateDoc?.revisions) ? estimateDoc.revisions : [];
+  const current =
+    revs.find((r) => String(r?._id || '') === String(estimateDoc?.currentRevisionId || '')) ||
+    revs[revs.length - 1] ||
+    null;
+  const estimateTotal = Number(current?.grandTotal || estimateDoc?.latestAmount || 0);
+  const raw = Number(job?.valueContracted) || estimateTotal || Number(job?.valueEstimated) || 0;
   const total = Math.round(raw * 100) / 100;
   const totalDisplay = Number.isInteger(total) ? String(Math.round(total)) : total.toFixed(2);
   const written = `${numberToWordsDollars(Math.floor(total))} Dollars and 00/100`;
@@ -131,6 +140,25 @@ function JobContractPacketDialog({ open, onClose, job }) {
   const page1Ref = useRef(null);
   const page2Ref = useRef(null);
   const [exporting, setExporting] = useState(false);
+  const [estimateDoc, setEstimateDoc] = useState(null);
+
+  useEffect(() => {
+    if (!open || !job?._id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API_URL}/estimates`, { params: { jobId: job._id } });
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : data?.estimates || [];
+        setEstimateDoc(list[0] || null);
+      } catch (error) {
+        if (!cancelled) setEstimateDoc(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, job?._id]);
 
   const data = useMemo(() => {
     if (!job) return null;
@@ -138,8 +166,11 @@ function JobContractPacketDialog({ open, onClose, job }) {
     const { street, line2 } = buildCustomerAddressLines(job);
     const addr1 = street || '______________________________';
     const addr2 = line2 || '______________________________';
-    const { total, totalDisplay, written } = contractAmounts(job);
-    const estimateNumber = String(job.estimate?.number || '').trim() || '__________';
+    const { total, totalDisplay, written } = contractAmounts(job, estimateDoc);
+    if (!estimateDoc && job?.estimate?.number) {
+      console.warn('[estimate-deprecated] contract packet fell back to job.estimate', { jobId: job?._id });
+    }
+    const estimateNumber = String(estimateDoc?.estimateNumber || job?.estimate?.number || '').trim() || '__________';
     const projectLocation = buildProjectLocationLine(job);
     const contractDate = format(new Date(), 'M/d/yyyy');
     const qrData = `${COMPANY_NAME} Zelle ${ZELLE_PHONE} ${ZELLE_ACCOUNT_NOTE}`;
@@ -157,7 +188,7 @@ function JobContractPacketDialog({ open, onClose, job }) {
       contractDate,
       qrSrc,
     };
-  }, [job]);
+  }, [job, estimateDoc]);
 
   const capturePage = async (el) => {
     if (!el) throw new Error('Page not ready');

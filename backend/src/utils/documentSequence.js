@@ -10,16 +10,23 @@ function formatDocumentNumber({ prefix, sequence, documentType }) {
 }
 
 async function getNextDocumentNumber({ documentType, prefix = '1102' }) {
+  await DocumentSequence.findOneAndUpdate(
+    { documentType },
+    {
+      $setOnInsert: { documentType, prefix, nextSequence: 0 },
+    },
+    { upsert: true }
+  );
+
   const seq = await DocumentSequence.findOneAndUpdate(
     { documentType },
     {
-      $setOnInsert: { documentType, prefix, nextSequence: 1 },
       $inc: { nextSequence: 1 },
     },
-    { new: true, upsert: true }
+    { new: true }
   );
 
-  const sequenceNumber = seq.nextSequence - 1;
+  const sequenceNumber = seq.nextSequence;
   const display = formatDocumentNumber({
     prefix: seq.prefix || prefix,
     sequence: sequenceNumber,

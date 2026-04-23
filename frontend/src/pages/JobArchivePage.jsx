@@ -152,14 +152,20 @@ function JobArchivePage() {
   const matchesArchiveSearch = (job, rawQuery) => {
     const q = String(rawQuery || '').trim().toLowerCase();
     if (!q) return true;
+    const sentAt = job?.estimateMeta?.sentAt || job?.estimate?.sentAt || null;
+    const estimateNumber = job?.estimateMeta?.estimateNumber || job?.estimate?.number || '';
+    const estimateProjectName = job?.estimateMeta?.projectName || job?.estimate?.projectName || '';
+    if (!job?.estimateMeta && job?.estimate) {
+      console.warn('[estimate-deprecated] archive search fell back to job.estimate', { jobId: job?._id });
+    }
     const haystack = [
       job?.title,
       job?.description,
       job?.stage,
       job?.customerId?.name,
-      job?.estimate?.number,
-      job?.estimate?.projectName,
-      job?.estimate?.sentAt ? new Date(job.estimate.sentAt).toLocaleDateString() : '',
+      estimateNumber,
+      estimateProjectName,
+      sentAt ? new Date(sentAt).toLocaleDateString() : '',
     ]
       .map((x) => String(x || '').toLowerCase())
       .join(' ');
@@ -338,7 +344,8 @@ function JobArchivePage() {
                     }}
                   >
                     {group.jobs.map((job) => {
-                      const daysSince = getDaysSinceSent(job.estimate?.sentAt);
+                      const sentAt = job?.estimateMeta?.sentAt || job?.estimate?.sentAt || null;
+                      const daysSince = getDaysSinceSent(sentAt);
                       return (
                         <Card
                           key={job._id}
@@ -389,9 +396,9 @@ function JobArchivePage() {
                                 />
                               )}
                             </Box>
-                            {job.estimate?.sentAt && (
+                            {sentAt && (
                               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                                Sent: {new Date(job.estimate.sentAt).toLocaleDateString()}
+                                Sent: {new Date(sentAt).toLocaleDateString()}
                               </Typography>
                             )}
                           </CardContent>

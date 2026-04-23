@@ -100,7 +100,8 @@ async function migrate() {
       estimateNumber: String(current?.number || firstNumber || `MIG-${job._id}`),
       prefix: legacy?.prefix || '1102',
       sequenceNumber: legacy?.seq || 0,
-      currentRevisionId: revisions[revisions.length - 1]._id,
+      // Let model invariants resolve the current revision from `isCurrent` flags.
+      currentRevisionId: null,
       revisionCount: revisions.length,
       latestAmount: Number(currentRevision?.grandTotal || 0),
       latestEstimateDate: currentRevision?.estimateDate || null,

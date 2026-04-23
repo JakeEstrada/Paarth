@@ -3,6 +3,9 @@ const DocumentFolder = require('../models/DocumentFolder');
 const Job = require('../models/Job');
 const Customer = require('../models/Customer');
 const Activity = require('../models/Activity');
+const Estimate = require('../models/Estimate');
+const Invoice = require('../models/Invoice');
+const Contract = require('../models/Contract');
 const fs = require('fs');
 const path = require('path');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
@@ -116,16 +119,24 @@ function appendTakeoffItems(lines, sheetData) {
   });
 }
 
-function buildEstimateSummary(job) {
-  const e = job?.estimate || {};
-  const lineItems = Array.isArray(e.lineItems) ? e.lineItems : [];
+function warnLegacyEstimateUsage(context, details = {}) {
+  console.warn('[estimate-deprecated]', context, details);
+}
+
+function buildEstimateSummary(job, estimateDoc) {
+  const revs = Array.isArray(estimateDoc?.revisions) ? estimateDoc.revisions : [];
+  const current =
+    revs.find((r) => String(r?._id || '') === String(estimateDoc?.currentRevisionId || '')) ||
+    revs[revs.length - 1] ||
+    null;
+  const lineItems = Array.isArray(current?.lineItems) ? current.lineItems : [];
   const lines = [
     `Job: ${job.title || 'Untitled'}`,
-    `Estimate Number: ${e.number || '-'}`,
-    `Estimate Date: ${e.estimateDate || '-'}`,
-    `Amount: ${e.amount != null ? e.amount : '-'}`,
-    `Sent At: ${formatDateOrDash(e.sentAt)}`,
-    `Project Name: ${e.projectName || '-'}`,
+    `Estimate Number: ${estimateDoc?.estimateNumber || '-'}`,
+    `Estimate Date: ${current?.estimateDate ? new Date(current.estimateDate).toISOString().slice(0, 10) : '-'}`,
+    `Amount: ${current?.grandTotal != null ? current.grandTotal : '-'}`,
+    `Sent At: ${formatDateOrDash(estimateDoc?.sentAt || current?.sentAt)}`,
+    `Project Name: ${current?.projectName || estimateDoc?.projectName || '-'}`,
     '',
     'Line Items:',
   ];
@@ -138,31 +149,35 @@ function buildEstimateSummary(job) {
       );
     });
   }
-  if (e.footerNote) {
-    lines.push('', 'Footer Note:', e.footerNote);
+  if (current?.footerNote || estimateDoc?.footerNote) {
+    lines.push('', 'Footer Note:', current?.footerNote || estimateDoc?.footerNote);
   }
   return lines.join('\n');
 }
 
-function buildContractSummary(job) {
-  const c = job?.contract || {};
+function buildContractSummary(job, contractDoc) {
+  const c = contractDoc || {};
   return [
     `Job: ${job.title || 'Untitled'}`,
+    `Contract Number: ${c.contractNumber || '-'}`,
     `Signed At: ${formatDateOrDash(c.signedAt)}`,
+    `Contract Date: ${formatDateOrDash(c.contractDate)}`,
+    `Total: ${c.total ?? '-'}`,
     `Deposit Required: ${c.depositRequired ?? '-'}`,
     `Deposit Received: ${c.depositReceived ?? '-'}`,
     `Deposit Received At: ${formatDateOrDash(c.depositReceivedAt)}`,
   ].join('\n');
 }
 
-function buildInvoicesSummary(job) {
-  const invoices = Array.isArray(job?.invoices) ? job.invoices : [];
+function buildInvoicesSummary(job, invoiceDocs) {
+  const invoices = Array.isArray(invoiceDocs) ? invoiceDocs : [];
   const lines = [`Job: ${job.title || 'Untitled'}`, '', 'Invoices:'];
   invoices.forEach((inv, idx) => {
     lines.push(
-      `${idx + 1}. ${inv.kind || 'invoice'} | ${inv.label || '-'} | Amount: ${inv.amount ?? '-'} | Estimate: ${inv.estimateNumber || '-'} | Date: ${inv.invoiceDate || '-'}`
+      `${idx + 1}. ${inv.invoiceNumber || 'invoice'} | Amount: ${inv.total ?? '-'} | Estimate: ${inv.estimateId || '-'} | Date: ${inv.issuedAt ? new Date(inv.issuedAt).toISOString().slice(0, 10) : '-'}`
     );
   });
+  if (!invoices.length) lines.push('- (none)');
   return lines.join('\n');
 }
 
@@ -297,14 +312,45 @@ async function ensureCustomerDocumentLibrary(createdBy) {
 
   const jobs = await Job.find(
     { customerId: { $in: customers.map((c) => c._id) } },
-    'customerId title estimate contract invoices takeoff'
+    'customerId title takeoff'
   ).lean();
+  const jobIds = jobs.map((j) => j._id);
+  const [estimateDocs, contractDocs, invoiceDocs] = await Promise.all([
+    Estimate.find({ jobId: { $in: jobIds } }).sort({ createdAt: -1 }).lean(),
+    Contract.find({ jobId: { $in: jobIds } }).sort({ createdAt: -1 }).lean(),
+    Invoice.find({ jobId: { $in: jobIds } }).sort({ createdAt: -1 }).lean(),
+  ]);
+  const estimateByJob = new Map();
+  for (const e of estimateDocs) {
+    const k = String(e.jobId || '');
+    if (k && !estimateByJob.has(k)) estimateByJob.set(k, e);
+  }
+  const contractByJob = new Map();
+  for (const c of contractDocs) {
+    const k = String(c.jobId || '');
+    if (k && !contractByJob.has(k)) contractByJob.set(k, c);
+  }
+  const invoicesByJob = new Map();
+  for (const inv of invoiceDocs) {
+    const k = String(inv.jobId || '');
+    if (!k) continue;
+    const list = invoicesByJob.get(k) || [];
+    list.push(inv);
+    invoicesByJob.set(k, list);
+  }
 
   for (const job of jobs) {
     const folderId = customerFolderById.get(String(job.customerId));
     if (!folderId) continue;
 
-    if (hasAnyValue(job.estimate)) {
+    const estimateDoc = estimateByJob.get(String(job._id)) || null;
+    const contractDoc = contractByJob.get(String(job._id)) || null;
+    const invoiceList = invoicesByJob.get(String(job._id)) || [];
+
+    if (!estimateDoc && hasAnyValue(job.estimate)) {
+      warnLegacyEstimateUsage('file summaries fell back to job.estimate', { jobId: String(job._id) });
+    }
+    if (estimateDoc) {
       await upsertGeneratedTextDocument({
         customerId: job.customerId,
         jobId: job._id,
@@ -312,10 +358,10 @@ async function ensureCustomerDocumentLibrary(createdBy) {
         folderId,
         createdBy,
         originalName: `${sanitizePathSegment(job.title) || 'Job'} - Estimate.txt`,
-        content: buildEstimateSummary(job),
+        content: buildEstimateSummary(job, estimateDoc),
       });
     }
-    if (hasAnyValue(job.contract)) {
+    if (contractDoc) {
       await upsertGeneratedTextDocument({
         customerId: job.customerId,
         jobId: job._id,
@@ -323,10 +369,10 @@ async function ensureCustomerDocumentLibrary(createdBy) {
         folderId,
         createdBy,
         originalName: `${sanitizePathSegment(job.title) || 'Job'} - Contract.txt`,
-        content: buildContractSummary(job),
+        content: buildContractSummary(job, contractDoc),
       });
     }
-    if (Array.isArray(job.invoices) && job.invoices.length > 0) {
+    if (invoiceList.length > 0) {
       await upsertGeneratedTextDocument({
         customerId: job.customerId,
         jobId: job._id,
@@ -334,7 +380,7 @@ async function ensureCustomerDocumentLibrary(createdBy) {
         folderId,
         createdBy,
         originalName: `${sanitizePathSegment(job.title) || 'Job'} - Invoices.txt`,
-        content: buildInvoicesSummary(job),
+        content: buildInvoicesSummary(job, invoiceList),
       });
     }
     if (hasAnyValue(job.takeoff)) {

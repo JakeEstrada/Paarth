@@ -4,12 +4,35 @@ const Activity = require('../models/Activity');
 const File = require('../models/File');
 const Customer = require('../models/Customer');
 const DocumentFolder = require('../models/DocumentFolder');
+const Estimate = require('../models/Estimate');
 const { publishProjectCreated, publishProjectUpdated } = require('../services/eventBus');
 const fs = require('fs');
 const path = require('path');
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
 const DOCUMENT_TEXT_DIR = path.join(UPLOADS_DIR, 'documents-text');
+
+function warnLegacyEstimateUsage(context, details = {}) {
+  console.warn('[estimate-deprecated]', context, details);
+}
+
+async function getLatestEstimateMapByJobIds(jobIds = []) {
+  const ids = Array.from(new Set(jobIds.map((id) => String(id || '')).filter(Boolean)));
+  if (!ids.length) return new Map();
+  const estimates = await Estimate.find(
+    { jobId: { $in: ids } },
+    '_id jobId status sentAt estimateNumber projectName createdAt updatedAt'
+  )
+    .sort({ createdAt: -1 })
+    .lean();
+  const map = new Map();
+  for (const est of estimates) {
+    const k = String(est.jobId || '');
+    if (!k || map.has(k)) continue;
+    map.set(k, est);
+  }
+  return map;
+}
 
 function sanitizeFolderName(name) {
   return String(name || '')
@@ -399,40 +422,19 @@ async function updateJob(req, res) {
     // Update the job (remove temporary _notesToUpdate field first)
     const { _notesToUpdate, ...jobUpdateData } = req.body;
     delete jobUpdateData.invoices;
-    // Stack prior estimate before replacing (Finance Hub — LIFO history on disk: oldest first)
-    if (jobUpdateData.estimateHistory !== undefined) {
-      delete jobUpdateData.estimateHistory;
+    if (jobUpdateData.estimateHistory !== undefined || jobUpdateData.estimate !== undefined) {
+      warnLegacyEstimateUsage('updateJob ignored legacy estimate payload', {
+        jobId: String(job._id),
+        hasEstimate: jobUpdateData.estimate !== undefined,
+        hasEstimateHistory: jobUpdateData.estimateHistory !== undefined,
+      });
     }
-    if (jobUpdateData.estimate !== undefined) {
-      const prior =
-        job.estimate && typeof job.estimate.toObject === 'function'
-          ? job.estimate.toObject()
-          : job.estimate
-            ? { ...job.estimate }
-            : null;
-      const priorHas =
-        prior &&
-        ((prior.number && String(prior.number).trim()) ||
-          (Array.isArray(prior.lineItems) && prior.lineItems.length > 0) ||
-          (typeof prior.amount === 'number' && prior.amount > 0) ||
-          prior.sentAt != null ||
-          !!(prior.estimateDate && String(prior.estimateDate).trim()));
-      if (priorHas) {
-        if (!Array.isArray(job.estimateHistory)) {
-          job.estimateHistory = [];
-        }
-        job.estimateHistory.push(JSON.parse(JSON.stringify(prior)));
-        job.markModified('estimateHistory');
-      }
-    }
+    delete jobUpdateData.estimateHistory;
+    delete jobUpdateData.estimate;
     Object.assign(job, jobUpdateData);
     const shouldSyncTakeoffDocument = jobUpdateData.takeoff !== undefined;
     if (jobUpdateData.takeoff !== undefined) {
       job.markModified('takeoff');
-    }
-    if (jobUpdateData.estimate !== undefined) {
-      job.markModified('estimate');
-      job.markModified('estimateHistory');
     }
     await job.save();
 
@@ -587,127 +589,20 @@ async function updateJob(req, res) {
 
 // Update a specific estimate revision in-place (does not create a new estimate number/history entry)
 async function updateEstimateRevision(req, res) {
-  try {
-    const job = await Job.findById(req.params.id);
-    if (!job) return res.status(404).json({ error: 'Job not found' });
-
-    const revisionIndex = Number(req.body?.revisionIndex);
-    if (!Number.isInteger(revisionIndex) || revisionIndex < 0) {
-      return res.status(400).json({ error: 'revisionIndex must be a non-negative integer' });
-    }
-
-    const nextEstimate = req.body?.estimate;
-    if (!nextEstimate || typeof nextEstimate !== 'object') {
-      return res.status(400).json({ error: 'estimate payload is required' });
-    }
-
-    const history = Array.isArray(job.estimateHistory) ? job.estimateHistory : [];
-    const hasCurrentEstimate =
-      !!(
-        job.estimate &&
-        ((job.estimate.number && String(job.estimate.number).trim()) ||
-          (Array.isArray(job.estimate.lineItems) && job.estimate.lineItems.length > 0) ||
-          (typeof job.estimate.amount === 'number' && job.estimate.amount > 0) ||
-          job.estimate.sentAt != null ||
-          !!(job.estimate.estimateDate && String(job.estimate.estimateDate).trim()))
-      );
-    const totalRevisions = history.length + (hasCurrentEstimate ? 1 : 0);
-    if (revisionIndex >= totalRevisions) {
-      return res.status(400).json({ error: 'revisionIndex is out of range for this job' });
-    }
-
-    if (revisionIndex < history.length) {
-      history[revisionIndex] = JSON.parse(JSON.stringify(nextEstimate));
-      job.estimateHistory = history;
-      job.markModified('estimateHistory');
-    } else {
-      job.estimate = nextEstimate;
-      job.markModified('estimate');
-    }
-
-    if (req.body?.valueEstimated !== undefined) {
-      const n = Number(req.body.valueEstimated);
-      if (Number.isFinite(n)) {
-        job.valueEstimated = n;
-      }
-    }
-    if (req.body?.jobAddress !== undefined) {
-      job.jobAddress = req.body.jobAddress;
-      job.markModified('jobAddress');
-    }
-
-    await job.save();
-    await job.populate('customerId', 'name primaryPhone primaryEmail');
-    await job.populate('assignedTo', 'name email');
-    return res.json(job);
-  } catch (error) {
-    console.error('Error updating estimate revision:', error);
-    return res.status(500).json({ error: error.message || 'Failed to update estimate revision' });
-  }
+  warnLegacyEstimateUsage('legacy updateEstimateRevision route called', { jobId: req.params.id });
+  return res.status(410).json({
+    error: 'Legacy job-embedded estimate revisions are deprecated',
+    hint: 'Use /estimates/:id/revisions/:revisionId',
+  });
 }
 
 // Delete one estimate revision by browse index (oldest = 0).
 async function deleteEstimateRevision(req, res) {
-  try {
-    const job = await Job.findById(req.params.id);
-    if (!job) return res.status(404).json({ error: 'Job not found' });
-
-    const revisionIndex = Number(req.body?.revisionIndex);
-    if (!Number.isInteger(revisionIndex) || revisionIndex < 0) {
-      return res.status(400).json({ error: 'revisionIndex must be a non-negative integer' });
-    }
-
-    const history = Array.isArray(job.estimateHistory) ? job.estimateHistory : [];
-    const hasCurrentEstimate =
-      !!(
-        job.estimate &&
-        ((job.estimate.number && String(job.estimate.number).trim()) ||
-          (Array.isArray(job.estimate.lineItems) && job.estimate.lineItems.length > 0) ||
-          (typeof job.estimate.amount === 'number' && job.estimate.amount > 0) ||
-          job.estimate.sentAt != null ||
-          !!(job.estimate.estimateDate && String(job.estimate.estimateDate).trim()))
-      );
-    const totalRevisions = history.length + (hasCurrentEstimate ? 1 : 0);
-    if (totalRevisions === 0) {
-      return res.status(400).json({ error: 'No estimate revisions exist on this job' });
-    }
-    if (revisionIndex >= totalRevisions) {
-      return res.status(400).json({ error: 'revisionIndex is out of range for this job' });
-    }
-
-    if (revisionIndex < history.length) {
-      history.splice(revisionIndex, 1);
-      job.estimateHistory = history;
-      job.markModified('estimateHistory');
-    } else if (history.length > 0) {
-      // Deleting newest/current: promote previous history entry to current estimate.
-      const promoted = history.pop();
-      job.estimateHistory = history;
-      job.estimate = promoted || undefined;
-      job.markModified('estimateHistory');
-      job.markModified('estimate');
-    } else {
-      // Last remaining estimate removed completely.
-      job.estimate = undefined;
-      job.estimateHistory = [];
-      job.markModified('estimate');
-      job.markModified('estimateHistory');
-    }
-
-    const nextAmount =
-      job.estimate && typeof job.estimate.amount === 'number' && Number.isFinite(job.estimate.amount)
-        ? job.estimate.amount
-        : 0;
-    job.valueEstimated = nextAmount;
-
-    await job.save();
-    await job.populate('customerId', 'name primaryPhone primaryEmail');
-    await job.populate('assignedTo', 'name email');
-    return res.json(job);
-  } catch (error) {
-    console.error('Error deleting estimate revision:', error);
-    return res.status(500).json({ error: error.message || 'Failed to delete estimate revision' });
-  }
+  warnLegacyEstimateUsage('legacy deleteEstimateRevision route called', { jobId: req.params.id });
+  return res.status(410).json({
+    error: 'Legacy job-embedded estimate revisions are deprecated',
+    hint: 'Use DELETE /estimates/:id/revisions/:revisionId',
+  });
 }
 
 function roundMoney(n) {
@@ -915,7 +810,7 @@ async function getArchivedJobs(req, res) {
   try {
     // Archive page is strictly for jobs that did NOT move forward (dead/cancelled paths),
     // not successfully completed jobs.
-    const jobs = await Job.find({ 
+    const jobs = await Job.find({
       $or: [
         { isDeadEstimate: true },
         { isArchived: true, stage: { $ne: 'FINAL_PAYMENT_CLOSED' } }
@@ -924,18 +819,20 @@ async function getArchivedJobs(req, res) {
       .populate('customerId', 'name primaryPhone primaryEmail address')
       .populate('assignedTo', 'name email')
       .populate('createdBy', 'name email')
-      .sort({ archivedAt: -1, movedToDeadEstimateAt: -1, 'estimate.sentAt': -1 });
+      .sort({ archivedAt: -1, movedToDeadEstimateAt: -1, updatedAt: -1 });
+    const estimateByJob = await getLatestEstimateMapByJobIds(jobs.map((j) => j._id));
     
     // Organize by month/year based on archive date or estimate sent date
     const organized = {};
     jobs.forEach(job => {
       // Priority: archivedAt (for manually archived) > estimate.sentAt > movedToDeadEstimateAt > createdAt
-      const archiveDate = job.archivedAt 
+      const estimateDoc = estimateByJob.get(String(job._id)) || null;
+      const archiveDate = job.archivedAt
         ? job.archivedAt
-        : (job.estimate?.sentAt 
-          ? job.estimate.sentAt
-          : (job.movedToDeadEstimateAt 
-            ? job.movedToDeadEstimateAt 
+        : (estimateDoc?.sentAt
+          ? estimateDoc.sentAt
+          : (job.movedToDeadEstimateAt
+            ? job.movedToDeadEstimateAt
             : job.createdAt));
       
       if (!archiveDate) return;
@@ -955,7 +852,17 @@ async function getArchivedJobs(req, res) {
         };
       }
       
-      organized[key].jobs.push(job);
+      const enriched = job.toObject ? job.toObject() : job;
+      enriched.estimateMeta = estimateDoc
+        ? {
+            estimateId: estimateDoc._id,
+            estimateNumber: estimateDoc.estimateNumber || '',
+            projectName: estimateDoc.projectName || '',
+            status: estimateDoc.status || '',
+            sentAt: estimateDoc.sentAt || null,
+          }
+        : null;
+      organized[key].jobs.push(enriched);
     });
     
     // Convert to array and sort by date (newest first)
@@ -1133,10 +1040,18 @@ async function autoMoveDeadEstimates(req, res) {
     for (const job of jobsToMoveToSent) {
       try {
         job.stage = 'ESTIMATE_SENT';
-        if (!job.estimate) {
-          job.estimate = {};
+        const sentAt = new Date();
+        const estimateDoc = await Estimate.findOne({ jobId: job._id }).sort({ createdAt: -1 });
+        if (estimateDoc) {
+          estimateDoc.status = 'sent';
+          estimateDoc.sentAt = estimateDoc.sentAt || sentAt;
+          estimateDoc.updatedBy = job.createdBy || estimateDoc.updatedBy;
+          await estimateDoc.save();
+        } else {
+          warnLegacyEstimateUsage('autoMoveDeadEstimates missing estimate doc for ESTIMATE_IN_PROGRESS job', {
+            jobId: String(job._id),
+          });
         }
-        job.estimate.sentAt = new Date();
         await job.save();
         
         // Add stage change note
@@ -1182,11 +1097,15 @@ async function autoMoveDeadEstimates(req, res) {
     }
     
     // Step 2: Move jobs from ESTIMATE_SENT to archive after 5 days
-    const jobsToArchive = await Job.find({
+    const sentStageJobs = await Job.find({
       stage: 'ESTIMATE_SENT',
-      'estimate.sentAt': { $lte: fiveDaysAgo, $exists: true },
       isDeadEstimate: { $ne: true },
       isArchived: { $ne: true }
+    });
+    const sentEstimateMap = await getLatestEstimateMapByJobIds(sentStageJobs.map((j) => j._id));
+    const jobsToArchive = sentStageJobs.filter((job) => {
+      const est = sentEstimateMap.get(String(job._id));
+      return est?.status === 'sent' && est?.sentAt && new Date(est.sentAt) <= fiveDaysAgo;
     });
     
     console.log(`Found ${jobsToArchive.length} jobs to move to archive from ESTIMATE_SENT`);
@@ -1299,7 +1218,8 @@ async function debugDeadEstimates(req, res) {
       stage: 'ESTIMATE_SENT',
       isArchived: { $ne: true },
       isDeadEstimate: { $ne: true }
-    }).select('title estimate.sentAt isDeadEstimate');
+    }).select('title isDeadEstimate');
+    const sentMap = await getLatestEstimateMapByJobIds(allEstimateSent.map((j) => j._id));
     
     // Find jobs that should move from ESTIMATE_IN_PROGRESS to ESTIMATE_SENT
     const shouldMoveToSent = await Job.find({
@@ -1313,12 +1233,15 @@ async function debugDeadEstimates(req, res) {
     }).select('title createdAt updatedAt isDeadEstimate');
     
     // Find jobs that should be archived from ESTIMATE_SENT
-    const shouldArchive = await Job.find({
+    const sentStageJobs = await Job.find({
       stage: 'ESTIMATE_SENT',
-      'estimate.sentAt': { $lte: fiveDaysAgo, $exists: true },
       isDeadEstimate: { $ne: true },
       isArchived: { $ne: true }
-    }).select('title estimate.sentAt isDeadEstimate');
+    }).select('title isDeadEstimate');
+    const shouldArchive = sentStageJobs.filter((job) => {
+      const est = sentMap.get(String(job._id));
+      return est?.status === 'sent' && est?.sentAt && new Date(est.sentAt) <= fiveDaysAgo;
+    });
     
     res.json({
       fiveDaysAgo: fiveDaysAgo.toISOString(),
@@ -1331,9 +1254,9 @@ async function debugDeadEstimates(req, res) {
       })),
       allEstimateSentJobs: allEstimateSent.map(job => ({
         title: job.title,
-        sentAt: job.estimate?.sentAt,
+        sentAt: sentMap.get(String(job._id))?.sentAt || null,
         isDeadEstimate: job.isDeadEstimate,
-        daysSince: job.estimate?.sentAt ? Math.floor((new Date() - new Date(job.estimate.sentAt)) / (1000 * 60 * 60 * 24)) : null
+        daysSince: sentMap.get(String(job._id))?.sentAt ? Math.floor((new Date() - new Date(sentMap.get(String(job._id)).sentAt)) / (1000 * 60 * 60 * 24)) : null
       })),
       shouldMoveToSentCount: shouldMoveToSent.length,
       shouldMoveToSentJobs: shouldMoveToSent.map(job => ({
@@ -1346,9 +1269,9 @@ async function debugDeadEstimates(req, res) {
       shouldArchiveCount: shouldArchive.length,
       shouldArchiveJobs: shouldArchive.map(job => ({
         title: job.title,
-        sentAt: job.estimate?.sentAt,
+        sentAt: sentMap.get(String(job._id))?.sentAt || null,
         isDeadEstimate: job.isDeadEstimate,
-        daysSince: job.estimate?.sentAt ? Math.floor((new Date() - new Date(job.estimate.sentAt)) / (1000 * 60 * 60 * 24)) : null
+        daysSince: sentMap.get(String(job._id))?.sentAt ? Math.floor((new Date() - new Date(sentMap.get(String(job._id)).sentAt)) / (1000 * 60 * 60 * 24)) : null
       }))
     });
   } catch (error) {

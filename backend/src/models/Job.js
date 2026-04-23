@@ -73,9 +73,10 @@ const jobSchema = new mongoose.Schema({
     notes: String
   },
   
-  // Estimate details (latest snapshot; older versions in estimateHistory)
+  // DEPRECATED: legacy estimate snapshot fields; Estimate collection is source of truth.
+  // Keep read-only for temporary compatibility only.
   estimate: estimateSnapshotSchema,
-  /** Older estimate snapshots, oldest first; current is always `estimate`. */
+  /** DEPRECATED: legacy revision snapshots (oldest first), compatibility-only. */
   estimateHistory: { type: [estimateSnapshotSchema], default: [] },
 
   /**

@@ -79,9 +79,48 @@ const estimateSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+function pickCurrentRevision(revisions, currentRevisionId) {
+  if (!Array.isArray(revisions) || revisions.length === 0) return null;
+  const byId = revisions.find((r) => String(r?._id || '') === String(currentRevisionId || ''));
+  if (byId) return byId;
+  const flagged = revisions.filter((r) => r?.isCurrent);
+  if (flagged.length === 1) return flagged[0];
+  const sorted = [...revisions].sort(
+    (a, b) => Number(a?.revisionNumber || 0) - Number(b?.revisionNumber || 0)
+  );
+  return sorted[sorted.length - 1] || revisions[revisions.length - 1];
+}
+
+function applyRevisionInvariants(doc) {
+  const revisions = Array.isArray(doc.revisions) ? doc.revisions : [];
+  doc.revisionCount = revisions.length;
+  if (!revisions.length) {
+    doc.currentRevisionId = null;
+    doc.latestAmount = 0;
+    doc.latestEstimateDate = null;
+    doc.projectName = '';
+    doc.footerNote = '';
+    return;
+  }
+
+  const current = pickCurrentRevision(revisions, doc.currentRevisionId);
+  revisions.forEach((r) => {
+    r.isCurrent = current ? String(r._id) === String(current._id) : false;
+  });
+  doc.currentRevisionId = current?._id || null;
+  doc.latestAmount = Number(current?.grandTotal || 0);
+  doc.latestEstimateDate = current?.estimateDate || null;
+  doc.projectName = String(current?.projectName || '').trim();
+  doc.footerNote = String(current?.footerNote || '').trim();
+}
+
 estimateSchema.plugin(tenantScopePlugin);
 estimateSchema.index({ tenantId: 1, estimateNumber: 1 }, { unique: true });
 estimateSchema.index({ tenantId: 1, customerId: 1, createdAt: -1 });
 estimateSchema.index({ tenantId: 1, jobId: 1, createdAt: -1 });
+
+estimateSchema.pre('validate', function enforceEstimateInvariants() {
+  applyRevisionInvariants(this);
+});
 
 module.exports = mongoose.model('Estimate', estimateSchema);
