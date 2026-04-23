@@ -325,6 +325,9 @@ function FinanceHubPage() {
   const [loadingJobEstimate, setLoadingJobEstimate] = useState(false);
   const [savingEstimate, setSavingEstimate] = useState(false);
   const [editingJobSummary, setEditingJobSummary] = useState(null);
+  const [estimateBrowserRows, setEstimateBrowserRows] = useState([]);
+  const [loadingEstimateBrowser, setLoadingEstimateBrowser] = useState(false);
+  const [estimateJumpNumber, setEstimateJumpNumber] = useState('');
   const [customerPipelineJobs, setCustomerPipelineJobs] = useState([]);
   const [loadingCustomerJobs, setLoadingCustomerJobs] = useState(false);
   const [estimateSaveTargetId, setEstimateSaveTargetId] = useState(null);
@@ -382,6 +385,38 @@ function FinanceHubPage() {
   useEffect(() => {
     estimateFormRef.current = estimateForm;
   }, [estimateForm]);
+
+  const loadEstimateBrowser = useCallback(async (search = '') => {
+    try {
+      setLoadingEstimateBrowser(true);
+      const params = {};
+      const s = String(search || '').trim();
+      if (s) params.search = s;
+      const { data } = await axios.get(`${API_URL}/estimates`, { params });
+      const list = Array.isArray(data) ? data : data?.estimates || [];
+      setEstimateBrowserRows(list);
+      return list;
+    } catch (error) {
+      console.error('Error loading estimates browser:', error);
+      toast.error(error.response?.data?.error || 'Failed to load estimates browser');
+      setEstimateBrowserRows([]);
+      return [];
+    } finally {
+      setLoadingEstimateBrowser(false);
+    }
+  }, []);
+
+  const openEstimateFromBrowser = useCallback(
+    (row) => {
+      const jobId = row?.jobId?._id || row?.jobId || null;
+      if (!jobId) {
+        toast.error('This estimate has no linked job');
+        return;
+      }
+      setSearchParams({ tab: 'estimates', jobId: String(jobId) });
+    },
+    [setSearchParams]
+  );
 
   const estimateRevisions = useMemo(() => {
     if (!loadedEstimateDoc) return [];
@@ -498,6 +533,11 @@ function FinanceHubPage() {
     };
     fetchCustomers();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'estimates') return;
+    loadEstimateBrowser();
+  }, [activeTab, loadEstimateBrowser]);
 
   useEffect(() => {
     if (activeTab !== 'estimates' || !estimateJobId) {
@@ -1213,6 +1253,29 @@ function FinanceHubPage() {
     selectedRevisionIndex >= estimateRevisions.length - 1;
 
   const showRevisionCaption = estimateJobId && !isNewEstimateDraft && estimateRevisions.length >= 2;
+  const showSingleRevisionHint =
+    estimateJobId && !isNewEstimateDraft && !loadingJobEstimate && estimateRevisions.length <= 1;
+
+  const handleJumpToEstimateNumber = async () => {
+    const q = String(estimateJumpNumber || '').trim();
+    if (!q) return;
+    const hitInLocal = estimateBrowserRows.find(
+      (r) => String(r?.estimateNumber || '').toLowerCase() === q.toLowerCase()
+    );
+    if (hitInLocal) {
+      openEstimateFromBrowser(hitInLocal);
+      return;
+    }
+    const list = await loadEstimateBrowser(q);
+    const exact = list.find(
+      (r) => String(r?.estimateNumber || '').toLowerCase() === q.toLowerCase()
+    );
+    if (exact) {
+      openEstimateFromBrowser(exact);
+      return;
+    }
+    toast.error(`Estimate ${q} not found`);
+  };
 
   return (
     <Container maxWidth="xl" sx={{ py: 2 }}>
@@ -1306,6 +1369,92 @@ function FinanceHubPage() {
                 New estimate draft. Save to generate the next estimate number.
               </Typography>
             )}
+
+            <Box
+              sx={{
+                mb: 2,
+                p: 1.5,
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1.5,
+                bgcolor: (t) =>
+                  t.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Estimate Browser
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', mb: 1 }}>
+                <TextField
+                  size="small"
+                  label="Jump to estimate number"
+                  placeholder="1102-0001"
+                  value={estimateJumpNumber}
+                  onChange={(e) => setEstimateJumpNumber(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleJumpToEstimateNumber();
+                  }}
+                  sx={{ minWidth: 220 }}
+                />
+                <Button variant="outlined" onClick={handleJumpToEstimateNumber}>
+                  Jump
+                </Button>
+                <Button variant="text" onClick={() => loadEstimateBrowser()}>
+                  Refresh list
+                </Button>
+              </Box>
+              <Box sx={{ maxHeight: 180, overflowY: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                {loadingEstimateBrowser ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                    Loading estimates...
+                  </Typography>
+                ) : estimateBrowserRows.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                    No estimates found.
+                  </Typography>
+                ) : (
+                  estimateBrowserRows.slice(0, 120).map((row) => {
+                    const jobLabel = row?.jobId?.title || row?.jobId || 'No job';
+                    const customerLabel = row?.customerId?.name || row?.customerId || 'Unknown customer';
+                    const revCount = Number(row?.revisionCount || row?.revisions?.length || 0);
+                    const updated = row?.updatedAt
+                      ? new Date(row.updatedAt).toLocaleString()
+                      : row?.createdAt
+                        ? new Date(row.createdAt).toLocaleString()
+                        : '-';
+                    return (
+                      <Box
+                        key={row._id}
+                        sx={{
+                          p: 1,
+                          borderTop: 1,
+                          borderColor: 'divider',
+                          cursor: 'pointer',
+                          '&:first-of-type': { borderTop: 'none' },
+                          '&:hover': {
+                            bgcolor: (t) =>
+                              t.palette.mode === 'dark'
+                                ? 'rgba(255,255,255,0.06)'
+                                : 'rgba(0,0,0,0.04)',
+                          },
+                        }}
+                        onClick={() => openEstimateFromBrowser(row)}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {row?.estimateNumber || 'No number'} · {row?.status || '-'} · Rev {revCount}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          {customerLabel} · {jobLabel}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          Updated: {updated}
+                        </Typography>
+                      </Box>
+                    );
+                  })
+                )}
+              </Box>
+            </Box>
 
             <Autocomplete
               options={customers}
@@ -1778,6 +1927,16 @@ function FinanceHubPage() {
                   sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
                 >
                   {`Rev ${Math.max(1, selectedRevisionIndex + 1)} / ${estimateRevisions.length}`}
+                </Typography>
+              )}
+              {showSingleRevisionHint && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
+                >
+                  Arrows navigate revisions for this estimate only. Previous estimate numbers may belong
+                  to different jobs.
                 </Typography>
               )}
             </Box>
