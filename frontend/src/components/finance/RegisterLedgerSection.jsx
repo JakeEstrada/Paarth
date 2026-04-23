@@ -11,6 +11,7 @@ import {
   Paper,
   Select,
   Stack,
+  TextField,
   Table,
   TableBody,
   TableCell,
@@ -63,6 +64,7 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
   const [sort, setSort] = useState('desc');
   const [days, setDays] = useState(90);
   const [registerSync, setRegisterSync] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const panelRef = useRef(null);
 
@@ -125,6 +127,27 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
       };
     });
   }, [transactions]);
+
+  const filteredRows = useMemo(() => {
+    const q = String(searchTerm || '').trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const amount = Number(r.amount || 0);
+      const debit = amount > 0 ? amount : 0;
+      const credit = amount < 0 ? Math.abs(amount) : 0;
+      const haystack = [
+        r.date,
+        r.name,
+        money(amount),
+        money(debit),
+        money(credit),
+        money(r.running),
+      ]
+        .map((v) => String(v || '').toLowerCase())
+        .join(' ');
+      return haystack.includes(q);
+    });
+  }, [rows, searchTerm]);
 
   if (!active) return null;
 
@@ -325,6 +348,14 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
             <ToggleButton value="desc">Newest first</ToggleButton>
           </ToggleButtonGroup>
 
+          <TextField
+            size="small"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search date, description, amount"
+            sx={{ minWidth: { xs: '100%', sm: 260 } }}
+          />
+
           <Tooltip title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
             <IconButton onClick={toggleFullscreen} size="small" aria-label="toggle register fullscreen">
               {isFullscreen ? <FullscreenExit fontSize="small" /> : <Fullscreen fontSize="small" />}
@@ -393,14 +424,16 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
                     <Typography variant="body2" color="text.secondary">Loading register transactions...</Typography>
                   </TableCell>
                 </TableRow>
-              ) : rows.length === 0 ? (
+              ) : filteredRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6}>
-                    <Typography variant="body2" color="text.secondary">No transactions in this date window.</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {searchTerm ? 'No matching transactions for this search.' : 'No transactions in this date window.'}
+                    </Typography>
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((r) => {
+                filteredRows.map((r) => {
                   const acct = accounts.find((a) => a.account_id === r.account_id);
                   const debit = r.amount > 0 ? r.amount : 0;
                   const credit = r.amount < 0 ? Math.abs(r.amount) : 0;
