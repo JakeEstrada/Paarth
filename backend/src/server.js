@@ -170,6 +170,9 @@ const tenantRoutes = require('./routes/tenants');
 const pipelineLayoutRoutes = require('./routes/pipelineLayouts');
 const twilioRoutes = require('./routes/twilio');
 const plaidRoutes = require('./routes/plaid');
+const estimateRoutes = require('./routes/estimates');
+const invoiceRoutes = require('./routes/invoices');
+const contractRoutes = require('./routes/contracts');
 
 // Use routes
 app.use('/auth', authRoutes);
@@ -187,6 +190,9 @@ app.use('/bills', billRoutes);
 app.use('/pipeline-layouts', pipelineLayoutRoutes);
 app.use('/twilio', twilioRoutes);
 app.use('/plaid', plaidRoutes);
+app.use('/estimates', estimateRoutes);
+app.use('/invoices', invoiceRoutes);
+app.use('/contracts', contractRoutes);
 // Some deployments expose the API under `/api` without stripping the prefix from the path.
 app.use('/api/auth', authRoutes);
 app.use('/api/tenants', tenantRoutes);
@@ -203,6 +209,9 @@ app.use('/api/bills', billRoutes);
 app.use('/api/pipeline-layouts', pipelineLayoutRoutes);
 app.use('/api/twilio', twilioRoutes);
 app.use('/api/plaid', plaidRoutes);
+app.use('/api/estimates', estimateRoutes);
+app.use('/api/invoices', invoiceRoutes);
+app.use('/api/contracts', contractRoutes);
 
 // Test route
 app.get('/', (req, res) => {
