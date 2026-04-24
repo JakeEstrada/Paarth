@@ -41,10 +41,10 @@ async function getRegisterPayload(params) {
   const origin = apiOrigin();
   const primary = `${origin}/plaid/register-data`;
   try {
-    return await axios.get(primary, { params });
+    return await axios.get(primary, { params, headers: { 'Cache-Control': 'no-cache' } });
   } catch (e) {
     if (e?.response?.status === 404) {
-      return await axios.get(`${origin}/api/plaid/register-data`, { params });
+      return await axios.get(`${origin}/api/plaid/register-data`, { params, headers: { 'Cache-Control': 'no-cache' } });
     }
     throw e;
   }
@@ -67,6 +67,12 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
   const [searchTerm, setSearchTerm] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const panelRef = useRef(null);
+  const accountIdRef = useRef(accountId);
+  const registerFetchSeqRef = useRef(0);
+
+  useEffect(() => {
+    accountIdRef.current = accountId;
+  }, [accountId]);
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.account_id === accountId) || null,
@@ -75,23 +81,35 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
 
   const loadRegister = useCallback(async ({ forceRefresh = false } = {}) => {
     if (!active) return;
+    const seq = ++registerFetchSeqRef.current;
     try {
       setLoading(true);
       setErrorText('');
+      const acct = accountIdRef.current;
       const { data } = await getRegisterPayload({
-        accountId: accountId || undefined,
+        accountId: acct || undefined,
         sort,
         days,
         refresh: forceRefresh ? 1 : undefined,
+        forceRefresh: forceRefresh ? 1 : undefined,
+        ...(forceRefresh ? { _t: Date.now() } : {}),
       });
+      if (seq !== registerFetchSeqRef.current) return;
+
       const nextAccounts = Array.isArray(data?.accounts) ? data.accounts : [];
+      const nextTransactions = Array.isArray(data?.transactions) ? data.transactions : [];
+      const nextSync = data?.registerSync && typeof data.registerSync === 'object' ? data.registerSync : null;
+
       setAccounts(nextAccounts);
-      if (!accountId && nextAccounts.length > 0) {
-        setAccountId(nextAccounts[0].account_id);
-      }
-      setTransactions(Array.isArray(data?.transactions) ? data.transactions : []);
-      setRegisterSync(data?.registerSync && typeof data.registerSync === 'object' ? data.registerSync : null);
+      setTransactions(nextTransactions);
+      setRegisterSync(nextSync);
+      setAccountId((prev) => {
+        if (!nextAccounts.length) return '';
+        if (prev && nextAccounts.some((a) => a.account_id === prev)) return prev;
+        return nextAccounts[0].account_id;
+      });
     } catch (e) {
+      if (seq !== registerFetchSeqRef.current) return;
       const serverCode = e.response?.data?.code;
       const msg =
         serverCode === 'ITEM_LOGIN_REQUIRED'
@@ -102,14 +120,16 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
       setTransactions([]);
       setRegisterSync(null);
     } finally {
-      setLoading(false);
+      if (seq === registerFetchSeqRef.current) {
+        setLoading(false);
+      }
     }
-  }, [active, accountId, sort, days]);
+  }, [active, sort, days]);
 
   useEffect(() => {
     if (!active) return;
     loadRegister();
-  }, [active, loadRegister]);
+  }, [active, accountId, sort, days, loadRegister]);
 
   useEffect(() => {
     const onFsChange = () => {
@@ -390,6 +410,17 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
           </Typography>
         ) : null}
       </Stack>
+
+      {registerSync ? (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center', mb: 1 }}>
+          <Chip size="small" variant="outlined" label={`Source: ${registerSync.source || '—'}`} />
+          <Chip
+            size="small"
+            variant="outlined"
+            label={`Synced: ${registerSync.syncedAt ? new Date(registerSync.syncedAt).toLocaleString() : '—'}`}
+          />
+        </Box>
+      ) : null}
 
       {registerSync?.syncedAt ? (
         <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: -0.5, mb: 1, lineHeight: 1.5 }}>

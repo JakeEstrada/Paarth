@@ -1624,6 +1624,9 @@ function FinanceHubPage() {
                   p: 5,
                   border: '1px solid #d9d9d9',
                   fontFamily: 'Arial, Helvetica, sans-serif',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  boxSizing: 'border-box',
                   // Keep estimate sheet typography print-like in dark mode.
                   '& .MuiTypography-root': { color: '#000' },
                   '& .MuiInputBase-root': { color: '#000' },
@@ -1638,6 +1641,7 @@ function FinanceHubPage() {
                   '& .MuiIconButton-root': { color: '#000' },
                 }}
               >
+                <Box sx={{ flex: '0 0 auto', width: '100%' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Box sx={{ display: 'flex', gap: 2 }}>
                     <Box
@@ -1877,32 +1881,37 @@ function FinanceHubPage() {
                     </Box>
                   ))}
                 </Box>
-
-                <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  {!isEstimateExportMode && (
-                    <Button size="small" startIcon={<AddIcon />} onClick={addLineItem}>
-                      Add line
-                    </Button>
-                  )}
-                  <Box sx={{ width: 220, border: '1px solid #000', display: 'flex' }}>
-                    <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
-                      Total
-                    </Box>
-                    <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
-                      ${estimateTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </Box>
-                  </Box>
                 </Box>
 
-                <Box sx={{ mt: 1 }}>
-                  <TextField
-                    variant="standard"
-                    value={estimateForm.footerNote}
-                    onChange={(e) => setEstimateField('footerNote', e.target.value)}
-                    InputProps={{ disableUnderline: true, sx: { fontSize: 12 } }}
-                    fullWidth
-                  />
-                  <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
+                <Box sx={{ flex: '1 1 auto', minHeight: 32, width: '100%' }} aria-hidden />
+
+                <Box sx={{ flex: '0 0 auto', width: '100%', mt: 'auto' }}>
+                  <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {!isEstimateExportMode && (
+                      <Button size="small" startIcon={<AddIcon />} onClick={addLineItem}>
+                        Add line
+                      </Button>
+                    )}
+                    <Box sx={{ width: 220, border: '1px solid #000', display: 'flex', ml: 'auto' }}>
+                      <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
+                        Total
+                      </Box>
+                      <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                        ${estimateTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Box>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ mt: 1 }}>
+                    <TextField
+                      variant="standard"
+                      value={estimateForm.footerNote}
+                      onChange={(e) => setEstimateField('footerNote', e.target.value)}
+                      InputProps={{ disableUnderline: true, sx: { fontSize: 12 } }}
+                      fullWidth
+                    />
+                    <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
+                  </Box>
                 </Box>
               </Box>
               </Box>
@@ -2018,9 +2027,12 @@ function FinanceHubPage() {
             boxSizing: 'border-box',
             border: '1px solid #d9d9d9',
             fontFamily: 'Arial, Helvetica, sans-serif',
+            display: 'flex',
+            flexDirection: 'column',
             '& .MuiTypography-root': { color: '#000' },
           }}
         >
+          <Box sx={{ flex: '0 0 auto', width: '100%' }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Box
@@ -2143,33 +2155,47 @@ function FinanceHubPage() {
               );
             })}
           </Box>
-
-          <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
-            <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
-              <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
-                Total
-              </Box>
-              <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
-                $
-                {formatInvoiceMoney(invoicePdfPayload.contractTotal)}
-              </Box>
-            </Box>
-            <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
-              <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
-                {invoicePdfPayload.kind === 'final' ? 'Final due today' : 'Deposit due today'}
-              </Box>
-              <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
-                ${formatInvoiceMoney(invoicePdfPayload.dueToday)}
-              </Box>
-            </Box>
           </Box>
 
-          <Box sx={{ mt: 2 }}>
-            <Typography sx={{ fontSize: 12, lineHeight: 1.5 }}>
-              {INVOICE_PERMITS_ACK_LINE} ______
-            </Typography>
-            <Typography sx={{ fontSize: 12, mt: 1.5 }}>{invoicePdfPayload.footerNote}</Typography>
-            <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
+          <Box sx={{ flex: '1 1 auto', minHeight: 32, width: '100%' }} aria-hidden />
+
+          <Box sx={{ flex: '0 0 auto', width: '100%', mt: 'auto' }}>
+            <Box
+              sx={{
+                mt: 1.5,
+                display: 'flex',
+                justifyContent: 'flex-end',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                gap: 1,
+              }}
+            >
+              <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+                <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
+                  Total
+                </Box>
+                <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                  $
+                  {formatInvoiceMoney(invoicePdfPayload.contractTotal)}
+                </Box>
+              </Box>
+              <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+                <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
+                  {invoicePdfPayload.kind === 'final' ? 'Final due today' : 'Deposit due today'}
+                </Box>
+                <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                  ${formatInvoiceMoney(invoicePdfPayload.dueToday)}
+                </Box>
+              </Box>
+            </Box>
+
+            <Box sx={{ mt: 2 }}>
+              <Typography sx={{ fontSize: 12, lineHeight: 1.5 }}>
+                {INVOICE_PERMITS_ACK_LINE} ______
+              </Typography>
+              <Typography sx={{ fontSize: 12, mt: 1.5 }}>{invoicePdfPayload.footerNote}</Typography>
+              <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
+            </Box>
           </Box>
         </Box>
       )}

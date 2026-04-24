@@ -2,6 +2,7 @@ const Tenant = require('../models/Tenant');
 const PlaidRegisterCache = require('../models/PlaidRegisterCache');
 const { Products, CountryCode } = require('plaid');
 const { getPlaidApi, isPlaidConfigured, resolvePlaidEnvKey } = require('../services/plaidClient');
+const { fetchRegisterSnapshotFromPlaid } = require('../services/plaidRegisterSnapshot');
 
 const LINK_ROLES = new Set(['super_admin', 'admin', 'manager']);
 
@@ -238,6 +239,24 @@ function shouldRefreshAtScheduledTime(syncedAt, now = new Date()) {
   return syncedClock.hour < REGISTER_REFRESH_HOUR;
 }
 
+function computeRegisterForceRefresh(query) {
+  const q = query || {};
+  return (
+    q.refresh === '1' ||
+    q.refresh === 'true' ||
+    q.forceRefresh === '1' ||
+    q.forceRefresh === 'true'
+  );
+}
+
+/** @returns {'cache' | 'plaid'} */
+function computeRegisterDataSource(forceRefresh, cacheSyncedAt, now = new Date()) {
+  if (forceRefresh) return 'plaid';
+  if (!cacheSyncedAt) return 'plaid';
+  if (shouldRefreshAtScheduledTime(cacheSyncedAt, now)) return 'plaid';
+  return 'cache';
+}
+
 function getNextScheduledRefreshLabel(now = new Date()) {
   const c = getPacificClock(now);
   if (c.hour < REGISTER_REFRESH_HOUR) return 'Today at 6:00 AM PT';
@@ -262,89 +281,6 @@ function sortRegisterTransactions(transactions, sort) {
     return sort === 'asc' ? String(a.date).localeCompare(String(b.date)) : String(b.date).localeCompare(String(a.date));
   });
   return copy;
-}
-
-async function fetchRegisterSnapshotFromPlaid(
-  client,
-  accessToken,
-  fetchedDays,
-  { preferLiveBalances = false } = {}
-) {
-  const endDate = new Date();
-  const startDate = new Date(endDate);
-  startDate.setDate(endDate.getDate() - fetchedDays);
-
-  // Balance values can lag behind transaction updates. On user-triggered refreshes,
-  // prefer accountsBalanceGet for fresher balances and fall back to accountsGet.
-  let accountsResp;
-  if (preferLiveBalances) {
-    try {
-      accountsResp = await client.accountsBalanceGet({ access_token: accessToken });
-    } catch (balanceErr) {
-      console.warn('accountsBalanceGet fallback to accountsGet:', balanceErr?.message || balanceErr);
-      accountsResp = await client.accountsGet({ access_token: accessToken });
-    }
-  } else {
-    accountsResp = await client.accountsGet({ access_token: accessToken });
-  }
-  const accounts = Array.isArray(accountsResp?.data?.accounts) ? accountsResp.data.accounts : [];
-
-  const txReqBase = {
-    access_token: accessToken,
-    start_date: toIsoDateOnly(startDate),
-    end_date: toIsoDateOnly(endDate),
-  };
-  const txOptions = { count: 500, offset: 0 };
-  let allTransactions = [];
-  while (true) {
-    const txResp = await client.transactionsGet({
-      ...txReqBase,
-      options: txOptions,
-    });
-    const page = Array.isArray(txResp?.data?.transactions) ? txResp.data.transactions : [];
-    allTransactions = allTransactions.concat(page);
-    const total = Number(txResp?.data?.total_transactions || 0);
-    txOptions.offset += page.length;
-    if (txOptions.offset >= total || page.length === 0) break;
-  }
-
-  const normalized = allTransactions.map((t) => ({
-    transaction_id: t.transaction_id,
-    account_id: t.account_id,
-    date: t.date,
-    name: t.name || t.merchant_name || 'Transaction',
-    amount: Number(t.amount || 0),
-    pending: Boolean(t.pending),
-    category: Array.isArray(t.category) ? t.category : [],
-    transactionCode: t.transaction_code || '',
-    checkNumber: t.check_number || t.payment_meta?.check_number || t.payment_meta?.reference_number || '',
-    referenceNumber: t.payment_meta?.reference_number || '',
-    paymentChannel: t.payment_channel || '',
-    // Intentionally do NOT use merchant logos/websites here; only true transaction attachments/check images.
-    imageUrl: t.check_image_url || t.payment_meta?.image_url || '',
-  }));
-  normalized.sort((a, b) => {
-    if (a.date === b.date) return String(a.transaction_id).localeCompare(String(b.transaction_id));
-    return String(a.date).localeCompare(String(b.date));
-  });
-
-  return {
-    accounts: accounts.map((a) => ({
-      account_id: a.account_id,
-      name: a.name,
-      official_name: a.official_name,
-      subtype: a.subtype,
-      type: a.type,
-      mask: a.mask,
-      balances: a.balances || {},
-    })),
-    transactions: normalized,
-    range: {
-      start: toIsoDateOnly(startDate),
-      end: toIsoDateOnly(endDate),
-      fetchedDays,
-    },
-  };
 }
 
 async function getRegisterData(req, res) {
@@ -375,11 +311,7 @@ async function getRegisterData(req, res) {
 
     const tenantId = req.user.tenantId;
     const now = new Date();
-    const forceRefresh =
-      req.query?.refresh === '1' ||
-      req.query?.refresh === 'true' ||
-      req.query?.forceRefresh === '1' ||
-      req.query?.forceRefresh === 'true';
+    const forceRefresh = computeRegisterForceRefresh(req.query);
     const cache = await PlaidRegisterCache.findOne({ tenantId }).lean();
 
     const buildPayload = (accounts, allTransactions, syncedAt, source) => {
@@ -404,7 +336,7 @@ async function getRegisterData(req, res) {
       };
     };
 
-    if (!forceRefresh && cache?.syncedAt && !shouldRefreshAtScheduledTime(cache.syncedAt, now)) {
+    if (computeRegisterDataSource(forceRefresh, cache?.syncedAt, now) === 'cache') {
       return res.json(
         buildPayload(cache.accounts || [], cache.transactions || [], cache.syncedAt, 'cache')
       );
@@ -412,7 +344,7 @@ async function getRegisterData(req, res) {
 
     const syncedAt = new Date();
     const snapshot = await fetchRegisterSnapshotFromPlaid(client, accessToken, REGISTER_PLAID_FETCH_DAYS, {
-      preferLiveBalances: forceRefresh,
+      preferLiveBalances: Boolean(forceRefresh),
     });
 
     await PlaidRegisterCache.findOneAndUpdate(
@@ -449,4 +381,7 @@ module.exports = {
   exchangePublicToken,
   disconnectPlaid,
   getRegisterData,
+  computeRegisterForceRefresh,
+  computeRegisterDataSource,
+  shouldRefreshAtScheduledTime,
 };
