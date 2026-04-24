@@ -67,16 +67,22 @@ async function createLinkToken(req, res) {
       }
     }
 
-    const payload = {
-      user: { client_user_id: clientUserId },
-      client_name: clientName,
-      products: [Products.Transactions],
-      country_codes: [CountryCode.Us],
-      language: 'en',
-    };
-    if (wantsUpdateMode) {
-      payload.access_token = existingAccessToken;
-    }
+    const payload = wantsUpdateMode
+      ? {
+          // Update mode: re-auth existing item instead of creating a new one.
+          access_token: existingAccessToken,
+          user: { client_user_id: clientUserId },
+          client_name: clientName,
+          country_codes: [CountryCode.Us],
+          language: 'en',
+        }
+      : {
+          user: { client_user_id: clientUserId },
+          client_name: clientName,
+          products: [Products.Transactions],
+          country_codes: [CountryCode.Us],
+          language: 'en',
+        };
 
     const response = await client.linkTokenCreate(payload);
 
