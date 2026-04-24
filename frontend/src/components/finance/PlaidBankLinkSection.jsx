@@ -45,11 +45,11 @@ function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
     loadStatus();
   }, [active, loadStatus]);
 
-  const handleStartLink = async () => {
+  const handleStartLink = async ({ update = false } = {}) => {
     if (!canManage) return;
     try {
       setBusy(true);
-      const { data } = await axios.post(`${API_URL}/plaid/link-token`);
+      const { data } = await axios.post(`${API_URL}/plaid/link-token`, update ? { update: true } : {});
       if (!data?.link_token) {
         toast.error('No link token returned');
         return;
@@ -74,7 +74,11 @@ function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
       });
     } catch (e) {
       console.error(e);
-      toast.error(e.response?.data?.error || e.message || 'Could not start Plaid Link');
+      toast.error(
+        e.response?.data?.error ||
+          e.message ||
+          (update ? 'Could not start Plaid re-authentication' : 'Could not start Plaid Link')
+      );
     } finally {
       setBusy(false);
     }
@@ -102,12 +106,20 @@ function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
 
   const handleMenuConnect = async () => {
     handleCloseMenu();
-    await handleStartLink();
+    await handleStartLink({ update: false });
   };
 
   const handleMenuDisconnect = async () => {
     handleCloseMenu();
     await handleDisconnect();
+  };
+
+  const handleMenuReconnect = async () => {
+    handleCloseMenu();
+    if (!canManage || !linked) return;
+    const ok = window.confirm('Re-authenticate this bank account now?');
+    if (!ok) return;
+    await handleStartLink({ update: true });
   };
 
   const handleMenuRefreshData = async () => {
@@ -187,6 +199,11 @@ function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
                 <MenuItem onClick={handleMenuRefreshData} disabled={busy}>
                   <RefreshIcon fontSize="small" sx={{ mr: 1 }} />
                   Refresh latest data
+                </MenuItem>
+              ) : null}
+              {linked ? (
+                <MenuItem onClick={handleMenuReconnect} disabled={busy}>
+                  Reconnect account
                 </MenuItem>
               ) : null}
               {!linked ? (

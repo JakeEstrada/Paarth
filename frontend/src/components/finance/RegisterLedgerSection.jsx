@@ -92,7 +92,11 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
       setTransactions(Array.isArray(data?.transactions) ? data.transactions : []);
       setRegisterSync(data?.registerSync && typeof data.registerSync === 'object' ? data.registerSync : null);
     } catch (e) {
-      const msg = e.response?.data?.error || 'Failed to load register data';
+      const serverCode = e.response?.data?.code;
+      const msg =
+        serverCode === 'ITEM_LOGIN_REQUIRED'
+          ? 'Bank re-authentication required. Use the Plaid gear menu and click "Reconnect account".'
+          : e.response?.data?.error || 'Failed to load register data';
       setErrorText(msg);
       setAccounts([]);
       setTransactions([]);

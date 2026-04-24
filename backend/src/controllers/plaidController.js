@@ -51,18 +51,39 @@ async function createLinkToken(req, res) {
     const client = getPlaidApi();
     const clientUserId = `${String(req.user.tenantId)}:${String(req.user._id)}`;
     const clientName = String(process.env.PLAID_CLIENT_NAME || 'Paarth OMS').trim() || 'Paarth OMS';
+    const wantsUpdateMode =
+      req.body?.update === true ||
+      req.query?.update === '1' ||
+      req.query?.update === 'true';
 
-    const response = await client.linkTokenCreate({
+    let existingAccessToken = '';
+    if (wantsUpdateMode) {
+      const tenant = await Tenant.findById(req.user.tenantId).select('+plaidLink.accessToken plaidLink.itemId');
+      existingAccessToken = String(tenant?.plaidLink?.accessToken || '').trim();
+      if (!existingAccessToken) {
+        return res.status(409).json({
+          error: 'No existing Plaid link to update. Use normal connect flow.',
+        });
+      }
+    }
+
+    const payload = {
       user: { client_user_id: clientUserId },
       client_name: clientName,
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
-    });
+    };
+    if (wantsUpdateMode) {
+      payload.access_token = existingAccessToken;
+    }
+
+    const response = await client.linkTokenCreate(payload);
 
     return res.json({
       link_token: response.data.link_token,
       expiration: response.data.expiration,
+      mode: wantsUpdateMode ? 'update' : 'create',
     });
   } catch (error) {
     console.error('createLinkToken:', error?.response?.data || error);
@@ -385,6 +406,13 @@ async function getRegisterData(req, res) {
     return res.json(buildPayload(snapshot.accounts, snapshot.transactions, syncedAt, 'plaid'));
   } catch (error) {
     console.error('getRegisterData:', error?.response?.data || error);
+    const plaidCode = error?.response?.data?.error_code;
+    if (plaidCode === 'ITEM_LOGIN_REQUIRED') {
+      return res.status(409).json({
+        error: 'Bank connection requires re-authentication. Please reconnect Plaid for this organization.',
+        code: plaidCode,
+      });
+    }
     const plaidMsg = error?.response?.data?.error_message || error?.message;
     return res.status(500).json({ error: plaidMsg || 'Failed to load register transactions' });
   }
