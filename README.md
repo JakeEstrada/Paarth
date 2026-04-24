@@ -15,6 +15,7 @@ A comprehensive Operations Management System (OMS) built as a one-stop shop for 
 - [Configuration](#configuration)
 - [Running the Application](#running-the-application)
 - [Project Structure](#project-structure)
+- [Architecture & Integration Docs](#architecture--integration-docs)
 - [API Documentation](#api-documentation)
 - [Database Schema](#database-schema)
 - [Google Calendar Integration](#google-calendar-integration)
@@ -851,6 +852,20 @@ Paarth/
 ├── GOOGLE_CALENDAR_SETUP.md # Calendar setup guide
 └── README.md                # This file
 ```
+
+---
+
+## 📚 Architecture & Integration Docs
+
+Additional deep-dive documentation lives in `documents/`:
+
+- [Security Architecture and Next Steps](documents/security.md)
+- [Google Calendar API Integration](documents/google-calendar-api.md)
+- [Socket.IO Real-Time Feedback](documents/socketio.md)
+- [MongoDB Schema and Relationships](documents/mongodb-schema.md)
+- [Plaid Integration](documents/plaid-integration.md)
+
+These pages are intended as implementation-aware handoff docs for future development, debugging, and onboarding.
 
 ---
 
