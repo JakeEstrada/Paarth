@@ -4,6 +4,7 @@ import { Box, Button, Chip, CircularProgress, IconButton, Menu, MenuItem, Toolti
 import {
   AccountBalance as AccountBalanceIcon,
   LinkOff as LinkOffIcon,
+  Refresh as RefreshIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
 import toast from 'react-hot-toast';
@@ -14,7 +15,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const LINK_ROLES = new Set(['super_admin', 'admin', 'manager']);
 
-function PlaidBankLinkSection({ active, variant = 'default' }) {
+function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
   const { user } = useAuth();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -109,6 +110,21 @@ function PlaidBankLinkSection({ active, variant = 'default' }) {
     await handleDisconnect();
   };
 
+  const handleMenuRefreshData = async () => {
+    handleCloseMenu();
+    if (typeof onRefreshData !== 'function') return;
+    try {
+      setBusy(true);
+      await onRefreshData();
+      toast.success('Pulled latest Plaid register data');
+    } catch (e) {
+      console.error(e);
+      toast.error(e?.response?.data?.error || e?.message || 'Failed to refresh register data');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!active) return null;
 
   const headline = !status?.configured
@@ -167,6 +183,12 @@ function PlaidBankLinkSection({ active, variant = 'default' }) {
               </span>
             </Tooltip>
             <Menu anchorEl={menuAnchorEl} open={menuOpen} onClose={handleCloseMenu}>
+              {linked ? (
+                <MenuItem onClick={handleMenuRefreshData} disabled={busy}>
+                  <RefreshIcon fontSize="small" sx={{ mr: 1 }} />
+                  Refresh latest data
+                </MenuItem>
+              ) : null}
               {!linked ? (
                 <MenuItem onClick={handleMenuConnect} disabled={busy}>
                   {busy ? 'Opening...' : 'Connect account'}

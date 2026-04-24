@@ -272,7 +272,11 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
                 width: '100%',
               }}
             >
-              <PlaidBankLinkSection active variant="titleRight" />
+              <PlaidBankLinkSection
+                active
+                variant="titleRight"
+                onRefreshData={() => loadRegister({ forceRefresh: true })}
+              />
             </Box>
           </Box>
 
