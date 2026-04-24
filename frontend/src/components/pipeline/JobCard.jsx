@@ -1,9 +1,12 @@
 import { useState, useRef } from 'react';
-import { Card, CardContent, Typography, Box, Tooltip, useTheme } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Card, CardContent, Typography, Box, Tooltip, useTheme, IconButton } from '@mui/material';
+import { ReceiptLong as ReceiptLongIcon } from '@mui/icons-material';
 import { DEFAULT_JOB_CARD_MIN_HEIGHT_PX } from '../../utils/pipelineViewSettings';
 
 function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = DEFAULT_JOB_CARD_MIN_HEIGHT_PX }) {
   const theme = useTheme();
+  const navigate = useNavigate();
   const [isDragging, setIsDragging] = useState(false);
   const cardRef = useRef(null);
 
@@ -160,19 +163,42 @@ function JobCard({ job, onClick, onContextMenu, canModify = true, minHeightPx = 
             </>
           )}
           </Box>
-        <Tooltip title={statusLabel}>
-          <Box
-            sx={{
-              flexShrink: 0,
-              width: dotSize,
-              height: dotSize,
-              borderRadius: '50%',
-              backgroundColor: statusColor,
-              border: `2px solid ${theme.palette.background.paper}`,
-              mt: ultraCompact ? 0.25 : 0.5,
-            }}
-          />
-        </Tooltip>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, flexShrink: 0 }}>
+          <Tooltip title="Open invoice in Finance Hub (estimate and billing for this job)">
+            <IconButton
+              size="small"
+              aria-label="Open invoice in Finance Hub"
+              draggable={false}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (job?._id) navigate(`/finance?tab=estimates&jobId=${job._id}`);
+              }}
+              sx={{
+                mt: ultraCompact ? -0.25 : -0.125,
+                p: ultraCompact ? 0.125 : 0.25,
+                color: 'text.secondary',
+                '&:hover': { color: 'primary.main', bgcolor: 'action.hover' },
+              }}
+            >
+              <ReceiptLongIcon sx={{ fontSize: ultraCompact ? 16 : 18 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={statusLabel}>
+            <Box
+              sx={{
+                flexShrink: 0,
+                width: dotSize,
+                height: dotSize,
+                borderRadius: '50%',
+                backgroundColor: statusColor,
+                border: `2px solid ${theme.palette.background.paper}`,
+                mt: ultraCompact ? 0.25 : 0.5,
+              }}
+            />
+          </Tooltip>
+        </Box>
       </Box>
       </CardContent>
     </Card>
