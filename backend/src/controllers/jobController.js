@@ -616,7 +616,7 @@ async function addJobInvoice(req, res) {
 
     let amount = Number(req.body?.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      const pct = kind === 'deposit' ? 0.4 : 0.6;
+      const pct = kind === 'deposit' ? 0.6 : 0.4;
       amount = roundMoney(contractTotal * pct);
     } else {
       amount = roundMoney(amount);
@@ -625,7 +625,7 @@ async function addJobInvoice(req, res) {
     const invoiceDate =
       String(req.body?.invoiceDate || '').trim() || new Date().toISOString().slice(0, 10);
 
-    const label = kind === 'deposit' ? 'Deposit invoice (40%)' : 'Final invoice (60%)';
+    const label = kind === 'deposit' ? 'Deposit invoice (60%)' : 'Final invoice (40%)';
 
     const entry = {
       kind,

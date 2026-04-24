@@ -864,6 +864,7 @@ Additional deep-dive documentation lives in `documents/`:
 - [Socket.IO Real-Time Feedback](documents/socketio.md)
 - [MongoDB Schema and Relationships](documents/mongodb-schema.md)
 - [Plaid Integration](documents/plaid-integration.md)
+- [Plaid + Finance Hub (full handoff for ChatGPT / debugging)](documents/PLAID_FINANCE_HUB_README.md)
 
 These pages are intended as implementation-aware handoff docs for future development, debugging, and onboarding.
 

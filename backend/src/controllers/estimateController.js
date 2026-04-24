@@ -21,6 +21,12 @@ function parseLineItems(lineItems = []) {
   }));
 }
 
+function roundMoney(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round((x + Number.EPSILON) * 100) / 100;
+}
+
 function computeTotals({ lineItems = [], taxRate = 0, discountAmount = 0 }) {
   const subtotal = lineItems.reduce((sum, li) => sum + (Number(li.total) || 0), 0);
   const normalizedTaxRate = Number(taxRate) || 0;
@@ -270,10 +276,37 @@ async function updateEstimateStatus(req, res) {
 
 async function generateInvoiceFromEstimate(req, res) {
   try {
+    const kind = String(req.body?.kind || '').trim();
+    if (kind !== 'deposit' && kind !== 'final') {
+      return res.status(400).json({ error: 'kind must be "deposit" or "final"' });
+    }
+
     const estimate = await Estimate.findById(req.params.id);
     if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
 
+    const contractTotal = roundMoney(Number(estimate.grandTotal) || 0);
+    if (!Number.isFinite(contractTotal) || contractTotal <= 0) {
+      return res.status(400).json({ error: 'Estimate must have a positive total' });
+    }
+
+    /** Deposit 60%, final balance 40% (complements deposit). */
+    const depositShare = 0.6;
+    const finalShare = 0.4;
+    const fraction = kind === 'deposit' ? depositShare : finalShare;
+    const amountDue = roundMoney(contractTotal * fraction);
+
     const numbering = await getNextDocumentNumber({ documentType: 'invoice', prefix: estimate.prefix || '1102' });
+    const pctLabel = kind === 'deposit' ? '60%' : '40%';
+    const lineItems = [
+      {
+        itemName: kind === 'deposit' ? 'Deposit invoice' : 'Final invoice',
+        description: `${pctLabel} of contract total per estimate ${estimate.estimateNumber || ''}`.trim(),
+        quantity: 1,
+        unitPrice: amountDue,
+        total: amountDue,
+      },
+    ];
+
     const invoice = await Invoice.create({
       customerId: estimate.customerId,
       jobId: estimate.jobId,
@@ -284,14 +317,17 @@ async function generateInvoiceFromEstimate(req, res) {
       sequenceNumber: numbering.sequenceNumber,
       status: 'draft',
       issuedAt: new Date(),
-      lineItems: estimate.lineItems || [],
-      subtotal: estimate.subtotal || 0,
-      taxRate: estimate.taxRate || 0,
-      taxAmount: estimate.taxAmount || 0,
-      discountAmount: estimate.discountAmount || 0,
-      total: estimate.grandTotal || 0,
-      balanceDue: estimate.grandTotal || 0,
-      notes: `Generated from estimate ${estimate.estimateNumber}`,
+      lineItems,
+      subtotal: amountDue,
+      taxRate: 0,
+      taxAmount: 0,
+      discountAmount: 0,
+      total: amountDue,
+      balanceDue: amountDue,
+      notes: `Generated from estimate ${estimate.estimateNumber} (${kind}, ${pctLabel})`,
+      invoiceKind: kind,
+      contractTotal,
+      estimateNumber: String(estimate.estimateNumber || '').trim(),
       sourceType: 'derived_from_estimate',
       createdBy: req.user?._id || null,
       updatedBy: req.user?._id || null,
@@ -299,10 +335,14 @@ async function generateInvoiceFromEstimate(req, res) {
     estimate.derivedDocuments = estimate.derivedDocuments || {};
     estimate.derivedDocuments.invoiceIds = estimate.derivedDocuments.invoiceIds || [];
     estimate.derivedDocuments.invoiceIds.push(invoice._id);
-    estimate.status = 'converted_to_invoice';
     estimate.updatedBy = req.user?._id || estimate.updatedBy;
     await estimate.save();
-    res.status(201).json(invoice);
+    res.status(201).json({
+      invoice,
+      estimateNumber: estimate.estimateNumber,
+      contractTotal,
+      kind,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to generate invoice' });
   }

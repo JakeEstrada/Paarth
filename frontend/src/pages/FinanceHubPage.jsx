@@ -15,7 +15,11 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
+  FormLabel,
   IconButton,
+  Radio,
+  RadioGroup,
   Link,
   Tab,
   Tabs,
@@ -85,6 +89,19 @@ function collectDescriptionsFromEstimateSnapshot(est) {
 const COMPANY_PHONE = '951 491-1137';
 const COMPANY_EMAIL = 'office@sanclementewoodworking.com';
 const COMPANY_WEBSITE = 'www.sanclementewoodworking.com';
+
+/** Two-draw schedule from estimate: deposit 60%, final 40%. */
+const INVOICE_DEPOSIT_FRACTION = 0.6;
+const INVOICE_FINAL_FRACTION = 0.4;
+
+const INVOICE_PERMITS_ACK_LINE =
+  'Any city permits or engineer fees are either not included or are provided by the customer';
+
+function roundMoneyClient(value) {
+  const x = Number(value);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round((x + Number.EPSILON) * 100) / 100;
+}
 
 const TAB_DEFS = [
   {
@@ -339,6 +356,7 @@ function FinanceHubPage() {
   const estimateCanvasRef = useRef(null);
   const invoicePdfRef = useRef(null);
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
+  const [createInvoiceKind, setCreateInvoiceKind] = useState('deposit');
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [invoicePdfPayload, setInvoicePdfPayload] = useState(null);
   /** Full job JSON (consumer context only). */
@@ -911,21 +929,28 @@ function FinanceHubPage() {
       setSavingInvoice(true);
       const { data } = await axios.post(
         `${API_URL}/estimates/${loadedEstimateDoc._id}/generate-invoice`,
-        {}
+        { kind: createInvoiceKind }
       );
 
-      const inv = data?.invoice;
-      if (!inv) throw new Error('Invoice was not created');
+      const inv = data?.invoice || data;
+      if (!inv?._id && !inv?.invoiceNumber) throw new Error('Invoice was not created');
+      const kind = data?.kind || createInvoiceKind;
+      const contractTotal = Number(
+        data?.contractTotal ?? inv?.contractTotal ?? estimateTotal ?? 0
+      );
+      const dueToday = roundMoneyClient(Number(inv?.total ?? 0));
       const payload = {
-        headline: 'INVOICE',
-        kind: 'full',
-        amount: Number(inv.total || 0),
-        contractTotal: Number(inv.total || estimateTotal || 0),
-        estimateNumber: inv.estimateNumber || invoiceEstimateNumber,
-        invoiceDate: (inv.issuedAt || new Date().toISOString()).slice(0, 10),
+        kind,
+        contractTotal,
+        dueToday,
+        estimateNumber: inv.estimateNumber || data?.estimateNumber || invoiceEstimateNumber,
+        invoiceNumber: inv.invoiceNumber || '',
+        invoiceDate: (inv.issuedAt ? new Date(inv.issuedAt) : new Date()).toISOString().slice(0, 10),
         customerName: estimateForm.customerName,
         projectName: estimateForm.projectName,
         customerAddress: estimateForm.customerAddress,
+        lineItems: Array.isArray(estimateForm.lineItems) ? estimateForm.lineItems : [],
+        footerNote: String(estimateForm.footerNote || '').trim(),
       };
 
       flushSync(() => {
@@ -933,7 +958,10 @@ function FinanceHubPage() {
       });
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const doc = await renderInvoicePdfDoc();
-      doc.save(`Invoice-${inv.invoiceNumber || inv._id || invoiceEstimateNumber}.pdf`);
+      const kindSlug = kind === 'final' ? 'final' : 'deposit';
+      doc.save(
+        `Invoice-${kindSlug}-${inv.invoiceNumber || inv._id || invoiceEstimateNumber || 'draft'}.pdf`
+      );
       flushSync(() => {
         setInvoicePdfPayload(null);
       });
@@ -1918,10 +1946,13 @@ function FinanceHubPage() {
               <Button
                 variant="outlined"
                 startIcon={<ReceiptLongIcon />}
-                onClick={() => setCreateInvoiceOpen(true)}
+                onClick={() => {
+                  setCreateInvoiceKind('deposit');
+                  setCreateInvoiceOpen(true);
+                }}
                 disabled={!canCreateInvoice || savingInvoice}
               >
-                Generate invoice
+                Create invoice
               </Button>
               <Button
                 variant="outlined"
@@ -1980,89 +2011,166 @@ function FinanceHubPage() {
             left: -12000,
             top: 0,
             width: 816,
-            minHeight: 720,
+            minHeight: 1056,
             bgcolor: '#fff',
             color: '#000',
             p: 5,
             boxSizing: 'border-box',
+            border: '1px solid #d9d9d9',
             fontFamily: 'Arial, Helvetica, sans-serif',
             '& .MuiTypography-root': { color: '#000' },
           }}
         >
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', gap: 2 }}>
               <Box
                 component="img"
                 src="/logo.png"
-                alt=""
-                sx={{ width: 56, height: 56, objectFit: 'contain', borderRadius: '50%' }}
+                alt="SCWW logo"
+                sx={{ width: 68, height: 68, objectFit: 'contain', borderRadius: '50%' }}
               />
               <Box>
-                <Typography sx={{ fontWeight: 700, fontSize: 18 }}>San Clemente Woodworking</Typography>
-                <Typography sx={{ fontSize: 12 }}>1030 Calle Sombra, Unit F · San Clemente, CA 92673</Typography>
-                <Typography sx={{ fontSize: 12 }}>{COMPANY_PHONE}</Typography>
-                <Typography sx={{ fontSize: 12 }}>{COMPANY_EMAIL}</Typography>
+                <Typography sx={{ fontWeight: 700, fontSize: 24, lineHeight: 1 }}>
+                  San Clemente Woodworking
+                </Typography>
+                <Typography sx={{ fontSize: 14, mt: 0.8 }}>1030 Calle Sombra, Unit F</Typography>
+                <Typography sx={{ fontSize: 14 }}>San Clemente, CA 92673</Typography>
+                <Box sx={{ mt: 2, ml: -9 }}>
+                  <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
+                    <Typography sx={{ fontSize: 13 }}>Phone #</Typography>
+                    <Typography sx={{ fontSize: 13, minWidth: 150 }}>{COMPANY_PHONE}</Typography>
+                  </Box>
+                  <Typography sx={{ fontSize: 13, ml: 0 }}>{COMPANY_WEBSITE}</Typography>
+                  <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{COMPANY_EMAIL}</Typography>
+                </Box>
               </Box>
             </Box>
+
             <Box sx={{ textAlign: 'right' }}>
-              <Typography sx={{ fontWeight: 700, fontSize: 22 }}>Invoice</Typography>
-              <Typography sx={{ fontSize: 12, mt: 0.5 }}>Date: {invoicePdfPayload.invoiceDate}</Typography>
-              <Typography sx={{ fontSize: 12 }}>Estimate #: {invoicePdfPayload.estimateNumber}</Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: 22, mb: 1 }}>Invoice</Typography>
+              <Box sx={{ width: 280, border: '1px solid #000', ml: 'auto' }}>
+                <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12 }}>
+                  <Box sx={{ width: '34%', p: 1, borderRight: '1px solid #fff' }}>Date</Box>
+                  <Box sx={{ width: '33%', p: 1, borderRight: '1px solid #fff' }}>Estimate #</Box>
+                  <Box sx={{ width: '33%', p: 1 }}>Invoice #</Box>
+                </Box>
+                <Box sx={{ display: 'flex' }}>
+                  <Typography sx={{ width: '34%', fontSize: 12, px: 1, py: 0.8, borderRight: '1px solid #000' }}>
+                    {invoicePdfPayload.invoiceDate}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      width: '33%',
+                      fontSize: 12,
+                      px: 1,
+                      py: 0.8,
+                      borderRight: '1px solid #000',
+                      textAlign: 'right',
+                    }}
+                  >
+                    {invoicePdfPayload.estimateNumber}
+                  </Typography>
+                  <Typography sx={{ width: '33%', fontSize: 12, px: 1, py: 0.8, textAlign: 'right' }}>
+                    {invoicePdfPayload.invoiceNumber}
+                  </Typography>
+                </Box>
+              </Box>
             </Box>
           </Box>
 
-          <Typography
-            sx={{
-              fontWeight: 800,
-              fontSize: 17,
-              bgcolor: '#000',
-              color: '#fff',
-              textAlign: 'center',
-              py: 1.25,
-              mb: 2,
-              letterSpacing: 1,
-            }}
-          >
-            {invoicePdfPayload.headline}
-          </Typography>
-
-          <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.5 }}>Bill to</Typography>
-          <Typography sx={{ fontSize: 14, fontWeight: 600 }}>{invoicePdfPayload.customerName}</Typography>
-          {invoicePdfPayload.projectName ? (
-            <Typography sx={{ fontSize: 13 }}>Project: {invoicePdfPayload.projectName}</Typography>
-          ) : null}
-          <Typography sx={{ fontSize: 13 }}>
-            {[invoicePdfPayload.customerAddress?.street, invoicePdfPayload.customerAddress?.city]
-              .filter(Boolean)
-              .join(', ')}
-          </Typography>
+          <Box sx={{ mt: 3, width: '48%', border: '1px solid #000' }}>
+            <Box sx={{ bgcolor: '#000', color: '#fff', p: 1, fontWeight: 700, fontSize: 12 }}>Name / Address</Box>
+            <Box sx={{ p: 1 }}>
+              <Typography sx={{ fontSize: 13 }}>{invoicePdfPayload.customerName}</Typography>
+              <Typography sx={{ fontSize: 13 }}>{invoicePdfPayload.customerAddress?.street}</Typography>
+              <Typography sx={{ fontSize: 13 }}>{invoicePdfPayload.customerAddress?.city}</Typography>
+              {invoicePdfPayload.projectName ? (
+                <Typography sx={{ fontSize: 12, mt: 0.5 }}>Project: {invoicePdfPayload.projectName}</Typography>
+              ) : null}
+            </Box>
+          </Box>
 
           <Box sx={{ mt: 3, border: '1px solid #000' }}>
-            <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12, p: 1 }}>
-              <Box sx={{ flex: 1 }}>Description</Box>
-              <Box sx={{ width: 128, textAlign: 'right' }}>Amount</Box>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '20% 48% 12% 20%', bgcolor: '#000', color: '#fff' }}>
+              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Item</Box>
+              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Description</Box>
+              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Qty</Box>
+              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Total</Box>
             </Box>
-            <Box sx={{ display: 'flex', p: 1.5, fontSize: 13, alignItems: 'flex-start' }}>
-              <Box sx={{ flex: 1, pr: 1 }}>Invoice generated from the current estimate document.</Box>
-              <Box sx={{ width: 128, textAlign: 'right', fontWeight: 700 }}>
-                ${formatInvoiceMoney(invoicePdfPayload.amount)}
+            {invoicePdfPayload.lineItems.map((row, index) => {
+              const qty = row.quantity != null && row.quantity !== '' ? row.quantity : '';
+              const tot = Number(row.total);
+              const totalStr = Number.isFinite(tot)
+                ? tot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                : String(row.total ?? '').trim() || '—';
+              return (
+                <Box
+                  key={`inv-line-${index}`}
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '20% 48% 12% 20%',
+                    borderTop: '1px solid #000',
+                    alignItems: 'stretch',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      px: 0.75,
+                      py: 0.45,
+                      borderRight: '1px solid #000',
+                      fontSize: 12.5,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {row.itemName}
+                  </Box>
+                  <Box
+                    sx={{
+                      px: 0.75,
+                      py: 0.45,
+                      borderRight: '1px solid #000',
+                      fontSize: 12.5,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {row.description}
+                  </Box>
+                  <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000', fontSize: 12.5 }}>{qty}</Box>
+                  <Box sx={{ px: 0.75, py: 0.45, fontSize: 12.5, textAlign: 'right' }}>${totalStr}</Box>
+                </Box>
+              );
+            })}
+          </Box>
+
+          <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+            <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+              <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
+                Total
+              </Box>
+              <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                $
+                {formatInvoiceMoney(invoicePdfPayload.contractTotal)}
+              </Box>
+            </Box>
+            <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+              <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
+                {invoicePdfPayload.kind === 'final' ? 'Final due today' : 'Deposit due today'}
+              </Box>
+              <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                ${formatInvoiceMoney(invoicePdfPayload.dueToday)}
               </Box>
             </Box>
           </Box>
 
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-            <Box sx={{ border: '2px solid #000', px: 2, py: 1, minWidth: 200, textAlign: 'right' }}>
-              <Typography sx={{ fontSize: 11, color: '#444' }}>Total due</Typography>
-              <Typography sx={{ fontSize: 22, fontWeight: 800 }}>
-                ${formatInvoiceMoney(invoicePdfPayload.amount)}
-              </Typography>
-            </Box>
+          <Box sx={{ mt: 2 }}>
+            <Typography sx={{ fontSize: 12, lineHeight: 1.5 }}>
+              {INVOICE_PERMITS_ACK_LINE} ______
+            </Typography>
+            <Typography sx={{ fontSize: 12, mt: 1.5 }}>{invoicePdfPayload.footerNote}</Typography>
+            <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
           </Box>
-
-          <Typography sx={{ fontSize: 11, mt: 3, lineHeight: 1.5 }}>
-            Contract total (from estimate): ${formatInvoiceMoney(invoicePdfPayload.contractTotal)}. This invoice
-            references estimate {invoicePdfPayload.estimateNumber}.
-          </Typography>
         </Box>
       )}
 
@@ -2077,7 +2185,28 @@ function FinanceHubPage() {
         <DialogTitle>Create invoice from estimate</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            This generates a first-class invoice from the current estimate document.
+            The PDF matches your estimate layout (line items and totals). Choose whether this bill is for the
+            deposit (60% of the contract total) or the final draw (40%).
+          </Typography>
+          <FormControl component="fieldset" variant="standard" sx={{ mb: 1 }}>
+            <FormLabel component="legend">Invoice type</FormLabel>
+            <RadioGroup
+              row
+              value={createInvoiceKind}
+              onChange={(e) => setCreateInvoiceKind(e.target.value)}
+            >
+              <FormControlLabel value="deposit" control={<Radio />} label="Deposit" />
+              <FormControlLabel value="final" control={<Radio />} label="Final" />
+            </RadioGroup>
+          </FormControl>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Contract total (from line items):{' '}
+            <strong>${formatInvoiceMoney(estimateTotal)}</strong>
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Deposit today (60%): <strong>${formatInvoiceMoney(roundMoneyClient(estimateTotal * INVOICE_DEPOSIT_FRACTION))}</strong>
+            {' · '}
+            Final (40%): <strong>${formatInvoiceMoney(roundMoneyClient(estimateTotal * INVOICE_FINAL_FRACTION))}</strong>
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
             Estimate # {invoiceEstimateNumber}

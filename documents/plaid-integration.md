@@ -2,6 +2,8 @@
 
 This page explains how Plaid is integrated, how data is pulled, and how Finance Hub uses the results.
 
+For a **single end-to-end README** (Finance Hub UI, all endpoints, cache/refresh, balances vs transactions, troubleshooting, and a ChatGPT starter prompt), see [PLAID_FINANCE_HUB_README.md](PLAID_FINANCE_HUB_README.md).
+
 ## Integration Summary
 
 Plaid is integrated server-side and tenant-scoped:

@@ -80,7 +80,7 @@ const jobSchema = new mongoose.Schema({
   estimateHistory: { type: [estimateSnapshotSchema], default: [] },
 
   /**
-   * Invoices generated from Finance Hub estimates (e.g. 40% deposit, 60% final).
+   * Invoices recorded on the job (e.g. 60% deposit, 40% final).
    * Appended only via POST /jobs/:id/invoices — not writable through generic PATCH.
    */
   invoices: [
@@ -90,7 +90,7 @@ const jobSchema = new mongoose.Schema({
       estimateNumber: { type: String, trim: true },
       contractTotal: { type: Number },
       invoiceDate: { type: String, trim: true },
-      /** Human-readable line e.g. "Deposit invoice (40%)" */
+      /** Human-readable line e.g. "Deposit invoice (60%)" */
       label: { type: String, trim: true },
     },
   ],
