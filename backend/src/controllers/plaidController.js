@@ -264,12 +264,29 @@ function sortRegisterTransactions(transactions, sort) {
   return copy;
 }
 
-async function fetchRegisterSnapshotFromPlaid(client, accessToken, fetchedDays) {
+async function fetchRegisterSnapshotFromPlaid(
+  client,
+  accessToken,
+  fetchedDays,
+  { preferLiveBalances = false } = {}
+) {
   const endDate = new Date();
   const startDate = new Date(endDate);
   startDate.setDate(endDate.getDate() - fetchedDays);
 
-  const accountsResp = await client.accountsGet({ access_token: accessToken });
+  // Balance values can lag behind transaction updates. On user-triggered refreshes,
+  // prefer accountsBalanceGet for fresher balances and fall back to accountsGet.
+  let accountsResp;
+  if (preferLiveBalances) {
+    try {
+      accountsResp = await client.accountsBalanceGet({ access_token: accessToken });
+    } catch (balanceErr) {
+      console.warn('accountsBalanceGet fallback to accountsGet:', balanceErr?.message || balanceErr);
+      accountsResp = await client.accountsGet({ access_token: accessToken });
+    }
+  } else {
+    accountsResp = await client.accountsGet({ access_token: accessToken });
+  }
   const accounts = Array.isArray(accountsResp?.data?.accounts) ? accountsResp.data.accounts : [];
 
   const txReqBase = {
@@ -394,7 +411,9 @@ async function getRegisterData(req, res) {
     }
 
     const syncedAt = new Date();
-    const snapshot = await fetchRegisterSnapshotFromPlaid(client, accessToken, REGISTER_PLAID_FETCH_DAYS);
+    const snapshot = await fetchRegisterSnapshotFromPlaid(client, accessToken, REGISTER_PLAID_FETCH_DAYS, {
+      preferLiveBalances: forceRefresh,
+    });
 
     await PlaidRegisterCache.findOneAndUpdate(
       { tenantId },
