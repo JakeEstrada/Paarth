@@ -41,10 +41,10 @@ async function getRegisterPayload(params) {
   const origin = apiOrigin();
   const primary = `${origin}/plaid/register-data`;
   try {
-    return await axios.get(primary, { params, headers: { 'Cache-Control': 'no-cache' } });
+    return await axios.get(primary, { params });
   } catch (e) {
     if (e?.response?.status === 404) {
-      return await axios.get(`${origin}/api/plaid/register-data`, { params, headers: { 'Cache-Control': 'no-cache' } });
+      return await axios.get(`${origin}/api/plaid/register-data`, { params });
     }
     throw e;
   }

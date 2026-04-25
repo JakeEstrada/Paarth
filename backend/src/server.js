@@ -50,7 +50,15 @@ app.use(
     origin: parseCorsOrigins(),
     credentials: false,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-tenant-slug'],
+    // Keep this in sync with browser-sent preflight headers from Axios/fetch.
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-tenant-id',
+      'x-tenant-slug',
+      'Cache-Control',
+      'Pragma',
+    ],
     maxAge: 86400,
   })
 );
