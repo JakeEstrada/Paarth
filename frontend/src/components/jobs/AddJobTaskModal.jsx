@@ -19,7 +19,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function AddJobTaskModal({ open, onClose, onSuccess, job }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -28,7 +27,6 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
     if (open && job) {
       setTitle('');
       setDescription('');
-      setAmount('');
       setIsUrgent(false);
     }
   }, [open, job]);
@@ -57,19 +55,17 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
       const taskData = {
         title: title.trim(),
         description: description.trim(),
-        amount: Number(amount) || 0,
         jobId: job._id,
         isUrgent: isUrgent,
       };
 
       await axios.post(`${API_URL}/tasks`, taskData);
       
-      toast.success('Change order/task added successfully');
+      toast.success('Task added successfully');
       
       // Reset form
       setTitle('');
       setDescription('');
-      setAmount('');
       setIsUrgent(false);
       
       onSuccess?.();
@@ -86,7 +82,6 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
     if (!loading) {
       setTitle('');
       setDescription('');
-      setAmount('');
       setIsUrgent(false);
       onClose();
     }
@@ -99,7 +94,7 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
       <form onSubmit={handleSubmit}>
         <DialogTitle>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Add Change Order / Task for {job.title}
+            Add Task for {job.title}
           </Typography>
         </DialogTitle>
         <DialogContent>
@@ -111,7 +106,7 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
               required
               fullWidth
               autoFocus
-              placeholder="e.g., Create change order"
+              placeholder="e.g., Follow up with customer"
             />
             
             <TextField
@@ -122,17 +117,7 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
               fullWidth
               multiline
               rows={3}
-              placeholder="Describe the change order or task"
-            />
-
-            <TextField
-              label="Amount"
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              fullWidth
-              inputProps={{ min: 0, step: '0.01' }}
-              placeholder="0.00"
+              placeholder="Describe the task"
             />
 
             <FormControlLabel
@@ -161,7 +146,7 @@ function AddJobTaskModal({ open, onClose, onSuccess, job }) {
             disabled={loading}
             sx={{ borderRadius: '8px' }}
           >
-            {loading ? 'Adding...' : 'Add Change Order / Task'}
+            {loading ? 'Adding...' : 'Add Task'}
           </Button>
         </DialogActions>
       </form>

@@ -886,7 +886,7 @@ function JobDetailModal({
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <MoneyIcon sx={{ mr: 1, color: 'primary.main' }} />
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                      Change Orders
+                      Tasks
                     </Typography>
                   </Box>
                   <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
@@ -895,9 +895,6 @@ function JobDetailModal({
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       {jobTasks.length} total
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Added value: {formatCurrency(headerChangeOrderValue)}
                     </Typography>
                   </Box>
                 </Box>
@@ -933,22 +930,12 @@ function JobDetailModal({
                               {formatDateTime(task.createdAt)}
                             </Typography>
                           </Box>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontWeight: 700,
-                              whiteSpace: 'nowrap',
-                              color: Number(task.amount) > 0 ? 'success.main' : 'text.secondary',
-                            }}
-                          >
-                            {formatCurrency(task.amount || 0)}
-                          </Typography>
                         </Box>
                       ))}
                   </Box>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
-                    No change orders yet. Use Add Change Order / Task to add as many as needed.
+                    No tasks yet. Use Add Task to add as many as needed.
                   </Typography>
                 )}
               </Paper>
@@ -1309,7 +1296,7 @@ function JobDetailModal({
                 onClick={() => setAddTaskOpen(true)}
                 sx={{ borderRadius: '8px', textTransform: 'none' }}
               >
-                Add Change Order / Task
+                Add Task
               </Button>
               <Button
                 variant="outlined"
