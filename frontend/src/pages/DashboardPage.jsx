@@ -485,8 +485,17 @@ function DashboardPage() {
       setSummaryTruncated(Boolean(res.data.truncated));
       setSummaryDialogOpen(true);
     } catch (error) {
-      console.error('Activity summary error:', error);
-      toast.error(error.response?.data?.error || 'Could not generate summary');
+      const msg =
+        error.response?.data?.error ||
+        (typeof error.response?.data === 'string' ? error.response.data : null) ||
+        error.message;
+      const code = error.response?.data?.code;
+      console.error('Activity summary error:', error.response?.status, error.response?.data);
+      toast.error(
+        [msg, code ? `(${code})` : null, error.response?.status ? `[HTTP ${error.response.status}]` : null]
+          .filter(Boolean)
+          .join(' ')
+      );
     } finally {
       setSummaryLoading(false);
     }

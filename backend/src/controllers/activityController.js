@@ -97,10 +97,15 @@ function humanActivityDetail(activity) {
   return '';
 }
 
+const MAX_LINE_DETAIL_CHARS = 400;
+
 function formatActivityLineForSummary(activity) {
   const iso = new Date(activity.createdAt).toISOString();
   const title = humanActivityTitle(activity);
-  const detail = humanActivityDetail(activity);
+  let detail = humanActivityDetail(activity);
+  if (detail.length > MAX_LINE_DETAIL_CHARS) {
+    detail = `${detail.slice(0, MAX_LINE_DETAIL_CHARS)}…`;
+  }
   const user = activity.createdBy?.name || '';
   const customer = activity.customerId?.name || '';
   const job = activity.jobId?.title || '';
@@ -114,8 +119,49 @@ function formatActivityLineForSummary(activity) {
   return `${iso} | ${title} | User: ${user || '—'} | ${meta} | ${detail || '—'}`;
 }
 
-async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLines, activityCount }) {
-  const apiKey = process.env.OPENAI_API_KEY;
+/** gpt-4o-mini has large context, but long ranges can still exceed token limits; keep a safe user-content budget. */
+const MAX_ACTIVITY_TEXT_CHARS = 85_000;
+
+/**
+ * @param {string[]} activityLines - newest first
+ * @returns {{ text: string, includedLineCount: number, omittedLineCount: number }}
+ */
+function buildActivityListForModel(activityLines) {
+  if (activityLines.length === 0) {
+    return { text: '(none)', includedLineCount: 0, omittedLineCount: 0 };
+  }
+  const lines = [];
+  let charBudget = 0;
+  for (const line of activityLines) {
+    const need = (lines.length > 0 ? 1 : 0) + line.length;
+    if (charBudget + need > MAX_ACTIVITY_TEXT_CHARS) break;
+    lines.push(line);
+    charBudget += need;
+  }
+  const includedLineCount = lines.length;
+  const omittedLineCount = activityLines.length - includedLineCount;
+  const suffix =
+    omittedLineCount > 0
+      ? `\n[... ${omittedLineCount} older line(s) omitted: payload size limit. Summary reflects the ${includedLineCount} newest lines below.]`
+      : '';
+  return { text: `${lines.join('\n')}${suffix}`, includedLineCount, omittedLineCount };
+}
+
+const _timeoutRaw = parseInt(String(process.env.OPENAI_SUMMARY_TIMEOUT_MS || '120000'), 10);
+const OPENAI_FETCH_TIMEOUT_MS = Number.isFinite(_timeoutRaw)
+  ? Math.min(180_000, Math.max(10_000, _timeoutRaw))
+  : 120_000;
+
+async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLines, totalActivityCount }) {
+  if (typeof globalThis.fetch !== 'function') {
+    const err = new Error(
+      'This Node build has no global fetch. Use Node 18+ on the server (set engines in package.json and on Render).'
+    );
+    err.code = 'NO_FETCH';
+    throw err;
+  }
+
+  const apiKey = (process.env.OPENAI_API_KEY || '').trim();
   if (!apiKey) {
     const err = new Error('OPENAI_API_KEY_NOT_SET');
     err.code = 'NO_KEY';
@@ -125,50 +171,83 @@ async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLin
   const systemPrompt =
     'You summarize internal CRM activity for a woodworking / cabinetry business. Be concise and practical. Use short paragraphs or bullet points. Highlight customer/job movement, notable notes, files, scheduling, tasks, and anything that suggests follow-up. Do not invent facts; only use what appears in the activity list. If the list is empty, say there was no activity.';
 
+  const { text: activityListText, includedLineCount, omittedLineCount } = buildActivityListForModel(activityLines);
+
   const userContent = [
     `Date range (inclusive): ${startDateStr} through ${endDateStr}`,
-    `Total activities in range: ${activityCount}`,
+    `Total activities in this date range (in database): ${totalActivityCount}`,
+    `Activities included in this list (newest first): ${includedLineCount} line(s)${omittedLineCount > 0 ? `; ${omittedLineCount} older line(s) omitted for size` : ''}`,
     '',
     'Activities (newest first):',
     '---',
-    ...activityLines,
+    activityListText,
     '---',
   ].join('\n');
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_ACTIVITY_SUMMARY_MODEL || 'gpt-4o-mini',
-      temperature: 0.35,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
-      ],
-    }),
-  });
+  const model = (process.env.OPENAI_ACTIVITY_SUMMARY_MODEL || 'gpt-4o-mini').trim();
+
+  const body = {
+    model,
+    temperature: 0.35,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+  };
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), OPENAI_FETCH_TIMEOUT_MS);
+  let res;
+  try {
+    res = await globalThis.fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      const err = new Error(
+        `OpenAI request timed out after ${OPENAI_FETCH_TIMEOUT_MS}ms. Try a shorter date range, or set OPENAI_SUMMARY_TIMEOUT_MS on the server.`
+      );
+      err.code = 'OPENAI_TIMEOUT';
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
 
   const raw = await res.text();
   let data;
   try {
     data = JSON.parse(raw);
   } catch {
-    throw new Error(raw.slice(0, 500) || 'Invalid OpenAI response');
+    const err = new Error(raw.slice(0, 500) || 'Invalid OpenAI response');
+    err.code = 'OPENAI_BAD_JSON';
+    throw err;
   }
 
   if (!res.ok) {
-    const msg = data?.error?.message || raw.slice(0, 500);
-    const err = new Error(msg);
+    const msg = data?.error?.message || raw.slice(0, 500) || 'OpenAI request failed';
+    const err = new Error(
+      res.status === 401
+        ? 'OpenAI returned 401 (check OPENAI_API_KEY in Render — Environment, not .env in git).'
+        : msg
+    );
     err.status = res.status;
+    err.openai = data?.error;
     throw err;
   }
 
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) {
-    throw new Error('OpenAI returned no summary text');
+    const err = new Error('OpenAI returned no summary text (empty choices).');
+    err.code = 'OPENAI_EMPTY';
+    throw err;
   }
   return text;
 }
@@ -456,15 +535,27 @@ async function generateActivitySummary(req, res) {
         startDateStr: startDate,
         endDateStr: endDate,
         activityLines: lines,
-        activityCount: activities.length,
+        totalActivityCount: activities.length,
       });
     } catch (e) {
       if (e.code === 'NO_KEY') {
-        return res.status(503).json({ error: 'OpenAI is not configured (missing OPENAI_API_KEY).' });
+        return res.status(503).json({
+          error:
+            'OpenAI is not configured. Add OPENAI_API_KEY in your host environment (e.g. Render → Environment for the **Web Service** — not only in a local .env file).',
+          code: 'NO_KEY',
+        });
       }
-      console.error('Activity summary OpenAI error:', e);
+      if (e.code === 'NO_FETCH') {
+        return res.status(500).json({ error: e.message, code: 'NO_FETCH' });
+      }
+      if (e.code === 'OPENAI_TIMEOUT') {
+        return res.status(504).json({ error: e.message, code: 'OPENAI_TIMEOUT' });
+      }
+      console.error('Activity summary OpenAI error:', e?.message, e?.status, e?.openai);
       return res.status(502).json({
         error: e.message || 'Failed to generate summary',
+        code: e.code,
+        openaiType: e.openai?.type,
       });
     }
 
