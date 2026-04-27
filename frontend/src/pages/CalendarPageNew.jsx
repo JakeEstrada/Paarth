@@ -725,20 +725,31 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
               Color:
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
-              <TextField
+              <Box
+                component="input"
                 type="color"
+                aria-label="Pick event color"
                 value={formData.color}
                 onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                inputProps={{ 'aria-label': 'Pick event color' }}
                 sx={{
-                  width: 64,
-                  '& input': {
-                    cursor: 'pointer',
-                    width: 44,
-                    height: 44,
+                  width: 44,
+                  height: 44,
+                  p: 0,
+                  border: 'none',
+                  borderRadius: 1,
+                  background: 'none',
+                  cursor: 'pointer',
+                  overflow: 'hidden',
+                  '&::-webkit-color-swatch-wrapper': {
                     p: 0,
-                    border: 'none',
-                    background: 'none',
+                  },
+                  '&::-webkit-color-swatch': {
+                    border: '1px solid rgba(0,0,0,0.25)',
+                    borderRadius: '6px',
+                  },
+                  '&::-moz-color-swatch': {
+                    border: '1px solid rgba(0,0,0,0.25)',
+                    borderRadius: '6px',
                   },
                 }}
               />
