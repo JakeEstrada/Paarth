@@ -173,6 +173,9 @@ function JobDetailModal({
   const [filePinDialogOpen, setFilePinDialogOpen] = useState(false);
   const [filePinInput, setFilePinInput] = useState('');
   const [lockedFileToOpen, setLockedFileToOpen] = useState(null);
+  const [unlockPinDialogOpen, setUnlockPinDialogOpen] = useState(false);
+  const [unlockPinInput, setUnlockPinInput] = useState('');
+  const [lockedFileToUnlock, setLockedFileToUnlock] = useState(null);
 
   useEffect(() => {
     if (open && jobId) {
@@ -363,6 +366,27 @@ function JobDetailModal({
   const closeFileMenu = () => {
     setFileMenuAnchor(null);
     setSelectedFileForMenu(null);
+  };
+
+  const requestUnlockLockedFile = () => {
+    if (!selectedFileForMenu?._id) return;
+    setLockedFileToUnlock(selectedFileForMenu);
+    setUnlockPinInput('');
+    setUnlockPinDialogOpen(true);
+    setFileMenuAnchor(null);
+  };
+
+  const handleConfirmUnlockPin = () => {
+    if (String(unlockPinInput || '').trim() !== '7217') {
+      toast.error('Incorrect unlock PIN');
+      return;
+    }
+    if (lockedFileToUnlock) {
+      handleToggleFileLock(false, lockedFileToUnlock);
+    }
+    setUnlockPinDialogOpen(false);
+    setUnlockPinInput('');
+    setLockedFileToUnlock(null);
   };
 
   const handleToggleFileLock = async (shouldLock, fileOverride = null) => {
@@ -1223,18 +1247,6 @@ function JobDetailModal({
                         </Box>
                         <IconButton
                           size="small"
-                          color={file.isLocked ? 'warning' : 'default'}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleFileLock(!file.isLocked, file);
-                          }}
-                          sx={{ mt: -1 }}
-                          title={file.isLocked ? 'Unlock file' : 'Lock file'}
-                        >
-                          {file.isLocked ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}
-                        </IconButton>
-                        <IconButton
-                          size="small"
                           color="error"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1501,7 +1513,7 @@ function JobDetailModal({
         onClose={closeFileMenu}
       >
         {selectedFileForMenu?.isLocked ? (
-          <MenuItem onClick={() => handleToggleFileLock(false)}>
+          <MenuItem onClick={requestUnlockLockedFile}>
             <LockOpenIcon fontSize="small" sx={{ mr: 1 }} />
             Unlock file
           </MenuItem>
@@ -1552,6 +1564,49 @@ function JobDetailModal({
           </Button>
           <Button variant="contained" onClick={handleConfirmLockedFilePin}>
             Open file
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={unlockPinDialogOpen}
+        onClose={() => {
+          setUnlockPinDialogOpen(false);
+          setUnlockPinInput('');
+          setLockedFileToUnlock(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Unlock File</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Enter unlock PIN to remove file lock.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Unlock PIN"
+            type="password"
+            value={unlockPinInput}
+            onChange={(e) => setUnlockPinInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleConfirmUnlockPin();
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setUnlockPinDialogOpen(false);
+              setUnlockPinInput('');
+              setLockedFileToUnlock(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleConfirmUnlockPin}>
+            Unlock
           </Button>
         </DialogActions>
       </Dialog>
