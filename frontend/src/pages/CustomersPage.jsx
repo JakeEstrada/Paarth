@@ -210,38 +210,6 @@ function CustomersPage({ viewMode = false }) {
     }
   };
 
-  const handleOpenCustomerJobFromView = async (customer) => {
-    if (!customer?._id) return;
-    try {
-      const response = await axios.get(`${API_URL}/jobs`);
-      const allJobs = response.data.jobs || response.data || [];
-      const customerIdStr = String(customer._id);
-      const jobs = allJobs.filter((job) => {
-        const jobCustomerId = job.customerId?._id || job.customerId;
-        return String(jobCustomerId) === customerIdStr;
-      });
-
-      if (!jobs.length) {
-        toast.error('No jobs found for this customer');
-        return;
-      }
-
-      const sorted = [...jobs].sort((a, b) => {
-        const aActive = !a.isArchived && !a.isDeadEstimate;
-        const bActive = !b.isArchived && !b.isDeadEstimate;
-        if (aActive !== bActive) return aActive ? -1 : 1;
-        const aTs = new Date(a.updatedAt || a.createdAt || 0).getTime();
-        const bTs = new Date(b.updatedAt || b.createdAt || 0).getTime();
-        return bTs - aTs;
-      });
-
-      setSelectedJobId(sorted[0]._id);
-    } catch (error) {
-      console.error('Error opening customer job from view mode:', error);
-      toast.error('Failed to open customer job');
-    }
-  };
-
   const handleJobUpdate = async (jobId, updates) => {
     try {
       await axios.patch(`${API_URL}/jobs/${jobId}`, updates);
@@ -760,6 +728,14 @@ function CustomersPage({ viewMode = false }) {
               <Button
                 variant="contained"
                 size="small"
+                onClick={() => navigate('/customers-view')}
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                Customers view
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
                 onClick={() => navigate('/customers')}
                 sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
               >
@@ -896,7 +872,7 @@ function CustomersPage({ viewMode = false }) {
                     }}
                     onDoubleClick={() => {
                       if (!isReadonlyView) return;
-                      handleOpenCustomerJobFromView(customer);
+                      handleOpenContactModal(customer);
                     }}
                     sx={{ cursor: isReadonlyView ? 'pointer' : 'pointer' }}
                   >

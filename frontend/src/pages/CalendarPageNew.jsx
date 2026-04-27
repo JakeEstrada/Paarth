@@ -2113,6 +2113,14 @@ function CalendarPageNew({ tvMode = false }) {
                 Pipeline view
               </Button>
               <Button
+                onClick={() => navigate('/calendar-view')}
+                variant="contained"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                Calendar view
+              </Button>
+              <Button
                 onClick={() => navigate('/customers-view')}
                 variant="outlined"
                 size="small"

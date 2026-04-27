@@ -398,6 +398,14 @@ function PipelinePage({ tvMode = false }) {
               {tvMode && (
                 <>
                   <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => navigate('/pipeline-view')}
+                    sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                  >
+                    Pipeline view
+                  </Button>
+                  <Button
                     variant="outlined"
                     size="small"
                     onClick={() => navigate('/calendar-view')}
