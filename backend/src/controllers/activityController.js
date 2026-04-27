@@ -183,7 +183,7 @@ async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLin
   }
 
   const systemPrompt =
-    'You summarize internal CRM activity for a woodworking / cabinetry business. Be concise and practical. Use short paragraphs or bullet points. Highlight customer/job movement, notable notes, files, scheduling, tasks, and anything that suggests follow-up. Do not invent facts; only use what appears in the activity list. If the list is empty, say there was no activity.';
+    'You summarize internal CRM activity for a woodworking / cabinetry business. Return valid markdown only and keep it clean/simple for non-technical readers. Use this exact structure and headings: "## Date range overview", "## Customer and job movement", "## Notable notes", "## Scheduling and tasks", "## Follow-ups". Under each heading, use short bullet points. Use bold only for customer names and job titles. Keep total length under 250 words unless there are many critical updates. Do not invent facts; only use provided activities. If there is no activity, return: "## Date range overview\\n- No activity recorded in this range."';
 
   const { text: activityListText, includedLineCount, omittedLineCount } = buildActivityListForModel(activityLines);
 
