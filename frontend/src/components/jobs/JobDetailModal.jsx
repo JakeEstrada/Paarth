@@ -162,6 +162,7 @@ function JobDetailModal({
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
   const [jobTasks, setJobTasks] = useState([]);
   const [contractPacketOpen, setContractPacketOpen] = useState(false);
+  const hideFinancials = hideSensitive;
 
   useEffect(() => {
     if (open && jobId) {
@@ -174,12 +175,8 @@ function JobDetailModal({
 
   useEffect(() => {
     if (!open || !jobId) return;
-    if (hideSensitive) {
-      setFiles([]);
-      return;
-    }
     fetchFiles();
-  }, [open, jobId, hideSensitive]);
+  }, [open, jobId]);
 
   const fetchJobDetails = async () => {
     try {
@@ -196,9 +193,7 @@ function JobDetailModal({
         setJobTasks([]);
       }
       // Fetch files for this job
-      if (!hideSensitive) {
-        await fetchFiles();
-      }
+      await fetchFiles();
     } catch (error) {
       console.error('Error fetching job details:', error);
       toast.error('Failed to load job details');
@@ -209,10 +204,6 @@ function JobDetailModal({
   };
 
   const fetchFiles = async () => {
-    if (hideSensitive) {
-      setFiles([]);
-      return;
-    }
     try {
       const response = await axios.get(`${API_URL}/files/job/${jobId}`);
       setFiles(response.data || []);
@@ -623,7 +614,7 @@ function JobDetailModal({
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
             {/* Estimated Value in Header */}
             <Box sx={{ textAlign: 'right' }}>
-              {hideSensitive ? (
+              {hideFinancials ? (
                 <Box sx={{ textAlign: 'right' }}>
                   <Typography variant="h6" sx={{ color: 'text.secondary', fontWeight: 600 }}>
                     Locked
@@ -662,7 +653,7 @@ function JobDetailModal({
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                 {isEditing ? 'Base Estimate' : 'Total Price'}
               </Typography>
-              {!hideSensitive && (
+              {!hideFinancials && (
                 <>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
                     Base Estimate: {formatCurrency(headerBaseEstimatedValue)}
@@ -717,7 +708,7 @@ function JobDetailModal({
       <DialogContent sx={{ pt: 2 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
           <Tab label="Overview" />
-          <Tab label={hideSensitive ? 'Files (Locked)' : 'Files'} />
+          <Tab label="Files" />
           <Tab label="Notes" />
         </Tabs>
 
@@ -1031,10 +1022,10 @@ function JobDetailModal({
 
         {activeTab === 1 && (
           <Box>
-            {hideSensitive ? (
+            {hideFinancials ? (
               <Paper sx={{ p: 3, textAlign: 'center' }}>
                 <Typography variant="body1" sx={{ mb: 1 }}>
-                  Financial details and files are locked in Shop View.
+                  Financial details are locked in Shop View.
                 </Typography>
                 {onRequestSensitiveUnlock && (
                   <Button variant="contained" onClick={() => onRequestSensitiveUnlock?.()}>
@@ -1042,51 +1033,53 @@ function JobDetailModal({
                   </Button>
                 )}
               </Paper>
-            ) : (
-              <>
-            <Grid container spacing={3} sx={{ mb: 3 }}>
-              <Grid item xs={12}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                    Estimate Amount
-                  </Typography>
-                  <Typography variant="h5" sx={{ color: 'success.main', fontWeight: 600 }}>
-                    {formatCurrency(job.estimate?.amount || job.valueEstimated || 0)}
-                  </Typography>
-                  {job.estimate?.sentAt && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                      Sent: {formatDate(job.estimate.sentAt)}
+            ) : null}
+            <>
+            {!hideFinancials && (
+              <Grid container spacing={3} sx={{ mb: 3 }}>
+                <Grid item xs={12}>
+                  <Paper sx={{ p: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                      Estimate Amount
                     </Typography>
-                  )}
-                  <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      component={RouterLink}
-                      to={`/finance?tab=estimates&jobId=${job._id}`}
-                    >
-                      Open estimate
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="primary"
-                      onClick={() => setContractPacketOpen(true)}
-                    >
-                      Create contract
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      component={RouterLink}
-                      to={`/takeoff-sheet?jobId=${job._id}`}
-                    >
-                      Open takeoff sheet
-                    </Button>
-                  </Box>
-                </Paper>
+                    <Typography variant="h5" sx={{ color: 'success.main', fontWeight: 600 }}>
+                      {formatCurrency(job.estimate?.amount || job.valueEstimated || 0)}
+                    </Typography>
+                    {job.estimate?.sentAt && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        Sent: {formatDate(job.estimate.sentAt)}
+                      </Typography>
+                    )}
+                    <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        component={RouterLink}
+                        to={`/finance?tab=estimates&jobId=${job._id}`}
+                      >
+                        Open estimate
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        onClick={() => setContractPacketOpen(true)}
+                      >
+                        Create contract
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        component={RouterLink}
+                        to={`/takeoff-sheet?jobId=${job._id}`}
+                      >
+                        Open takeoff sheet
+                      </Button>
+                    </Box>
+                  </Paper>
+                </Grid>
               </Grid>
-            </Grid>
+            )}
 
             {/* Files Display */}
             {files.length > 0 ? (
@@ -1272,8 +1265,7 @@ function JobDetailModal({
                 </label>
               </Box>
             </Paper>
-              </>
-            )}
+            </>
           </Box>
         )}
 
