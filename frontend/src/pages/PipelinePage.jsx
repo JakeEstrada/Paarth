@@ -396,18 +396,6 @@ function PipelinePage({ tvMode = false }) {
                 </Button>
               )}
               {tvMode && (
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => {
-                    navigate('/pipeline');
-                  }}
-                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-                >
-                  Exit Pipeline view
-                </Button>
-              )}
-              {tvMode && (
                 <>
                   <Button
                     variant="outlined"
@@ -424,6 +412,16 @@ function PipelinePage({ tvMode = false }) {
                     sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
                   >
                     Customers view
+                  </Button>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => {
+                      navigate('/pipeline');
+                    }}
+                    sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                  >
+                    Exit Pipeline view
                   </Button>
                 </>
               )}

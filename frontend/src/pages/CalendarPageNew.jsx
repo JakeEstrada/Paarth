@@ -2054,19 +2054,19 @@ function CalendarPageNew({ tvMode = false }) {
         p: tvMode ? { xs: 0.5, sm: 1 } : { xs: 1, sm: 2 }, 
         borderBottom: '1px solid #e0e0e0', 
         display: 'flex', 
-        flexDirection: { xs: 'column', sm: tvMode ? 'column' : 'row' },
+        flexDirection: { xs: 'column', sm: 'row' },
         justifyContent: 'space-between', 
         alignItems: { xs: 'stretch', sm: 'center' },
-        gap: { xs: 1, sm: 0 }
+        gap: { xs: 1, sm: 1.5 }
       }}>
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: tvMode ? 'center' : 'flex-start',
+            justifyContent: 'flex-start',
             gap: { xs: 1, sm: 2 },
             flexWrap: 'wrap',
-            width: '100%',
+            width: 'auto',
           }}
         >
           <IconButton onClick={handlePrevMonth} size="small">
@@ -2100,23 +2100,15 @@ function CalendarPageNew({ tvMode = false }) {
           >
             Today
           </Button>
-          <Button
-            onClick={() => {
-              navigate(tvMode ? '/calendar' : '/calendar-view');
-            }}
-            variant={tvMode ? 'contained' : 'outlined'}
-            size="small"
-            sx={{ display: { xs: 'none', sm: 'flex' } }}
-          >
-            {tvMode ? 'Exit Calendar view' : 'Calendar view'}
-          </Button>
-          {tvMode && (
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+          {tvMode ? (
             <>
               <Button
                 onClick={() => navigate('/pipeline-view')}
                 variant="outlined"
                 size="small"
-                sx={{ display: { xs: 'none', sm: 'flex' } }}
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
               >
                 Pipeline view
               </Button>
@@ -2124,9 +2116,41 @@ function CalendarPageNew({ tvMode = false }) {
                 onClick={() => navigate('/customers-view')}
                 variant="outlined"
                 size="small"
-                sx={{ display: { xs: 'none', sm: 'flex' } }}
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
               >
                 Customers view
+              </Button>
+              <Button
+                onClick={() => navigate('/calendar')}
+                variant="contained"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                Exit Calendar view
+              </Button>
+            </>
+          ) : (
+            <>
+              {/* Standalone event creation removed; calendar now only schedules existing jobs */}
+              <FormControl size="small" sx={{ minWidth: 120, display: { xs: 'none', sm: 'flex' } }}>
+                <InputLabel>Bench position</InputLabel>
+                <Select
+                  value={benchPosition}
+                  label="Bench position"
+                  onChange={(e) => setBenchPosition(e.target.value)}
+                >
+                  <MenuItem value="top">Top</MenuItem>
+                  <MenuItem value="right">Right</MenuItem>
+                  <MenuItem value="bottom">Bottom</MenuItem>
+                </Select>
+              </FormControl>
+              <Button
+                onClick={() => navigate('/calendar-view')}
+                variant="outlined"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                Calendar view
               </Button>
             </>
           )}
@@ -2136,25 +2160,12 @@ function CalendarPageNew({ tvMode = false }) {
               variant="outlined"
               size="small"
               startIcon={mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
-              sx={{ display: { xs: 'none', sm: 'flex' } }}
+              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
             >
               {mode === 'dark' ? 'Light mode' : 'Dark mode'}
             </Button>
           )}
         </Box>
-        {/* Standalone event creation removed; calendar now only schedules existing jobs */}
-        <FormControl size="small" sx={{ minWidth: 120, display: { xs: 'none', sm: tvMode ? 'none' : 'flex' } }}>
-          <InputLabel>Bench position</InputLabel>
-          <Select
-            value={benchPosition}
-            label="Bench position"
-            onChange={(e) => setBenchPosition(e.target.value)}
-          >
-            <MenuItem value="top">Top</MenuItem>
-            <MenuItem value="right">Right</MenuItem>
-            <MenuItem value="bottom">Bottom</MenuItem>
-          </Select>
-        </FormControl>
       </Box>
 
       {/* Main area: layout depends on bench position */}
