@@ -54,13 +54,19 @@ function ViewModeFrame({ currentView, children }) {
           <Button
             key={btn.key}
             size="small"
-            color="warning"
             variant={currentView === btn.key ? 'contained' : 'outlined'}
             onClick={() => navigate(btn.path)}
             sx={{
               fontWeight: 700,
               borderWidth: 2,
-              '&:hover': { borderWidth: 2 },
+              borderColor: '#90CAF9',
+              color: '#1565C0',
+              backgroundColor: currentView === btn.key ? '#BBDEFB' : 'transparent',
+              '&:hover': {
+                borderWidth: 2,
+                borderColor: '#64B5F6',
+                backgroundColor: currentView === btn.key ? '#90CAF9' : 'rgba(144, 202, 249, 0.16)',
+              },
             }}
           >
             {btn.label}
@@ -68,13 +74,18 @@ function ViewModeFrame({ currentView, children }) {
         ))}
         <Button
           size="small"
-          color="warning"
           variant="outlined"
           onClick={() => setExitDialogOpen(true)}
           sx={{
             fontWeight: 700,
             borderWidth: 2,
-            '&:hover': { borderWidth: 2 },
+            borderColor: '#90CAF9',
+            color: '#1565C0',
+            '&:hover': {
+              borderWidth: 2,
+              borderColor: '#64B5F6',
+              backgroundColor: 'rgba(144, 202, 249, 0.16)',
+            },
           }}
         >
           Exit view
