@@ -2111,6 +2111,26 @@ function CalendarPageNew({ tvMode = false }) {
             {tvMode ? 'Exit Calendar view' : 'Calendar view'}
           </Button>
           {tvMode && (
+            <>
+              <Button
+                onClick={() => navigate('/pipeline-view')}
+                variant="outlined"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'flex' } }}
+              >
+                Pipeline view
+              </Button>
+              <Button
+                onClick={() => navigate('/customers-view')}
+                variant="outlined"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'flex' } }}
+              >
+                Customers view
+              </Button>
+            </>
+          )}
+          {tvMode && (
             <Button
               onClick={toggleColorMode}
               variant="outlined"

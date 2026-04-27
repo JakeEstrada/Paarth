@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -53,8 +54,9 @@ import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-function CustomersPage() {
+function CustomersPage({ viewMode = false }) {
   const theme = useTheme();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { isShopViewRole, hideSensitive } = useShopViewSensitive(user?.role);
   const [customers, setCustomers] = useState([]);
@@ -688,6 +690,8 @@ function CustomersPage() {
     return notes.substring(0, maxLength) + '...';
   };
 
+  const isReadonlyView = Boolean(viewMode);
+
   return (
     <Box sx={{ p: { xs: 1, sm: 2, md: 3 } }}>
       {/* Header */}
@@ -700,40 +704,54 @@ function CustomersPage() {
         gap: { xs: 2, sm: 0 }
       }}>
         <Typography variant="h4" sx={{ fontWeight: 600, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
-          Customers
+          {isReadonlyView ? 'Customers View' : 'Customers'}
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'center' }}>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            sx={{ borderRadius: '8px', textTransform: 'none' }}
-            onClick={async () => {
-              try {
-                // Create a new customer via API
-                const response = await axios.post(`${API_URL}/customers`, {
-                  name: 'New Customer',
-                  primaryPhone: '',
-                  primaryEmail: '',
-                  contactPhones: [],
-                  contactEmails: [],
-                  address: { street: '', city: '', state: '', zip: '' },
-                  notes: '',
-                  source: 'other',
-                });
-                const newCustomer = response.data;
-                setCustomers([newCustomer, ...customers]);
-                setSelectedCustomer(newCustomer);
-                handleStartEditCustomer();
-                setContactModalOpen(true);
-                toast.success('New customer created');
-              } catch (error) {
-                console.error('Error creating customer:', error);
-                toast.error('Failed to create customer');
-              }
-            }}
-          >
-            Add Customer
-          </Button>
+          {isReadonlyView ? (
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button variant="outlined" size="small" onClick={() => navigate('/pipeline-view')}>
+                Pipeline view
+              </Button>
+              <Button variant="outlined" size="small" onClick={() => navigate('/calendar-view')}>
+                Calendar view
+              </Button>
+              <Button variant="contained" size="small" onClick={() => navigate('/customers')}>
+                Exit Customers view
+              </Button>
+            </Box>
+          ) : (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              sx={{ borderRadius: '8px', textTransform: 'none' }}
+              onClick={async () => {
+                try {
+                  // Create a new customer via API
+                  const response = await axios.post(`${API_URL}/customers`, {
+                    name: 'New Customer',
+                    primaryPhone: '',
+                    primaryEmail: '',
+                    contactPhones: [],
+                    contactEmails: [],
+                    address: { street: '', city: '', state: '', zip: '' },
+                    notes: '',
+                    source: 'other',
+                  });
+                  const newCustomer = response.data;
+                  setCustomers([newCustomer, ...customers]);
+                  setSelectedCustomer(newCustomer);
+                  handleStartEditCustomer();
+                  setContactModalOpen(true);
+                  toast.success('New customer created');
+                } catch (error) {
+                  console.error('Error creating customer:', error);
+                  toast.error('Failed to create customer');
+                }
+              }}
+            >
+              Add Customer
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -825,8 +843,11 @@ function CustomersPage() {
                   <TableRow 
                     key={customer._id} 
                     hover
-                    onClick={() => handleOpenContactModal(customer)}
-                    sx={{ cursor: 'pointer' }}
+                    onClick={() => {
+                      if (isReadonlyView) return;
+                      handleOpenContactModal(customer);
+                    }}
+                    sx={{ cursor: isReadonlyView ? 'default' : 'pointer' }}
                   >
                     <TableCell>{customer.name || '-'}</TableCell>
                     <TableCell>{customer.primaryPhone || '-'}</TableCell>
@@ -856,31 +877,35 @@ function CustomersPage() {
                         >
                           {truncateNotes(customer.notes)}
                         </Typography>
-                        <Tooltip title={customer.notes ? "Edit notes" : "Add notes"}>
-                          <IconButton
-                            size="small"
-                            onClick={(e) => handleOpenNotesDialog(customer, e)}
-                            color={customer.notes ? "primary" : "default"}
-                            sx={{ 
-                              opacity: customer.notes ? 1 : 0.5,
-                              '&:hover': { opacity: 1 }
-                            }}
-                          >
-                            <NoteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        {!isReadonlyView && (
+                          <Tooltip title={customer.notes ? "Edit notes" : "Add notes"}>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => handleOpenNotesDialog(customer, e)}
+                              color={customer.notes ? "primary" : "default"}
+                              sx={{ 
+                                opacity: customer.notes ? 1 : 0.5,
+                                '&:hover': { opacity: 1 }
+                              }}
+                            >
+                              <NoteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                       </Box>
                     </TableCell>
                     <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                      <Tooltip title="Delete">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteClick(customer)}
-                          color="error"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
+                      {!isReadonlyView && (
+                        <Tooltip title="Delete">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteClick(customer)}
+                            color="error"
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

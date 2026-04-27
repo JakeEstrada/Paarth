@@ -407,6 +407,26 @@ function PipelinePage({ tvMode = false }) {
                   Exit Pipeline view
                 </Button>
               )}
+              {tvMode && (
+                <>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => navigate('/calendar-view')}
+                    sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                  >
+                    Calendar view
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => navigate('/customers-view')}
+                    sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                  >
+                    Customers view
+                  </Button>
+                </>
+              )}
             </Box>
           </Box>
         </Box>

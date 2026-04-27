@@ -72,6 +72,14 @@ function App() {
           }
         />
         <Route
+          path="/customers-view"
+          element={
+            <ProtectedRoute>
+              <CustomersPage viewMode />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/pdf/:fileId"
           element={
             <ProtectedRoute>
