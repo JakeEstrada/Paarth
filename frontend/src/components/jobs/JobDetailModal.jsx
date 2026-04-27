@@ -365,8 +365,8 @@ function JobDetailModal({
     setSelectedFileForMenu(null);
   };
 
-  const handleToggleFileLock = async (shouldLock) => {
-    const fileId = selectedFileForMenu?._id;
+  const handleToggleFileLock = async (shouldLock, fileOverride = null) => {
+    const fileId = fileOverride?._id || selectedFileForMenu?._id;
     if (!fileId) return;
     try {
       await axios.patch(`${API_URL}/files/${fileId}`, { isLocked: shouldLock });
@@ -1221,6 +1221,18 @@ function JobDetailModal({
                             />
                           )}
                         </Box>
+                        <IconButton
+                          size="small"
+                          color={file.isLocked ? 'warning' : 'default'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleFileLock(!file.isLocked, file);
+                          }}
+                          sx={{ mt: -1 }}
+                          title={file.isLocked ? 'Unlock file' : 'Lock file'}
+                        >
+                          {file.isLocked ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}
+                        </IconButton>
                         <IconButton
                           size="small"
                           color="error"
