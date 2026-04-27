@@ -22,6 +22,7 @@ import {
   InputLabel,
   Link as MuiLink,
   Tooltip,
+  Menu,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -43,6 +44,8 @@ import {
   PictureAsPdf as PictureAsPdfIcon,
   Image as ImageIcon,
   InsertDriveFile as InsertDriveFileIcon,
+  Lock as LockIcon,
+  LockOpen as LockOpenIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import axios from 'axios';
@@ -55,12 +58,14 @@ import JobContractPacketDialog from './JobContractPacketDialog';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-const openPdfViewer = (fileId) => {
-  window.open(`/pdf/${fileId}`, '_blank');
+const openPdfViewer = (fileId, pin = '') => {
+  const query = pin ? `?pin=${encodeURIComponent(pin)}` : '';
+  window.open(`/pdf/${fileId}${query}`, '_blank');
 };
 
-const openPictureViewer = (fileId) => {
-  window.open(`/picture/${fileId}`, '_blank');
+const openPictureViewer = (fileId, pin = '') => {
+  const query = pin ? `?pin=${encodeURIComponent(pin)}` : '';
+  window.open(`/picture/${fileId}${query}`, '_blank');
 };
 
 const STAGE_LABELS = {
@@ -163,6 +168,11 @@ function JobDetailModal({
   const [jobTasks, setJobTasks] = useState([]);
   const [contractPacketOpen, setContractPacketOpen] = useState(false);
   const hideFinancials = hideSensitive;
+  const [fileMenuAnchor, setFileMenuAnchor] = useState(null);
+  const [selectedFileForMenu, setSelectedFileForMenu] = useState(null);
+  const [filePinDialogOpen, setFilePinDialogOpen] = useState(false);
+  const [filePinInput, setFilePinInput] = useState('');
+  const [lockedFileToOpen, setLockedFileToOpen] = useState(null);
 
   useEffect(() => {
     if (open && jobId) {
@@ -300,6 +310,79 @@ function JobDetailModal({
     } catch (error) {
       console.error('Error deleting file:', error);
       toast.error('Failed to delete file');
+    }
+  };
+
+  const openFileByType = (file, pin = '') => {
+    if (!file?._id) return;
+    if (file.mimetype?.startsWith('image/')) {
+      openPictureViewer(file._id, pin);
+      return;
+    }
+    if (file.mimetype === 'application/pdf') {
+      openPdfViewer(file._id, pin);
+      return;
+    }
+    const url = pin
+      ? `${API_URL}/files/${file._id}/download?pin=${encodeURIComponent(pin)}`
+      : `${API_URL}/files/${file._id}/download`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleFileCardClick = (file) => {
+    if (!file) return;
+    if (file.isLocked) {
+      setLockedFileToOpen(file);
+      setFilePinInput('');
+      setFilePinDialogOpen(true);
+      return;
+    }
+    openFileByType(file);
+  };
+
+  const handleConfirmLockedFilePin = () => {
+    if (String(filePinInput || '').trim() !== '7212') {
+      toast.error('Incorrect PIN');
+      return;
+    }
+    if (lockedFileToOpen) {
+      openFileByType(lockedFileToOpen, '7212');
+    }
+    setFilePinDialogOpen(false);
+    setFilePinInput('');
+    setLockedFileToOpen(null);
+  };
+
+  const handleFileContextMenu = (event, file) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedFileForMenu(file);
+    setFileMenuAnchor(event.currentTarget);
+  };
+
+  const closeFileMenu = () => {
+    setFileMenuAnchor(null);
+    setSelectedFileForMenu(null);
+  };
+
+  const handleToggleFileLock = async (shouldLock) => {
+    const fileId = selectedFileForMenu?._id;
+    if (!fileId) return;
+    try {
+      await axios.patch(`${API_URL}/files/${fileId}`, { isLocked: shouldLock });
+      setFiles((prev) =>
+        prev.map((f) =>
+          String(f._id) === String(fileId)
+            ? { ...f, isLocked: shouldLock, lockedAt: shouldLock ? new Date().toISOString() : null }
+            : f
+        )
+      );
+      toast.success(shouldLock ? 'File locked' : 'File unlocked');
+    } catch (error) {
+      console.error('Failed to update file lock:', error);
+      toast.error('Failed to update file lock');
+    } finally {
+      closeFileMenu();
     }
   };
 
@@ -1087,12 +1170,15 @@ function JobDetailModal({
                 {files.map((file) => (
                   <Grid item xs={12} sm={6} md={4} key={file._id}>
                     <Paper
+                      onClick={() => handleFileCardClick(file)}
+                      onContextMenu={(e) => handleFileContextMenu(e, file)}
                       sx={{
                         p: 2,
                         position: 'relative',
                         border: '2px solid',
                         borderColor: 'primary.main',
                         backgroundColor: 'primary.50',
+                        cursor: 'pointer',
                         '&:hover': {
                           boxShadow: 6,
                           borderColor: 'primary.dark',
@@ -1125,11 +1211,23 @@ function JobDetailModal({
                             sx={{ mt: 0.5, textTransform: 'capitalize', fontWeight: 600 }}
                             color="primary"
                           />
+                          {file.isLocked && (
+                            <Chip
+                              icon={<LockIcon />}
+                              label="Locked"
+                              size="small"
+                              color="warning"
+                              sx={{ mt: 0.5, ml: 0.75, fontWeight: 700 }}
+                            />
+                          )}
                         </Box>
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => handleFileDelete(file._id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFileDelete(file._id);
+                          }}
                           sx={{ mt: -1 }}
                         >
                           <DeleteIcon fontSize="small" />
@@ -1137,7 +1235,7 @@ function JobDetailModal({
                       </Box>
 
                       {/* Preview for images */}
-                      {file.mimetype.startsWith('image/') && (
+                      {file.mimetype.startsWith('image/') && !file.isLocked && (
                         <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
                           <img
                             src={`${API_URL}/files/${file._id}`}
@@ -1149,13 +1247,16 @@ function JobDetailModal({
                               objectFit: 'cover',
                               cursor: 'pointer',
                             }}
-                            onClick={() => openPictureViewer(file._id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPictureViewer(file._id);
+                            }}
                           />
                         </Box>
                       )}
 
                       {/* PDF first-page thumbnail (click to open) */}
-                      {file.mimetype === 'application/pdf' && (
+                      {file.mimetype === 'application/pdf' && !file.isLocked && (
                         <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
                           <Box
                             onClick={() => openPdfViewer(file._id)}
@@ -1182,6 +1283,26 @@ function JobDetailModal({
                           </Box>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', py: 0.75 }}>
                             Click preview to open PDF
+                          </Typography>
+                        </Box>
+                      )}
+                      {file.isLocked && (
+                        <Box
+                          sx={{
+                            mt: 2,
+                            p: 1.25,
+                            borderRadius: 1,
+                            border: '1px dashed',
+                            borderColor: 'warning.main',
+                            backgroundColor: 'rgba(255, 167, 38, 0.12)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                          }}
+                        >
+                          <LockIcon color="warning" fontSize="small" />
+                          <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                            Locked file - click and enter PIN to open
                           </Typography>
                         </Box>
                       )}
@@ -1361,6 +1482,67 @@ function JobDetailModal({
           </Box>
         )}
       </DialogContent>
+
+      <Menu
+        open={Boolean(fileMenuAnchor)}
+        anchorEl={fileMenuAnchor}
+        onClose={closeFileMenu}
+      >
+        {selectedFileForMenu?.isLocked ? (
+          <MenuItem onClick={() => handleToggleFileLock(false)}>
+            <LockOpenIcon fontSize="small" sx={{ mr: 1 }} />
+            Unlock file
+          </MenuItem>
+        ) : (
+          <MenuItem onClick={() => handleToggleFileLock(true)}>
+            <LockIcon fontSize="small" sx={{ mr: 1 }} />
+            Lock file
+          </MenuItem>
+        )}
+      </Menu>
+
+      <Dialog
+        open={filePinDialogOpen}
+        onClose={() => {
+          setFilePinDialogOpen(false);
+          setFilePinInput('');
+          setLockedFileToOpen(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Locked File</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Enter PIN to open this locked file.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            label="PIN"
+            type="password"
+            value={filePinInput}
+            onChange={(e) => setFilePinInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleConfirmLockedFilePin();
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setFilePinDialogOpen(false);
+              setFilePinInput('');
+              setLockedFileToOpen(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleConfirmLockedFilePin}>
+            Open file
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose}>Close</Button>

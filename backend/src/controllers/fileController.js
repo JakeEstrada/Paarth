@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const { s3Client, BUCKET_NAME, isS3Configured } = require('../config/s3');
+const FILE_LOCK_PIN = '7212';
 
 // Get uploads directory - same as in upload.js middleware
 // Use environment variable if set, otherwise use relative path
@@ -1132,6 +1133,9 @@ async function downloadFile(req, res) {
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
     }
+    if (file.isLocked && String(req.query?.pin || '').trim() !== FILE_LOCK_PIN) {
+      return res.status(423).json({ error: 'File is locked. Valid PIN is required.' });
+    }
 
     res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
     res.setHeader('Content-Type', file.mimetype);
@@ -1151,6 +1155,9 @@ async function getFile(req, res) {
 
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
+    }
+    if (file.isLocked && String(req.query?.pin || '').trim() !== FILE_LOCK_PIN) {
+      return res.status(423).json({ error: 'File is locked. Valid PIN is required.' });
     }
 
     res.setHeader('Content-Type', file.mimetype);
@@ -1196,6 +1203,11 @@ async function updateFile(req, res) {
         next = ensureTxtExtension(sanitizePathSegment(next.replace(/\.txt$/i, '')) || 'untitled');
       }
       update.originalName = next;
+    }
+    if (req.body.isLocked !== undefined) {
+      const lockState = !!req.body.isLocked;
+      update.isLocked = lockState;
+      update.lockedAt = lockState ? new Date() : null;
     }
 
     const file = await File.findByIdAndUpdate(req.params.id, update, {

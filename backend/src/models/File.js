@@ -57,6 +57,14 @@ const fileSchema = new mongoose.Schema({
     enum: ['estimate', 'contract', 'photo', 'other'],
     default: 'other'
   },
+  isLocked: {
+    type: Boolean,
+    default: false,
+  },
+  lockedAt: {
+    type: Date,
+    default: null,
+  },
   uploadedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

@@ -1,12 +1,17 @@
 import { Box, Button, Stack, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export default function PdfViewerPage() {
   const { fileId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const pin = searchParams.get('pin') || '';
+  const pdfUrl = pin
+    ? `${API_URL}/files/${fileId}?pin=${encodeURIComponent(pin)}`
+    : `${API_URL}/files/${fileId}`;
 
   const handleClose = () => {
     // If this page was opened in a new tab via window.open, this closes it.
@@ -53,7 +58,7 @@ export default function PdfViewerPage() {
       <Box
         component="iframe"
         title="PDF Document"
-        src={`${API_URL}/files/${fileId}`}
+        src={pdfUrl}
         sx={{ width: '100%', height: 'calc(100vh - 49px)', border: 0 }}
       />
     </Box>
