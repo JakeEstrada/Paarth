@@ -22,6 +22,7 @@ import {
   DialogActions,
   TextField,
   IconButton,
+  LinearProgress,
 } from '@mui/material';
 import {
   AccountTree as JobsIcon,
@@ -156,8 +157,10 @@ function DashboardPage() {
     format(subDays(new Date(), 6), 'yyyy-MM-dd')
   );
   const [summaryEndDate, setSummaryEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
-  const [summaryDialogOpen, setSummaryDialogOpen] = useState(false);
+  const [summarySetupDialogOpen, setSummarySetupDialogOpen] = useState(false);
+  const [summaryResultDialogOpen, setSummaryResultDialogOpen] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryUserPrompt, setSummaryUserPrompt] = useState('');
   const [summaryText, setSummaryText] = useState('');
   const [summaryActivityCount, setSummaryActivityCount] = useState(null);
   const [summaryTruncated, setSummaryTruncated] = useState(false);
@@ -546,7 +549,14 @@ function DashboardPage() {
     return dateB - dateA; // Most recent first
   });
 
-  const handleGenerateActivitySummary = async () => {
+  const openSummarySetup = () => {
+    setSummaryStartDate(format(subDays(new Date(), 6), 'yyyy-MM-dd'));
+    setSummaryEndDate(format(new Date(), 'yyyy-MM-dd'));
+    setSummaryUserPrompt('');
+    setSummarySetupDialogOpen(true);
+  };
+
+  const handleConfirmSummaryRequest = async () => {
     if (!summaryStartDate || !summaryEndDate) {
       toast.error('Choose a start and end date');
       return;
@@ -555,18 +565,27 @@ function DashboardPage() {
       toast.error('Start date must be on or before end date');
       return;
     }
+    setSummarySetupDialogOpen(false);
+    setSummaryLoading(true);
+    setSummaryText('');
+    setSummaryActivityCount(null);
+    setSummaryTruncated(false);
+    setSummaryResultDialogOpen(true);
     try {
-      setSummaryLoading(true);
-      setSummaryText('');
-      const res = await axios.post(`${API_URL}/activities/summary`, {
+      const payload = {
         startDate: summaryStartDate,
         endDate: summaryEndDate,
-      });
+      };
+      const trimmed = summaryUserPrompt.trim();
+      if (trimmed) {
+        payload.prompt = trimmed;
+      }
+      const res = await axios.post(`${API_URL}/activities/summary`, payload);
       setSummaryText(res.data.summary || '');
       setSummaryActivityCount(typeof res.data.activityCount === 'number' ? res.data.activityCount : null);
       setSummaryTruncated(Boolean(res.data.truncated));
-      setSummaryDialogOpen(true);
     } catch (error) {
+      setSummaryResultDialogOpen(false);
       const msg =
         error.response?.data?.error ||
         (typeof error.response?.data === 'string' ? error.response.data : null) ||
@@ -1258,61 +1277,27 @@ function DashboardPage() {
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             Recent Activity
           </Typography>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<PrintIcon />}
-            onClick={() => setPrintDialogOpen(true)}
-            sx={{ textTransform: 'none' }}
-          >
-            Print activity
-          </Button>
-        </Box>
-
-        <Box
-          sx={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: 1.5,
-            mb: 2,
-            pb: 2,
-            borderBottom: 1,
-            borderColor: 'divider',
-          }}
-        >
-          <Typography variant="caption" color="text.secondary" sx={{ width: '100%', display: 'block' }}>
-            AI summary of all logged activity in the date range (not limited to the 50 shown below).
-          </Typography>
-          <TextField
-            label="From"
-            type="date"
-            size="small"
-            value={summaryStartDate}
-            onChange={(e) => setSummaryStartDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ width: { xs: '100%', sm: 160 } }}
-          />
-          <TextField
-            label="To"
-            type="date"
-            size="small"
-            value={summaryEndDate}
-            onChange={(e) => setSummaryEndDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ width: { xs: '100%', sm: 160 } }}
-          />
-          <Button
-            variant="contained"
-            color="secondary"
-            size="small"
-            startIcon={<AutoAwesomeIcon />}
-            onClick={handleGenerateActivitySummary}
-            disabled={summaryLoading}
-            sx={{ textTransform: 'none' }}
-          >
-            {summaryLoading ? 'Generating…' : 'Generate AI summary'}
-          </Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              color="secondary"
+              size="small"
+              startIcon={<AutoAwesomeIcon />}
+              onClick={openSummarySetup}
+              sx={{ textTransform: 'none' }}
+            >
+              AI summary
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<PrintIcon />}
+              onClick={() => setPrintDialogOpen(true)}
+              sx={{ textTransform: 'none' }}
+            >
+              Print activity
+            </Button>
+          </Box>
         </Box>
 
         {/* Quick manual activity entry */}
@@ -1506,11 +1491,96 @@ function DashboardPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Print Dialog */}
-      <Dialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} maxWidth="md" fullWidth>
+      {/* AI summary — choose dates and optional focus */}
+      <Dialog
+        open={summarySetupDialogOpen}
+        onClose={() => setSummarySetupDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <Box
+          component="form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleConfirmSummaryRequest();
+          }}
+        >
+          <DialogTitle>AI activity summary</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Pick the date range to include (all logged activity in that window, not just the 50 rows below).
+              Optionally add a short note so the summary emphasizes what you care about.
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
+              <TextField
+                label="From"
+                type="date"
+                size="small"
+                value={summaryStartDate}
+                onChange={(e) => setSummaryStartDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ flex: '1 1 140px', minWidth: 140 }}
+              />
+              <TextField
+                label="To"
+                type="date"
+                size="small"
+                value={summaryEndDate}
+                onChange={(e) => setSummaryEndDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ flex: '1 1 140px', minWidth: 140 }}
+              />
+            </Box>
+            <TextField
+              label="Optional focus (leave blank for a general summary)"
+              placeholder='e.g. "Prioritize installs and overdue tasks"'
+              value={summaryUserPrompt}
+              onChange={(e) => setSummaryUserPrompt(e.target.value)}
+              fullWidth
+              multiline
+              minRows={2}
+              inputProps={{ maxLength: 1500 }}
+              helperText={`${summaryUserPrompt.length}/1500`}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button type="button" onClick={() => setSummarySetupDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="contained" color="secondary" startIcon={<AutoAwesomeIcon />}>
+              Generate summary
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+
+      <Dialog
+        open={summaryResultDialogOpen}
+        onClose={() => {
+          if (!summaryLoading) setSummaryResultDialogOpen(false);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        {summaryLoading && (
+          <LinearProgress
+            sx={{
+              position: 'sticky',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 1,
+            }}
+          />
+        )}
         <DialogTitle>AI activity summary</DialogTitle>
         <DialogContent>
-          {(summaryActivityCount !== null || summaryTruncated) && (
+          {summaryLoading && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Generating summary… this can take a few seconds.
+            </Typography>
+          )}
+          {(summaryActivityCount !== null || summaryTruncated) && !summaryLoading && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
               {summaryActivityCount !== null &&
                 `${summaryActivityCount} activit${summaryActivityCount === 1 ? 'y' : 'ies'} in selected range`}
@@ -1521,15 +1591,22 @@ function DashboardPage() {
           <Box
             sx={{
               border: 1,
-              borderColor: "divider",
+              borderColor: 'divider',
               borderRadius: 1,
               p: 1.5,
-              bgcolor: "background.default",
-              maxHeight: "60vh",
-              overflowY: "auto",
+              bgcolor: 'background.default',
+              maxHeight: '60vh',
+              overflowY: 'auto',
+              opacity: summaryLoading ? 0.65 : 1,
             }}
           >
-            {renderSummaryBlocks(summaryText)}
+            {summaryLoading ? (
+              <Typography variant="body2" color="text.secondary">
+                Working…
+              </Typography>
+            ) : (
+              renderSummaryBlocks(summaryText)
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -1540,11 +1617,15 @@ function DashboardPage() {
                 toast.success('Copied to clipboard');
               }
             }}
-            disabled={!summaryText}
+            disabled={!summaryText || summaryLoading}
           >
             Copy
           </Button>
-          <Button onClick={() => setSummaryDialogOpen(false)} variant="contained">
+          <Button
+            onClick={() => setSummaryResultDialogOpen(false)}
+            variant="contained"
+            disabled={summaryLoading}
+          >
             Close
           </Button>
         </DialogActions>

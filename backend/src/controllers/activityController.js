@@ -163,7 +163,18 @@ function normalizeOpenAIApiKey(raw) {
   return s;
 }
 
-async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLines, totalActivityCount }) {
+const MAX_SUMMARY_INSTRUCTIONS_CHARS = Math.min(
+  4000,
+  Math.max(500, parseInt(String(process.env.OPENAI_SUMMARY_INSTRUCTIONS_MAX_CHARS || '2000'), 10) || 2000)
+);
+
+async function openAiSummarizeActivities({
+  startDateStr,
+  endDateStr,
+  activityLines,
+  totalActivityCount,
+  userInstructions,
+}) {
   if (typeof globalThis.fetch !== 'function') {
     const err = new Error(
       'This Node build has no global fetch. Use Node 18+ on the server (set engines in package.json and on Render).'
@@ -183,11 +194,23 @@ async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLin
   }
 
   const systemPrompt =
-    'You summarize internal CRM activity for a woodworking / cabinetry business. Return valid markdown only and keep it clean/simple for non-technical readers. Use this exact structure and headings: "## Date range overview", "## Customer and job movement", "## Notable notes", "## Scheduling and tasks", "## Follow-ups". Under each heading, use short bullet points. Use bold only for customer names and job titles. Keep total length under 250 words unless there are many critical updates. Do not invent facts; only use provided activities. If there is no activity, return: "## Date range overview\\n- No activity recorded in this range."';
+    'You summarize internal CRM activity for a woodworking / cabinetry business. Return valid markdown only and keep it clean/simple for non-technical readers. Use this exact structure and headings: "## Date range overview", "## Customer and job movement", "## Notable notes", "## Scheduling and tasks", "## Follow-ups". Under each heading, use short bullet points. Use bold only for customer names and job titles. Keep total length under 250 words unless there are many critical updates. If the user included extra instructions at the top of the prompt, weigh those priorities when organizing bullets (still only facts from the activity list). Do not invent facts; only use provided activities. If there is no activity, return: "## Date range overview\\n- No activity recorded in this range."';
 
   const { text: activityListText, includedLineCount, omittedLineCount } = buildActivityListForModel(activityLines);
 
-  const userContent = [
+  const trimmedInstructions =
+    typeof userInstructions === 'string'
+      ? userInstructions.trim().slice(0, MAX_SUMMARY_INSTRUCTIONS_CHARS)
+      : '';
+
+  const sections = [];
+  if (trimmedInstructions) {
+    sections.push(
+      `Additional instructions from the user (honor these when consistent with the activity list; do not invent facts):\n${trimmedInstructions}`,
+      ''
+    );
+  }
+  sections.push(
     `Date range (inclusive): ${startDateStr} through ${endDateStr}`,
     `Total activities in this date range (in database): ${totalActivityCount}`,
     `Activities included in this list (newest first): ${includedLineCount} line(s)${omittedLineCount > 0 ? `; ${omittedLineCount} older line(s) omitted for size` : ''}`,
@@ -195,8 +218,9 @@ async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLin
     'Activities (newest first):',
     '---',
     activityListText,
-    '---',
-  ].join('\n');
+    '---'
+  );
+  const userContent = sections.join('\n');
 
   const model = (process.env.OPENAI_ACTIVITY_SUMMARY_MODEL || 'gpt-4o-mini').trim();
 
@@ -515,10 +539,13 @@ async function logPayrollPrint(req, res) {
   }
 }
 
-// POST body: { startDate, endDate } — ISO date strings (YYYY-MM-DD), same semantics as GET /date-range
+// POST body: { startDate, endDate, prompt? } — ISO dates; optional prompt / instructions for the model
 async function generateActivitySummary(req, res) {
   try {
     const { startDate, endDate } = req.body || {};
+    const rawInstructions = req.body?.prompt ?? req.body?.instructions ?? '';
+    const userInstructions =
+      typeof rawInstructions === 'string' ? rawInstructions.slice(0, MAX_SUMMARY_INSTRUCTIONS_CHARS) : '';
 
     if (!startDate || !endDate) {
       return res.status(400).json({ error: 'startDate and endDate are required' });
@@ -564,6 +591,7 @@ async function generateActivitySummary(req, res) {
         endDateStr: endDate,
         activityLines: lines,
         totalActivityCount: activities.length,
+        userInstructions,
       });
     } catch (e) {
       if (e.code === 'NO_KEY') {
