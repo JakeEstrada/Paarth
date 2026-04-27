@@ -13,7 +13,7 @@ import { openPlaidLink } from '../../utils/plaidLink';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-const LINK_ROLES = new Set(['super_admin', 'admin', 'manager']);
+const LINK_ROLES = new Set(['super_admin', 'admin', 'manager', 'sales']);
 
 function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
   const { user } = useAuth();
@@ -166,7 +166,7 @@ function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
 
         {!loading && status?.configured && !canManage && (
           <Typography variant="caption" color="text.secondary" display="block" textAlign="right">
-            Bank link managed by an admin
+            Bank link managed by an admin, manager, or sales
           </Typography>
         )}
 
@@ -259,7 +259,7 @@ function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
 
       {!loading && status?.configured && !canManage && (
         <Typography variant="body2" color="text.secondary">
-          Only admins or managers can connect or disconnect the organization bank via Plaid.
+          Only admins, managers, or sales can connect or disconnect the organization bank via Plaid.
         </Typography>
       )}
 

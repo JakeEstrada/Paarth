@@ -4,11 +4,11 @@ const { Products, CountryCode } = require('plaid');
 const { getPlaidApi, isPlaidConfigured, resolvePlaidEnvKey } = require('../services/plaidClient');
 const { fetchRegisterSnapshotFromPlaid } = require('../services/plaidRegisterSnapshot');
 
-const LINK_ROLES = new Set(['super_admin', 'admin', 'manager']);
+const LINK_ROLES = new Set(['super_admin', 'admin', 'manager', 'sales']);
 
 function requireFinanceRole(req, res) {
   if (!LINK_ROLES.has(req.user?.role)) {
-    res.status(403).json({ error: 'Only admins or managers can manage bank connections.' });
+    res.status(403).json({ error: 'Only admins, managers, or sales can manage bank connections.' });
     return false;
   }
   return true;
