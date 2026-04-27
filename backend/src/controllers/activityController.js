@@ -152,6 +152,17 @@ const OPENAI_FETCH_TIMEOUT_MS = Number.isFinite(_timeoutRaw)
   ? Math.min(180_000, Math.max(10_000, _timeoutRaw))
   : 120_000;
 
+/** Pasted multiline values in Render/hosts can break the key; strip all whitespace. */
+function normalizeOpenAIApiKey(raw) {
+  if (raw == null) return '';
+  let s = String(raw).trim();
+  s = s.replace(/\s+/g, '');
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1);
+  }
+  return s;
+}
+
 async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLines, totalActivityCount }) {
   if (typeof globalThis.fetch !== 'function') {
     const err = new Error(
@@ -161,7 +172,10 @@ async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLin
     throw err;
   }
 
-  const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+  // OPENAI_API_KEY (correct spelling) — also accept common misspelling OPENNAI_API_KEY
+  const apiKey = normalizeOpenAIApiKey(
+    process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.OPENNAI_API_KEY
+  );
   if (!apiKey) {
     const err = new Error('OPENAI_API_KEY_NOT_SET');
     err.code = 'NO_KEY';
@@ -232,11 +246,14 @@ async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLin
   }
 
   if (!res.ok) {
-    const msg = data?.error?.message || raw.slice(0, 500) || 'OpenAI request failed';
-    const err = new Error(
+    const apiCode = data?.error?.code;
+    const apiMsg = data?.error?.message || raw.slice(0, 500) || 'OpenAI request failed';
+    const renderHint =
       res.status === 401
-        ? 'OpenAI returned 401 (check OPENAI_API_KEY in Render — Environment, not .env in git).'
-        : msg
+        ? ' In Render: Web Service → Environment — set OPENAI_API_KEY to a secret key from https://platform.openai.com/api-keys (no quotes; one line). Redeploy after changing env.'
+        : '';
+    const err = new Error(
+      res.status === 401 ? `${apiMsg}${apiCode ? ` [${apiCode}]` : ''}.${renderHint}` : apiMsg
     );
     err.status = res.status;
     err.openai = data?.error;
@@ -541,7 +558,7 @@ async function generateActivitySummary(req, res) {
       if (e.code === 'NO_KEY') {
         return res.status(503).json({
           error:
-            'OpenAI is not configured. Add OPENAI_API_KEY in your host environment (e.g. Render → Environment for the **Web Service** — not only in a local .env file).',
+            'OpenAI is not configured. Set OPENAI_API_KEY (spelling: OPEN**AI**_API_KEY) in your backend host environment; OPENAI_KEY also works.',
           code: 'NO_KEY',
         });
       }
