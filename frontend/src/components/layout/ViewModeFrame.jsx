@@ -1,8 +1,21 @@
-import { Box, Button, Paper } from '@mui/material';
+import { useState } from 'react';
+import {
+  Box,
+  Button,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  TextField,
+} from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 
 function ViewModeFrame({ currentView, children }) {
   const navigate = useNavigate();
+  const [exitDialogOpen, setExitDialogOpen] = useState(false);
+  const [exitPin, setExitPin] = useState('');
 
   const viewButtons = [
     { key: 'pipeline', label: 'Pipeline view', path: '/pipeline-view' },
@@ -13,6 +26,12 @@ function ViewModeFrame({ currentView, children }) {
     pipeline: '/pipeline',
     calendar: '/calendar',
     customers: '/customers',
+  };
+  const handleExitConfirm = () => {
+    if (exitPin.trim() !== '7212') return;
+    navigate(exitPathByView[currentView] || '/pipeline');
+    setExitDialogOpen(false);
+    setExitPin('');
   };
 
   return (
@@ -51,7 +70,7 @@ function ViewModeFrame({ currentView, children }) {
           size="small"
           color="warning"
           variant="outlined"
-          onClick={() => navigate(exitPathByView[currentView] || '/pipeline')}
+          onClick={() => setExitDialogOpen(true)}
           sx={{
             fontWeight: 700,
             borderWidth: 2,
@@ -61,6 +80,50 @@ function ViewModeFrame({ currentView, children }) {
           Exit view
         </Button>
       </Paper>
+      <Dialog
+        open={exitDialogOpen}
+        onClose={() => {
+          setExitDialogOpen(false);
+          setExitPin('');
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Exit view</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Enter passcode to leave view mode.
+          </DialogContentText>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Passcode"
+            type="password"
+            value={exitPin}
+            onChange={(e) => setExitPin(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleExitConfirm();
+            }}
+            error={Boolean(exitPin) && exitPin.trim() !== '7212'}
+            helperText={
+              Boolean(exitPin) && exitPin.trim() !== '7212' ? 'Incorrect passcode' : ' '
+            }
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setExitDialogOpen(false);
+              setExitPin('');
+            }}
+          >
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleExitConfirm}>
+            Exit
+          </Button>
+        </DialogActions>
+      </Dialog>
       {children}
     </Box>
   );
