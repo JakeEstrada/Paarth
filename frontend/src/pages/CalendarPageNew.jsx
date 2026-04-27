@@ -142,6 +142,13 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
   const theme = useTheme();
   const GROUP_ACCENTS = ['#1976D2', '#9C27B0', '#FF9800', '#4CAF50', '#3F51B5'];
   const getGroupAccent = (idx) => GROUP_ACCENTS[idx % GROUP_ACCENTS.length];
+  const sortScheduleEntries = (entries = []) =>
+    [...entries].sort((a, b) => {
+      const aDate = a?.startDate ? new Date(`${a.startDate}T00:00:00`).getTime() : Number.POSITIVE_INFINITY;
+      const bDate = b?.startDate ? new Date(`${b.startDate}T00:00:00`).getTime() : Number.POSITIVE_INFINITY;
+      if (aDate !== bDate) return aDate - bDate;
+      return String(a?.installer || '').localeCompare(String(b?.installer || ''));
+    });
 
   const [formData, setFormData] = useState({
     title: '',
@@ -150,8 +157,6 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
     allDay: true,
     excludeSaturdays: false,
     excludeSundays: false,
-    recurrence: 'none', // none, daily, weekly, monthly, yearly
-    recurrenceCount: 1,
     description: '',
     jobId: null,
     color: '#1976D2', // Default blue
@@ -210,12 +215,10 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
         allDay: true,
         excludeSaturdays: false,
         excludeSundays: false,
-        recurrence: job?.schedule?.recurrence?.type || 'none',
-        recurrenceCount: job?.schedule?.recurrence?.count || 1,
         description: job?.customerId?.name ? `Customer: ${job.customerId.name}` : '',
         jobId: job?._id || null,
         color: job?.color || '#1976D2',
-        entries: computedEntries,
+        entries: sortScheduleEntries(computedEntries),
       });
 
       // Fetch available jobs
@@ -378,9 +381,9 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
             // Preferred multi-schedule model
             entries: updatedEntries,
             recurrence: {
-              type: formData.recurrence,
+              type: 'none',
               interval: 1,
-              count: formData.recurrenceCount,
+              count: 1,
             },
             crewNotes: job?.schedule?.crewNotes,
             title: formData.title,
@@ -498,10 +501,10 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                 onClick={() => {
                   setFormData((prev) => ({
                     ...prev,
-                    entries: [
+                    entries: sortScheduleEntries([
                       ...(Array.isArray(prev.entries) ? prev.entries : []),
                       { installer: '', startDate: '', endDate: '' }, // empty group (as requested)
-                    ],
+                    ]),
                   }));
                 }}
                 title="Add another installer/date group"
@@ -544,7 +547,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                       onClick={() => {
                         setFormData((prev) => ({
                           ...prev,
-                          entries: prev.entries.filter((_, i) => i !== idx),
+                          entries: sortScheduleEntries(prev.entries.filter((_, i) => i !== idx)),
                         }));
                       }}
                       title="Remove this group"
@@ -567,14 +570,18 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                     const next = typeof newValue === 'string' ? newValue : (newValue || '').toString();
                     setFormData((prev) => ({
                       ...prev,
-                      entries: prev.entries.map((e, i) => (i === idx ? { ...e, installer: next } : e)),
+                      entries: sortScheduleEntries(
+                        prev.entries.map((e, i) => (i === idx ? { ...e, installer: next } : e))
+                      ),
                     }));
                   }}
                   inputValue={entry.installer || ''}
                   onInputChange={(_, newInputValue) => {
                     setFormData((prev) => ({
                       ...prev,
-                      entries: prev.entries.map((e, i) => (i === idx ? { ...e, installer: newInputValue || '' } : e)),
+                      entries: sortScheduleEntries(
+                        prev.entries.map((e, i) => (i === idx ? { ...e, installer: newInputValue || '' } : e))
+                      ),
                     }));
                   }}
                   renderInput={(params) => (
@@ -591,7 +598,9 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                       const next = e.target.value;
                       setFormData((prev) => ({
                         ...prev,
-                        entries: prev.entries.map((en, i) => (i === idx ? { ...en, startDate: next } : en)),
+                        entries: sortScheduleEntries(
+                          prev.entries.map((en, i) => (i === idx ? { ...en, startDate: next } : en))
+                        ),
                       }));
                     }}
                     InputLabelProps={{ shrink: true }}
@@ -606,7 +615,9 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                       const next = e.target.value;
                       setFormData((prev) => ({
                         ...prev,
-                        entries: prev.entries.map((en, i) => (i === idx ? { ...en, endDate: next } : en)),
+                        entries: sortScheduleEntries(
+                          prev.entries.map((en, i) => (i === idx ? { ...en, endDate: next } : en))
+                        ),
                       }));
                     }}
                     InputLabelProps={{ shrink: true }}
@@ -698,32 +709,6 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                 InputLabelProps={{ shrink: true }}
               />
             </Box>
-          )}
-
-          <FormControl fullWidth>
-            <InputLabel>Repeat</InputLabel>
-            <Select
-              value={formData.recurrence}
-              onChange={(e) => setFormData({ ...formData, recurrence: e.target.value })}
-              label="Repeat"
-            >
-              <MenuItem value="none">Does not repeat</MenuItem>
-              <MenuItem value="daily">Daily</MenuItem>
-              <MenuItem value="weekly">Weekly</MenuItem>
-              <MenuItem value="monthly">Monthly</MenuItem>
-              <MenuItem value="yearly">Yearly</MenuItem>
-            </Select>
-          </FormControl>
-
-          {formData.recurrence !== 'none' && (
-            <TextField
-              label="Number of occurrences"
-              type="number"
-              value={formData.recurrenceCount}
-              onChange={(e) => setFormData({ ...formData, recurrenceCount: parseInt(e.target.value) || 1 })}
-              fullWidth
-              inputProps={{ min: 1, max: 365 }}
-            />
           )}
 
           <TextField
