@@ -52,7 +52,7 @@ function getPipelineSelectionStorageKey(tenantId) {
   return `${PIPELINE_SELECTION_KEY_PREFIX}_unknown`;
 }
 
-function PipelinePage({ tvMode = false }) {
+function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { user, canModifyPipeline, tenantIdForBranding } = useAuth();
@@ -395,7 +395,7 @@ function PipelinePage({ tvMode = false }) {
                   Pipeline view
                 </Button>
               )}
-              {tvMode && (
+              {tvMode && !externalViewControls && (
                 <>
                   <Button
                     variant="contained"

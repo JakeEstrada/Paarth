@@ -54,7 +54,7 @@ import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-function CustomersPage({ viewMode = false }) {
+function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -707,7 +707,7 @@ function CustomersPage({ viewMode = false }) {
           {isReadonlyView ? 'Customers View' : 'Customers'}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-          {isReadonlyView ? (
+          {isReadonlyView && !externalViewControls ? (
             <>
               <Button
                 variant="outlined"
@@ -742,7 +742,7 @@ function CustomersPage({ viewMode = false }) {
                 Exit Customers view
               </Button>
             </>
-          ) : (
+          ) : !isReadonlyView ? (
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -774,7 +774,7 @@ function CustomersPage({ viewMode = false }) {
             >
               Add Customer
             </Button>
-          )}
+          ) : null}
         </Box>
       </Box>
 

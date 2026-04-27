@@ -2,6 +2,7 @@ import { Box, useTheme } from '@mui/material';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import MainLayout from './components/layout/MainLayout';
+import ViewModeFrame from './components/layout/ViewModeFrame';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -59,7 +60,9 @@ function App() {
           path="/calendar-view"
           element={
             <ProtectedRoute>
-              <CalendarPage tvMode />
+              <ViewModeFrame currentView="calendar">
+                <CalendarPage tvMode externalViewControls />
+              </ViewModeFrame>
             </ProtectedRoute>
           }
         />
@@ -67,7 +70,9 @@ function App() {
           path="/pipeline-view"
           element={
             <ProtectedRoute>
-              <PipelinePage tvMode />
+              <ViewModeFrame currentView="pipeline">
+                <PipelinePage tvMode externalViewControls />
+              </ViewModeFrame>
             </ProtectedRoute>
           }
         />
@@ -75,7 +80,9 @@ function App() {
           path="/customers-view"
           element={
             <ProtectedRoute>
-              <CustomersPage viewMode />
+              <ViewModeFrame currentView="customers">
+                <CustomersPage viewMode externalViewControls />
+              </ViewModeFrame>
             </ProtectedRoute>
           }
         />

@@ -1292,7 +1292,7 @@ function shouldExcludeJobFromCalendarSchedule(job) {
   return false;
 }
 
-function CalendarPageNew({ tvMode = false }) {
+function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { mode, toggleColorMode } = useAppTheme();
@@ -2102,7 +2102,7 @@ function CalendarPageNew({ tvMode = false }) {
           </Button>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-          {tvMode ? (
+          {tvMode && !externalViewControls ? (
             <>
               <Button
                 onClick={() => navigate('/pipeline-view')}
@@ -2137,7 +2137,7 @@ function CalendarPageNew({ tvMode = false }) {
                 Exit Calendar view
               </Button>
             </>
-          ) : (
+          ) : !tvMode ? (
             <>
               {/* Standalone event creation removed; calendar now only schedules existing jobs */}
               <FormControl size="small" sx={{ minWidth: 120, display: { xs: 'none', sm: 'flex' } }}>
@@ -2161,6 +2161,16 @@ function CalendarPageNew({ tvMode = false }) {
                 Calendar view
               </Button>
             </>
+          ) : null}
+          {tvMode && (
+            <Button
+              onClick={() => navigate('/calendar')}
+              variant="outlined"
+              size="small"
+              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+            >
+              Exit Calendar view
+            </Button>
           )}
           {tvMode && (
             <Button
