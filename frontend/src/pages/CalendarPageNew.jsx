@@ -57,16 +57,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
 const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
-const EVENT_COLOR_PALETTE = [
-  { name: 'Ocean Blue', value: '#1565C0' },
-  { name: 'Forest Green', value: '#2E7D32' },
-  { name: 'Sunset Orange', value: '#EF6C00' },
-  { name: 'Crimson', value: '#C62828' },
-  { name: 'Royal Purple', value: '#6A1B9A' },
-  { name: 'Teal', value: '#00796B' },
-  { name: 'Slate', value: '#455A64' },
-  { name: 'Gold', value: '#F9A825' },
-];
 
 // Default installer order used for calendar lanes and suggestions
 const DEFAULT_INSTALLER_ORDER = [
@@ -734,28 +724,27 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
             <Typography variant="body2" sx={{ minWidth: 100 }}>
               Color:
             </Typography>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', flex: 1 }}>
-              {EVENT_COLOR_PALETTE.map((colorOption) => (
-                <Box
-                  key={colorOption.value}
-                  onClick={() => setFormData({ ...formData, color: colorOption.value })}
-                  sx={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: '50%',
-                    backgroundColor: colorOption.value,
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
+              <TextField
+                type="color"
+                value={formData.color}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                inputProps={{ 'aria-label': 'Pick event color' }}
+                sx={{
+                  width: 64,
+                  '& input': {
                     cursor: 'pointer',
-                    border: formData.color === colorOption.value ? '3px solid #000' : '2px solid #ccc',
-                    boxShadow: formData.color === colorOption.value ? '0 0 0 2px rgba(0,0,0,0.1)' : 'none',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      transform: 'scale(1.1)',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                    },
-                  }}
-                  title={colorOption.name}
-                />
-              ))}
+                    width: 44,
+                    height: 44,
+                    p: 0,
+                    border: 'none',
+                    background: 'none',
+                  },
+                }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Full palette picker
+              </Typography>
             </Box>
           </Box>
         </Box>
