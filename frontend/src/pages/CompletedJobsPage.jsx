@@ -30,13 +30,14 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useAuth } from '../context/AuthContext';
+import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function CompletedJobsPage() {
   const theme = useTheme();
   const { user } = useAuth();
-  const hideSensitive = user?.role === 'shop_view';
+  const { hideSensitive } = useShopViewSensitive(user?.role);
   const [completedJobs, setCompletedJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);

@@ -127,7 +127,6 @@ function PipelineBoard({
   onCustomLayoutSaved,
   onCustomLayoutDeleted,
   hideSensitive = false,
-  onRequestSensitiveUnlock,
 }) {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -357,11 +356,6 @@ function PipelineBoard({
                 >
                   {hideSensitive ? 'Locked' : `$${Math.round(value / 1000)}K`}
                 </Typography>
-                {hideSensitive && onRequestSensitiveUnlock && (
-                  <Button size="small" onClick={onRequestSensitiveUnlock} sx={{ minWidth: 0, px: 0.75 }}>
-                    Unlock
-                  </Button>
-                )}
                 {stageId === 'ESTIMATE_SENT' && (
                   <Tooltip title="View archived estimates">
                     <IconButton

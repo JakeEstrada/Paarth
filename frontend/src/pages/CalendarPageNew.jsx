@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -42,8 +42,6 @@ import {
   Person as PersonIcon,
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
-  Lock as LockIcon,
-  LockOpen as LockOpenIcon,
 } from '@mui/icons-material';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, startOfWeek, endOfWeek, isSameDay, addDays } from 'date-fns';
 import axios from 'axios';
@@ -52,15 +50,13 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme as useAppTheme } from '../context/ThemeContext';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
 const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
-const SHOP_VIEW_SENSITIVE_PIN = '2217';
-const SHOP_VIEW_EXIT_PIN = 'scww';
-const SHOP_VIEW_AUTO_LOCK_MS = 5 * 60 * 1000;
 
 // Default installer order used for calendar lanes and suggestions
 const DEFAULT_INSTALLER_ORDER = [
@@ -1301,6 +1297,7 @@ function CalendarPageNew({ tvMode = false }) {
   const navigate = useNavigate();
   const { mode, toggleColorMode } = useAppTheme();
   const { user, canModifyCalendar, canViewCalendar, tenantIdForBranding } = useAuth();
+  const { hideSensitive } = useShopViewSensitive(user?.role);
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [currentDate, setCurrentDate] = useState(new Date());
   const [benchJobs, setBenchJobs] = useState([]);
@@ -1325,74 +1322,7 @@ function CalendarPageNew({ tvMode = false }) {
     return 'right';
   });
   const [benchWidth, setBenchWidth] = useState(tvMode ? 260 : 320);
-  const [sensitiveUnlocked, setSensitiveUnlocked] = useState(user?.role !== 'shop_view');
-  const [pinDialogOpen, setPinDialogOpen] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const [exitPinDialogOpen, setExitPinDialogOpen] = useState(false);
-  const [exitPinInput, setExitPinInput] = useState('');
-  const lockTimerRef = useRef(null);
-
-  const hideSensitive = user?.role === 'shop_view' && !sensitiveUnlocked;
-  const canModifyCalendarWithPin = () => canModifyCalendar() || (user?.role === 'shop_view' && sensitiveUnlocked);
-  const requestSensitiveUnlock = () => {
-    if (user?.role !== 'shop_view') return;
-    setPinInput('');
-    setPinDialogOpen(true);
-  };
-  const handleSensitiveUnlock = () => {
-    if (pinInput.trim() === SHOP_VIEW_SENSITIVE_PIN) {
-      setSensitiveUnlocked(true);
-      setPinDialogOpen(false);
-      toast.success('Sensitive data unlocked');
-    } else {
-      toast.error('Invalid PIN');
-    }
-  };
-  const lockSensitiveData = () => {
-    if (user?.role !== 'shop_view') return;
-    setSensitiveUnlocked(false);
-    toast.success('Sensitive data locked');
-  };
-  const requestExitUnlock = () => {
-    setExitPinInput('');
-    setExitPinDialogOpen(true);
-  };
-  const handleExitWithPin = () => {
-    if (exitPinInput.trim().toLowerCase() === SHOP_VIEW_EXIT_PIN) {
-      setExitPinDialogOpen(false);
-      navigate('/calendar');
-    } else {
-      toast.error('Invalid PIN');
-    }
-  };
-
-  useEffect(() => {
-    setSensitiveUnlocked(user?.role !== 'shop_view');
-    setPinDialogOpen(false);
-    setPinInput('');
-    setExitPinDialogOpen(false);
-    setExitPinInput('');
-  }, [user?.role]);
-
-  useEffect(() => {
-    if (user?.role !== 'shop_view') return undefined;
-    if (lockTimerRef.current) {
-      clearTimeout(lockTimerRef.current);
-      lockTimerRef.current = null;
-    }
-    if (sensitiveUnlocked) {
-      lockTimerRef.current = setTimeout(() => {
-        setSensitiveUnlocked(false);
-        toast('Sensitive data locked after 5 minutes');
-      }, SHOP_VIEW_AUTO_LOCK_MS);
-    }
-    return () => {
-      if (lockTimerRef.current) {
-        clearTimeout(lockTimerRef.current);
-        lockTimerRef.current = null;
-      }
-    };
-  }, [user?.role, sensitiveUnlocked]);
+  const canModifyCalendarWithPin = () => canModifyCalendar();
 
   useEffect(() => {
     if (tvMode) return;
@@ -1579,12 +1509,7 @@ function CalendarPageNew({ tvMode = false }) {
 
   const handleDayClick = (date) => {
     if (!canModifyCalendarWithPin()) {
-      if (user?.role === 'shop_view') {
-        requestSensitiveUnlock();
-        toast.error('Enter PIN to modify calendar events');
-      } else {
-        toast.error('You do not have permission to create or modify calendar events');
-      }
+      toast.error('You do not have permission to create or modify calendar events');
       return;
     }
     setSelectedDate(date);
@@ -1595,12 +1520,7 @@ function CalendarPageNew({ tvMode = false }) {
 
   const handleEventClick = (eventOrJob) => {
     if (!canModifyCalendarWithPin()) {
-      if (user?.role === 'shop_view') {
-        requestSensitiveUnlock();
-        toast.error('Enter PIN to modify calendar events');
-      } else {
-        toast.error('You do not have permission to modify calendar events');
-      }
+      toast.error('You do not have permission to modify calendar events');
       return;
     }
     const job = eventOrJob?.job || eventOrJob;
@@ -1624,12 +1544,7 @@ function CalendarPageNew({ tvMode = false }) {
     const installerToRemove = eventOrJob?.schedule?.installer || '';
 
     if (!canModifyCalendarWithPin()) {
-      if (user?.role === 'shop_view') {
-        requestSensitiveUnlock();
-        toast.error('Enter PIN to modify calendar events');
-      } else {
-        toast.error('You do not have permission to modify calendar events');
-      }
+      toast.error('You do not have permission to modify calendar events');
       return;
     }
 
@@ -2068,12 +1983,7 @@ function CalendarPageNew({ tvMode = false }) {
                       job={job}
                       onJobClick={(j) => {
                         if (!canModifyCalendarWithPin()) {
-                          if (user?.role === 'shop_view') {
-                            requestSensitiveUnlock();
-                            toast.error('Enter PIN to modify calendar events');
-                          } else {
-                            toast.error('You do not have permission to modify calendar events');
-                          }
+                          toast.error('You do not have permission to modify calendar events');
                           return;
                         }
                         setSelectedJob(j);
@@ -2112,12 +2022,7 @@ function CalendarPageNew({ tvMode = false }) {
                       job={job}
                       onJobClick={(j) => {
                         if (!canModifyCalendarWithPin()) {
-                          if (user?.role === 'shop_view') {
-                            requestSensitiveUnlock();
-                            toast.error('Enter PIN to modify calendar events');
-                          } else {
-                            toast.error('You do not have permission to modify calendar events');
-                          }
+                          toast.error('You do not have permission to modify calendar events');
                           return;
                         }
                         setSelectedJob(j);
@@ -2197,11 +2102,7 @@ function CalendarPageNew({ tvMode = false }) {
           </Button>
           <Button
             onClick={() => {
-              if (tvMode) {
-                requestExitUnlock();
-                return;
-              }
-              navigate('/calendar-view');
+              navigate(tvMode ? '/calendar' : '/calendar-view');
             }}
             variant={tvMode ? 'contained' : 'outlined'}
             size="small"
@@ -2219,17 +2120,6 @@ function CalendarPageNew({ tvMode = false }) {
             >
               {mode === 'dark' ? 'Light mode' : 'Dark mode'}
             </Button>
-          )}
-          {user?.role === 'shop_view' && (
-            <Tooltip title={hideSensitive ? 'Unlock sensitive data (PIN)' : 'Lock sensitive data'}>
-              <IconButton
-                onClick={hideSensitive ? requestSensitiveUnlock : lockSensitiveData}
-                size="small"
-                color={hideSensitive ? 'default' : 'warning'}
-              >
-                {hideSensitive ? <LockIcon /> : <LockOpenIcon />}
-              </IconButton>
-            </Tooltip>
           )}
         </Box>
         {/* Standalone event creation removed; calendar now only schedules existing jobs */}
@@ -2354,58 +2244,7 @@ function CalendarPageNew({ tvMode = false }) {
           fetchJobs();
         }}
         hideSensitive={hideSensitive}
-        onRequestSensitiveUnlock={requestSensitiveUnlock}
       />
-      <Dialog open={pinDialogOpen} onClose={() => setPinDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Unlock Sensitive Data</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Enter PIN to view financial numbers and files.
-          </Typography>
-          <TextField
-            autoFocus
-            fullWidth
-            label="PIN"
-            type="password"
-            value={pinInput}
-            onChange={(e) => setPinInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSensitiveUnlock();
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPinDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSensitiveUnlock}>
-            Unlock
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={exitPinDialogOpen} onClose={() => setExitPinDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Exit Calendar View</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Enter PIN to exit kiosk calendar view.
-          </Typography>
-          <TextField
-            autoFocus
-            fullWidth
-            label="PIN"
-            type="password"
-            value={exitPinInput}
-            onChange={(e) => setExitPinInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleExitWithPin();
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setExitPinDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleExitWithPin}>
-            Exit
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Right-click on a date: hide/show that weekday */}
       <Menu

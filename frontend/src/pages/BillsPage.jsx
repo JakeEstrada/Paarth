@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -33,24 +33,17 @@ import {
   Delete as DeleteIcon,
   Receipt as ReceiptIcon,
   Link as LinkIcon,
-  Lock as LockIcon,
-  LockOpen as LockOpenIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-const SHOP_VIEW_SENSITIVE_PIN = '2217';
-const SHOP_VIEW_AUTO_LOCK_MS = 5 * 60 * 1000;
-
 function BillsPage() {
   const theme = useTheme();
   const { user } = useAuth();
-  const [sensitiveUnlocked, setSensitiveUnlocked] = useState(user?.role !== 'shop_view');
-  const [pinDialogOpen, setPinDialogOpen] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const lockTimerRef = useRef(null);
+  const { hideSensitive } = useShopViewSensitive(user?.role);
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -67,53 +60,6 @@ function BillsPage() {
   useEffect(() => {
     fetchBills();
   }, []);
-
-  const hideSensitive = user?.role === 'shop_view' && !sensitiveUnlocked;
-  const requestSensitiveUnlock = () => {
-    if (user?.role !== 'shop_view') return;
-    setPinInput('');
-    setPinDialogOpen(true);
-  };
-  const handleSensitiveUnlock = () => {
-    if (pinInput.trim() === SHOP_VIEW_SENSITIVE_PIN) {
-      setSensitiveUnlocked(true);
-      setPinDialogOpen(false);
-      toast.success('Bills unlocked');
-    } else {
-      toast.error('Invalid PIN');
-    }
-  };
-  const lockSensitiveData = () => {
-    if (user?.role !== 'shop_view') return;
-    setSensitiveUnlocked(false);
-    toast.success('Bills locked');
-  };
-
-  useEffect(() => {
-    setSensitiveUnlocked(user?.role !== 'shop_view');
-    setPinDialogOpen(false);
-    setPinInput('');
-  }, [user?.role]);
-
-  useEffect(() => {
-    if (user?.role !== 'shop_view') return undefined;
-    if (lockTimerRef.current) {
-      clearTimeout(lockTimerRef.current);
-      lockTimerRef.current = null;
-    }
-    if (sensitiveUnlocked) {
-      lockTimerRef.current = setTimeout(() => {
-        setSensitiveUnlocked(false);
-        toast('Bills locked after 5 minutes');
-      }, SHOP_VIEW_AUTO_LOCK_MS);
-    }
-    return () => {
-      if (lockTimerRef.current) {
-        clearTimeout(lockTimerRef.current);
-        lockTimerRef.current = null;
-      }
-    };
-  }, [user?.role, sensitiveUnlocked]);
 
   const fetchBills = async () => {
     try {
@@ -260,17 +206,6 @@ function BillsPage() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {user?.role === 'shop_view' && (
-            <Tooltip title={hideSensitive ? 'Unlock bills (PIN)' : 'Lock bills'}>
-              <IconButton
-                onClick={hideSensitive ? requestSensitiveUnlock : lockSensitiveData}
-                size="small"
-                color={hideSensitive ? 'default' : 'warning'}
-              >
-                {hideSensitive ? <LockIcon /> : <LockOpenIcon />}
-              </IconButton>
-            </Tooltip>
-          )}
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -286,14 +221,11 @@ function BillsPage() {
       {hideSensitive ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="h6" sx={{ mb: 1 }}>
-            Bills are locked for Shop View
+            Bills are hidden for Shop View
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Enter PIN to view or modify bills.
+            Enable sensitive amounts from Account Settings to view or modify bills.
           </Typography>
-          <Button variant="contained" onClick={requestSensitiveUnlock}>
-            Unlock with PIN
-          </Button>
         </Paper>
       ) : (
       <TableContainer component={Paper}>
@@ -458,29 +390,6 @@ function BillsPage() {
           <Button onClick={handleCloseDialog}>Cancel</Button>
           <Button onClick={handleSubmit} variant="contained">
             {editingBill ? 'Update' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={pinDialogOpen} onClose={() => setPinDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Unlock Bills</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            label="PIN"
-            type="password"
-            value={pinInput}
-            onChange={(e) => setPinInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSensitiveUnlock();
-            }}
-            sx={{ mt: 1 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPinDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSensitiveUnlock}>
-            Unlock
           </Button>
         </DialogActions>
       </Dialog>

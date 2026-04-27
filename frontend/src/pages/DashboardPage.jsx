@@ -44,6 +44,7 @@ import { format, isToday, isTomorrow, parseISO, formatDistanceToNow } from 'date
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
 import { tenantBrandingLogoUrl } from '../utils/tenantBranding';
+import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -51,7 +52,7 @@ function DashboardPage() {
   const navigate = useNavigate();
   const theme = useTheme();
   const { user } = useAuth();
-  const hideSensitive = user?.role === 'shop_view';
+  const { hideSensitive } = useShopViewSensitive(user?.role);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalJobs: 0,

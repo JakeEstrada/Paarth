@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Typography,
@@ -21,8 +21,6 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   Archive as ArchiveIcon,
-  Lock as LockIcon,
-  LockOpen as LockOpenIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -38,9 +36,9 @@ import AddJobModal from '../components/jobs/AddJobModal';
 import { useAuth } from '../context/AuthContext';
 import { fetchPipelineLayoutsList, createPipelineLayout } from '../utils/pipelineLayoutsApi';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-const SHOP_VIEW_AUTO_LOCK_MS = 5 * 60 * 1000;
 
 const PIPELINE_SELECTION_KEY_PREFIX = 'pipelineSelectedLayoutV1';
 
@@ -53,9 +51,6 @@ function getPipelineSelectionStorageKey(tenantId) {
   if (/^[a-fA-F0-9]{24}$/.test(id)) return `${PIPELINE_SELECTION_KEY_PREFIX}_${id}`;
   return `${PIPELINE_SELECTION_KEY_PREFIX}_unknown`;
 }
-
-const SHOP_VIEW_SENSITIVE_PIN = '2217';
-const SHOP_VIEW_EXIT_PIN = 'scww';
 
 function PipelinePage({ tvMode = false }) {
   const theme = useTheme();
@@ -90,77 +85,10 @@ function PipelinePage({ tvMode = false }) {
   const [pipelineLayouts, setPipelineLayouts] = useState([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState('default');
   const [pipelineHydrated, setPipelineHydrated] = useState(false);
-  const isShopViewRole = user?.role === 'shop_view';
-  const [sensitiveUnlocked, setSensitiveUnlocked] = useState(!isShopViewRole);
-  const [pinDialogOpen, setPinDialogOpen] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const [exitPinDialogOpen, setExitPinDialogOpen] = useState(false);
-  const [exitPinInput, setExitPinInput] = useState('');
-  const lockTimerRef = useRef(null);
-
-  useEffect(() => {
-    setSensitiveUnlocked(!isShopViewRole);
-    setPinDialogOpen(false);
-    setPinInput('');
-    setExitPinDialogOpen(false);
-    setExitPinInput('');
-  }, [isShopViewRole]);
-
-  const requestExitUnlock = () => {
-    setExitPinInput('');
-    setExitPinDialogOpen(true);
-  };
-  const handleExitWithPin = () => {
-    if (exitPinInput.trim().toLowerCase() === SHOP_VIEW_EXIT_PIN) {
-      setExitPinDialogOpen(false);
-      navigate('/pipeline');
-    } else {
-      toast.error('Invalid PIN');
-    }
-  };
+  const { isShopViewRole, hideSensitive } = useShopViewSensitive(user?.role);
 
   const showTasksAndAppointments = !isShopViewRole && !tvMode;
 
-  const hideSensitive = isShopViewRole && !sensitiveUnlocked;
-  const requestSensitiveUnlock = () => {
-    if (!isShopViewRole) return;
-    setPinInput('');
-    setPinDialogOpen(true);
-  };
-  const handleSensitiveUnlock = () => {
-    if (pinInput.trim() === SHOP_VIEW_SENSITIVE_PIN) {
-      setSensitiveUnlocked(true);
-      setPinDialogOpen(false);
-      toast.success('Sensitive data unlocked');
-    } else {
-      toast.error('Invalid PIN');
-    }
-  };
-  const lockSensitiveData = () => {
-    if (!isShopViewRole) return;
-    setSensitiveUnlocked(false);
-    toast.success('Sensitive data locked');
-  };
-
-  useEffect(() => {
-    if (!isShopViewRole) return undefined;
-    if (lockTimerRef.current) {
-      clearTimeout(lockTimerRef.current);
-      lockTimerRef.current = null;
-    }
-    if (sensitiveUnlocked) {
-      lockTimerRef.current = setTimeout(() => {
-        setSensitiveUnlocked(false);
-        toast('Sensitive data locked after 5 minutes');
-      }, SHOP_VIEW_AUTO_LOCK_MS);
-    }
-    return () => {
-      if (lockTimerRef.current) {
-        clearTimeout(lockTimerRef.current);
-        lockTimerRef.current = null;
-      }
-    };
-  }, [isShopViewRole, sensitiveUnlocked]);
 
   const autoMoveDeadEstimates = async () => {
     try {
@@ -457,17 +385,6 @@ function PipelinePage({ tvMode = false }) {
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-              {isShopViewRole && (
-                <Tooltip title={hideSensitive ? 'Unlock sensitive data (PIN)' : 'Lock sensitive data'}>
-                  <IconButton
-                    onClick={hideSensitive ? requestSensitiveUnlock : lockSensitiveData}
-                    color={hideSensitive ? 'default' : 'warning'}
-                    size="small"
-                  >
-                    {hideSensitive ? <LockIcon /> : <LockOpenIcon />}
-                  </IconButton>
-                </Tooltip>
-              )}
               {!tvMode && (
                 <Button
                   variant="outlined"
@@ -483,10 +400,6 @@ function PipelinePage({ tvMode = false }) {
                   variant="contained"
                   size="small"
                   onClick={() => {
-                    if (isShopViewRole) {
-                      requestExitUnlock();
-                      return;
-                    }
                     navigate('/pipeline');
                   }}
                   sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
@@ -677,7 +590,6 @@ function PipelinePage({ tvMode = false }) {
             onCustomLayoutSaved={refreshPipelineLayouts}
             onCustomLayoutDeleted={handleCustomLayoutDeleted}
             hideSensitive={hideSensitive}
-            onRequestSensitiveUnlock={requestSensitiveUnlock}
           />
         )}
 
@@ -694,7 +606,6 @@ function PipelinePage({ tvMode = false }) {
             setAppointmentRefreshTrigger(prev => prev + 1);
           }}
           hideSensitive={hideSensitive}
-          onRequestSensitiveUnlock={requestSensitiveUnlock}
         />
 
         {/* Add Appointment Modal */}
@@ -814,7 +725,6 @@ function PipelinePage({ tvMode = false }) {
             onJobDelete={handleJobDelete}
             onJobArchive={handleJobArchive}
             hideSensitive={hideSensitive}
-            onRequestSensitiveUnlock={requestSensitiveUnlock}
           />
         )}
 
@@ -853,56 +763,6 @@ function PipelinePage({ tvMode = false }) {
               startIcon={<ArchiveIcon />}
             >
               {archiving ? 'Closing...' : `Close Out ${completedJobsCount} Job(s)`}
-            </Button>
-          </DialogActions>
-        </Dialog>
-        <Dialog open={pinDialogOpen} onClose={() => setPinDialogOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle>Unlock Sensitive Data</DialogTitle>
-          <DialogContent>
-            <DialogContentText sx={{ mb: 2 }}>
-              Enter PIN to view financial numbers and files.
-            </DialogContentText>
-            <TextField
-              autoFocus
-              fullWidth
-              label="PIN"
-              type="password"
-              value={pinInput}
-              onChange={(e) => setPinInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSensitiveUnlock();
-              }}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setPinDialogOpen(false)}>Cancel</Button>
-            <Button variant="contained" onClick={handleSensitiveUnlock}>
-              Unlock
-            </Button>
-          </DialogActions>
-        </Dialog>
-        <Dialog open={exitPinDialogOpen} onClose={() => setExitPinDialogOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle>Exit Pipeline View</DialogTitle>
-          <DialogContent>
-            <DialogContentText sx={{ mb: 2 }}>
-              Enter PIN to exit kiosk pipeline view.
-            </DialogContentText>
-            <TextField
-              autoFocus
-              fullWidth
-              label="PIN"
-              type="password"
-              value={exitPinInput}
-              onChange={(e) => setExitPinInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleExitWithPin();
-              }}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setExitPinDialogOpen(false)}>Cancel</Button>
-            <Button variant="contained" onClick={handleExitWithPin}>
-              Exit
             </Button>
           </DialogActions>
         </Dialog>

@@ -11,6 +11,13 @@ import {
   CircularProgress,
   Chip,
   Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Person as PersonIcon,
@@ -26,12 +33,14 @@ import { useAuth } from '../context/AuthContext';
 import api from '../utils/axios';
 import BrandLogo from '../components/common/BrandLogo';
 import { useTheme } from '@mui/material/styles';
+import { useShopViewSensitive, SHOP_VIEW_SENSITIVE_PIN } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function AccountSettingsPage() {
   const { user: currentUser, fetchCurrentUser, isSuperAdmin, tenantForBranding } = useAuth();
   const theme = useTheme();
+  const { isShopViewRole, sensitiveUnlocked, setSensitiveUnlocked } = useShopViewSensitive(currentUser?.role);
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
   const [updating, setUpdating] = useState(false);
@@ -57,6 +66,8 @@ function AccountSettingsPage() {
   const [uploadingLogoLight, setUploadingLogoLight] = useState(false);
   const [uploadingLogoDark, setUploadingLogoDark] = useState(false);
   const [resettingEstimates, setResettingEstimates] = useState(false);
+  const [shopViewPinDialogOpen, setShopViewPinDialogOpen] = useState(false);
+  const [shopViewPinInput, setShopViewPinInput] = useState('');
 
   useEffect(() => {
     fetchUserData();
@@ -236,6 +247,27 @@ function AccountSettingsPage() {
       employee: 'secondary',
     };
     return colors[role] || 'default';
+  };
+
+  const handleShopViewToggle = (nextChecked) => {
+    if (!isShopViewRole) return;
+    if (!nextChecked) {
+      setSensitiveUnlocked(false);
+      toast.success('Sensitive amounts hidden in Shop View');
+      return;
+    }
+    setShopViewPinInput('');
+    setShopViewPinDialogOpen(true);
+  };
+
+  const handleConfirmShopViewPin = () => {
+    if (shopViewPinInput.trim() === SHOP_VIEW_SENSITIVE_PIN) {
+      setSensitiveUnlocked(true);
+      setShopViewPinDialogOpen(false);
+      toast.success('Sensitive amounts visible in Shop View');
+      return;
+    }
+    toast.error('Invalid PIN');
   };
 
   if (loading) {
@@ -485,6 +517,41 @@ function AccountSettingsPage() {
         </Paper>
       )}
 
+      {isShopViewRole && (
+        <Paper
+          elevation={0}
+          sx={{
+            borderRadius: '16px',
+            p: 4,
+            mb: 3,
+            background: theme.palette.background.paper,
+            boxShadow:
+              theme.palette.mode === 'dark'
+                ? '0 2px 12px rgba(0, 0, 0, 0.35)'
+                : '0 2px 12px rgba(0, 0, 0, 0.06)',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+            <LockIcon sx={{ fontSize: 28, color: 'primary.main' }} />
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Shop View Sensitive Amounts
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Amounts and financial totals stay hidden in Shop View unless you enable this setting.
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={sensitiveUnlocked}
+                onChange={(e) => handleShopViewToggle(e.target.checked)}
+              />
+            }
+            label={sensitiveUnlocked ? 'Show sensitive amounts' : 'Hide sensitive amounts'}
+          />
+        </Paper>
+      )}
+
       {/* Change Password Section */}
       <Paper
         elevation={0}
@@ -618,6 +685,31 @@ function AccountSettingsPage() {
           </Button>
         </Box>
       </Paper>
+      <Dialog open={shopViewPinDialogOpen} onClose={() => setShopViewPinDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Enable Sensitive Amounts</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Enter PIN to show financial amounts in Shop View.
+          </DialogContentText>
+          <TextField
+            autoFocus
+            fullWidth
+            label="PIN"
+            type="password"
+            value={shopViewPinInput}
+            onChange={(e) => setShopViewPinInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleConfirmShopViewPin();
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShopViewPinDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleConfirmShopViewPin}>
+            Enable
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

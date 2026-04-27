@@ -26,13 +26,14 @@ import toast from 'react-hot-toast';
 import JobCard from '../components/pipeline/JobCard';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useAuth } from '../context/AuthContext';
+import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function JobArchivePage() {
   const theme = useTheme();
   const { user } = useAuth();
-  const hideSensitive = user?.role === 'shop_view';
+  const { hideSensitive } = useShopViewSensitive(user?.role);
   const [deadEstimates, setDeadEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);

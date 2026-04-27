@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -44,23 +44,19 @@ import {
   Note as NoteIcon,
   Work as WorkIcon,
   Description as DescriptionIcon,
-  Lock as LockIcon,
-  LockOpen as LockOpenIcon,
   Share as ShareIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useAuth } from '../context/AuthContext';
+import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-const SHOP_VIEW_SENSITIVE_PIN = '2217';
-const SHOP_VIEW_AUTO_LOCK_MS = 5 * 60 * 1000;
-
 function CustomersPage() {
   const theme = useTheme();
   const { user } = useAuth();
-  const isShopViewRole = user?.role === 'shop_view';
+  const { isShopViewRole, hideSensitive } = useShopViewSensitive(user?.role);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -82,59 +78,6 @@ function CustomersPage() {
   const [sharePhone, setSharePhone] = useState('');
   const [shareMessage, setShareMessage] = useState('');
   const [sendingShare, setSendingShare] = useState(false);
-  const [sensitiveUnlocked, setSensitiveUnlocked] = useState(!isShopViewRole);
-  const [pinDialogOpen, setPinDialogOpen] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const lockTimerRef = useRef(null);
-  const hideSensitive = isShopViewRole && !sensitiveUnlocked;
-
-  useEffect(() => {
-    setSensitiveUnlocked(!isShopViewRole);
-    setPinDialogOpen(false);
-    setPinInput('');
-  }, [isShopViewRole]);
-
-  useEffect(() => {
-    if (!isShopViewRole) return undefined;
-    if (lockTimerRef.current) {
-      clearTimeout(lockTimerRef.current);
-      lockTimerRef.current = null;
-    }
-    if (sensitiveUnlocked) {
-      lockTimerRef.current = setTimeout(() => {
-        setSensitiveUnlocked(false);
-        toast('Sensitive data locked after 5 minutes');
-      }, SHOP_VIEW_AUTO_LOCK_MS);
-    }
-    return () => {
-      if (lockTimerRef.current) {
-        clearTimeout(lockTimerRef.current);
-        lockTimerRef.current = null;
-      }
-    };
-  }, [isShopViewRole, sensitiveUnlocked]);
-
-  const requestSensitiveUnlock = () => {
-    if (!isShopViewRole) return;
-    setPinInput('');
-    setPinDialogOpen(true);
-  };
-
-  const handleSensitiveUnlock = () => {
-    if (pinInput.trim() === SHOP_VIEW_SENSITIVE_PIN) {
-      setSensitiveUnlocked(true);
-      setPinDialogOpen(false);
-      toast.success('Sensitive data unlocked');
-    } else {
-      toast.error('Invalid PIN');
-    }
-  };
-
-  const lockSensitiveData = () => {
-    if (!isShopViewRole) return;
-    setSensitiveUnlocked(false);
-    toast.success('Sensitive data locked');
-  };
 
   // Fetch customers
   const fetchCustomers = async () => {
@@ -760,17 +703,6 @@ function CustomersPage() {
           Customers
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'center' }}>
-          {isShopViewRole && (
-            <Tooltip title={hideSensitive ? 'Unlock sensitive data (PIN)' : 'Lock sensitive data'}>
-              <IconButton
-                onClick={hideSensitive ? requestSensitiveUnlock : lockSensitiveData}
-                color={hideSensitive ? 'default' : 'warning'}
-                size="small"
-              >
-                {hideSensitive ? <LockIcon /> : <LockOpenIcon />}
-              </IconButton>
-            </Tooltip>
-          )}
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -1569,33 +1501,7 @@ function CustomersPage() {
         onJobArchive={handleJobDeletedOrArchived}
         sx={(theme) => ({ zIndex: theme.zIndex.modal + 2 })}
         hideSensitive={hideSensitive}
-        onRequestSensitiveUnlock={requestSensitiveUnlock}
       />
-      <Dialog open={pinDialogOpen} onClose={() => setPinDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Unlock Sensitive Data</DialogTitle>
-        <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Enter PIN to view financial numbers and files.
-          </DialogContentText>
-          <TextField
-            autoFocus
-            fullWidth
-            label="PIN"
-            type="password"
-            value={pinInput}
-            onChange={(e) => setPinInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSensitiveUnlock();
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPinDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSensitiveUnlock}>
-            Unlock
-          </Button>
-        </DialogActions>
-      </Dialog>
       <Dialog open={shareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Share Customer by Text</DialogTitle>
         <DialogContent>
