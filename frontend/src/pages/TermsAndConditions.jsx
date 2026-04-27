@@ -39,60 +39,26 @@ export default function TermsAndConditions() {
             SMS Terms
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            By opting in to SMS notifications, you agree to receive operational text messages from San Clemente Woodworking related to project updates, appointment reminders, scheduling notifications, and platform alerts.
-          </Typography>
-
-          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            Message frequency may vary. Message and data rates may apply.
-          </Typography>
-
-          <Typography variant="body1" sx={{ mb: 3, lineHeight: 1.7 }}>
-            You may opt out at any time by replying STOP. You may reply HELP for assistance.
-          </Typography>
-
-          <Typography variant="body1" sx={{ mb: 3, lineHeight: 1.7 }}>
-            SMS consent is not required to use our services.
-          </Typography>
-
-          <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>
-            Message Types
+            By opting in to SMS notifications, you agree to receive operational text messages from San Clemente Woodworking related to:
           </Typography>
           <Box component="ul" sx={{ pl: 2.5, mb: 2 }}>
             <li><Typography component="span" sx={{ lineHeight: 1.7 }}>Appointment reminders</Typography></li>
             <li><Typography component="span" sx={{ lineHeight: 1.7 }}>Scheduling updates</Typography></li>
             <li><Typography component="span" sx={{ lineHeight: 1.7 }}>Project status notifications</Typography></li>
-            <li><Typography component="span" sx={{ lineHeight: 1.7 }}>Customer support follow-ups</Typography></li>
+            <li><Typography component="span" sx={{ lineHeight: 1.7 }}>Customer support communications</Typography></li>
           </Box>
 
-          <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>
-            Opt-Out
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            You may opt out of SMS communications at any time by replying STOP. After opting out,
-            you will no longer receive SMS messages unless you opt in again.
-          </Typography>
-
-          <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>
-            Support
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            For help regarding SMS communications, reply HELP or contact the business directly.
-          </Typography>
-
-          <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>
-            SMS Communications
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            By providing your phone number, you consent to receive SMS messages from San Clemente
-            Woodworking related to your project, including appointment reminders, scheduling updates,
-            project notifications, and customer support communications.
-          </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
             Message frequency may vary. Message and data rates may apply.
           </Typography>
-          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            You can opt out at any time by replying STOP. For help, reply HELP or contact us at{' '}
+
+          <Typography variant="body1" sx={{ mb: 3, lineHeight: 1.7 }}>
+            You may opt out at any time by replying <strong>STOP</strong>. You may reply <strong>HELP</strong> for assistance or contact us at{' '}
             <a href="mailto:Office@sanclementewoodworking.com">Office@sanclementewoodworking.com</a>.
+          </Typography>
+
+          <Typography variant="body1" sx={{ mb: 3, lineHeight: 1.7 }}>
+            SMS consent is not required to use our services.
           </Typography>
 
           <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>

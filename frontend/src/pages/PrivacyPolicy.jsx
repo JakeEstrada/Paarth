@@ -33,15 +33,6 @@ export default function PrivacyPolicy() {
           </Typography>
 
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            We may use your phone number to send SMS notifications related to your project,
-            including scheduling updates, reminders, and customer support communications.
-          </Typography>
-
-          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            SMS consent is not shared with third parties or affiliates for marketing purposes.
-          </Typography>
-
-          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
             We do not sell your personal information. We may store submitted information in
             internal software systems used to manage quotes, scheduling, customer communication,
             and project records.
@@ -74,28 +65,19 @@ export default function PrivacyPolicy() {
           </Box>
 
           <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>
-            SMS Disclosure
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            By providing your phone number, you agree to receive SMS messages related to your
-            service request or project. Message frequency varies. Message and data rates may apply.
-            Reply STOP to opt out. Reply HELP for help.
-          </Typography>
-
-          <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>
             SMS Communications
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            If you opt in to receive SMS messages from San Clemente Woodworking, we may send you operational messages related to project updates, appointment reminders, scheduling notifications, and platform alerts.
+            If you opt in to receive SMS messages from San Clemente Woodworking, we may send you operational messages related to project updates, appointment reminders, scheduling notifications, and customer support communications.
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
             Message frequency may vary. Message and data rates may apply.
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            You may opt out at any time by replying STOP to any SMS message. You may reply HELP for assistance.
+            You may opt out at any time by replying <strong>STOP</strong> to any SMS message. You may reply <strong>HELP</strong> for assistance.
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            We do not sell, rent, or share your mobile phone number or SMS consent information with third parties for marketing or promotional purposes.
+            We do not sell, rent, or share your mobile phone number or SMS consent information with third parties or affiliates for marketing or promotional purposes.
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
             SMS consent is not a condition of using our services.
