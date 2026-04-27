@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "test:openai": "node scripts/test-openai.mjs"
+  },
+  "dependencies": {
+    "openai": "^6.34.0"
+  }
+}

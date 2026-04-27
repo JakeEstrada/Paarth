@@ -47,12 +47,12 @@ export function ThemeProvider({ children }) {
             : {
                 // Light mode palette
                 background: {
-                  default: '#F5F7FA',
-                  paper: '#FFFFFF',
+                  default: '#E9EEF3',
+                  paper: '#F6F8FB',
                 },
                 text: {
-                  primary: '#263238',
-                  secondary: '#546E7A',
+                  primary: '#22303A',
+                  secondary: '#4D616D',
                 },
               }),
         },
@@ -145,11 +145,11 @@ export function ThemeProvider({ children }) {
               root: {
                 background: mode === 'dark'
                   ? 'linear-gradient(135deg, #1E1E1E 0%, #2A2A2A 100%)'
-                  : 'linear-gradient(135deg, #FFFFFF 0%, #F8F9FA 100%)',
+                  : 'linear-gradient(135deg, #F2F5F9 0%, #E7EDF4 100%)',
                 boxShadow: mode === 'dark'
                   ? '0 2px 8px rgba(0, 0, 0, 0.3)'
-                  : '0 2px 8px rgba(63, 81, 181, 0.08)',
-                color: mode === 'dark' ? '#FFFFFF' : '#263238',
+                  : '0 2px 8px rgba(63, 81, 181, 0.06)',
+                color: mode === 'dark' ? '#FFFFFF' : '#22303A',
               },
             },
           },

@@ -36,11 +36,12 @@ import {
   Note as NoteIcon,
   Print as PrintIcon,
   Delete as DeleteIcon,
+  AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { format, isToday, isTomorrow, parseISO, formatDistanceToNow } from 'date-fns';
+import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
 import { tenantBrandingLogoUrl } from '../utils/tenantBranding';
@@ -69,6 +70,15 @@ function DashboardPage() {
   const [activities, setActivities] = useState([]);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [selectedPrintDate, setSelectedPrintDate] = useState(new Date().toISOString().split('T')[0]);
+  const [summaryStartDate, setSummaryStartDate] = useState(() =>
+    format(subDays(new Date(), 6), 'yyyy-MM-dd')
+  );
+  const [summaryEndDate, setSummaryEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [summaryDialogOpen, setSummaryDialogOpen] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryText, setSummaryText] = useState('');
+  const [summaryActivityCount, setSummaryActivityCount] = useState(null);
+  const [summaryTruncated, setSummaryTruncated] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [activityToDelete, setActivityToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -453,6 +463,34 @@ function DashboardPage() {
     const dateB = new Date(b.createdAt);
     return dateB - dateA; // Most recent first
   });
+
+  const handleGenerateActivitySummary = async () => {
+    if (!summaryStartDate || !summaryEndDate) {
+      toast.error('Choose a start and end date');
+      return;
+    }
+    if (summaryStartDate > summaryEndDate) {
+      toast.error('Start date must be on or before end date');
+      return;
+    }
+    try {
+      setSummaryLoading(true);
+      setSummaryText('');
+      const res = await axios.post(`${API_URL}/activities/summary`, {
+        startDate: summaryStartDate,
+        endDate: summaryEndDate,
+      });
+      setSummaryText(res.data.summary || '');
+      setSummaryActivityCount(typeof res.data.activityCount === 'number' ? res.data.activityCount : null);
+      setSummaryTruncated(Boolean(res.data.truncated));
+      setSummaryDialogOpen(true);
+    } catch (error) {
+      console.error('Activity summary error:', error);
+      toast.error(error.response?.data?.error || 'Could not generate summary');
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
 
   // Handle print
   const handlePrint = () => {
@@ -1140,6 +1178,52 @@ function DashboardPage() {
           </Button>
         </Box>
 
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 1.5,
+            mb: 2,
+            pb: 2,
+            borderBottom: 1,
+            borderColor: 'divider',
+          }}
+        >
+          <Typography variant="caption" color="text.secondary" sx={{ width: '100%', display: 'block' }}>
+            AI summary of all logged activity in the date range (not limited to the 50 shown below).
+          </Typography>
+          <TextField
+            label="From"
+            type="date"
+            size="small"
+            value={summaryStartDate}
+            onChange={(e) => setSummaryStartDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{ width: { xs: '100%', sm: 160 } }}
+          />
+          <TextField
+            label="To"
+            type="date"
+            size="small"
+            value={summaryEndDate}
+            onChange={(e) => setSummaryEndDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{ width: { xs: '100%', sm: 160 } }}
+          />
+          <Button
+            variant="contained"
+            color="secondary"
+            size="small"
+            startIcon={<AutoAwesomeIcon />}
+            onClick={handleGenerateActivitySummary}
+            disabled={summaryLoading}
+            sx={{ textTransform: 'none' }}
+          >
+            {summaryLoading ? 'Generating…' : 'Generate AI summary'}
+          </Button>
+        </Box>
+
         {/* Quick manual activity entry */}
         <Box
           component="form"
@@ -1332,6 +1416,39 @@ function DashboardPage() {
       </Dialog>
 
       {/* Print Dialog */}
+      <Dialog open={summaryDialogOpen} onClose={() => setSummaryDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>AI activity summary</DialogTitle>
+        <DialogContent>
+          {(summaryActivityCount !== null || summaryTruncated) && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+              {summaryActivityCount !== null &&
+                `${summaryActivityCount} activit${summaryActivityCount === 1 ? 'y' : 'ies'} in selected range`}
+              {summaryTruncated &&
+                `${summaryActivityCount !== null ? ' · ' : ''}Analysis uses up to the 500 most recent items in range`}
+            </Typography>
+          )}
+          <Typography variant="body2" component="div" sx={{ whiteSpace: 'pre-wrap' }}>
+            {summaryText}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              if (summaryText) {
+                navigator.clipboard.writeText(summaryText);
+                toast.success('Copied to clipboard');
+              }
+            }}
+            disabled={!summaryText}
+          >
+            Copy
+          </Button>
+          <Button onClick={() => setSummaryDialogOpen(false)} variant="contained">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={printDialogOpen} onClose={() => setPrintDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Print Activity Report</DialogTitle>
         <DialogContent>

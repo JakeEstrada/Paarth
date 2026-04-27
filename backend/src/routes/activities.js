@@ -8,6 +8,7 @@ const {
   createManualActivity,
   getRecentActivities,
   getActivitiesByDateRange,
+  generateActivitySummary,
   deleteActivity,
   logPayrollPrint
 } = require('../controllers/activityController');
@@ -16,6 +17,7 @@ router.use(requireAuth);
 
 router.get('/recent', getRecentActivities);
 router.get('/date-range', getActivitiesByDateRange);
+router.post('/summary', generateActivitySummary);
 router.get('/job/:jobId', getJobActivities);
 router.get('/customer/:customerId', getCustomerActivities);
 router.post('/job/:jobId', createActivity);

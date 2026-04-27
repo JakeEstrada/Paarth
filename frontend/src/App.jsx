@@ -45,7 +45,7 @@ function App() {
         minHeight: '100vh',
         background: theme.palette.mode === 'dark'
           ? '#121212'
-          : 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
+          : 'linear-gradient(135deg, #E9EEF3 0%, #DEE7F0 100%)',
       }}
     >
       <Routes>
