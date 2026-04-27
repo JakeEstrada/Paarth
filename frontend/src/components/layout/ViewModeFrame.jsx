@@ -35,16 +35,28 @@ function ViewModeFrame({ currentView, children }) {
           <Button
             key={btn.key}
             size="small"
+            color="warning"
             variant={currentView === btn.key ? 'contained' : 'outlined'}
             onClick={() => navigate(btn.path)}
+            sx={{
+              fontWeight: 700,
+              borderWidth: 2,
+              '&:hover': { borderWidth: 2 },
+            }}
           >
             {btn.label}
           </Button>
         ))}
         <Button
           size="small"
+          color="warning"
           variant="outlined"
           onClick={() => navigate(exitPathByView[currentView] || '/pipeline')}
+          sx={{
+            fontWeight: 700,
+            borderWidth: 2,
+            '&:hover': { borderWidth: 2 },
+          }}
         >
           Exit view
         </Button>
