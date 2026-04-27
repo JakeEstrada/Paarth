@@ -57,6 +57,16 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
 const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
+const EVENT_COLOR_PALETTE = [
+  { name: 'Ocean Blue', value: '#1565C0' },
+  { name: 'Forest Green', value: '#2E7D32' },
+  { name: 'Sunset Orange', value: '#EF6C00' },
+  { name: 'Crimson', value: '#C62828' },
+  { name: 'Royal Purple', value: '#6A1B9A' },
+  { name: 'Teal', value: '#00796B' },
+  { name: 'Slate', value: '#455A64' },
+  { name: 'Gold', value: '#F9A825' },
+];
 
 // Default installer order used for calendar lanes and suggestions
 const DEFAULT_INSTALLER_ORDER = [
@@ -725,27 +735,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
               Color:
             </Typography>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', flex: 1 }}>
-              {[
-                { name: 'Blue', value: '#1976D2' },
-                { name: 'Green', value: '#4CAF50' },
-                { name: 'Orange', value: '#FF9800' },
-                { name: 'Red', value: '#F44336' },
-                { name: 'Purple', value: '#9C27B0' },
-                { name: 'Teal', value: '#009688' },
-                { name: 'Pink', value: '#E91E63' },
-                { name: 'Brown', value: '#795548' },
-                { name: 'Navy', value: '#1565C0' },
-                { name: 'Cyan', value: '#00BCD4' },
-                { name: 'Lime', value: '#8BC34A' },
-                { name: 'Amber', value: '#FFC107' },
-                { name: 'Deep Orange', value: '#FF5722' },
-                { name: 'Indigo', value: '#3F51B5' },
-                { name: 'Deep Purple', value: '#673AB7' },
-                { name: 'Blue Grey', value: '#607D8B' },
-                { name: 'Grey', value: '#9E9E9E' },
-                { name: 'Maroon', value: '#880E4F' },
-                { name: 'Forest', value: '#2E7D32' },
-              ].map((colorOption) => (
+              {EVENT_COLOR_PALETTE.map((colorOption) => (
                 <Box
                   key={colorOption.value}
                   onClick={() => setFormData({ ...formData, color: colorOption.value })}
@@ -767,21 +757,6 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                 />
               ))}
             </Box>
-            <TextField
-              type="color"
-              value={formData.color}
-              onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-              sx={{
-                width: 60,
-                height: 40,
-                '& input': {
-                  cursor: 'pointer',
-                  padding: 0,
-                  border: 'none',
-                },
-              }}
-              title="Custom color"
-            />
           </Box>
         </Box>
       </DialogContent>
@@ -1035,7 +1010,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                     maxHeight: '100%',
                     maxWidth: '100%',
                     backgroundColor: event.color || '#1976D2',
-                    color: 'white',
+                    color: theme.palette.getContrastText(event.color || '#1976D2'),
                     flexShrink: 1,
                     minWidth: 0,
                     overflow: 'hidden',
