@@ -39,18 +39,19 @@ export default function TermsAndConditions() {
             SMS Terms
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            By providing your phone number and consenting to receive messages, you agree to receive
-            SMS notifications related to your quote, scheduling, project updates, reminders, and
-            customer support communications.
+            By opting in to SMS notifications, you agree to receive operational text messages from San Clemente Woodworking related to project updates, appointment reminders, scheduling notifications, and platform alerts.
           </Typography>
 
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            Message frequency varies. Message and data rates may apply. Reply STOP to opt out.
-            Reply HELP for assistance.
+            Message frequency may vary. Message and data rates may apply.
           </Typography>
 
           <Typography variant="body1" sx={{ mb: 3, lineHeight: 1.7 }}>
-            Consent to receive SMS messages is not a condition of purchase.
+            You may opt out at any time by replying STOP. You may reply HELP for assistance.
+          </Typography>
+
+          <Typography variant="body1" sx={{ mb: 3, lineHeight: 1.7 }}>
+            SMS consent is not required to use our services.
           </Typography>
 
           <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>

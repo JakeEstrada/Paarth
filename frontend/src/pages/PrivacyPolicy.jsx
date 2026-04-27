@@ -86,16 +86,19 @@ export default function PrivacyPolicy() {
             SMS Communications
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            By providing your phone number, you consent to receive SMS messages from San Clemente
-            Woodworking related to your project, including appointment reminders, scheduling updates,
-            project notifications, and customer support communications.
+            If you opt in to receive SMS messages from San Clemente Woodworking, we may send you operational messages related to project updates, appointment reminders, scheduling notifications, and platform alerts.
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
             Message frequency may vary. Message and data rates may apply.
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
-            You can opt out at any time by replying STOP. For help, reply HELP or contact us at{' '}
-            <a href="mailto:Office@sanclementewoodworking.com">Office@sanclementewoodworking.com</a>.
+            You may opt out at any time by replying STOP to any SMS message. You may reply HELP for assistance.
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
+            We do not sell, rent, or share your mobile phone number or SMS consent information with third parties for marketing or promotional purposes.
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
+            SMS consent is not a condition of using our services.
           </Typography>
 
           <Typography variant="body2" color="text.secondary" sx={{ mt: 4 }}>

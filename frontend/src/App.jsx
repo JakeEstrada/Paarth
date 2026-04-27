@@ -9,6 +9,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ForgotUsernamePage from './pages/ForgotUsernamePage';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsAndConditions from './pages/TermsAndConditions';
+import SmsConsentPage from './pages/SmsConsentPage';
 import PipelinePage from './pages/PipelinePage';
 import JobArchivePage from './pages/JobArchivePage';
 import CompletedAppointmentsPage from './pages/CompletedAppointmentsPage';
@@ -53,6 +54,7 @@ function App() {
         <Route path="/forgot-username" element={user ? <Navigate to="/pipeline" replace /> : <ForgotUsernamePage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<TermsAndConditions />} />
+        <Route path="/sms-consent" element={<SmsConsentPage />} />
         <Route
           path="/calendar-view"
           element={
