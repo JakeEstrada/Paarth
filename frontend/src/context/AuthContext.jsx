@@ -166,7 +166,7 @@ export function AuthProvider({ children }) {
   };
 
   const canModifyCalendar = () => {
-    return user && (user.role === 'super_admin' || user.role === 'admin');
+    return !!user; // All authenticated users can create/modify calendar events
   };
 
   const value = {
