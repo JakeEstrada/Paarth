@@ -209,6 +209,20 @@ async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLin
     ],
   };
 
+  /** Some orgs / project keys (sk-proj-...) require these; see OpenAI dashboard (org + project). */
+  const openaiHeaders = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+  };
+  const org = (process.env.OPENAI_ORG_ID || process.env.OPENAI_ORGANIZATION || '').trim();
+  if (org) {
+    openaiHeaders['OpenAI-Organization'] = org;
+  }
+  const project = (process.env.OPENAI_PROJECT_ID || '').trim();
+  if (project) {
+    openaiHeaders['OpenAI-Project'] = project;
+  }
+
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), OPENAI_FETCH_TIMEOUT_MS);
   let res;
@@ -216,10 +230,7 @@ async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLin
     res = await globalThis.fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: openaiHeaders,
       body: JSON.stringify(body),
     });
   } catch (e) {
@@ -250,7 +261,7 @@ async function openAiSummarizeActivities({ startDateStr, endDateStr, activityLin
     const apiMsg = data?.error?.message || raw.slice(0, 500) || 'OpenAI request failed';
     const renderHint =
       res.status === 401
-        ? ' In Render: Web Service → Environment — set OPENAI_API_KEY to a secret key from https://platform.openai.com/api-keys (no quotes; one line). Redeploy after changing env.'
+        ? ' In Render, set OPENAI_API_KEY. If the key is project-scoped (sk-proj-), also set OPENAI_PROJECT_ID (and OPENAI_ORG_ID if your org needs it) from the OpenAI dashboard. One line, no extra spaces. Redeploy after changes.'
         : '';
     const err = new Error(
       res.status === 401 ? `${apiMsg}${apiCode ? ` [${apiCode}]` : ''}.${renderHint}` : apiMsg
@@ -573,6 +584,8 @@ async function generateActivitySummary(req, res) {
         error: e.message || 'Failed to generate summary',
         code: e.code,
         openaiType: e.openai?.type,
+        openaiCode: e.openai?.code,
+        openaiParam: e.openai?.param,
       });
     }
 
