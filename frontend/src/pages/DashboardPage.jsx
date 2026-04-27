@@ -47,7 +47,6 @@ import BrandLogo from '../components/common/BrandLogo';
 import { tenantBrandingLogoUrl } from '../utils/tenantBranding';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
-?
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function renderInlineMarkdown(text) {
