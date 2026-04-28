@@ -116,6 +116,36 @@ function humanActivityDetail(activity) {
 
 const MAX_LINE_DETAIL_CHARS = 400;
 
+function jobDollarValue(job) {
+  if (!job || typeof job !== 'object') return 0;
+  return Math.max(Number(job.valueContracted) || 0, Number(job.valueEstimated) || 0);
+}
+
+function jobValueLabel(job) {
+  if (!job || typeof job !== 'object') return 'Value: n/a (no job)';
+  const c = job.valueContracted;
+  const e = job.valueEstimated;
+  if ((!c || c === 0) && (!e || e === 0)) return 'Value: $0 (unsized)';
+  const bits = [];
+  if (c && c > 0) bits.push(`contracted $${c}`);
+  if (e && e > 0) bits.push(`est. $${e}`);
+  return bits.length ? `Value: ${bits.join(' / ')}` : 'Value: n/a';
+}
+
+/**
+ * Most expensive / highest-value jobs first, then by recency, then no-job at end.
+ */
+function sortActivitiesForSummary(activities) {
+  return [...activities].sort((a, b) => {
+    const av = jobDollarValue(a.jobId);
+    const bv = jobDollarValue(b.jobId);
+    if (bv !== av) {
+      return bv - av;
+    }
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+}
+
 function formatActivityLineForSummary(activity) {
   const iso = new Date(activity.createdAt).toISOString();
   const title = humanActivityTitle(activity);
@@ -128,19 +158,23 @@ function formatActivityLineForSummary(activity) {
   const job = activity.jobId?.title || '';
   const taskLabel = activity.taskId?.title || '';
   const taskKind = activity.taskId?.isProject ? 'Project' : 'Task';
-  const parts = [];
+  const valuePart = jobValueLabel(activity.jobId);
+  const parts = [valuePart];
   if (customer) parts.push(`Customer: ${customer}`);
   if (job) parts.push(`Job: ${job}`);
   if (taskLabel) parts.push(`${taskKind}: ${taskLabel}`);
-  const meta = parts.join(' | ') || '—';
-  return `${iso} | ${title} | User: ${user || '—'} | ${meta} | ${detail || '—'}`;
+  const meta = parts.join(' | ');
+  return `${iso} | ${title} | ${meta} | User: ${user || '—'} | ${detail || '—'}`;
 }
 
-/** gpt-4o-mini has large context, but long ranges can still exceed token limits; keep a safe user-content budget. */
-const MAX_ACTIVITY_TEXT_CHARS = 85_000;
+/** gpt-4o-mini: keep room for full work logs; if truncated, the tail of the list (lower $ first to drop) is cut last after value-sort. */
+const MAX_ACTIVITY_TEXT_CHARS = Math.min(
+  500_000,
+  Math.max(100_000, parseInt(String(process.env.OPENAI_SUMMARY_MAX_ACTIVITY_CHARS || '250000'), 10) || 250_000)
+);
 
 /**
- * @param {string[]} activityLines - newest first
+ * @param {string[]} activityLines - sorted with highest job value first (tail may be cut if over size limit)
  * @returns {{ text: string, includedLineCount: number, omittedLineCount: number }}
  */
 function buildActivityListForModel(activityLines) {
@@ -159,7 +193,7 @@ function buildActivityListForModel(activityLines) {
   const omittedLineCount = activityLines.length - includedLineCount;
   const suffix =
     omittedLineCount > 0
-      ? `\n[... ${omittedLineCount} older line(s) omitted: payload size limit. Summary reflects the ${includedLineCount} newest lines below.]`
+      ? `\n[... ${omittedLineCount} line(s) omitted: payload size limit. List is ordered high job value first—omitted lines are the lowest-priority / smallest tail.]`
       : '';
   return { text: `${lines.join('\n')}${suffix}`, includedLineCount, omittedLineCount };
 }
@@ -210,8 +244,16 @@ async function openAiSummarizeActivities({
     throw err;
   }
 
-  const systemPrompt =
-    'You summarize internal CRM activity for a woodworking / cabinetry business. Return valid markdown only and keep it clean/simple for non-technical readers. Use this exact structure and headings: "## Date range overview", "## Customer and job movement", "## Notable notes", "## Scheduling and tasks", "## Follow-ups". Under each heading, use short bullet points. Use bold only for customer names and job titles. Keep total length under 250 words unless there are many critical updates. If the user included extra instructions at the top of the prompt, weigh those priorities when organizing bullets (still only facts from the activity list). Do not invent facts; only use provided activities. If there is no activity, return: "## Date range overview\\n- No activity recorded in this range."';
+  const systemPrompt = [
+    'You summarize internal CRM activity for a woodworking / cabinetry business.',
+    'The activity list is ordered with HIGHER job $ value (Value: contracted / est. on each line) FIRST, then smaller jobs, then events with no job.',
+    'REQUIREMENT: Do not drop jobs just because the dollar value is $0, small, or "unsized". Every distinct job and customer in the data must appear at least once with at least one fact (a short sub-bullet is fine for tiny jobs).',
+    'Within "## Customer and job movement", sub-order bullets so the most expensive / highest Value jobs are mentioned first, then work downward in value. Still include the small jobs in that section or a clearly labeled "## Smaller or unsized jobs" subsection so nothing is skipped.',
+    'If developer-only or non-job tasks are present, they may stay under "## Scheduling and tasks" but do not use that to avoid listing real customer jobs.',
+    'Return valid markdown. Use this structure and headings: "## Date range overview", "## Customer and job movement", "## Notable notes", "## Scheduling and tasks", "## Follow-ups" (and optionally "## Smaller or unsized jobs" if that improves completeness).',
+    'Use short bullet points; use bold for customer and job names. You may be thorough—completeness beats a short word count. If the user included extra instructions, honor them when consistent with the activity list. Do not invent facts.',
+    'If there is no activity, return: "## Date range overview\\n- No activity recorded in this range."',
+  ].join(' ');
 
   const { text: activityListText, includedLineCount, omittedLineCount } = buildActivityListForModel(activityLines);
 
@@ -230,9 +272,9 @@ async function openAiSummarizeActivities({
   sections.push(
     `Date range (inclusive): ${startDateStr} through ${endDateStr}`,
     `Total activities in this date range (in database): ${totalActivityCount}`,
-    `Activities included in this list (newest first): ${includedLineCount} line(s)${omittedLineCount > 0 ? `; ${omittedLineCount} older line(s) omitted for size` : ''}`,
+    `This prompt includes ${includedLineCount} event line(s) in the list below, sorted with highest job Value (contract/estimate) first, then smaller jobs.${omittedLineCount > 0 ? ` ${omittedLineCount} more line(s) were omitted only due to size limits (usually the lowest $ tail of the list).` : ''}`,
     '',
-    'Activities (newest first):',
+    'Activities (higher job $ first, then by recency; each line has Value:):',
     '---',
     activityListText,
     '---'
@@ -580,7 +622,7 @@ async function generateActivitySummary(req, res) {
     const activities = await Activity.find(rangeFilter)
       .populate('createdBy', 'name email')
       .populate('customerId', 'name')
-      .populate('jobId', 'title')
+      .populate('jobId', 'title valueEstimated valueContracted')
       .populate('taskId', 'title isProject')
       .sort({ createdAt: -1 })
       .limit(MAX);
@@ -597,7 +639,8 @@ async function generateActivitySummary(req, res) {
       });
     }
 
-    const lines = activities.map(formatActivityLineForSummary);
+    const activitiesForSummary = sortActivitiesForSummary(activities);
+    const lines = activitiesForSummary.map(formatActivityLineForSummary);
     const truncated = totalInRange > MAX;
 
     let summary;
