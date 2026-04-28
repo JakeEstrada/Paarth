@@ -23,6 +23,7 @@ import {
   TextField,
   IconButton,
   LinearProgress,
+  Tooltip,
 } from '@mui/material';
 import {
   AccountTree as JobsIcon,
@@ -49,6 +50,9 @@ import { tenantBrandingLogoUrl } from '../utils/tenantBranding';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+const AI_SUMMARY_HOVER_JOKE =
+  'Tired of looking through big ass work logs... fuck that. Have AI generate a summary of that shit.';
 
 function renderInlineMarkdown(text) {
   const parts = String(text || '').split(/(\*\*[^*]+\*\*)/g);
@@ -1310,16 +1314,25 @@ function DashboardPage() {
             Recent Activity
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Button
-              variant="contained"
-              color="secondary"
-              size="small"
-              startIcon={<AutoAwesomeIcon />}
-              onClick={openSummarySetup}
-              sx={{ textTransform: 'none' }}
+            <Tooltip
+              title={AI_SUMMARY_HOVER_JOKE}
+              enterDelay={250}
+              placement="top"
+              slotProps={{ tooltip: { sx: { maxWidth: 340 } } }}
             >
-              AI summary
-            </Button>
+              <span>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  size="small"
+                  startIcon={<AutoAwesomeIcon />}
+                  onClick={openSummarySetup}
+                  sx={{ textTransform: 'none' }}
+                >
+                  AI summary
+                </Button>
+              </span>
+            </Tooltip>
             <Button
               variant="outlined"
               size="small"
@@ -1587,9 +1600,18 @@ function DashboardPage() {
             <Button type="button" onClick={() => setSummarySetupDialogOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="contained" color="secondary" startIcon={<AutoAwesomeIcon />}>
-              Generate summary
-            </Button>
+            <Tooltip
+              title={AI_SUMMARY_HOVER_JOKE}
+              enterDelay={250}
+              placement="left"
+              slotProps={{ tooltip: { sx: { maxWidth: 340 } } }}
+            >
+              <span>
+                <Button type="submit" variant="contained" color="secondary" startIcon={<AutoAwesomeIcon />}>
+                  Generate summary
+                </Button>
+              </span>
+            </Tooltip>
           </DialogActions>
         </Box>
       </Dialog>
