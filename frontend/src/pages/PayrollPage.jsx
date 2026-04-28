@@ -60,6 +60,7 @@ function PayrollPage() {
   const [presetName, setPresetName] = useState('');
   const printSummaryRef = useRef(null);
   const [capturingPdf, setCapturingPdf] = useState(false);
+  const [payrollBaseDirHandle, setPayrollBaseDirHandle] = useState(null);
   
   // Work hours - default 6:00 AM - 2:30 PM (600 - 1430)
   const [workHours, setWorkHours] = useState(
@@ -358,9 +359,54 @@ function PayrollPage() {
           position -= pageH;
         }
       }
-      const safeName = (employeeName || 'payroll').replace(/[^a-z0-9]/gi, '-');
-      const dateStr = date.replace(/\s/g, '-');
-      pdf.save(`payroll-${safeName}-${dateStr}.pdf`);
+      const cleanEmployeeName = (employeeName || 'employee').trim();
+
+      const parsePayrollDate = () => {
+        // Try parsing whatever is in the date field first, then fall back to today.
+        const parsed = new Date(date);
+        return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+      };
+      const payrollDate = parsePayrollDate();
+      const folderName = `${payrollDate.getMonth() + 1}-${payrollDate.getDate()}`;
+
+      const now = new Date();
+      const hour = ((now.getHours() + 11) % 12) + 1;
+      const minute = String(now.getMinutes()).padStart(2, '0');
+      const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
+      const timeLabel = `${hour}-${minute}-${ampm}`;
+      const safeName = cleanEmployeeName.replace(/[^a-z0-9]/gi, ' ').trim().replace(/\s+/g, '-');
+      const fileName = `${safeName || 'employee'}-${timeLabel}.pdf`;
+
+      const pdfBlob = pdf.output('blob');
+      let savedToFolder = false;
+
+      // Chromium family browsers: let user pick a base folder, then save under Payroll/<M-D>/filename.pdf
+      if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
+        try {
+          let baseDir = payrollBaseDirHandle;
+          if (!baseDir) {
+            // @ts-ignore - showDirectoryPicker is not yet in all TS DOM libs
+            baseDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+            setPayrollBaseDirHandle(baseDir);
+          }
+
+          const payrollDir = await baseDir.getDirectoryHandle('Payroll', { create: true });
+          const dateDir = await payrollDir.getDirectoryHandle(folderName, { create: true });
+          const fileHandle = await dateDir.getFileHandle(fileName, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(pdfBlob);
+          await writable.close();
+          savedToFolder = true;
+          toast.success(`Saved to Payroll/${folderName}/${fileName}`);
+        } catch (saveErr) {
+          // If user cancels folder picker or FS API fails, fall back to standard download.
+          console.warn('Folder save failed or cancelled; falling back to download:', saveErr);
+        }
+      }
+
+      if (!savedToFolder) {
+        pdf.save(`payroll-${safeName || 'employee'}-${folderName}-${timeLabel}.pdf`);
+      }
 
       try {
         await axios.post(`${API_URL}/activities/payroll/print`, {
@@ -370,7 +416,9 @@ function PayrollPage() {
       } catch (err) {
         console.error('Error logging payroll download:', err);
       }
-      toast.success('PDF downloaded');
+      if (!savedToFolder) {
+        toast.success('PDF downloaded');
+      }
     } catch (err) {
       console.error('Error generating PDF:', err);
       toast.error('Failed to generate PDF');
