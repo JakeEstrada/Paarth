@@ -1,5 +1,22 @@
 const Activity = require('../models/Activity');
 
+/**
+ * YYYY-MM-DD as local calendar day bounds (matches browser <input type="date" />).
+ * new Date("2026-04-21") is UTC midnight and can exclude/include the wrong rows vs user intent.
+ */
+function localDayBoundsFromYmd(startYmd, endYmd) {
+  const a = String(startYmd).split('-').map(Number);
+  const b = String(endYmd).split('-').map(Number);
+  if (a.length < 3 || b.length < 3) return null;
+  const [sy, sm, sd] = a;
+  const [ey, em, ed] = b;
+  const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+  const end = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  if (start > end) return null;
+  return { start, end };
+}
+
 const STAGE_LABELS = {
   APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
   ESTIMATE_IN_PROGRESS: 'Estimate In Progress',
@@ -452,11 +469,12 @@ async function getActivitiesByDateRange(req, res) {
     if (!startDate || !endDate) {
       return res.status(400).json({ error: 'startDate and endDate are required' });
     }
-    
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999); // Include entire end date
-    
+    const bounds = localDayBoundsFromYmd(startDate, endDate);
+    if (!bounds) {
+      return res.status(400).json({ error: 'Invalid date range' });
+    }
+    const { start, end } = bounds;
+
     let query = {
       createdAt: {
         $gte: start,
@@ -550,22 +568,16 @@ async function generateActivitySummary(req, res) {
     if (!startDate || !endDate) {
       return res.status(400).json({ error: 'startDate and endDate are required' });
     }
-
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      return res.status(400).json({ error: 'Invalid date format' });
+    const bounds = localDayBoundsFromYmd(startDate, endDate);
+    if (!bounds) {
+      return res.status(400).json({ error: 'Invalid date range' });
     }
+    const { start, end } = bounds;
 
-    end.setHours(23, 59, 59, 999);
-
+    const rangeFilter = { createdAt: { $gte: start, $lte: end } };
     const MAX = 500;
-    const activities = await Activity.find({
-      createdAt: {
-        $gte: start,
-        $lte: end,
-      },
-    })
+    const totalInRange = await Activity.countDocuments(rangeFilter);
+    const activities = await Activity.find(rangeFilter)
       .populate('createdBy', 'name email')
       .populate('customerId', 'name')
       .populate('jobId', 'title')
@@ -574,15 +586,19 @@ async function generateActivitySummary(req, res) {
       .limit(MAX);
 
     if (activities.length === 0) {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
       return res.json({
         summary: 'No activity was recorded in this date range.',
         activityCount: 0,
+        totalInRange: 0,
         truncated: false,
+        newestActivityAt: null,
+        generatedAt: new Date().toISOString(),
       });
     }
 
     const lines = activities.map(formatActivityLineForSummary);
-    const truncated = activities.length >= MAX;
+    const truncated = totalInRange > MAX;
 
     let summary;
     try {
@@ -590,7 +606,7 @@ async function generateActivitySummary(req, res) {
         startDateStr: startDate,
         endDateStr: endDate,
         activityLines: lines,
-        totalActivityCount: activities.length,
+        totalActivityCount: totalInRange,
         userInstructions,
       });
     } catch (e) {
@@ -617,10 +633,18 @@ async function generateActivitySummary(req, res) {
       });
     }
 
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     res.json({
       summary,
+      /** Rows sent to the model (capped) */
       activityCount: activities.length,
+      /** Total activity rows in range in the database */
+      totalInRange,
       truncated,
+      newestActivityAt: activities[0]?.createdAt
+        ? new Date(activities[0].createdAt).toISOString()
+        : null,
+      generatedAt: new Date().toISOString(),
     });
   } catch (error) {
     console.error('generateActivitySummary:', error);

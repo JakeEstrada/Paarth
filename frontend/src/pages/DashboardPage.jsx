@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -163,7 +163,12 @@ function DashboardPage() {
   const [summaryUserPrompt, setSummaryUserPrompt] = useState('');
   const [summaryText, setSummaryText] = useState('');
   const [summaryActivityCount, setSummaryActivityCount] = useState(null);
+  const [summaryTotalInRange, setSummaryTotalInRange] = useState(null);
+  const [summaryNewestAt, setSummaryNewestAt] = useState(null);
+  const [summaryGeneratedAt, setSummaryGeneratedAt] = useState(null);
   const [summaryTruncated, setSummaryTruncated] = useState(false);
+  /** Last successful request — used for "Refresh" to re-query DB + regenerate (no caching). */
+  const [summaryLastRequest, setSummaryLastRequest] = useState(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [activityToDelete, setActivityToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -550,40 +555,38 @@ function DashboardPage() {
   });
 
   const openSummarySetup = () => {
-    setSummaryStartDate(format(subDays(new Date(), 6), 'yyyy-MM-dd'));
-    setSummaryEndDate(format(new Date(), 'yyyy-MM-dd'));
-    setSummaryUserPrompt('');
     setSummarySetupDialogOpen(true);
   };
 
-  const handleConfirmSummaryRequest = async () => {
-    if (!summaryStartDate || !summaryEndDate) {
-      toast.error('Choose a start and end date');
-      return;
-    }
-    if (summaryStartDate > summaryEndDate) {
-      toast.error('Start date must be on or before end date');
-      return;
-    }
-    setSummarySetupDialogOpen(false);
+  const resetSummaryDatesToLast7Days = () => {
+    setSummaryStartDate(format(subDays(new Date(), 6), 'yyyy-MM-dd'));
+    setSummaryEndDate(format(new Date(), 'yyyy-MM-dd'));
+  };
+
+  const runActivitySummary = useCallback(async (payload) => {
     setSummaryLoading(true);
     setSummaryText('');
     setSummaryActivityCount(null);
+    setSummaryTotalInRange(null);
+    setSummaryNewestAt(null);
+    setSummaryGeneratedAt(null);
     setSummaryTruncated(false);
     setSummaryResultDialogOpen(true);
     try {
-      const payload = {
-        startDate: summaryStartDate,
-        endDate: summaryEndDate,
-      };
-      const trimmed = summaryUserPrompt.trim();
-      if (trimmed) {
-        payload.prompt = trimmed;
-      }
       const res = await axios.post(`${API_URL}/activities/summary`, payload);
       setSummaryText(res.data.summary || '');
       setSummaryActivityCount(typeof res.data.activityCount === 'number' ? res.data.activityCount : null);
+      setSummaryTotalInRange(
+        typeof res.data.totalInRange === 'number' ? res.data.totalInRange : null
+      );
+      setSummaryNewestAt(res.data.newestActivityAt || null);
+      setSummaryGeneratedAt(res.data.generatedAt || null);
       setSummaryTruncated(Boolean(res.data.truncated));
+      setSummaryLastRequest({
+        startDate: payload.startDate,
+        endDate: payload.endDate,
+        prompt: payload.prompt || '',
+      });
     } catch (error) {
       setSummaryResultDialogOpen(false);
       const msg =
@@ -600,6 +603,35 @@ function DashboardPage() {
     } finally {
       setSummaryLoading(false);
     }
+  }, []);
+
+  const handleConfirmSummaryRequest = async () => {
+    if (!summaryStartDate || !summaryEndDate) {
+      toast.error('Choose a start and end date');
+      return;
+    }
+    if (summaryStartDate > summaryEndDate) {
+      toast.error('Start date must be on or before end date');
+      return;
+    }
+    setSummarySetupDialogOpen(false);
+    const payload = { startDate: summaryStartDate, endDate: summaryEndDate };
+    const trimmed = summaryUserPrompt.trim();
+    if (trimmed) {
+      payload.prompt = trimmed;
+    }
+    await runActivitySummary(payload);
+  };
+
+  const handleRefreshActivitySummary = async () => {
+    if (!summaryLastRequest) {
+      return;
+    }
+    const p = { startDate: summaryLastRequest.startDate, endDate: summaryLastRequest.endDate };
+    if (summaryLastRequest.prompt) {
+      p.prompt = summaryLastRequest.prompt;
+    }
+    await runActivitySummary(p);
   };
 
   // Handle print
@@ -1507,10 +1539,18 @@ function DashboardPage() {
         >
           <DialogTitle>AI activity summary</DialogTitle>
           <DialogContent>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Pick the date range to include (all logged activity in that window, not just the 50 rows below).
-              Optionally add a short note so the summary emphasizes what you care about.
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              The summary is built from the activity timeline in this range (logged events, notes, stage
+              changes, and similar). Edits that do not add a row to the activity feed will not appear here.
             </Typography>
+            <Button
+              type="button"
+              size="small"
+              onClick={resetSummaryDatesToLast7Days}
+              sx={{ textTransform: 'none', mb: 2, p: 0, minWidth: 0 }}
+            >
+              Use last 7 days
+            </Button>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
               <TextField
                 label="From"
@@ -1580,13 +1620,39 @@ function DashboardPage() {
               Generating summary… this can take a few seconds.
             </Typography>
           )}
-          {(summaryActivityCount !== null || summaryTruncated) && !summaryLoading && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-              {summaryActivityCount !== null &&
-                `${summaryActivityCount} activit${summaryActivityCount === 1 ? 'y' : 'ies'} in selected range`}
-              {summaryTruncated &&
-                `${summaryActivityCount !== null ? ' · ' : ''}Analysis uses up to the 500 most recent items in range`}
-            </Typography>
+          {!summaryLoading && (summaryActivityCount !== null || summaryTotalInRange !== null || summaryTruncated) && (
+            <Box sx={{ mb: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" component="div">
+                {summaryTotalInRange != null && (
+                  <>
+                    {summaryTotalInRange} event{summaryTotalInRange === 1 ? '' : 's'} in this range in the database
+                    {summaryTotalInRange > 500
+                      ? ` (AI uses the 500 most recent: ${summaryActivityCount ?? 500} loaded)`
+                      : null}
+                  </>
+                )}
+                {summaryTotalInRange == null && summaryActivityCount != null && (
+                  <>
+                    {summaryActivityCount} event{summaryActivityCount === 1 ? '' : 's'} sent to the model
+                    {summaryTruncated ? ' (capped at 500)' : null}
+                  </>
+                )}
+                {summaryNewestAt && (
+                  <span>
+                    {(summaryTotalInRange != null || summaryActivityCount != null) ? ' · ' : null}Newest included:{' '}
+                    {format(parseISO(summaryNewestAt), 'PPp')}
+                  </span>
+                )}
+              </Typography>
+              {summaryGeneratedAt && (
+                <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
+                  Generated: {format(parseISO(summaryGeneratedAt), 'PPp')}
+                  {summaryLastRequest
+                    ? ` — refresh re-runs from the server (no cache). If something is still missing, add a timeline entry or check the date range.`
+                    : null}
+                </Typography>
+              )}
+            </Box>
           )}
           <Box
             sx={{
@@ -1610,6 +1676,13 @@ function DashboardPage() {
           </Box>
         </DialogContent>
         <DialogActions>
+          <Button
+            onClick={handleRefreshActivitySummary}
+            disabled={!summaryLastRequest || summaryLoading}
+            sx={{ textTransform: 'none' }}
+          >
+            Refresh summary
+          </Button>
           <Button
             onClick={() => {
               if (summaryText) {
