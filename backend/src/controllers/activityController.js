@@ -225,7 +225,8 @@ async function openAiSummarizeActivities({
     'OUTPUT STYLE — Keep each bullet minimal: **Name** — short description of what happened (the action only). Do NOT include job titles as labels, dollar amounts, estimates, contracted values, or phrases like "Job:", "Value:", or currency.',
     'REQUIREMENT: Cover every distinct customer / name from the data at least once when relevant; use sub-bullets only when needed. Do not skip smaller accounts.',
     'If developer-only or internal tasks are present, put them under "## Scheduling and tasks" where appropriate.',
-    'Return valid markdown. Use exactly these headings in order: "## Date range overview", "## Customer and job movement", "## Notable notes", "## Scheduling and tasks", "## Follow-ups".',
+    'PROJECT UPDATES: Any activity that is clearly about a **project** (input action types Project Created, Project Updated, Project Deleted, Project Note Added, or any line that includes "Project:" in the task part) belongs under "## Project updates" only — do not put those under "## Notable notes". General job/customer notes stay under Notable notes.',
+    'Return valid markdown. Use exactly these headings in order: "## Date range overview", "## Customer and job movement", "## Project updates", "## Notable notes", "## Scheduling and tasks", "## Follow-ups".',
     'Use compact bullets under each section. If the user included extra instructions, honor them when consistent with the activity list. Do not invent facts.',
     'If there is no activity, return: "## Date range overview\\n- No activity recorded in this range."',
   ].join(' ');
