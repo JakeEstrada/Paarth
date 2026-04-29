@@ -1,9 +1,10 @@
 import axios from 'axios';
-import toast from 'react-hot-toast';
-
-const TENANT_HEADER = 'x-tenant-id';
-const LOGIN_PATH = '/login';
-let handledAuthExpiry = false;
+import {
+  attachSessionExpiryGuards,
+  isAuthFlowPagePath,
+  isAuthLoginOrRegisterRequest,
+  redirectToLoginDueToSessionExpiry,
+} from './authSession';
 
 /**
  * Default axios is used across many pages. Attach auth + tenant on every request from
@@ -16,37 +17,27 @@ axios.interceptors.request.use((config) => {
   }
   const tenantId = localStorage.getItem('tenantId');
   const id = tenantId != null ? String(tenantId).trim() : '';
-  if (id && /^[a-fA-F0-9]{24}$/.test(id) && !config.headers[TENANT_HEADER]) {
-    config.headers[TENANT_HEADER] = id;
+  if (id && /^[a-fA-F0-9]{24}$/.test(id) && !config.headers['x-tenant-id']) {
+    config.headers['x-tenant-id'] = id;
   }
   return config;
 });
 
 /**
  * Global 401 handling for the default axios client used across pages.
- * If a token expires mid-session, immediately clear auth and return user to login.
+ * If a token expires mid-session, clear auth and return user to login.
  */
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error?.response?.status === 401) {
-      const currentPath = window.location.pathname || '/';
-      const isAuthPage =
-        currentPath === '/login' ||
-        currentPath === '/register' ||
-        currentPath === '/forgot-password' ||
-        currentPath === '/forgot-username';
-
-      // Avoid repeated redirects/toasts when many requests fail at once.
-      if (!handledAuthExpiry && !isAuthPage) {
-        handledAuthExpiry = true;
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        delete axios.defaults.headers.common.Authorization;
-        toast.error('Session expired. Please sign in again.');
-        window.location.assign(LOGIN_PATH);
+      if (isAuthFlowPagePath() || isAuthLoginOrRegisterRequest(error.config)) {
+        return Promise.reject(error);
       }
+      redirectToLoginDueToSessionExpiry();
     }
     return Promise.reject(error);
   }
 );
+
+attachSessionExpiryGuards();

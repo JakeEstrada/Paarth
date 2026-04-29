@@ -1,4 +1,9 @@
 import axios from 'axios';
+import {
+  isAuthFlowPagePath,
+  isAuthLoginOrRegisterRequest,
+  redirectToLoginDueToSessionExpiry,
+} from './authSession';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -24,15 +29,14 @@ api.interceptors.request.use(
   }
 );
 
-// Handle 401 errors (unauthorized)
+// Same session-expiry behavior as default axios (configureAxios.js)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid, clear it and redirect to login
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      window.location.href = '/login';
+      if (!isAuthFlowPagePath() && !isAuthLoginOrRegisterRequest(error.config)) {
+        redirectToLoginDueToSessionExpiry();
+      }
     }
     return Promise.reject(error);
   }
