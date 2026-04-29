@@ -42,6 +42,7 @@ import {
   Person as PersonIcon,
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, startOfWeek, endOfWeek, isSameDay, addDays } from 'date-fns';
 import axios from 'axios';
@@ -57,6 +58,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
 const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
+const CALENDAR_INSTALLER_ORDER_KEY = 'calendarInstallerOrder';
 
 // Default installer order used for calendar lanes and suggestions
 const DEFAULT_INSTALLER_ORDER = [
@@ -67,6 +69,19 @@ const DEFAULT_INSTALLER_ORDER = [
   'Moris',
   'Hayden'
 ];
+
+function normalizeInstallerOrder(names) {
+  const seen = new Set();
+  return (Array.isArray(names) ? names : [])
+    .map((n) => String(n || '').trim())
+    .filter((n) => {
+      if (!n) return false;
+      const k = n.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+}
 
 function toISODate(year, month, day) {
   const mm = String(month).padStart(2, '0');
@@ -1271,7 +1286,20 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
   const [benchHeight, setBenchHeight] = useState(250);
   const [isResizing, setIsResizing] = useState(false);
   const [isBenchMinimized, setIsBenchMinimized] = useState(false);
-  const [installerOrder, setInstallerOrder] = useState(DEFAULT_INSTALLER_ORDER);
+  const [installerBaseOrder, setInstallerBaseOrder] = useState(() => {
+    try {
+      const stored = localStorage.getItem(CALENDAR_INSTALLER_ORDER_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const cleaned = normalizeInstallerOrder(parsed);
+        if (cleaned.length > 0) return cleaned;
+      }
+    } catch (_) {}
+    return DEFAULT_INSTALLER_ORDER;
+  });
+  const [installerOrder, setInstallerOrder] = useState(installerBaseOrder);
+  const [installerSettingsOpen, setInstallerSettingsOpen] = useState(false);
+  const [installerDraftOrder, setInstallerDraftOrder] = useState(installerBaseOrder);
 
   const [benchPosition, setBenchPosition] = useState(() => {
     if (tvMode) return 'right';
@@ -1310,6 +1338,12 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
   }, [hiddenWeekdays]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(CALENDAR_INSTALLER_ORDER_KEY, JSON.stringify(installerBaseOrder));
+    } catch (_) {}
+  }, [installerBaseOrder]);
+
+  useEffect(() => {
     fetchJobs();
   }, [currentDate]);
 
@@ -1346,7 +1380,7 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
       setScheduledJobs(scheduled);
 
       // Update installer order based on any installers used in jobs
-      const installerSet = new Set(DEFAULT_INSTALLER_ORDER);
+      const installerSet = new Set(installerBaseOrder);
       [...bench, ...scheduled].forEach(job => {
         const entries = Array.isArray(job?.schedule?.entries) ? job.schedule.entries : [];
         const installers = entries.length > 0
@@ -1365,7 +1399,48 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [installerBaseOrder]);
+
+  const openInstallerSettings = () => {
+    setInstallerDraftOrder(installerBaseOrder);
+    setInstallerSettingsOpen(true);
+  };
+
+  const updateInstallerDraftAt = (index, value) => {
+    setInstallerDraftOrder((prev) => prev.map((name, i) => (i === index ? value : name)));
+  };
+
+  const moveInstallerDraft = (index, direction) => {
+    setInstallerDraftOrder((prev) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[nextIndex];
+      copy[nextIndex] = temp;
+      return copy;
+    });
+  };
+
+  const removeInstallerDraft = (index) => {
+    setInstallerDraftOrder((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addInstallerDraft = () => {
+    setInstallerDraftOrder((prev) => [...prev, '']);
+  };
+
+  const saveInstallerSettings = async () => {
+    const cleaned = normalizeInstallerOrder(installerDraftOrder);
+    if (cleaned.length === 0) {
+      toast.error('Add at least one installer name');
+      return;
+    }
+    setInstallerBaseOrder(cleaned);
+    setInstallerSettingsOpen(false);
+    toast.success('Installer defaults updated');
+    await fetchJobs();
+  };
 
   const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
   const handleRealtimeProjectUpdate = useCallback(() => {
@@ -2120,6 +2195,15 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
               >
                 Calendar view
               </Button>
+              <Tooltip title="Installer default order settings">
+                <IconButton
+                  size="small"
+                  onClick={openInstallerSettings}
+                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                >
+                  <SettingsIcon />
+                </IconButton>
+              </Tooltip>
             </>
           ) : null}
           {tvMode && (
@@ -2237,6 +2321,55 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
         installerOptions={installerOrder}
         selectedInstaller={selectedInstaller}
       />
+
+      <Dialog open={installerSettingsOpen} onClose={() => setInstallerSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Installer order settings</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Set the default installer names and order used in calendar lanes and installer suggestions.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+            {installerDraftOrder.map((name, idx) => (
+              <Box key={`installer-draft-${idx}`} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  label={`Installer ${idx + 1}`}
+                  value={name}
+                  onChange={(e) => updateInstallerDraftAt(idx, e.target.value)}
+                />
+                <IconButton size="small" onClick={() => moveInstallerDraft(idx, -1)} disabled={idx === 0}>
+                  <ExpandLessIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={() => moveInstallerDraft(idx, 1)}
+                  disabled={idx === installerDraftOrder.length - 1}
+                >
+                  <ExpandMoreIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => removeInstallerDraft(idx)}
+                  disabled={installerDraftOrder.length <= 1}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            ))}
+          </Box>
+          <Button startIcon={<AddIcon />} onClick={addInstallerDraft} size="small" sx={{ mt: 1.5 }}>
+            Add installer
+          </Button>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setInstallerSettingsOpen(false)}>Cancel</Button>
+          <Button onClick={saveInstallerSettings} variant="contained">
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Job detail modal (customer, files, etc.) */}
       <JobDetailModal

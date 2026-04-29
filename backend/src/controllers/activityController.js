@@ -116,39 +116,18 @@ function humanActivityDetail(activity) {
 
 const MAX_LINE_DETAIL_CHARS = 400;
 
-function jobDollarValue(job) {
-  if (!job || typeof job !== 'object') return 0;
-  return Math.max(Number(job.valueContracted) || 0, Number(job.valueEstimated) || 0);
-}
-
-function jobValueLabel(job) {
-  if (!job || typeof job !== 'object') return 'Value: n/a (no job)';
-  const c = job.valueContracted;
-  const e = job.valueEstimated;
-  if ((!c || c === 0) && (!e || e === 0)) return 'Value: $0 (unsized)';
-  const bits = [];
-  if (c && c > 0) bits.push(`contracted $${c}`);
-  if (e && e > 0) bits.push(`est. $${e}`);
-  return bits.length ? `Value: ${bits.join(' / ')}` : 'Value: n/a';
-}
-
 /**
- * Most expensive / highest-value jobs first, then by recency, then no-job at end.
+ * Chronological order (oldest first) for a readable day narrative.
  */
 function sortActivitiesForSummary(activities) {
-  return [...activities].sort((a, b) => {
-    const av = jobDollarValue(a.jobId);
-    const bv = jobDollarValue(b.jobId);
-    if (bv !== av) {
-      return bv - av;
-    }
-    return new Date(b.createdAt) - new Date(a.createdAt);
-  });
+  return [...activities].sort(
+    (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+  );
 }
 
 function formatActivityLineForSummary(activity) {
   const iso = new Date(activity.createdAt).toISOString();
-  const title = humanActivityTitle(activity);
+  const action = humanActivityTitle(activity);
   let detail = humanActivityDetail(activity);
   if (detail.length > MAX_LINE_DETAIL_CHARS) {
     detail = `${detail.slice(0, MAX_LINE_DETAIL_CHARS)}…`;
@@ -158,23 +137,19 @@ function formatActivityLineForSummary(activity) {
   const job = activity.jobId?.title || '';
   const taskLabel = activity.taskId?.title || '';
   const taskKind = activity.taskId?.isProject ? 'Project' : 'Task';
-  const valuePart = jobValueLabel(activity.jobId);
-  const parts = [valuePart];
-  if (customer) parts.push(`Customer: ${customer}`);
-  if (job) parts.push(`Job: ${job}`);
-  if (taskLabel) parts.push(`${taskKind}: ${taskLabel}`);
-  const meta = parts.join(' | ');
-  return `${iso} | ${title} | ${meta} | User: ${user || '—'} | ${detail || '—'}`;
+  const name = customer || job || '—';
+  const taskPart = taskLabel ? ` | ${taskKind}: ${taskLabel}` : '';
+  return `${iso} | Name: ${name} | ${action}${taskPart} | User: ${user || '—'} | ${detail || '—'}`;
 }
 
-/** gpt-4o-mini: keep room for full work logs; if truncated, the tail of the list (lower $ first to drop) is cut last after value-sort. */
+/** gpt-4o-mini: keep room for full work logs; if truncated, the tail (latest events) is dropped last after chronological sort. */
 const MAX_ACTIVITY_TEXT_CHARS = Math.min(
   500_000,
   Math.max(100_000, parseInt(String(process.env.OPENAI_SUMMARY_MAX_ACTIVITY_CHARS || '250000'), 10) || 250_000)
 );
 
 /**
- * @param {string[]} activityLines - sorted with highest job value first (tail may be cut if over size limit)
+ * @param {string[]} activityLines - chronological oldest-first (tail may be cut if over size limit)
  * @returns {{ text: string, includedLineCount: number, omittedLineCount: number }}
  */
 function buildActivityListForModel(activityLines) {
@@ -193,7 +168,7 @@ function buildActivityListForModel(activityLines) {
   const omittedLineCount = activityLines.length - includedLineCount;
   const suffix =
     omittedLineCount > 0
-      ? `\n[... ${omittedLineCount} line(s) omitted: payload size limit. List is ordered high job value first—omitted lines are the lowest-priority / smallest tail.]`
+      ? `\n[... ${omittedLineCount} line(s) omitted: payload size limit. List is chronological (oldest first); omitted lines are the latest events in the range.]`
       : '';
   return { text: `${lines.join('\n')}${suffix}`, includedLineCount, omittedLineCount };
 }
@@ -246,12 +221,12 @@ async function openAiSummarizeActivities({
 
   const systemPrompt = [
     'You summarize internal CRM activity for a woodworking / cabinetry business.',
-    'The activity list is ordered with HIGHER job $ value (Value: contracted / est. on each line) FIRST, then smaller jobs, then events with no job.',
-    'REQUIREMENT: Do not drop jobs just because the dollar value is $0, small, or "unsized". Every distinct job and customer in the data must appear at least once with at least one fact (a short sub-bullet is fine for tiny jobs).',
-    'Within "## Customer and job movement", sub-order bullets so the most expensive / highest Value jobs are mentioned first, then work downward in value. Still include the small jobs in that section or a clearly labeled "## Smaller or unsized jobs" subsection so nothing is skipped.',
-    'If developer-only or non-job tasks are present, they may stay under "## Scheduling and tasks" but do not use that to avoid listing real customer jobs.',
-    'Return valid markdown. Use this structure and headings: "## Date range overview", "## Customer and job movement", "## Notable notes", "## Scheduling and tasks", "## Follow-ups" (and optionally "## Smaller or unsized jobs" if that improves completeness).',
-    'Use short bullet points; use bold for customer and job names. You may be thorough—completeness beats a short word count. If the user included extra instructions, honor them when consistent with the activity list. Do not invent facts.',
+    'The activity list is chronological (oldest first). Each input line has Name (customer or fallback label), an action type, optional Task/Project title, and optional detail text.',
+    'OUTPUT STYLE — Keep each bullet minimal: **Name** — short description of what happened (the action only). Do NOT include job titles as labels, dollar amounts, estimates, contracted values, or phrases like "Job:", "Value:", or currency.',
+    'REQUIREMENT: Cover every distinct customer / name from the data at least once when relevant; use sub-bullets only when needed. Do not skip smaller accounts.',
+    'If developer-only or internal tasks are present, put them under "## Scheduling and tasks" where appropriate.',
+    'Return valid markdown. Use exactly these headings in order: "## Date range overview", "## Customer and job movement", "## Notable notes", "## Scheduling and tasks", "## Follow-ups".',
+    'Use compact bullets under each section. If the user included extra instructions, honor them when consistent with the activity list. Do not invent facts.',
     'If there is no activity, return: "## Date range overview\\n- No activity recorded in this range."',
   ].join(' ');
 
@@ -272,9 +247,9 @@ async function openAiSummarizeActivities({
   sections.push(
     `Date range (inclusive): ${startDateStr} through ${endDateStr}`,
     `Total activities in this date range (in database): ${totalActivityCount}`,
-    `This prompt includes ${includedLineCount} event line(s) in the list below, sorted with highest job Value (contract/estimate) first, then smaller jobs.${omittedLineCount > 0 ? ` ${omittedLineCount} more line(s) were omitted only due to size limits (usually the lowest $ tail of the list).` : ''}`,
+    `This prompt includes ${includedLineCount} event line(s) in the list below, in chronological order (oldest first).${omittedLineCount > 0 ? ` ${omittedLineCount} more line(s) were omitted only due to size limits (the latest events in the range).` : ''}`,
     '',
-    'Activities (higher job $ first, then by recency; each line has Value:):',
+    'Activities (each line: timestamp | Name | action | optional Task/Project | user | detail):',
     '---',
     activityListText,
     '---'
@@ -622,7 +597,7 @@ async function generateActivitySummary(req, res) {
     const activities = await Activity.find(rangeFilter)
       .populate('createdBy', 'name email')
       .populate('customerId', 'name')
-      .populate('jobId', 'title valueEstimated valueContracted')
+      .populate('jobId', 'title')
       .populate('taskId', 'title isProject')
       .sort({ createdAt: -1 })
       .limit(MAX);
