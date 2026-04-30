@@ -57,6 +57,7 @@ app.use(
       'Authorization',
       'x-tenant-id',
       'x-tenant-slug',
+      'x-socket-id',
       'Cache-Control',
       'Pragma',
     ],
