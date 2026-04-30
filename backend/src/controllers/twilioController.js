@@ -74,10 +74,20 @@ function getTwilioConfig() {
   };
 }
 
-async function sendSmsViaTwilio({ to, message }) {
+function normalizeMediaUrls(input) {
+  if (!input) return [];
+  const list = Array.isArray(input) ? input : [input];
+  return list
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .filter((value) => /^https?:\/\//i.test(value));
+}
+
+async function sendSmsViaTwilio({ to, message, mediaUrl }) {
   const { accountSid, authToken, from } = getTwilioConfig();
   const normalizedTo = normalizeToE164(to);
   const body = String(message || '').trim();
+  const mediaUrls = normalizeMediaUrls(mediaUrl);
 
   if (!accountSid || !authToken) {
     throw new Error('Twilio account is not configured');
@@ -85,8 +95,8 @@ async function sendSmsViaTwilio({ to, message }) {
   if (!normalizedTo) {
     throw new Error('Recipient phone number is required');
   }
-  if (!body) {
-    throw new Error('Message is required');
+  if (!body && mediaUrls.length === 0) {
+    throw new Error('Message or media URL is required');
   }
   if (!from) {
     throw new Error('TWILIO_PHONE_NUMBER is not configured');
@@ -95,7 +105,10 @@ async function sendSmsViaTwilio({ to, message }) {
   const form = new URLSearchParams();
   form.set('To', normalizedTo);
   form.set('From', from);
-  form.set('Body', body);
+  if (body) {
+    form.set('Body', body);
+  }
+  mediaUrls.forEach((url) => form.append('MediaUrl', url));
 
   const response = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
@@ -126,6 +139,7 @@ async function sendSms(req, res) {
     const data = await sendSmsViaTwilio({
       to: req.body?.to,
       message: req.body?.message,
+      mediaUrl: req.body?.mediaUrl,
     });
     return res.status(200).json({ success: true, ...data });
   } catch (error) {

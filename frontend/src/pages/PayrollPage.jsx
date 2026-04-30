@@ -42,7 +42,6 @@ import {
   Save as SaveIcon,
   Delete as DeleteIcon,
   Share as ShareIcon,
-  NotificationsActive as NotificationsActiveIcon,
 } from '@mui/icons-material';
 
 const DAYS = ['Friday', 'Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'];
@@ -67,11 +66,6 @@ function PayrollPage() {
   const [payrollTextPhone, setPayrollTextPhone] = useState('');
   const [payrollTextMessage, setPayrollTextMessage] = useState('');
   const [sendingPayrollText, setSendingPayrollText] = useState(false);
-  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
-  const [reminderPhone, setReminderPhone] = useState('');
-  const [reminderMessage, setReminderMessage] = useState('');
-  const [reminderSendAt, setReminderSendAt] = useState('');
-  const [sendingReminderText, setSendingReminderText] = useState(false);
   
   // Work hours - default 6:00 AM - 2:30 PM (600 - 1430)
   const [workHours, setWorkHours] = useState(
@@ -483,12 +477,12 @@ function PayrollPage() {
       setSendingPayrollText(true);
       setCapturingPdf(true);
       const pdfLink = await uploadPayrollPdfAndGetLink();
-      const messageWithPdf = `${payrollTextMessage.trim()}\n\nPayroll PDF copy: ${pdfLink}`;
       await axios.post(`${API_URL}/twilio/send-sms`, {
         to: payrollTextPhone.trim(),
-        message: messageWithPdf,
+        message: payrollTextMessage.trim(),
+        mediaUrl: pdfLink,
       });
-      toast.success('Payroll text sent with PDF link');
+      toast.success('Payroll PDF sent');
       setPayrollTextDialogOpen(false);
       setPayrollTextPhone('');
       setPayrollTextMessage('');
@@ -498,39 +492,6 @@ function PayrollPage() {
     } finally {
       setSendingPayrollText(false);
       setCapturingPdf(false);
-    }
-  };
-
-  const handleScheduleReminderText = async () => {
-    if (!reminderPhone.trim()) {
-      toast.error('Enter a phone number');
-      return;
-    }
-    if (!reminderMessage.trim()) {
-      toast.error('Message cannot be empty');
-      return;
-    }
-    if (!reminderSendAt) {
-      toast.error('Choose a reminder date/time');
-      return;
-    }
-    try {
-      setSendingReminderText(true);
-      await axios.post(`${API_URL}/twilio/schedule-sms`, {
-        to: reminderPhone.trim(),
-        message: reminderMessage.trim(),
-        sendAt: new Date(reminderSendAt).toISOString(),
-      });
-      toast.success('Reminder text scheduled');
-      setReminderDialogOpen(false);
-      setReminderPhone('');
-      setReminderMessage('');
-      setReminderSendAt('');
-    } catch (error) {
-      console.error('Failed to schedule reminder text:', error);
-      toast.error(error.response?.data?.error || 'Failed to schedule reminder text');
-    } finally {
-      setSendingReminderText(false);
     }
   };
 
@@ -897,14 +858,6 @@ function PayrollPage() {
               sx={{ textTransform: 'none', borderRadius: 2 }}
             >
               Text Payroll
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<NotificationsActiveIcon />}
-              onClick={() => setReminderDialogOpen(true)}
-              sx={{ textTransform: 'none', borderRadius: 2 }}
-            >
-              Text Reminder
             </Button>
           </Box>
         </Box>
@@ -1384,7 +1337,7 @@ function PayrollPage() {
       </Dialog>
 
       <Dialog open={payrollTextDialogOpen} onClose={() => setPayrollTextDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Text Payroll</DialogTitle>
+        <DialogTitle>Send Payroll PDF by Text</DialogTitle>
         <DialogContent>
           <TextField
             sx={{ mt: 1, mb: 2 }}
@@ -1406,45 +1359,7 @@ function PayrollPage() {
         <DialogActions>
           <Button onClick={() => setPayrollTextDialogOpen(false)} disabled={sendingPayrollText}>Cancel</Button>
           <Button onClick={handleSendPayrollText} variant="contained" disabled={sendingPayrollText}>
-            {sendingPayrollText ? 'Sending...' : 'Send Text'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={reminderDialogOpen} onClose={() => setReminderDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Schedule Reminder Text</DialogTitle>
-        <DialogContent>
-          <TextField
-            sx={{ mt: 1, mb: 2 }}
-            fullWidth
-            label="Send to phone number"
-            placeholder="+19495551234"
-            value={reminderPhone}
-            onChange={(e) => setReminderPhone(e.target.value)}
-          />
-          <TextField
-            sx={{ mb: 2 }}
-            fullWidth
-            label="Send at"
-            type="datetime-local"
-            value={reminderSendAt}
-            onChange={(e) => setReminderSendAt(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-          />
-          <TextField
-            fullWidth
-            multiline
-            minRows={4}
-            label="Reminder message"
-            value={reminderMessage}
-            onChange={(e) => setReminderMessage(e.target.value)}
-            placeholder="Example: Reminder: Your appointment is tomorrow at 10:00 AM."
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setReminderDialogOpen(false)} disabled={sendingReminderText}>Cancel</Button>
-          <Button onClick={handleScheduleReminderText} variant="contained" disabled={sendingReminderText}>
-            {sendingReminderText ? 'Scheduling...' : 'Schedule Text'}
+            {sendingPayrollText ? 'Sending...' : 'Send Payroll PDF'}
           </Button>
         </DialogActions>
       </Dialog>
