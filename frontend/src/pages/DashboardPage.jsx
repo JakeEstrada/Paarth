@@ -1014,10 +1014,10 @@ function DashboardPage() {
       {/* Single boxed section: all metrics + panels */}
       <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2, mb: 3 }} elevation={0} variant="outlined">
         {/* Key metrics - row 1 */}
-        <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item xs={6} sm={6} md={3}>
-          <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 1 }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+        <Grid container spacing={2} sx={{ mb: 2, alignItems: 'stretch' }}>
+        <Grid item xs={6} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ flex: 1, width: '100%', minWidth: 0, borderRadius: 2, boxShadow: 1, display: 'flex', flexDirection: 'column' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
@@ -1032,9 +1032,9 @@ function DashboardPage() {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={6} sm={6} md={3}>
-          <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 1 }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+        <Grid item xs={6} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ flex: 1, width: '100%', minWidth: 0, borderRadius: 2, boxShadow: 1, display: 'flex', flexDirection: 'column' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
@@ -1049,9 +1049,9 @@ function DashboardPage() {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={6} sm={6} md={3}>
-          <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 1 }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+        <Grid item xs={6} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ flex: 1, width: '100%', minWidth: 0, borderRadius: 2, boxShadow: 1, display: 'flex', flexDirection: 'column' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
@@ -1066,9 +1066,9 @@ function DashboardPage() {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={6} sm={6} md={3}>
-          <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 1 }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+        <Grid item xs={6} sm={6} md={3} sx={{ display: 'flex' }}>
+          <Card sx={{ flex: 1, width: '100%', minWidth: 0, borderRadius: 2, boxShadow: 1, display: 'flex', flexDirection: 'column' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
@@ -1087,80 +1087,142 @@ function DashboardPage() {
 
       {/* Secondary stats + panels layout */}
       <Grid container spacing={2} sx={{ mb: 0, alignItems: 'stretch' }}>
-        {/* Left column: small tiles stacked vertically */}
-        <Grid item xs={12} md={3} lg={3}>
-          <Grid container spacing={2} direction="column">
-            <Grid item>
-              <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2 }} elevation={0} variant="outlined">
-                <PeopleIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {stats.totalCustomers}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                  Customers
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item>
-              <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2 }} elevation={0} variant="outlined">
-                <CalendarIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {stats.upcomingAppointments.length}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                  Upcoming
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item>
-              <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2 }} elevation={0} variant="outlined">
-                <TasksIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {stats.pendingTasks.length}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                  Pending Tasks
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item>
+        {/* Left column: small tiles — equal height segments on md+ to match right column */}
+        <Grid item xs={12} md={3} lg={3} sx={{ display: 'flex', alignSelf: 'stretch' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              width: '100%',
+              flex: 1,
+              minHeight: { xs: 'auto', md: 0 },
+              height: { md: '100%' },
+            }}
+          >
+            <Paper
+              sx={{
+                p: 2,
+                textAlign: 'center',
+                borderRadius: 2,
+                flex: { xs: 'none', md: '1 1 0' },
+                minHeight: { md: 0 },
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              elevation={0}
+              variant="outlined"
+            >
+              <PeopleIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {stats.totalCustomers}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Customers
+              </Typography>
+            </Paper>
+            <Paper
+              sx={{
+                p: 2,
+                textAlign: 'center',
+                borderRadius: 2,
+                flex: { xs: 'none', md: '1 1 0' },
+                minHeight: { md: 0 },
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              elevation={0}
+              variant="outlined"
+            >
+              <CalendarIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {stats.upcomingAppointments.length}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Upcoming
+              </Typography>
+            </Paper>
+            <Paper
+              sx={{
+                p: 2,
+                textAlign: 'center',
+                borderRadius: 2,
+                flex: { xs: 'none', md: '1 1 0' },
+                minHeight: { md: 0 },
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              elevation={0}
+              variant="outlined"
+            >
+              <TasksIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {stats.pendingTasks.length}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Pending Tasks
+              </Typography>
+            </Paper>
+            <Paper
+              sx={{
+                p: 2,
+                textAlign: 'center',
+                borderRadius: 2,
+                flex: { xs: 'none', md: '1 1 0' },
+                minHeight: { md: 0 },
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderColor: stats.urgentTasks.length > 0 ? 'error.main' : undefined,
+              }}
+              elevation={0}
+              variant="outlined"
+            >
+              <WarningIcon
+                sx={{
+                  fontSize: 28,
+                  color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.secondary',
+                  mb: 0.5,
+                }}
+              />
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: 600, color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.primary' }}
+              >
+                {stats.urgentTasks.length}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Urgent
+              </Typography>
+            </Paper>
+          </Box>
+        </Grid>
+
+        {/* Right column: panels spanning remaining width */}
+        <Grid item xs={12} md={9} lg={9} sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <Grid container spacing={2} sx={{ flex: 1, width: '100%', alignItems: 'stretch' }}>
+            {/* Jobs by Stage */}
+            <Grid item xs={12} md={6} sx={{ display: 'flex', minWidth: 0 }}>
               <Paper
                 sx={{
-                  p: 2,
-                  textAlign: 'center',
+                  p: 2.5,
+                  width: '100%',
+                  flex: 1,
+                  minHeight: { md: 280 },
                   borderRadius: 2,
-                  borderColor: stats.urgentTasks.length > 0 ? 'error.main' : undefined,
+                  display: 'flex',
+                  flexDirection: 'column',
                 }}
                 elevation={0}
                 variant="outlined"
               >
-                <WarningIcon
-                  sx={{
-                    fontSize: 28,
-                    color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.secondary',
-                    mb: 0.5,
-                  }}
-                />
-                <Typography
-                  variant="h6"
-                  sx={{ fontWeight: 600, color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.primary' }}
-                >
-                  {stats.urgentTasks.length}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                  Urgent
-                </Typography>
-              </Paper>
-            </Grid>
-          </Grid>
-        </Grid>
-
-        {/* Right column: panels spanning remaining width */}
-        <Grid item xs={12} md={9} lg={9} sx={{ display: 'flex' }}>
-          <Grid container spacing={2} sx={{ flex: 1, alignContent: 'stretch' }}>
-            {/* Jobs by Stage */}
-            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                     Jobs by Stage
@@ -1174,7 +1236,16 @@ function DashboardPage() {
                     No active jobs
                   </Typography>
                 ) : (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 1,
+                      flex: 1,
+                      minHeight: 0,
+                      overflow: 'auto',
+                    }}
+                  >
                     {Object.entries(stats.jobsByStage)
                       .sort((a, b) => b[1] - a[1])
                       .map(([stage, count]) => (
@@ -1194,8 +1265,21 @@ function DashboardPage() {
             </Grid>
 
             {/* Pending Tasks panel */}
-            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
+            <Grid item xs={12} md={6} sx={{ display: 'flex', minWidth: 0 }}>
+              <Paper
+                sx={{
+                  p: 2.5,
+                  width: '100%',
+                  flex: 1,
+                  minHeight: { md: 280 },
+                  borderRadius: 2,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+                elevation={0}
+                variant="outlined"
+              >
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                     Pending Tasks
@@ -1209,7 +1293,7 @@ function DashboardPage() {
                     No pending tasks
                   </Typography>
                 ) : (
-                  <List>
+                  <List sx={{ flex: 1, minHeight: 0, overflow: 'auto', py: 0 }}>
                     {stats.pendingTasks.map((task, index) => (
                       <Box key={task._id || index}>
                         <ListItem>
@@ -1243,8 +1327,19 @@ function DashboardPage() {
             </Grid>
 
             {/* Upcoming Appointments - full width under panels */}
-            <Grid item xs={12} sx={{ display: 'flex' }}>
-              <Paper sx={{ p: 2.5, height: '100%', borderRadius: 2 }} elevation={0} variant="outlined">
+            <Grid item xs={12} sx={{ display: 'flex', minWidth: 0 }}>
+              <Paper
+                sx={{
+                  p: 2.5,
+                  width: '100%',
+                  flex: 1,
+                  borderRadius: 2,
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+                elevation={0}
+                variant="outlined"
+              >
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                     Upcoming Appointments
