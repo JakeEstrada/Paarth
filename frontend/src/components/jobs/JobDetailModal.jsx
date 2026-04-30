@@ -631,6 +631,7 @@ function JobDetailModal({
   };
 
   if (!open || !job) return null;
+  const headerAddressLine = getCustomerContact(job).addressLine;
 
   return (
     <Dialog
@@ -666,6 +667,42 @@ function JobDetailModal({
                 {String(job._id).length >= 8 ? String(job._id).slice(-8) : String(job._id)}
               </Typography>
             </Tooltip>
+          </Box>
+        )}
+        {headerAddressLine && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%', mb: 1.25 }}>
+            <Box
+              sx={{
+                px: 1.25,
+                py: 0.45,
+                borderRadius: 999,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: (theme) =>
+                  theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'action.hover',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 0.55,
+                maxWidth: '100%',
+              }}
+            >
+              <LocationIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  fontSize: '0.72rem',
+                  lineHeight: 1.35,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  maxWidth: { xs: '70vw', sm: '52vw', md: '44vw' },
+                }}
+                title={headerAddressLine}
+              >
+                {headerAddressLine}
+              </Typography>
+            </Box>
           </Box>
         )}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
