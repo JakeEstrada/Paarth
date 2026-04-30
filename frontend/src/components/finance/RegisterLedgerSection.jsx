@@ -26,6 +26,7 @@ import {
 import { alpha } from '@mui/material/styles';
 import { Fullscreen, FullscreenExit, Refresh } from '@mui/icons-material';
 import PlaidBankLinkSection from './PlaidBankLinkSection';
+import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -50,6 +51,18 @@ async function getRegisterPayload(params) {
   }
 }
 
+async function postRefreshSignal() {
+  const origin = apiOrigin();
+  try {
+    return await axios.post(`${origin}/plaid/refresh`);
+  } catch (e) {
+    if (e?.response?.status === 404) {
+      return await axios.post(`${origin}/api/plaid/refresh`);
+    }
+    throw e;
+  }
+}
+
 function money(n) {
   return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -64,27 +77,34 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
   const [sort, setSort] = useState('desc');
   const [days, setDays] = useState(90);
   const [registerSync, setRegisterSync] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const panelRef = useRef(null);
   const accountIdRef = useRef(accountId);
+  const registerSyncRef = useRef(registerSync);
   const registerFetchSeqRef = useRef(0);
 
   useEffect(() => {
     accountIdRef.current = accountId;
   }, [accountId]);
 
+  useEffect(() => {
+    registerSyncRef.current = registerSync;
+  }, [registerSync]);
+
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.account_id === accountId) || null,
     [accounts, accountId]
   );
 
-  const loadRegister = useCallback(async ({ forceRefresh = false } = {}) => {
+  const loadRegister = useCallback(async ({ forceRefresh = false, silent = false } = {}) => {
     if (!active) return;
     const seq = ++registerFetchSeqRef.current;
     try {
-      setLoading(true);
-      setErrorText('');
+      if (!silent) {
+        setLoading(true);
+      }
       const acct = accountIdRef.current;
       const { data } = await getRegisterPayload({
         accountId: acct || undefined,
@@ -116,12 +136,11 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
           ? 'Bank re-authentication required. Use the Plaid gear menu and click "Reconnect account".'
           : e.response?.data?.error || 'Failed to load register data';
       setErrorText(msg);
-      setAccounts([]);
-      setTransactions([]);
-      setRegisterSync(null);
     } finally {
       if (seq === registerFetchSeqRef.current) {
-        setLoading(false);
+        if (!silent) {
+          setLoading(false);
+        }
       }
     }
   }, [active, sort, days]);
@@ -218,7 +237,25 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
   };
 
   const handleManualRefresh = async () => {
-    await loadRegister({ forceRefresh: true });
+    try {
+      setIsRefreshing(true);
+      await postRefreshSignal();
+      toast.success('Sync started. Transactions will update when Plaid finishes.');
+      const pollUntil = Date.now() + 60_000;
+      const tick = async () => {
+        await loadRegister({ silent: true });
+        const latestStatus = String(registerSyncRef.current?.status || '').toLowerCase();
+        if (Date.now() >= pollUntil || latestStatus === 'synced' || latestStatus === 'error') {
+          setIsRefreshing(false);
+          return;
+        }
+        setTimeout(tick, 5000);
+      };
+      setTimeout(tick, 1500);
+    } catch (e) {
+      setIsRefreshing(false);
+      setErrorText(e?.response?.data?.error || e?.message || 'Failed to start refresh');
+    }
   };
 
   return (
@@ -299,7 +336,7 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
               <PlaidBankLinkSection
                 active
                 variant="titleRight"
-                onRefreshData={() => loadRegister({ forceRefresh: true })}
+                onRefreshData={handleManualRefresh}
               />
             </Box>
           </Box>
@@ -396,7 +433,7 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
                 onClick={handleManualRefresh}
                 size="small"
                 aria-label="refresh register data"
-                disabled={loading}
+                disabled={loading || isRefreshing}
               >
                 <Refresh fontSize="small" />
               </IconButton>
@@ -414,11 +451,19 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
       {registerSync ? (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center', mb: 1 }}>
           <Chip size="small" variant="outlined" label={`Source: ${registerSync.source || '—'}`} />
+          <Chip size="small" variant="outlined" label={`Status: ${registerSync.status || 'idle'}`} />
           <Chip
             size="small"
             variant="outlined"
             label={`Synced: ${registerSync.syncedAt ? new Date(registerSync.syncedAt).toLocaleString() : '—'}`}
           />
+          {registerSync.lastRefreshRequestedAt ? (
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`Refresh requested: ${new Date(registerSync.lastRefreshRequestedAt).toLocaleString()}`}
+            />
+          ) : null}
         </Box>
       ) : null}
 
@@ -434,7 +479,14 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
             : registerSync.nextPlaidRefreshAfter
               ? `${new Date(registerSync.nextPlaidRefreshAfter).toLocaleString()}.`
             : 'the next schedule window.'}
+          {registerSync.syncError ? ` Last sync error: ${registerSync.syncError}.` : ''}
         </Typography>
+      ) : null}
+
+      {isRefreshing ? (
+        <Alert severity="info" sx={{ mb: 1 }}>
+          Sync started. Transactions will update when Plaid finishes processing.
+        </Alert>
       ) : null}
 
       {errorText ? (

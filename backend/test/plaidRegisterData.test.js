@@ -4,6 +4,8 @@ const {
   computeRegisterForceRefresh,
   computeRegisterDataSource,
   shouldRefreshAtScheduledTime,
+  applyTransactionSyncDelta,
+  shouldHandleWebhook,
 } = require('../src/controllers/plaidController');
 const { fetchRegisterSnapshotFromPlaid } = require('../src/services/plaidRegisterSnapshot');
 
@@ -105,4 +107,49 @@ test('fetchRegisterSnapshotFromPlaid uses accountsGet when not preferLiveBalance
   };
   await fetchRegisterSnapshotFromPlaid(client, 'token', 7, { preferLiveBalances: false });
   assert.deepEqual(calls, ['accounts']);
+});
+
+test('applyTransactionSyncDelta upserts added and modified rows idempotently', () => {
+  const existing = [
+    { transaction_id: 'a', date: '2024-01-01', name: 'old a', amount: 1 },
+    { transaction_id: 'b', date: '2024-01-02', name: 'old b', amount: 2 },
+  ];
+  const next = applyTransactionSyncDelta(existing, {
+    added: [{ transaction_id: 'c', account_id: '1', date: '2024-01-03', name: 'new c', amount: 3 }],
+    modified: [{ transaction_id: 'b', account_id: '1', date: '2024-01-02', name: 'new b', amount: 22 }],
+    removed: [],
+  });
+  assert.equal(next.length, 3);
+  assert.equal(next.find((t) => t.transaction_id === 'b')?.name, 'new b');
+  assert.equal(next.find((t) => t.transaction_id === 'c')?.name, 'new c');
+});
+
+test('applyTransactionSyncDelta removes deleted rows safely', () => {
+  const existing = [
+    { transaction_id: 'a', date: '2024-01-01', name: 'a', amount: 1 },
+    { transaction_id: 'b', date: '2024-01-02', name: 'b', amount: 2 },
+  ];
+  const next = applyTransactionSyncDelta(existing, {
+    added: [],
+    modified: [],
+    removed: [{ transaction_id: 'a' }, { transaction_id: 'missing' }],
+  });
+  assert.equal(next.length, 1);
+  assert.equal(next[0].transaction_id, 'b');
+});
+
+test('shouldHandleWebhook only accepts transaction sync webhook events', () => {
+  assert.equal(
+    shouldHandleWebhook({ webhook_type: 'TRANSACTIONS', webhook_code: 'SYNC_UPDATES_AVAILABLE' }),
+    true
+  );
+  assert.equal(
+    shouldHandleWebhook({ webhook_type: 'TRANSACTIONS', webhook_code: 'DEFAULT_UPDATE' }),
+    true
+  );
+  assert.equal(shouldHandleWebhook({ webhook_type: 'ITEM', webhook_code: 'ERROR' }), false);
+  assert.equal(
+    shouldHandleWebhook({ webhook_type: 'TRANSACTIONS', webhook_code: 'TRANSACTIONS_REMOVED' }),
+    false
+  );
 });

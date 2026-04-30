@@ -22,6 +22,8 @@ function makeAccount(id, balance) {
 describe('RegisterLedgerSection Plaid refresh', () => {
   beforeEach(() => {
     vi.mocked(axios.get).mockReset();
+    vi.mocked(axios.post).mockReset();
+    vi.mocked(axios.post).mockResolvedValue({ data: { success: true, status: 'sync_started' } });
   });
 
   it('updates balance banner and transactions after force refresh; keeps account id when still present', async () => {
@@ -51,7 +53,7 @@ describe('RegisterLedgerSection Plaid refresh', () => {
             data: {
               accounts: [makeAccount('acc-same', 1000)],
               transactions: [oldTxn],
-              registerSync: { syncedAt: '2024-01-01T00:00:00.000Z', source: 'cache' },
+              registerSync: { syncedAt: '2024-01-01T00:00:00.000Z', source: 'db', status: 'idle' },
             },
           });
         }
@@ -59,7 +61,7 @@ describe('RegisterLedgerSection Plaid refresh', () => {
           data: {
             accounts: [makeAccount('acc-same', 1200)],
             transactions: [newTxn],
-            registerSync: { syncedAt: '2024-06-01T12:00:00.000Z', source: 'plaid' },
+            registerSync: { syncedAt: '2024-06-01T12:00:00.000Z', source: 'db', status: 'synced' },
           },
         });
       }
@@ -83,7 +85,7 @@ describe('RegisterLedgerSection Plaid refresh', () => {
     });
     expect(screen.getByText('New merchant')).toBeInTheDocument();
     expect(screen.queryByText('Old merchant')).not.toBeInTheDocument();
-    expect(screen.getByText(/Source:\s*plaid/i)).toBeInTheDocument();
+    expect(screen.getByText(/Source:\s*db/i)).toBeInTheDocument();
   });
 
   it('falls back to first account when selected account disappears after refresh', async () => {
@@ -96,7 +98,7 @@ describe('RegisterLedgerSection Plaid refresh', () => {
             data: {
               accounts: [makeAccount('keep', 800), makeAccount('other', 500)],
               transactions: [],
-              registerSync: { syncedAt: '2024-01-01T00:00:00.000Z', source: 'cache' },
+              registerSync: { syncedAt: '2024-01-01T00:00:00.000Z', source: 'db', status: 'idle' },
             },
           });
         }
@@ -104,7 +106,7 @@ describe('RegisterLedgerSection Plaid refresh', () => {
           data: {
             accounts: [makeAccount('keep', 900)],
             transactions: [],
-            registerSync: { syncedAt: '2024-06-01T12:00:00.000Z', source: 'plaid' },
+            registerSync: { syncedAt: '2024-06-01T12:00:00.000Z', source: 'db', status: 'synced' },
           },
         });
       }

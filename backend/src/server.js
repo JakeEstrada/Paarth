@@ -8,6 +8,7 @@ const { ensureTenantBySlug, ensureDefaultTenant, normalizeTenantSlug } = require
 const { backfillTenantIds } = require('./scripts/backfillTenantIds');
 const Tenant = require('./models/Tenant');
 const { initializeSocketServer } = require('./services/socketServer');
+const { startDailyPlaidRefreshJob } = require('./controllers/plaidController');
 
 function isLikelyObjectId(value) {
   if (!value || typeof value !== 'string') return false;
@@ -277,6 +278,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 })
   .then(() => {
     console.log('Yaas! MongoDB connected');
+    startDailyPlaidRefreshJob();
     ensureDefaultTenant()
       .then((tenant) => backfillTenantIds(tenant._id))
       .catch((error) => {

@@ -25,6 +25,7 @@ function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
   const canManage = user && LINK_ROLES.has(user.role);
   const menuOpen = Boolean(menuAnchorEl);
   const linked = Boolean(status?.linked);
+  const syncStatus = status?.syncStatus || 'idle';
 
   const loadStatus = useCallback(async () => {
     try {
@@ -128,7 +129,6 @@ function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
     try {
       setBusy(true);
       await onRefreshData();
-      toast.success('Pulled latest Plaid register data');
     } catch (e) {
       console.error(e);
       toast.error(e?.response?.data?.error || e?.message || 'Failed to refresh register data');
@@ -185,6 +185,15 @@ function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
                 <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
                   {headline}
                 </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Sync: {syncStatus}
+                  {status?.syncedAt ? ` · Last sync ${new Date(status.syncedAt).toLocaleString()}` : ''}
+                </Typography>
+                {status?.syncError ? (
+                  <Typography variant="caption" color="error.main">
+                    Last sync error: {status.syncError}
+                  </Typography>
+                ) : null}
               </Box>
             </Box>
             <Tooltip title="Plaid settings">
