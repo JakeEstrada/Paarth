@@ -1,7 +1,6 @@
 import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
-  Container,
   Grid,
   Paper,
   Typography,
@@ -983,7 +982,7 @@ function DashboardPage() {
   }
 
   return (
-    <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 3 }, px: { xs: 1.5, sm: 2 } }}>
+    <Box sx={{ width: '100%', maxWidth: '100%', minWidth: 0, py: { xs: 2, sm: 3 } }}>
       {/* Header */}
       <Box sx={{ mb: { xs: 3, sm: 4 }, pt: { xs: 0.5, sm: 1 } }}>
         <Typography
@@ -1012,9 +1011,13 @@ function DashboardPage() {
       </Box>
 
       {/* Single boxed section: all metrics + panels */}
-      <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2, mb: 3 }} elevation={0} variant="outlined">
+      <Paper
+        sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2, mb: 3, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
+        elevation={0}
+        variant="outlined"
+      >
         {/* Key metrics - row 1 */}
-        <Grid container spacing={2} sx={{ mb: 2, alignItems: 'stretch' }}>
+        <Grid container spacing={2} sx={{ mb: 2, alignItems: 'stretch', width: '100%' }}>
         <Grid item xs={6} sm={6} md={3} sx={{ display: 'flex' }}>
           <Card sx={{ flex: 1, width: '100%', minWidth: 0, borderRadius: 2, boxShadow: 1, display: 'flex', flexDirection: 'column' }}>
             <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -1086,7 +1089,7 @@ function DashboardPage() {
       </Grid>
 
       {/* Secondary stats + panels layout */}
-      <Grid container spacing={2} sx={{ mb: 0, alignItems: 'stretch' }}>
+      <Grid container spacing={2} sx={{ mb: 0, alignItems: 'stretch', width: '100%' }}>
         {/* Left column: small tiles — equal height segments on md+ to match right column */}
         <Grid item xs={12} md={3} lg={3} sx={{ display: 'flex', alignSelf: 'stretch' }}>
           <Box
@@ -1206,8 +1209,8 @@ function DashboardPage() {
         </Grid>
 
         {/* Right column: panels spanning remaining width */}
-        <Grid item xs={12} md={9} lg={9} sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <Grid container spacing={2} sx={{ flex: 1, width: '100%', alignItems: 'stretch' }}>
+        <Grid item xs={12} md={9} lg={9} sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, maxWidth: '100%' }}>
+          <Grid container spacing={2} sx={{ flex: 1, width: '100%', maxWidth: '100%', alignItems: 'stretch' }}>
             {/* Jobs by Stage */}
             <Grid item xs={12} md={6} sx={{ display: 'flex', minWidth: 0 }}>
               <Paper
@@ -1854,7 +1857,7 @@ function DashboardPage() {
       >
         <PrintView activities={sortedActivities} selectedDate={selectedPrintDate} />
       </Box>
-    </Container>
+    </Box>
   );
 }
 
