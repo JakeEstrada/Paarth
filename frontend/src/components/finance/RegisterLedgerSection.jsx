@@ -194,8 +194,16 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
 
   if (!active) return null;
 
-  const balanceValue = Number(selectedAccount?.balances?.current ?? 0);
-  const balanceNonNegative = balanceValue >= 0;
+  const currentBalanceValue = Number(selectedAccount?.balances?.current ?? 0);
+  const hasAvailableBalance =
+    selectedAccount?.balances &&
+    selectedAccount.balances.available !== null &&
+    selectedAccount.balances.available !== undefined &&
+    Number.isFinite(Number(selectedAccount.balances.available));
+  const availableBalanceValue = hasAvailableBalance
+    ? Number(selectedAccount.balances.available)
+    : null;
+  const balanceNonNegative = currentBalanceValue >= 0;
 
   const accountSelect = (
     <FormControl
@@ -367,8 +375,25 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
                     textAlign: 'center',
                   })}
                 >
-                  Balance ${money(selectedAccount?.balances?.current)}
+                  Current balance ${money(currentBalanceValue)}
                 </Typography>
+                {hasAvailableBalance ? (
+                  <Typography
+                    variant="body2"
+                    sx={(theme) => ({
+                      mt: 0.5,
+                      fontWeight: 700,
+                      color: (availableBalanceValue || 0) >= 0 ? theme.palette.success.main : theme.palette.error.main,
+                      textAlign: 'center',
+                    })}
+                  >
+                    Available balance ${money(availableBalanceValue)}
+                  </Typography>
+                ) : (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block', textAlign: 'center' }}>
+                    Available balance not provided by bank
+                  </Typography>
+                )}
               </Paper>
             </Box>
           ) : null}
@@ -443,7 +468,8 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
 
         {!showFinanceHeader && selectedAccount ? (
           <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap', alignSelf: { xs: 'flex-end', md: 'center' } }}>
-            Balance ${money(selectedAccount?.balances?.current)}
+            Current ${money(currentBalanceValue)}
+            {hasAvailableBalance ? ` · Available ${money(availableBalanceValue)}` : ''}
           </Typography>
         ) : null}
       </Stack>
