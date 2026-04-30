@@ -631,7 +631,10 @@ function JobDetailModal({
   };
 
   if (!open || !job) return null;
-  const headerAddressLine = getCustomerContact(job).addressLine;
+  const customerEntityId =
+    job?.customerId && typeof job.customerId === 'object'
+      ? job.customerId?._id
+      : job?.customerId || null;
 
   return (
     <Dialog
@@ -667,42 +670,6 @@ function JobDetailModal({
                 {String(job._id).length >= 8 ? String(job._id).slice(-8) : String(job._id)}
               </Typography>
             </Tooltip>
-          </Box>
-        )}
-        {headerAddressLine && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%', mb: 1.25 }}>
-            <Box
-              sx={{
-                px: 1.25,
-                py: 0.45,
-                borderRadius: 999,
-                border: '1px solid',
-                borderColor: 'divider',
-                bgcolor: (theme) =>
-                  theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'action.hover',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 0.55,
-                maxWidth: '100%',
-              }}
-            >
-              <LocationIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{
-                  fontSize: '0.72rem',
-                  lineHeight: 1.35,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  maxWidth: { xs: '70vw', sm: '52vw', md: '44vw' },
-                }}
-                title={headerAddressLine}
-              >
-                {headerAddressLine}
-              </Typography>
-            </Box>
           </Box>
         )}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -823,6 +790,18 @@ function JobDetailModal({
                   {!job?.isArchived && !job?.isDeadEstimate && (
                     <IconButton onClick={handleArchive} size="small" color="warning" title="Archive" disabled={saving}>
                       <ArchiveIcon />
+                    </IconButton>
+                  )}
+                  {customerEntityId && (
+                    <IconButton
+                      component={RouterLink}
+                      to={`/customers?customerId=${customerEntityId}`}
+                      onClick={onClose}
+                      size="small"
+                      color="info"
+                      title="Open customer card"
+                    >
+                      <PersonIcon />
                     </IconButton>
                   )}
                   <IconButton onClick={handleDeleteClick} size="small" color="error" title="Delete">
