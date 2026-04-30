@@ -37,6 +37,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchPipelineLayoutsList, createPipelineLayout } from '../utils/pipelineLayoutsApi';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
+import { getConnectedSocketId } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -189,9 +190,11 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     }
   }, [jobs, searchParams, setSearchParams]);
 
-  const fetchJobs = useCallback(async () => {
+  const fetchJobs = useCallback(async ({ background = false } = {}) => {
     try {
-      setLoading(true);
+      if (!background) {
+        setLoading(true);
+      }
       
       // For now, we'll fetch without auth token to test
       // Later we'll add authentication
@@ -204,17 +207,44 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
       console.error('Error response:', error.response?.data);
       toast.error('Failed to load jobs');
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
-  const handleRealtimeProjectUpdate = useCallback(() => {
-    fetchJobs();
-  }, [fetchJobs]);
-  const handleRealtimeTaskUpdate = useCallback(() => {
-    fetchJobs();
-  }, [fetchJobs]);
+  const handleRealtimeProjectUpdate = useCallback((payload) => {
+    const sourceSocketId = payload?.sourceSocketId || null;
+    const ownSocketId = getConnectedSocketId();
+    if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
+    const incoming = payload?.patch || payload?.project;
+    const entityId = String(payload?.entityId || incoming?._id || '').trim();
+    if (!incoming || !entityId) return;
+    console.time('socket job patch');
+    setJobs((prev) => {
+      const idx = prev.findIndex((j) => String(j?._id) === entityId);
+      if (incoming.deleted) {
+        if (idx === -1) return prev;
+        const next = [...prev];
+        next.splice(idx, 1);
+        return next;
+      }
+      if (idx === -1) {
+        return [incoming, ...prev];
+      }
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...incoming };
+      return next;
+    });
+    console.timeEnd('socket job patch');
+  }, []);
+  const handleRealtimeTaskUpdate = useCallback((payload) => {
+    const sourceSocketId = payload?.sourceSocketId || null;
+    const ownSocketId = getConnectedSocketId();
+    if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
+    // Tasks do not require pipeline-wide refetch; ignore for smooth UX.
+  }, []);
   useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeProjectUpdate);
   useSocketSubscription(tenantRoom, 'project.created', handleRealtimeProjectUpdate);
   useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeTaskUpdate);
@@ -232,11 +262,21 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   };
 
   const handleStageChange = async (jobId, toStage, note) => {
+    const previousJobs = jobs;
+    setJobs((prev) =>
+      prev.map((job) => (String(job?._id) === String(jobId) ? { ...job, stage: toStage } : job))
+    );
     try {
-      await axios.post(`${API_URL}/jobs/${jobId}/move-stage`, { toStage, note });
+      const response = await axios.post(`${API_URL}/jobs/${jobId}/move-stage`, { toStage, note });
+      const updated = response?.data;
+      if (updated?._id) {
+        setJobs((prev) =>
+          prev.map((job) => (String(job?._id) === String(updated._id) ? { ...job, ...updated } : job))
+        );
+      }
       toast.success('Job moved to ' + toStage.replace(/_/g, ' '));
-      fetchJobs(); // Refresh
     } catch (error) {
+      setJobs(previousJobs);
       console.error('Error moving job:', error);
       toast.error('Failed to move job');
     }

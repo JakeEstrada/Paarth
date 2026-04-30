@@ -4,6 +4,7 @@ import {
   isAuthLoginOrRegisterRequest,
   redirectToLoginDueToSessionExpiry,
 } from './authSession';
+import { getConnectedSocketId } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -21,6 +22,10 @@ api.interceptors.request.use(
     }
     if (tenantId && /^[a-fA-F0-9]{24}$/.test(String(tenantId).trim())) {
       config.headers['x-tenant-id'] = String(tenantId).trim();
+    }
+    const socketId = getConnectedSocketId();
+    if (socketId) {
+      config.headers['x-socket-id'] = socketId;
     }
     return config;
   },

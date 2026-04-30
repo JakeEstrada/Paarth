@@ -291,7 +291,9 @@ async function createJob(req, res) {
     await job.populate('assignedTo', 'name email');
 
     const io = req.app.get('io');
-    publishProjectCreated(io, job.toObject ? job.toObject() : job);
+    publishProjectCreated(io, job.toObject ? job.toObject() : job, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
     
     res.status(201).json(job);
   } catch (error) {
@@ -574,7 +576,9 @@ async function updateJob(req, res) {
     await job.populate('assignedTo', 'name email');
 
     const io = req.app.get('io');
-    publishProjectUpdated(io, job.toObject ? job.toObject() : job);
+    publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
     
     res.json(job);
   } catch (error) {
@@ -713,7 +717,9 @@ async function moveJobStage(req, res) {
     await job.populate('assignedTo', 'name email');
 
     const io = req.app.get('io');
-    publishProjectUpdated(io, job.toObject ? job.toObject() : job);
+    publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
     
     res.json(job);
   } catch (error) {

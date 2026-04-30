@@ -27,3 +27,7 @@ export function disconnectSocket() {
   socketInstance.disconnect();
   socketInstance = null;
 }
+
+export function getConnectedSocketId() {
+  return socketInstance?.id || '';
+}

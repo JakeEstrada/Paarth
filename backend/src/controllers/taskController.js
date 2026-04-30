@@ -231,7 +231,9 @@ async function createTask(req, res) {
     }
 
     const io = req.app.get('io');
-    publishTaskCreated(io, task.toObject ? task.toObject() : task);
+    publishTaskCreated(io, task.toObject ? task.toObject() : task, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
     
     res.status(201).json(task);
   } catch (error) {
@@ -302,7 +304,9 @@ async function updateTask(req, res) {
     await task.populate('createdBy', 'name email');
 
     const io = req.app.get('io');
-    publishTaskUpdated(io, task.toObject ? task.toObject() : task);
+    publishTaskUpdated(io, task.toObject ? task.toObject() : task, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
     
     res.json(task);
   } catch (error) {
@@ -384,7 +388,9 @@ async function completeTask(req, res) {
     await task.populate('createdBy', 'name email');
 
     const io = req.app.get('io');
-    publishTaskUpdated(io, task.toObject ? task.toObject() : task);
+    publishTaskUpdated(io, task.toObject ? task.toObject() : task, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
     
     res.json(task);
   } catch (error) {
@@ -413,7 +419,9 @@ async function uncompleteTask(req, res) {
     await task.populate('createdBy', 'name email');
 
     const io = req.app.get('io');
-    publishTaskUpdated(io, task.toObject ? task.toObject() : task);
+    publishTaskUpdated(io, task.toObject ? task.toObject() : task, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
     
     res.json(task);
   } catch (error) {
@@ -446,6 +454,8 @@ async function deleteTask(req, res) {
       _id: task._id,
       tenantId: task.tenantId,
       deleted: true,
+    }, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
     });
     
     // Log activity for task deletion

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -51,6 +51,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme as useAppTheme } from '../context/ThemeContext';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { getConnectedSocketId } from '../services/socket';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -1267,6 +1268,28 @@ function shouldExcludeJobFromCalendarSchedule(job) {
   return false;
 }
 
+function hasCalendarSchedule(job) {
+  const entries = job?.schedule?.entries;
+  if (Array.isArray(entries) && entries.some((e) => e?.startDate)) return true;
+  return !!job?.schedule?.startDate;
+}
+
+function splitCalendarJobs(allJobs = []) {
+  const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
+  const bench = allJobs.filter(
+    (job) =>
+      readinessStages.includes(job.stage) &&
+      !job.isArchived &&
+      !job.isDeadEstimate &&
+      !hasCalendarSchedule(job)
+  );
+  const scheduled = allJobs.filter((job) => {
+    if (shouldExcludeJobFromCalendarSchedule(job)) return false;
+    return hasCalendarSchedule(job) || job.stage === 'SCHEDULED';
+  });
+  return { bench, scheduled };
+}
+
 function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -1277,6 +1300,8 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [benchJobs, setBenchJobs] = useState([]);
   const [scheduledJobs, setScheduledJobs] = useState([]);
+  const benchJobsRef = useRef([]);
+  const scheduledJobsRef = useRef([]);
   const [selectedInstaller, setSelectedInstaller] = useState('');
   const [loading, setLoading] = useState(true);
   const [eventModalOpen, setEventModalOpen] = useState(false);
@@ -1347,34 +1372,22 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
     fetchJobs();
   }, [currentDate]);
 
-  const fetchJobs = useCallback(async () => {
+  useEffect(() => {
+    benchJobsRef.current = benchJobs;
+  }, [benchJobs]);
+
+  useEffect(() => {
+    scheduledJobsRef.current = scheduledJobs;
+  }, [scheduledJobs]);
+
+  const fetchJobs = useCallback(async ({ background = false } = {}) => {
     try {
-      setLoading(true);
+      if (!background) {
+        setLoading(true);
+      }
       const response = await axios.get(`${API_URL}/jobs`);
       const allJobs = response.data.jobs || response.data || [];
-
-      const jobHasCalendarSchedule = (job) => {
-        const entries = job?.schedule?.entries;
-        if (Array.isArray(entries) && entries.some((e) => e?.startDate)) return true;
-        return !!job?.schedule?.startDate;
-      };
-      
-      // Filter bench jobs (readiness phase only — not already on the calendar)
-      const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
-      const bench = allJobs.filter(job => 
-        readinessStages.includes(job.stage) && 
-        !job.isArchived && 
-        !job.isDeadEstimate &&
-        !jobHasCalendarSchedule(job)
-      );
-      
-      // Filter scheduled jobs (omit archived, dead estimates, final payment / closed-out)
-      const scheduled = allJobs.filter(job => {
-        if (shouldExcludeJobFromCalendarSchedule(job)) return false;
-        const hasSchedule = jobHasCalendarSchedule(job);
-        const isScheduledStage = job.stage === 'SCHEDULED';
-        return hasSchedule || isScheduledStage;
-      });
+      const { bench, scheduled } = splitCalendarJobs(allJobs);
       
       setBenchJobs(bench);
       setScheduledJobs(scheduled);
@@ -1397,7 +1410,9 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
       console.error('Error fetching jobs:', error);
       toast.error('Failed to load jobs');
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   }, [installerBaseOrder]);
 
@@ -1443,13 +1458,39 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
   };
 
   const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
-  const handleRealtimeProjectUpdate = useCallback(() => {
-    fetchJobs();
-  }, [fetchJobs]);
+  const handleRealtimeProjectUpdate = useCallback((payload) => {
+    const sourceSocketId = payload?.sourceSocketId || null;
+    const ownSocketId = getConnectedSocketId();
+    if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
+    const incoming = payload?.patch || payload?.project;
+    const entityId = String(payload?.entityId || incoming?._id || '').trim();
+    if (!incoming || !entityId) return;
+    console.time('socket job patch');
+    const applyPatch = (list) => {
+      const idx = list.findIndex((j) => String(j?._id) === entityId);
+      if (incoming.deleted) {
+        if (idx === -1) return list;
+        const next = [...list];
+        next.splice(idx, 1);
+        return next;
+      }
+      if (idx === -1) return [incoming, ...list];
+      const next = [...list];
+      next[idx] = { ...next[idx], ...incoming };
+      return next;
+    };
+    const merged = [...applyPatch(benchJobsRef.current), ...applyPatch(scheduledJobsRef.current)];
+    const deduped = Array.from(new Map(merged.map((j) => [String(j._id), j])).values());
+    const { bench, scheduled } = splitCalendarJobs(deduped);
+    setBenchJobs(bench);
+    setScheduledJobs(scheduled);
+    console.timeEnd('socket job patch');
+  }, []);
+  const handleRealtimeTaskUpdate = useCallback(() => {}, []);
   useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeProjectUpdate);
   useSocketSubscription(tenantRoom, 'project.created', handleRealtimeProjectUpdate);
-  useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeProjectUpdate);
-  useSocketSubscription(tenantRoom, 'task.created', handleRealtimeProjectUpdate);
+  useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeTaskUpdate);
+  useSocketSubscription(tenantRoom, 'task.created', handleRealtimeTaskUpdate);
 
   // Generate calendar days for a specific month
   const getCalendarDaysForMonth = (date) => {

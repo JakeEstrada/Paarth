@@ -5,6 +5,7 @@ import {
   isAuthLoginOrRegisterRequest,
   redirectToLoginDueToSessionExpiry,
 } from './authSession';
+import { getConnectedSocketId } from '../services/socket';
 
 /**
  * Default axios is used across many pages. Attach auth + tenant on every request from
@@ -19,6 +20,10 @@ axios.interceptors.request.use((config) => {
   const id = tenantId != null ? String(tenantId).trim() : '';
   if (id && /^[a-fA-F0-9]{24}$/.test(id) && !config.headers['x-tenant-id']) {
     config.headers['x-tenant-id'] = id;
+  }
+  const socketId = getConnectedSocketId();
+  if (socketId) {
+    config.headers['x-socket-id'] = socketId;
   }
   return config;
 });
