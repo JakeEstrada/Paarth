@@ -440,12 +440,19 @@ function JobDetailModal({
   const handleSave = async () => {
     try {
       setSaving(true);
+      const jobAddress = {
+        street: String(editedJob?.jobAddress?.street || '').trim(),
+        city: String(editedJob?.jobAddress?.city || '').trim(),
+        state: String(editedJob?.jobAddress?.state || '').trim(),
+        zip: String(editedJob?.jobAddress?.zip || '').trim(),
+      };
       const updates = {
         title: editedJob.title,
         description: editedJob.description || '',
         valueEstimated: editedJob.valueEstimated,
         valueContracted: editedJob.valueContracted,
         source: editedJob.source,
+        jobAddress,
       };
 
       await onJobUpdate(jobId, updates);
@@ -464,6 +471,16 @@ function JobDetailModal({
     setEditedJob((prev) => ({
       ...prev,
       [field]: value,
+    }));
+  };
+
+  const handleJobAddressFieldChange = (field, value) => {
+    setEditedJob((prev) => ({
+      ...prev,
+      jobAddress: {
+        ...(prev?.jobAddress || {}),
+        [field]: value,
+      },
     }));
   };
 
@@ -696,6 +713,49 @@ function JobDetailModal({
                   rows={2}
                   placeholder="Add a short description to help identify this job..."
                 />
+                <Box sx={{ mt: 1.25 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+                    Job site address (can be different from customer card)
+                  </Typography>
+                  <Grid container spacing={1}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Street"
+                        value={editedJob?.jobAddress?.street || ''}
+                        onChange={(e) => handleJobAddressFieldChange('street', e.target.value)}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={5}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="City"
+                        value={editedJob?.jobAddress?.city || ''}
+                        onChange={(e) => handleJobAddressFieldChange('city', e.target.value)}
+                      />
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="State"
+                        value={editedJob?.jobAddress?.state || ''}
+                        onChange={(e) => handleJobAddressFieldChange('state', e.target.value)}
+                      />
+                    </Grid>
+                    <Grid item xs={6} sm={4}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="ZIP"
+                        value={editedJob?.jobAddress?.zip || ''}
+                        onChange={(e) => handleJobAddressFieldChange('zip', e.target.value)}
+                      />
+                    </Grid>
+                  </Grid>
+                </Box>
                 {renderCustomerHeaderStrip(job)}
               </>
             ) : (
