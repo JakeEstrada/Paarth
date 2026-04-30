@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Box } from '@mui/material';
-import Sidebar, { DRAWER_WIDTH } from './Sidebar';
+import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 
 function MainLayout({ children }) {
@@ -17,7 +17,8 @@ function MainLayout({ children }) {
         component="main"
         sx={{
           flexGrow: 1,
-          width: { xs: '100%', md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          width: '100%',
+          minWidth: 0,
           backgroundColor: 'background.default',
           display: 'flex',
           flexDirection: 'column',
