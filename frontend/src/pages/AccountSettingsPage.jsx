@@ -68,6 +68,10 @@ function AccountSettingsPage() {
   const [resettingEstimates, setResettingEstimates] = useState(false);
   const [shopViewPinDialogOpen, setShopViewPinDialogOpen] = useState(false);
   const [shopViewPinInput, setShopViewPinInput] = useState('');
+  const tenantIdValue =
+    typeof userData?.tenantId === 'object' && userData?.tenantId !== null
+      ? userData?.tenantId?._id || ''
+      : userData?.tenantId || '';
 
   useEffect(() => {
     fetchUserData();
@@ -322,6 +326,23 @@ function AccountSettingsPage() {
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                   Email cannot be changed
+                </Typography>
+              </Box>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Box sx={{ mb: 1 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                  Tenant ID
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ fontFamily: 'monospace', wordBreak: 'break-all', fontWeight: 500 }}
+                >
+                  {tenantIdValue || 'Unavailable'}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Organization identifier for this account
                 </Typography>
               </Box>
             </Grid>
