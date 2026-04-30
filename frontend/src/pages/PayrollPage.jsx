@@ -345,50 +345,7 @@ function PayrollPage() {
     if (!printSummaryRef.current) return;
     setCapturingPdf(true);
     try {
-      await new Promise((r) => setTimeout(r, 150));
-      const el = printSummaryRef.current;
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW;
-      const imgH = (canvas.height * imgW) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, imgW, Math.min(imgH, pageH));
-      if (imgH > pageH) {
-        let heightLeft = imgH - pageH;
-        let position = -pageH;
-        while (heightLeft > 0) {
-          pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-          heightLeft -= pageH;
-          position -= pageH;
-        }
-      }
-      const cleanEmployeeName = (employeeName || 'employee').trim();
-
-      const parsePayrollDate = () => {
-        // Try parsing whatever is in the date field first, then fall back to today.
-        const parsed = new Date(date);
-        return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-      };
-      const payrollDate = parsePayrollDate();
-      const folderName = `${payrollDate.getMonth() + 1}-${payrollDate.getDate()}`;
-
-      const now = new Date();
-      const hour = ((now.getHours() + 11) % 12) + 1;
-      const minute = String(now.getMinutes()).padStart(2, '0');
-      const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
-      const timeLabel = `${hour}-${minute}-${ampm}`;
-      const safeName = cleanEmployeeName.replace(/[^a-z0-9]/gi, ' ').trim().replace(/\s+/g, '-');
-      const fileName = `${safeName || 'employee'}-${timeLabel}.pdf`;
-
-      const pdfBlob = pdf.output('blob');
+      const { pdf, pdfBlob, folderName, timeLabel, safeName, fileName } = await generatePayrollPdfArtifact();
       let savedToFolder = false;
 
       // Chromium family browsers: let user pick a base folder, then save under Payroll/<M-D>/filename.pdf
@@ -438,6 +395,63 @@ function PayrollPage() {
     }
   };
 
+  const generatePayrollPdfArtifact = async () => {
+    if (!printSummaryRef.current) throw new Error('Payroll print area not ready');
+    await new Promise((r) => setTimeout(r, 150));
+    const el = printSummaryRef.current;
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+    });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const imgW = pageW;
+    const imgH = (canvas.height * imgW) / canvas.width;
+    pdf.addImage(imgData, 'PNG', 0, 0, imgW, Math.min(imgH, pageH));
+    if (imgH > pageH) {
+      let heightLeft = imgH - pageH;
+      let position = -pageH;
+      while (heightLeft > 0) {
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+        heightLeft -= pageH;
+        position -= pageH;
+      }
+    }
+    const cleanEmployeeName = (employeeName || 'employee').trim();
+    const parsed = new Date(date);
+    const payrollDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+    const folderName = `${payrollDate.getMonth() + 1}-${payrollDate.getDate()}`;
+    const now = new Date();
+    const hour = ((now.getHours() + 11) % 12) + 1;
+    const minute = String(now.getMinutes()).padStart(2, '0');
+    const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
+    const timeLabel = `${hour}-${minute}-${ampm}`;
+    const safeName = cleanEmployeeName.replace(/[^a-z0-9]/gi, ' ').trim().replace(/\s+/g, '-');
+    const fileName = `${safeName || 'employee'}-${timeLabel}.pdf`;
+    const pdfBlob = pdf.output('blob');
+    return { pdf, pdfBlob, folderName, timeLabel, safeName, fileName };
+  };
+
+  const uploadPayrollPdfAndGetLink = async () => {
+    const { pdfBlob, fileName } = await generatePayrollPdfArtifact();
+    const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('fileType', 'other');
+    formData.append('description', `Payroll PDF for ${employeeName || 'Employee'} (${date || '-'})`);
+    const uploadRes = await axios.post(`${API_URL}/files/upload-document`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const uploaded = uploadRes.data;
+    if (!uploaded?._id) throw new Error('Could not upload payroll PDF');
+    return `${API_URL}/files/${uploaded._id}/download`;
+  };
+
   const buildPayrollTextMessage = () => {
     return [
       `Payroll for ${employeeName || 'Employee'}`,
@@ -467,11 +481,14 @@ function PayrollPage() {
     }
     try {
       setSendingPayrollText(true);
+      setCapturingPdf(true);
+      const pdfLink = await uploadPayrollPdfAndGetLink();
+      const messageWithPdf = `${payrollTextMessage.trim()}\n\nPayroll PDF copy: ${pdfLink}`;
       await axios.post(`${API_URL}/twilio/send-sms`, {
         to: payrollTextPhone.trim(),
-        message: payrollTextMessage.trim(),
+        message: messageWithPdf,
       });
-      toast.success('Payroll sent by text');
+      toast.success('Payroll text sent with PDF link');
       setPayrollTextDialogOpen(false);
       setPayrollTextPhone('');
       setPayrollTextMessage('');
@@ -480,6 +497,7 @@ function PayrollPage() {
       toast.error(error.response?.data?.error || 'Failed to send payroll text');
     } finally {
       setSendingPayrollText(false);
+      setCapturingPdf(false);
     }
   };
 
