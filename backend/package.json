@@ -7,6 +7,7 @@
     "test": "node --test test/plaidRegisterData.test.js",
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "clone-tenant": "node src/scripts/cloneTenant.js",
     "create-super-admin": "node createSuperAdmin.js",
     "test-task-activities": "node src/scripts/testTaskActivityLogging.js",
     "backfill-task-activities": "node src/scripts/testTaskActivityLogging.js --backfill",

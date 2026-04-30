@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Typography,
   Container,
@@ -31,6 +32,7 @@ import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function JobArchivePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const theme = useTheme();
   const { user } = useAuth();
   const { hideSensitive } = useShopViewSensitive(user?.role);
@@ -51,6 +53,15 @@ function JobArchivePage() {
     };
     initialize();
   }, []);
+
+  useEffect(() => {
+    const jobIdFromUrl = searchParams.get('jobId');
+    if (!jobIdFromUrl) return;
+    setSelectedJobId(jobIdFromUrl);
+    const next = new URLSearchParams(searchParams);
+    next.delete('jobId');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const fetchArchivedJobs = async () => {
     try {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -57,6 +57,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { isShopViewRole, hideSensitive } = useShopViewSensitive(user?.role);
   const [customers, setCustomers] = useState([]);
@@ -132,6 +133,20 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const customerIdFromUrl = searchParams.get('customerId');
+    if (!customerIdFromUrl || customers.length === 0) return;
+
+    const matchedCustomer = customers.find((c) => String(c._id) === String(customerIdFromUrl));
+    if (matchedCustomer) {
+      handleOpenContactModal(matchedCustomer);
+      const next = new URLSearchParams(searchParams);
+      next.delete('customerId');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customers, searchParams, setSearchParams]);
 
   // Filter and sort customers
   const filteredAndSortedCustomers = useMemo(() => {

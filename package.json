@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "test:openai": "node scripts/test-openai.mjs"
+    "test:openai": "node scripts/test-openai.mjs",
+    "clone-tenant": "npm --prefix backend run clone-tenant --"
   },
   "dependencies": {
     "openai": "^6.34.0"

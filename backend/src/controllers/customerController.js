@@ -502,6 +502,183 @@ async function uploadCustomersCSV(req, res) {
   }
 }
 
+async function globalCustomerSearch(req, res) {
+  try {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 30);
+    const tenantId = req.user?.tenantId;
+
+    if (!q) {
+      return res.json({ results: [] });
+    }
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Missing tenant context' });
+    }
+
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const nameRegex = new RegExp(escaped, 'i');
+
+    const [archivedCustomers, finishedJobs, customersWithNoJobs, pipelineJobs] = await Promise.all([
+      Customer.aggregate([
+        { $match: { tenantId } },
+        {
+          $lookup: {
+            from: 'jobs',
+            let: { customerId: '$_id', tenantId: '$tenantId' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$tenantId', '$$tenantId'] },
+                      { $eq: ['$customerId', '$$customerId'] },
+                      {
+                        $or: [
+                          { $eq: ['$isArchived', true] },
+                          { $eq: ['$isDeadEstimate', true] },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+              { $project: { _id: 1, title: 1 } },
+            ],
+            as: 'archivedJobs',
+          },
+        },
+        {
+          $match: {
+            $or: [
+              { name: nameRegex },
+              { primaryEmail: nameRegex },
+              { primaryPhone: nameRegex },
+            ],
+            'archivedJobs.0': { $exists: true },
+          },
+        },
+        { $sort: { updatedAt: -1 } },
+        { $limit: limit },
+        { $project: { _id: 1, name: 1, primaryEmail: 1, primaryPhone: 1, archivedJobs: 1 } },
+      ]),
+      Job.aggregate([
+        {
+          $match: {
+            tenantId,
+            stage: 'FINAL_PAYMENT_CLOSED',
+            isDeadEstimate: { $ne: true },
+            $or: [{ title: nameRegex }],
+          },
+        },
+        { $sort: { updatedAt: -1 } },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: 'customers',
+            localField: 'customerId',
+            foreignField: '_id',
+            as: 'customer',
+          },
+        },
+        { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
+        { $project: { _id: 1, title: 1, stage: 1, customerName: '$customer.name', customerId: '$customer._id' } },
+      ]),
+      Customer.aggregate([
+        { $match: { tenantId } },
+        {
+          $lookup: {
+            from: 'jobs',
+            let: { customerId: '$_id', tenantId: '$tenantId' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [{ $eq: ['$tenantId', '$$tenantId'] }, { $eq: ['$customerId', '$$customerId'] }],
+                  },
+                },
+              },
+              { $project: { _id: 1 } },
+            ],
+            as: 'jobs',
+          },
+        },
+        {
+          $match: {
+            $or: [{ name: nameRegex }, { primaryEmail: nameRegex }, { primaryPhone: nameRegex }],
+            'jobs.0': { $exists: false },
+          },
+        },
+        { $sort: { updatedAt: -1 } },
+        { $limit: limit },
+        { $project: { _id: 1, name: 1, primaryEmail: 1, primaryPhone: 1 } },
+      ]),
+      Job.aggregate([
+        {
+          $match: {
+            tenantId,
+            isArchived: { $ne: true },
+            isDeadEstimate: { $ne: true },
+            isCompletedClosedOut: { $ne: true },
+            stage: { $ne: 'FINAL_PAYMENT_CLOSED' },
+            title: nameRegex,
+          },
+        },
+        { $sort: { updatedAt: -1 } },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: 'customers',
+            localField: 'customerId',
+            foreignField: '_id',
+            as: 'customer',
+          },
+        },
+        { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
+        { $project: { _id: 1, title: 1, stage: 1, customerName: '$customer.name', customerId: '$customer._id' } },
+      ]),
+    ]);
+
+    const results = [
+      ...archivedCustomers.map((c) => ({
+        id: `archived-customer-${c._id}`,
+        type: 'archived_customer',
+        title: c.name || 'Unnamed customer',
+        subtitle: c.archivedJobs?.[0]?.title ? `Archived in job: ${c.archivedJobs[0].title}` : 'Archived customer record',
+        locationLabel: 'Customers (archived jobs)',
+        path: `/customers?customerId=${c._id}`,
+      })),
+      ...finishedJobs.map((j) => ({
+        id: `finished-job-${j._id}`,
+        type: 'finished_job',
+        title: j.title || 'Finished job',
+        subtitle: j.customerName ? `Customer: ${j.customerName}` : 'Final Payment Closed',
+        locationLabel: 'Completed Jobs',
+        path: `/completed-jobs?jobId=${j._id}`,
+      })),
+      ...customersWithNoJobs.map((c) => ({
+        id: `customer-no-jobs-${c._id}`,
+        type: 'customer_no_jobs',
+        title: c.name || 'Unnamed customer',
+        subtitle: 'Customer exists but has no jobs',
+        locationLabel: 'Customers',
+        path: `/customers?customerId=${c._id}`,
+      })),
+      ...pipelineJobs.map((j) => ({
+        id: `pipeline-job-${j._id}`,
+        type: 'pipeline_job',
+        title: j.title || 'Pipeline job',
+        subtitle: j.customerName ? `Customer: ${j.customerName}` : `Stage: ${j.stage || 'Unknown'}`,
+        locationLabel: 'Pipeline',
+        path: `/pipeline?jobId=${j._id}`,
+      })),
+    ].slice(0, limit * 4);
+
+    return res.json({ results });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
 module.exports = {
   getCustomers,
   getCustomer,
@@ -509,5 +686,6 @@ module.exports = {
   updateCustomer,
   deleteCustomer,
   getCustomerJobs,
-  uploadCustomersCSV
+  uploadCustomersCSV,
+  globalCustomerSearch,
 };

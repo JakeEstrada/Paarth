@@ -8,12 +8,14 @@ const {
   updateCustomer,
   deleteCustomer,
   getCustomerJobs,
-  uploadCustomersCSV
+  uploadCustomersCSV,
+  globalCustomerSearch,
 } = require('../controllers/customerController');
 
 router.use(requireAuth);
 
 router.get('/', getCustomers);
+router.get('/global-search', globalCustomerSearch);
 router.post('/', createCustomer);
 router.post('/upload-csv', uploadCustomersCSV);
 router.get('/:id', getCustomer);
