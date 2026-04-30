@@ -194,6 +194,17 @@ function PlaidBankLinkSection({ active, variant = 'default', onRefreshData }) {
                     Last sync error: {status.syncError}
                   </Typography>
                 ) : null}
+                {!linked ? (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    sx={{ mt: 0.75, textTransform: 'none' }}
+                    onClick={() => handleStartLink({ update: false })}
+                    disabled={busy}
+                  >
+                    {busy ? 'Opening…' : 'Connect account'}
+                  </Button>
+                ) : null}
               </Box>
             </Box>
             <Tooltip title="Plaid settings">
