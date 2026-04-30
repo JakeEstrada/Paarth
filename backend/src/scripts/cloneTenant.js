@@ -90,10 +90,16 @@ function remapPath(doc, path, map) {
   setAtPath(doc, path, remapSingleId(current, map));
 }
 
-function anonymizeUser(doc, idx) {
+function anonymizeUser(doc, idx, context = {}) {
   const n = idx + 1;
   doc.name = `Demo User ${n}`;
-  doc.email = `demo.user.${n}@example.com`;
+  const targetSlugPart = String(context.targetSlug || 'tenant')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24) || 'tenant';
+  const idSuffix = String(doc?._id || '').replace(/[^a-zA-Z0-9]/g, '').slice(-10) || String(n);
+  doc.email = `demo.${targetSlugPart}.${idSuffix}@example.com`;
   doc.isActive = true;
   doc.isPending = false;
 }
@@ -126,10 +132,10 @@ function anonymizeAppointment(doc, idx) {
   if (doc.customerEmail) doc.customerEmail = `appointment.${n}@example.com`;
 }
 
-function anonymizeByCollection(name, doc, idx) {
+function anonymizeByCollection(name, doc, idx, context = {}) {
   switch (name) {
     case 'users':
-      anonymizeUser(doc, idx);
+      anonymizeUser(doc, idx, context);
       break;
     case 'customers':
       anonymizeCustomer(doc, idx);
@@ -258,9 +264,82 @@ function remapReferences(collectionName, doc, maps) {
   }
 }
 
+function buildUniqueDemoEmail(baseEmail, targetSlug, attempt = 0) {
+  const normalized = String(baseEmail || '').trim().toLowerCase();
+  const [localRaw, domainRaw] = normalized.includes('@') ? normalized.split('@') : [normalized, 'example.com'];
+  const local = (localRaw || 'demo').replace(/[^a-z0-9._+-]/g, '') || 'demo';
+  const domain = (domainRaw || 'example.com').replace(/[^a-z0-9.-]/g, '') || 'example.com';
+  const slugPart = String(targetSlug || 'tenant')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24) || 'tenant';
+  if (attempt <= 0) return `${local}+${slugPart}@${domain}`;
+  return `${local}+${slugPart}-${attempt}@${domain}`;
+}
+
+async function cloneDocumentFoldersWithFallback({ db, docs, folderMap, userMap, targetTenantId }) {
+  const pending = new Map(docs.map((doc) => [String(doc._id), doc]));
+  let cloned = 0;
+  let reused = 0;
+
+  while (pending.size > 0) {
+    let progressed = false;
+
+    for (const [sourceId, src] of pending) {
+      const sourceParentId = src.parentId ? String(src.parentId) : null;
+      if (sourceParentId && pending.has(sourceParentId)) {
+        continue;
+      }
+
+      const targetParentId = sourceParentId ? folderMap.get(sourceParentId) || null : null;
+      const docToInsert = {
+        ...src,
+        _id: folderMap.get(sourceId),
+        tenantId: targetTenantId,
+        parentId: targetParentId,
+        createdBy: remapSingleId(src.createdBy, userMap),
+      };
+
+      try {
+        await db.collection('documentfolders').insertOne(docToInsert);
+        cloned += 1;
+      } catch (error) {
+        // Some environments still have a legacy unique index on { parentId, name } (without tenantId).
+        // Reuse existing matching folder instead of failing the whole clone.
+        if (error?.code !== 11000) {
+          throw error;
+        }
+
+        const existing = await db.collection('documentfolders').findOne({
+          parentId: targetParentId,
+          name: docToInsert.name,
+        });
+
+        if (!existing?._id) {
+          throw error;
+        }
+
+        folderMap.set(sourceId, existing._id);
+        reused += 1;
+      }
+
+      pending.delete(sourceId);
+      progressed = true;
+    }
+
+    if (!progressed) {
+      throw new Error(`Could not resolve folder clone order. Remaining: ${pending.size}`);
+    }
+  }
+
+  return { cloned, reused };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const sourceSlug = String(args.source || '').trim();
+  const sourceTenantIdArg = String(args.sourceTenantId || '').trim();
   const targetSlug = String(args.target || '').trim();
   const targetName = String(args.targetName || targetSlug || '').trim();
   const dryRun = bool(args.dryRun, true);
@@ -268,9 +347,9 @@ async function main() {
   const demoEmail = String(args.demoEmail || '').trim().toLowerCase();
   const demoPassword = String(args.demoPassword || '').trim();
 
-  if (!sourceSlug || !targetSlug || !targetName) {
+  if ((!sourceSlug && !sourceTenantIdArg) || !targetSlug || !targetName) {
     console.error(
-      'Usage: node src/scripts/cloneTenant.js --source <source-slug> --target <target-slug> --targetName "<Tenant Name>" [--dryRun true|false] [--anonymize true|false] [--demoEmail email --demoPassword password]'
+      'Usage: node src/scripts/cloneTenant.js (--source <source-slug>|--sourceTenantId <tenant-id>) --target <target-slug> --targetName "<Tenant Name>" [--dryRun true|false] [--anonymize true|false] [--demoEmail email --demoPassword password]'
     );
     process.exit(1);
   }
@@ -284,22 +363,40 @@ async function main() {
   console.log('Connected to MongoDB');
 
   try {
-    const sourceTenant = await Tenant.findOne({
-      $or: [
-        { slug: sourceSlug.toLowerCase() },
-        { name: sourceSlug },
-        { name: { $regex: `^${sourceSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
-      ],
-    }).setOptions({ bypassTenant: true });
-    if (!sourceTenant) {
-      const available = await Tenant.find({}, { name: 1, slug: 1, isActive: 1 })
-        .setOptions({ bypassTenant: true })
-        .lean();
-      const options = available
-        .map((t) => `- ${t.slug} (${t.name})${t.isActive ? '' : ' [inactive]'}`)
-        .join('\n');
-      throw new Error(`Source tenant not found: ${sourceSlug}\nAvailable tenants:\n${options || '(none found)'}`);
+    const sourceTenantIdFromArg = toObjectId(sourceTenantIdArg);
+    if (sourceTenantIdArg && !sourceTenantIdFromArg) {
+      throw new Error(`Invalid sourceTenantId: ${sourceTenantIdArg}`);
     }
+
+    let sourceTenant = null;
+    let sourceTenantId = null;
+
+    if (sourceTenantIdFromArg) {
+      sourceTenantId = sourceTenantIdFromArg;
+      sourceTenant = await Tenant.findById(sourceTenantIdFromArg).setOptions({ bypassTenant: true }).lean();
+      if (!sourceTenant) {
+        console.warn(`Source tenant document not found for id ${sourceTenantIdArg}; cloning by tenantId only.`);
+      }
+    } else {
+      sourceTenant = await Tenant.findOne({
+        $or: [
+          { slug: sourceSlug.toLowerCase() },
+          { name: sourceSlug },
+          { name: { $regex: `^${sourceSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+        ],
+      }).setOptions({ bypassTenant: true });
+      if (!sourceTenant) {
+        const available = await Tenant.find({}, { name: 1, slug: 1, isActive: 1 })
+          .setOptions({ bypassTenant: true })
+          .lean();
+        const options = available
+          .map((t) => `- ${t.slug} (${t.name})${t.isActive ? '' : ' [inactive]'}`)
+          .join('\n');
+        throw new Error(`Source tenant not found: ${sourceSlug}\nAvailable tenants:\n${options || '(none found)'}`);
+      }
+      sourceTenantId = sourceTenant._id;
+    }
+
     const existingTarget = await Tenant.findOne({ slug: targetSlug }).setOptions({ bypassTenant: true });
     if (existingTarget) {
       throw new Error(`Target tenant slug already exists: ${targetSlug}`);
@@ -311,10 +408,10 @@ async function main() {
       name: targetName,
       slug: targetSlug.toLowerCase(),
       isActive: true,
-      logo: sourceTenant.logo || undefined,
-      logoLight: sourceTenant.logoLight || undefined,
-      logoDark: sourceTenant.logoDark || undefined,
-      pipelineStageOverrides: sourceTenant.pipelineStageOverrides || undefined,
+      logo: sourceTenant?.logo || undefined,
+      logoLight: sourceTenant?.logoLight || undefined,
+      logoDark: sourceTenant?.logoDark || undefined,
+      pipelineStageOverrides: sourceTenant?.pipelineStageOverrides || undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -324,7 +421,7 @@ async function main() {
     const idMaps = {};
 
     for (const col of COLLECTIONS) {
-      const docs = await db.collection(col).find({ tenantId: sourceTenant._id }).toArray();
+      const docs = await db.collection(col).find({ tenantId: sourceTenantId }).toArray();
       sourceDocs[col] = docs;
       const map = new Map();
       docs.forEach((d) => map.set(String(d._id), new mongoose.Types.ObjectId()));
@@ -344,12 +441,25 @@ async function main() {
     for (const col of COLLECTIONS) {
       const docs = sourceDocs[col];
       if (!docs.length) continue;
+
+      if (col === 'documentfolders') {
+        const { cloned, reused } = await cloneDocumentFoldersWithFallback({
+          db,
+          docs,
+          folderMap: idMaps.documentfolders,
+          userMap: idMaps.users,
+          targetTenantId,
+        });
+        console.log(`Cloned ${cloned} -> ${col}${reused ? ` (reused ${reused} existing)` : ''}`);
+        continue;
+      }
+
       const out = docs.map((src, idx) => {
         const cloned = { ...src };
         cloned._id = idMaps[col].get(String(src._id));
         cloned.tenantId = targetTenantId;
         remapReferences(col, cloned, idMaps);
-        if (anonymize) anonymizeByCollection(col, cloned, idx);
+        if (anonymize) anonymizeByCollection(col, cloned, idx, { targetSlug });
         return cloned;
       });
       await db.collection(col).insertMany(out, { ordered: false });
@@ -358,29 +468,53 @@ async function main() {
 
     if (demoEmail && demoPassword) {
       const users = db.collection('users');
-      const existingDemo = await users.findOne({ tenantId: targetTenantId, email: demoEmail });
-      if (!existingDemo) {
+      const existingDemoInTarget = await users.findOne({ tenantId: targetTenantId, email: demoEmail });
+      if (existingDemoInTarget) {
+        console.log(`Demo login already exists in target tenant: ${demoEmail}`);
+      } else {
         const hash = await bcrypt.hash(demoPassword, 10);
-        await users.insertOne({
+        const now = new Date();
+        const baseDoc = {
           _id: new mongoose.Types.ObjectId(),
           tenantId: targetTenantId,
           name: 'Demo Admin',
-          email: demoEmail,
           password: hash,
           role: 'admin',
           isActive: true,
           isPending: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-        console.log(`Created demo login: ${demoEmail}`);
-      } else {
-        console.log(`Demo login already exists: ${demoEmail}`);
+          createdAt: now,
+          updatedAt: now,
+        };
+        let createdEmail = demoEmail;
+        let inserted = false;
+        for (let attempt = 0; attempt < 15; attempt += 1) {
+          const candidateEmail = attempt === 0 ? demoEmail : buildUniqueDemoEmail(demoEmail, targetSlug, attempt - 1);
+          try {
+            await users.insertOne({
+              ...baseDoc,
+              _id: new mongoose.Types.ObjectId(),
+              email: candidateEmail,
+            });
+            createdEmail = candidateEmail;
+            inserted = true;
+            break;
+          } catch (error) {
+            if (error?.code !== 11000) throw error;
+          }
+        }
+        if (!inserted) {
+          throw new Error(`Could not create demo login due to duplicate email conflicts for base: ${demoEmail}`);
+        }
+        if (createdEmail === demoEmail) {
+          console.log(`Created demo login: ${createdEmail}`);
+        } else {
+          console.log(`Created demo login with fallback email: ${createdEmail} (requested: ${demoEmail})`);
+        }
       }
     }
 
     console.log('\nClone complete.');
-    console.log(`Source tenant: ${sourceSlug}`);
+    console.log(`Source tenant: ${sourceSlug || sourceTenantIdArg}`);
     console.log(`Target tenant: ${targetSlug}`);
     console.log(`Anonymized: ${anonymize ? 'yes' : 'no'}`);
   } finally {
