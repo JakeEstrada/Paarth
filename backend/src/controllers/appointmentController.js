@@ -1,5 +1,79 @@
 const Appointment = require('../models/Appointment');
 const Activity = require('../models/Activity');
+const ScheduledSms = require('../models/ScheduledSms');
+
+function normalizeToE164(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const hasPlus = raw.startsWith('+');
+  const digits = raw.replace(/[^\d]/g, '');
+  if (!digits) return '';
+  return hasPlus ? `+${digits}` : `+1${digits}`;
+}
+
+function buildAppointmentReminderMessage(appointment) {
+  const appointmentDate = appointment?.date ? new Date(appointment.date) : null;
+  const dateStr =
+    appointmentDate && !Number.isNaN(appointmentDate.getTime())
+      ? appointmentDate.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })
+      : 'your scheduled date';
+  const timeStr = appointment?.time || 'your scheduled time';
+  return `Reminder: ${appointment?.title || 'Appointment'} is scheduled for ${dateStr} at ${timeStr}.`;
+}
+
+async function syncAppointmentReminderSms(appointment, userId) {
+  const reminderAt = appointment?.reminderAt ? new Date(appointment.reminderAt) : null;
+  const reminderPhone = normalizeToE164(appointment?.reminderPhone);
+  const reminderMessage = String(appointment?.reminderMessage || '').trim() || buildAppointmentReminderMessage(appointment);
+  const hasReminder =
+    reminderAt &&
+    !Number.isNaN(reminderAt.getTime()) &&
+    reminderPhone &&
+    reminderAt.getTime() > Date.now();
+
+  // If no valid reminder config, cancel any existing scheduled message.
+  if (!hasReminder) {
+    if (appointment?.reminderSmsId) {
+      await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
+        $set: { status: 'cancelled', lastError: 'Reminder removed or invalid' },
+      });
+      appointment.reminderSmsId = null;
+      await appointment.save();
+    }
+    return;
+  }
+
+  if (appointment?.reminderSmsId) {
+    const existing = await ScheduledSms.findById(appointment.reminderSmsId);
+    if (existing && existing.status === 'scheduled') {
+      existing.to = reminderPhone;
+      existing.message = reminderMessage;
+      existing.sendAt = reminderAt;
+      existing.createdBy = userId || appointment.createdBy;
+      existing.customerId = appointment.customerId || undefined;
+      existing.appointmentId = appointment._id;
+      existing.lastError = undefined;
+      await existing.save();
+      return;
+    }
+  }
+
+  const scheduled = await ScheduledSms.create({
+    to: reminderPhone,
+    message: reminderMessage,
+    sendAt: reminderAt,
+    status: 'scheduled',
+    createdBy: userId || appointment.createdBy,
+    customerId: appointment.customerId || undefined,
+    appointmentId: appointment._id,
+  });
+  appointment.reminderSmsId = scheduled._id;
+  await appointment.save();
+}
 
 // Get all appointments
 async function getAppointments(req, res) {
@@ -115,6 +189,7 @@ async function createAppointment(req, res) {
     });
     
     await appointment.save();
+    await syncAppointmentReminderSms(appointment, createdBy);
     
     // If appointment is linked to a job, add a note to the job
     if (appointment.jobId) {
@@ -218,6 +293,7 @@ async function updateAppointment(req, res) {
     
     Object.assign(appointment, req.body);
     await appointment.save();
+    await syncAppointmentReminderSms(appointment, req.user?._id || appointment.createdBy);
     
     await appointment.populate('customerId', 'name primaryPhone primaryEmail');
     await appointment.populate('jobId', 'title stage');
@@ -240,6 +316,11 @@ async function completeAppointment(req, res) {
     appointment.status = 'completed';
     appointment.completedAt = new Date();
     await appointment.save();
+    if (appointment.reminderSmsId) {
+      await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
+        $set: { status: 'cancelled', lastError: 'Appointment completed before reminder send' },
+      });
+    }
     
     // Log activity for appointment completion
     let customerId = appointment.customerId;
@@ -311,6 +392,11 @@ async function cancelAppointment(req, res) {
     appointment.status = 'cancelled';
     appointment.cancelledAt = new Date();
     await appointment.save();
+    if (appointment.reminderSmsId) {
+      await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
+        $set: { status: 'cancelled', lastError: 'Appointment cancelled before reminder send' },
+      });
+    }
     
     res.json(appointment);
   } catch (error) {
@@ -378,6 +464,11 @@ async function deleteAppointment(req, res) {
     const createdBy = req.user?._id || appointment.createdBy;
     
     // Delete the appointment
+    if (appointment.reminderSmsId) {
+      await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
+        $set: { status: 'cancelled', lastError: 'Appointment deleted before reminder send' },
+      });
+    }
     await Appointment.findByIdAndDelete(req.params.id);
     
     // Log activity for appointment deletion

@@ -47,6 +47,13 @@ const appointmentSchema = new mongoose.Schema({
   customerName: String,
   customerPhone: String,
   customerEmail: String,
+  reminderAt: Date,
+  reminderPhone: String,
+  reminderMessage: String,
+  reminderSmsId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ScheduledSms',
+  },
   
   completedAt: Date,
   cancelledAt: Date,

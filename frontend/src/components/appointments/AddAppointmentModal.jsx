@@ -48,6 +48,11 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
   const [jobs, setJobs] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [loadingJobs, setLoadingJobs] = useState(false);
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderDate, setReminderDate] = useState('');
+  const [reminderTime, setReminderTime] = useState('');
+  const [reminderPhone, setReminderPhone] = useState('');
+  const [reminderMessage, setReminderMessage] = useState('');
 
   // Fetch customers
   const fetchCustomers = async () => {
@@ -91,6 +96,10 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
     setSelectedCustomerId(customerId);
     setSelectedJobId(''); // Reset job selection when customer changes
     fetchJobsForCustomer(customerId);
+    const selectedCustomer = customers.find((c) => String(c._id) === String(customerId));
+    if (selectedCustomer?.primaryPhone && !reminderPhone) {
+      setReminderPhone(selectedCustomer.primaryPhone);
+    }
   };
 
   // Load an existing appointment when editing
@@ -154,6 +163,21 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
       };
 
       setTime(to24Hour(appt.time));
+
+      if (appt.reminderAt) {
+        const reminderDateObj = new Date(appt.reminderAt);
+        if (!Number.isNaN(reminderDateObj.getTime())) {
+          setReminderEnabled(true);
+          setReminderDate(format(reminderDateObj, 'yyyy-MM-dd'));
+          setReminderTime(format(reminderDateObj, 'HH:mm'));
+        }
+      } else {
+        setReminderEnabled(false);
+        setReminderDate('');
+        setReminderTime('');
+      }
+      setReminderPhone(appt.reminderPhone || '');
+      setReminderMessage(appt.reminderMessage || '');
     } catch (error) {
       console.error('Error loading appointment:', error);
       toast.error('Failed to load appointment details');
@@ -203,6 +227,32 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
         time: timeFormatted,
       };
 
+      if (reminderEnabled) {
+        if (!reminderDate || !reminderTime) {
+          toast.error('Choose a reminder date and time');
+          setLoading(false);
+          return;
+        }
+        if (!reminderPhone.trim()) {
+          toast.error('Enter a phone number for the reminder');
+          setLoading(false);
+          return;
+        }
+        const reminderAt = new Date(`${reminderDate}T${reminderTime}:00`);
+        if (Number.isNaN(reminderAt.getTime())) {
+          toast.error('Invalid reminder date/time');
+          setLoading(false);
+          return;
+        }
+        appointmentData.reminderAt = reminderAt.toISOString();
+        appointmentData.reminderPhone = reminderPhone.trim();
+        appointmentData.reminderMessage = reminderMessage.trim() || undefined;
+      } else {
+        appointmentData.reminderAt = null;
+        appointmentData.reminderPhone = null;
+        appointmentData.reminderMessage = null;
+      }
+
       // Set customer and job if selected
       if (selectedCustomerId) {
         appointmentData.customerId = selectedCustomerId;
@@ -245,6 +295,11 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
       setSelectedCustomerId('');
       setSelectedJobId('');
       setJobs([]);
+      setReminderEnabled(false);
+      setReminderDate('');
+      setReminderTime('');
+      setReminderPhone('');
+      setReminderMessage('');
       
       onSuccess?.();
       onClose();
@@ -273,6 +328,11 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
       setSelectedCustomerId('');
       setSelectedJobId('');
       setJobs([]);
+      setReminderEnabled(false);
+      setReminderDate('');
+      setReminderTime('');
+      setReminderPhone('');
+      setReminderMessage('');
 
       // If job prop is provided, set it as default
       if (job && job._id) {
@@ -297,6 +357,11 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
       setSelectedCustomerId('');
       setSelectedJobId('');
       setJobs([]);
+      setReminderEnabled(false);
+      setReminderDate('');
+      setReminderTime('');
+      setReminderPhone('');
+      setReminderMessage('');
       onClose();
     }
   };
@@ -410,6 +475,63 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
                 </Select>
               </FormControl>
             )}
+
+            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: reminderEnabled ? 2 : 0 }}>
+                <input
+                  id="appointment-reminder-enabled"
+                  type="checkbox"
+                  checked={reminderEnabled}
+                  onChange={(e) => setReminderEnabled(e.target.checked)}
+                />
+                <label htmlFor="appointment-reminder-enabled">Schedule reminder text</label>
+              </Box>
+
+              {reminderEnabled && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        label="Reminder Date"
+                        type="date"
+                        value={reminderDate}
+                        onChange={(e) => setReminderDate(e.target.value)}
+                        fullWidth
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        label="Reminder Time"
+                        type="time"
+                        value={reminderTime}
+                        onChange={(e) => setReminderTime(e.target.value)}
+                        fullWidth
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                  </Grid>
+
+                  <TextField
+                    label="Reminder Phone"
+                    placeholder="+19495551234"
+                    value={reminderPhone}
+                    onChange={(e) => setReminderPhone(e.target.value)}
+                    fullWidth
+                  />
+
+                  <TextField
+                    label="Reminder Message (Optional)"
+                    value={reminderMessage}
+                    onChange={(e) => setReminderMessage(e.target.value)}
+                    fullWidth
+                    multiline
+                    rows={2}
+                    placeholder="If blank, we'll generate a default reminder message."
+                  />
+                </Box>
+              )}
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>

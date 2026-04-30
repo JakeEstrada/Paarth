@@ -1,3 +1,5 @@
+const ScheduledSms = require('../models/ScheduledSms');
+
 /**
  * Basic Twilio webhook handlers.
  * Twilio posts `application/x-www-form-urlencoded` payloads.
@@ -64,67 +66,166 @@ async function inboundVoice(req, res) {
   }
 }
 
+function getTwilioConfig() {
+  return {
+    accountSid: String(process.env.TWILIO_ACCOUNT_SID || '').trim(),
+    authToken: String(process.env.TWILIO_AUTH_TOKEN || '').trim(),
+    from: String(process.env.TWILIO_PHONE_NUMBER || '').trim(),
+  };
+}
+
+async function sendSmsViaTwilio({ to, message }) {
+  const { accountSid, authToken, from } = getTwilioConfig();
+  const normalizedTo = normalizeToE164(to);
+  const body = String(message || '').trim();
+
+  if (!accountSid || !authToken) {
+    throw new Error('Twilio account is not configured');
+  }
+  if (!normalizedTo) {
+    throw new Error('Recipient phone number is required');
+  }
+  if (!body) {
+    throw new Error('Message is required');
+  }
+  if (!from) {
+    throw new Error('TWILIO_PHONE_NUMBER is not configured');
+  }
+
+  const form = new URLSearchParams();
+  form.set('To', normalizedTo);
+  form.set('From', from);
+  form.set('Body', body);
+
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: form,
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.message || `Twilio API error (${response.status})`);
+  }
+
+  return {
+    sid: data.sid,
+    status: data.status,
+    to: data.to || normalizedTo,
+  };
+}
+
 async function sendSms(req, res) {
   try {
-    const accountSid = String(process.env.TWILIO_ACCOUNT_SID || '').trim();
-    const authToken = String(process.env.TWILIO_AUTH_TOKEN || '').trim();
-    const toInput = req.body?.to;
-    const messageInput = req.body?.message;
-    const to = normalizeToE164(toInput);
-    const body = String(messageInput || '').trim();
-    const from = String(process.env.TWILIO_PHONE_NUMBER || '').trim();
+    const data = await sendSmsViaTwilio({
+      to: req.body?.to,
+      message: req.body?.message,
+    });
+    return res.status(200).json({ success: true, ...data });
+  } catch (error) {
+    console.error('Twilio sendSms error:', error?.message || error);
+    return res.status(500).json({ error: error?.message || 'Failed to send SMS' });
+  }
+}
 
-    if (!accountSid || !authToken) {
-      return res.status(500).json({ error: 'Twilio account is not configured' });
-    }
+async function scheduleSms(req, res) {
+  try {
+    const to = normalizeToE164(req.body?.to);
+    const message = String(req.body?.message || '').trim();
+    const sendAtInput = req.body?.sendAt;
+
     if (!to) {
       return res.status(400).json({ error: 'Recipient phone number is required' });
     }
-    if (!body) {
+    if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
-    if (!from) {
-      return res.status(500).json({ error: 'TWILIO_PHONE_NUMBER is not configured' });
+
+    const sendAt = sendAtInput ? new Date(sendAtInput) : new Date();
+    if (Number.isNaN(sendAt.getTime())) {
+      return res.status(400).json({ error: 'Invalid send date/time' });
     }
 
-    const form = new URLSearchParams();
-    form.set('To', to);
-    form.set('From', from);
-    form.set('Body', body);
-
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: form,
-      }
-    );
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const detail = data?.message || `Twilio API error (${response.status})`;
-      return res.status(500).json({ error: detail });
+    // If sendAt is now/past, send immediately.
+    if (sendAt.getTime() <= Date.now()) {
+      const data = await sendSmsViaTwilio({ to, message });
+      return res.status(200).json({ success: true, mode: 'sent', ...data });
     }
 
-    return res.status(200).json({
+    const sms = await ScheduledSms.create({
+      to,
+      message,
+      sendAt,
+      createdBy: req.user?._id || undefined,
+      customerId: req.body?.customerId || undefined,
+      appointmentId: req.body?.appointmentId || undefined,
+      status: 'scheduled',
+    });
+
+    return res.status(201).json({
       success: true,
-      sid: data.sid,
-      status: data.status,
-      to: data.to || to,
+      mode: 'scheduled',
+      id: sms._id,
+      sendAt: sms.sendAt,
+      to: sms.to,
     });
   } catch (error) {
-    console.error('Twilio sendSms error:', error?.message || error);
-    const msg = error?.message || 'Failed to send SMS';
-    return res.status(500).json({ error: msg });
+    console.error('Twilio scheduleSms error:', error?.message || error);
+    return res.status(500).json({ error: error?.message || 'Failed to schedule SMS' });
   }
+}
+
+let smsSchedulerStarted = false;
+function startSmsScheduler() {
+  if (smsSchedulerStarted) return;
+  smsSchedulerStarted = true;
+
+  const tick = async () => {
+    try {
+      const due = await ScheduledSms.find({
+        status: 'scheduled',
+        sendAt: { $lte: new Date() },
+      })
+        .sort({ sendAt: 1 })
+        .limit(25);
+
+      for (const sms of due) {
+        try {
+          const result = await sendSmsViaTwilio({ to: sms.to, message: sms.message });
+          sms.status = 'sent';
+          sms.sentAt = new Date();
+          sms.lastError = undefined;
+          sms.attempts = (sms.attempts || 0) + 1;
+          await sms.save();
+          console.log('[SMS scheduler] sent', sms._id?.toString(), result.sid || '');
+        } catch (error) {
+          sms.status = 'failed';
+          sms.lastError = error?.message || 'Failed to send SMS';
+          sms.attempts = (sms.attempts || 0) + 1;
+          await sms.save();
+          console.error('[SMS scheduler] failed', sms._id?.toString(), sms.lastError);
+        }
+      }
+    } catch (error) {
+      console.error('[SMS scheduler] tick error:', error?.message || error);
+    }
+  };
+
+  setTimeout(tick, 5000);
+  setInterval(tick, 60 * 1000);
 }
 
 module.exports = {
   inboundSms,
   inboundVoice,
   sendSms,
+  scheduleSms,
+  startSmsScheduler,
+  sendSmsViaTwilio,
 };

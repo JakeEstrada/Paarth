@@ -182,15 +182,25 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
   });
   const [availableJobs, setAvailableJobs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const resolvedJob =
+    (formData.jobId ? availableJobs.find((j) => String(j._id) === String(formData.jobId)) : null) ||
+    job ||
+    null;
   const headerAddressLine =
-    job?.jobAddress && (job.jobAddress.street || job.jobAddress.city || job.jobAddress.state || job.jobAddress.zip)
-      ? [job.jobAddress.street, job.jobAddress.city, job.jobAddress.state, job.jobAddress.zip]
+    resolvedJob?.jobAddress && (resolvedJob.jobAddress.street || resolvedJob.jobAddress.city || resolvedJob.jobAddress.state || resolvedJob.jobAddress.zip)
+      ? [resolvedJob.jobAddress.street, resolvedJob.jobAddress.city, resolvedJob.jobAddress.state, resolvedJob.jobAddress.zip]
           .filter(Boolean)
           .join(', ')
-      : job?.customerId?.address && (job.customerId.address.street || job.customerId.address.city || job.customerId.address.state || job.customerId.address.zip)
-        ? [job.customerId.address.street, job.customerId.address.city, job.customerId.address.state, job.customerId.address.zip]
+      : resolvedJob?.customerId?.address && (resolvedJob.customerId.address.street || resolvedJob.customerId.address.city || resolvedJob.customerId.address.state || resolvedJob.customerId.address.zip)
+        ? [resolvedJob.customerId.address.street, resolvedJob.customerId.address.city, resolvedJob.customerId.address.state, resolvedJob.customerId.address.zip]
             .filter(Boolean)
             .join(', ')
+        : '';
+  const headerPhoneLine =
+    resolvedJob?.jobContact?.phone?.trim()
+      ? resolvedJob.jobContact.phone.trim()
+      : resolvedJob?.customerId?.primaryPhone?.trim()
+        ? resolvedJob.customerId.primaryPhone.trim()
         : '';
 
   useEffect(() => {
@@ -469,22 +479,41 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
         <Box sx={{ minWidth: 120 }}>
           <span>{job ? 'Edit Event' : 'Schedule Job'}</span>
         </Box>
-        <Box sx={{ flex: 1, textAlign: 'center', px: 1 }}>
+        <Box sx={{ flex: 1, textAlign: 'center', px: 1, minWidth: 0 }}>
           {headerAddressLine ? (
             <Typography
               variant="caption"
               color="text.secondary"
               sx={{
-                display: 'inline-block',
+                display: 'block',
                 maxWidth: { xs: '48vw', sm: '55vw', md: '34vw' },
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
                 verticalAlign: 'middle',
+                mx: 'auto',
               }}
               title={headerAddressLine}
             >
               {headerAddressLine}
+            </Typography>
+          ) : null}
+          {headerPhoneLine ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: 'block',
+                maxWidth: { xs: '48vw', sm: '55vw', md: '34vw' },
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                mx: 'auto',
+                mt: 0.25,
+              }}
+              title={headerPhoneLine}
+            >
+              {headerPhoneLine}
             </Typography>
           ) : null}
         </Box>

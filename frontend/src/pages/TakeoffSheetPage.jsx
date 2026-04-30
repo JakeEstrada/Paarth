@@ -898,7 +898,7 @@ function TakeoffSheetPage() {
                           fullWidth
                         />
                       </Box>
-                      <Box sx={{ borderRight: '1px solid #000', display: 'flex', alignItems: tall ? 'flex-start' : 'stretch' }}>
+                      <Box sx={{ borderRight: '1px solid #000', display: 'flex', alignItems: tall ? 'center' : 'stretch' }}>
                         <Autocomplete
                           freeSolo
                           options={takeoffAutocompleteLists.materials}
@@ -932,6 +932,7 @@ function TakeoffSheetPage() {
                                   px: 1,
                                   py: cellPy,
                                   lineHeight: 1.35,
+                                  textAlign: 'center',
                                 },
                               }}
                               inputProps={{
@@ -939,6 +940,7 @@ function TakeoffSheetPage() {
                                 style: {
                                   lineHeight: 1.35,
                                   paddingBottom: tall ? 8 : 4,
+                                  textAlign: 'center',
                                 },
                               }}
                               fullWidth

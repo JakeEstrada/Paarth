@@ -41,6 +41,8 @@ import {
   Add as AddIcon,
   Save as SaveIcon,
   Delete as DeleteIcon,
+  Share as ShareIcon,
+  NotificationsActive as NotificationsActiveIcon,
 } from '@mui/icons-material';
 
 const DAYS = ['Friday', 'Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'];
@@ -61,6 +63,15 @@ function PayrollPage() {
   const printSummaryRef = useRef(null);
   const [capturingPdf, setCapturingPdf] = useState(false);
   const [payrollBaseDirHandle, setPayrollBaseDirHandle] = useState(null);
+  const [payrollTextDialogOpen, setPayrollTextDialogOpen] = useState(false);
+  const [payrollTextPhone, setPayrollTextPhone] = useState('');
+  const [payrollTextMessage, setPayrollTextMessage] = useState('');
+  const [sendingPayrollText, setSendingPayrollText] = useState(false);
+  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
+  const [reminderPhone, setReminderPhone] = useState('');
+  const [reminderMessage, setReminderMessage] = useState('');
+  const [reminderSendAt, setReminderSendAt] = useState('');
+  const [sendingReminderText, setSendingReminderText] = useState(false);
   
   // Work hours - default 6:00 AM - 2:30 PM (600 - 1430)
   const [workHours, setWorkHours] = useState(
@@ -427,6 +438,84 @@ function PayrollPage() {
     }
   };
 
+  const buildPayrollTextMessage = () => {
+    return [
+      `Payroll for ${employeeName || 'Employee'}`,
+      `Date: ${date || '-'}`,
+      `Rate: $${(parseFloat(ratePerHour) || 0).toFixed(2)}/hr`,
+      `Total hours: ${totalHours.toFixed(2)}`,
+      `Weighted hours: ${weightedHoursData.weighted.toFixed(2)}`,
+      `Travel: $${travelCost.toFixed(2)}`,
+      `Receipts: $${totalReceipts.toFixed(2)}`,
+      `Overall total: $${overallTotal.toFixed(2)}`,
+    ].join('\n');
+  };
+
+  const openPayrollTextDialog = () => {
+    setPayrollTextMessage(buildPayrollTextMessage());
+    setPayrollTextDialogOpen(true);
+  };
+
+  const handleSendPayrollText = async () => {
+    if (!payrollTextPhone.trim()) {
+      toast.error('Enter a phone number');
+      return;
+    }
+    if (!payrollTextMessage.trim()) {
+      toast.error('Message cannot be empty');
+      return;
+    }
+    try {
+      setSendingPayrollText(true);
+      await axios.post(`${API_URL}/twilio/send-sms`, {
+        to: payrollTextPhone.trim(),
+        message: payrollTextMessage.trim(),
+      });
+      toast.success('Payroll sent by text');
+      setPayrollTextDialogOpen(false);
+      setPayrollTextPhone('');
+      setPayrollTextMessage('');
+    } catch (error) {
+      console.error('Failed to text payroll:', error);
+      toast.error(error.response?.data?.error || 'Failed to send payroll text');
+    } finally {
+      setSendingPayrollText(false);
+    }
+  };
+
+  const handleScheduleReminderText = async () => {
+    if (!reminderPhone.trim()) {
+      toast.error('Enter a phone number');
+      return;
+    }
+    if (!reminderMessage.trim()) {
+      toast.error('Message cannot be empty');
+      return;
+    }
+    if (!reminderSendAt) {
+      toast.error('Choose a reminder date/time');
+      return;
+    }
+    try {
+      setSendingReminderText(true);
+      await axios.post(`${API_URL}/twilio/schedule-sms`, {
+        to: reminderPhone.trim(),
+        message: reminderMessage.trim(),
+        sendAt: new Date(reminderSendAt).toISOString(),
+      });
+      toast.success('Reminder text scheduled');
+      setReminderDialogOpen(false);
+      setReminderPhone('');
+      setReminderMessage('');
+      setReminderSendAt('');
+    } catch (error) {
+      console.error('Failed to schedule reminder text:', error);
+      toast.error(error.response?.data?.error || 'Failed to schedule reminder text');
+    } finally {
+      setSendingReminderText(false);
+    }
+  };
+
   return (
     <>
       {/* Print-specific styles */}
@@ -782,6 +871,22 @@ function PayrollPage() {
               sx={{ textTransform: 'none', borderRadius: 2 }}
             >
               {capturingPdf ? 'Generating…' : 'Download PDF'}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<ShareIcon />}
+              onClick={openPayrollTextDialog}
+              sx={{ textTransform: 'none', borderRadius: 2 }}
+            >
+              Text Payroll
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<NotificationsActiveIcon />}
+              onClick={() => setReminderDialogOpen(true)}
+              sx={{ textTransform: 'none', borderRadius: 2 }}
+            >
+              Text Reminder
             </Button>
           </Box>
         </Box>
@@ -1256,6 +1361,72 @@ function PayrollPage() {
             disabled={!presetName.trim()}
           >
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={payrollTextDialogOpen} onClose={() => setPayrollTextDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Text Payroll</DialogTitle>
+        <DialogContent>
+          <TextField
+            sx={{ mt: 1, mb: 2 }}
+            fullWidth
+            label="Send to phone number"
+            placeholder="+19495551234"
+            value={payrollTextPhone}
+            onChange={(e) => setPayrollTextPhone(e.target.value)}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={5}
+            label="Message"
+            value={payrollTextMessage}
+            onChange={(e) => setPayrollTextMessage(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPayrollTextDialogOpen(false)} disabled={sendingPayrollText}>Cancel</Button>
+          <Button onClick={handleSendPayrollText} variant="contained" disabled={sendingPayrollText}>
+            {sendingPayrollText ? 'Sending...' : 'Send Text'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={reminderDialogOpen} onClose={() => setReminderDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Schedule Reminder Text</DialogTitle>
+        <DialogContent>
+          <TextField
+            sx={{ mt: 1, mb: 2 }}
+            fullWidth
+            label="Send to phone number"
+            placeholder="+19495551234"
+            value={reminderPhone}
+            onChange={(e) => setReminderPhone(e.target.value)}
+          />
+          <TextField
+            sx={{ mb: 2 }}
+            fullWidth
+            label="Send at"
+            type="datetime-local"
+            value={reminderSendAt}
+            onChange={(e) => setReminderSendAt(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={4}
+            label="Reminder message"
+            value={reminderMessage}
+            onChange={(e) => setReminderMessage(e.target.value)}
+            placeholder="Example: Reminder: Your appointment is tomorrow at 10:00 AM."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReminderDialogOpen(false)} disabled={sendingReminderText}>Cancel</Button>
+          <Button onClick={handleScheduleReminderText} variant="contained" disabled={sendingReminderText}>
+            {sendingReminderText ? 'Scheduling...' : 'Schedule Text'}
           </Button>
         </DialogActions>
       </Dialog>
