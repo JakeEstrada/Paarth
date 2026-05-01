@@ -43,6 +43,7 @@ import {
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
   Settings as SettingsIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, startOfWeek, endOfWeek, isSameDay, addDays } from 'date-fns';
 import axios from 'axios';
@@ -182,6 +183,10 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
   });
   const [availableJobs, setAvailableJobs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [sharePhone, setSharePhone] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [sendingShare, setSendingShare] = useState(false);
   const resolvedJob =
     (formData.jobId ? availableJobs.find((j) => String(j._id) === String(formData.jobId)) : null) ||
     job ||
@@ -202,6 +207,73 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
       : resolvedJob?.customerId?.primaryPhone?.trim()
         ? resolvedJob.customerId.primaryPhone.trim()
         : '';
+
+  const formatAddress = (address) => {
+    if (!address) return '';
+    return [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+  };
+
+  const buildCustomerShareMessage = () => {
+    const customer = resolvedJob?.customerId || {};
+    const address = resolvedJob?.jobAddress ? formatAddress(resolvedJob.jobAddress) : formatAddress(customer.address);
+    const phones = [];
+    if (resolvedJob?.jobContact?.phone) phones.push(resolvedJob.jobContact.phone);
+    if (customer?.primaryPhone && !phones.includes(customer.primaryPhone)) phones.push(customer.primaryPhone);
+    if (Array.isArray(customer?.contactPhones)) {
+      customer.contactPhones.forEach((p) => {
+        const v = p?.value?.trim();
+        if (v && !phones.includes(v)) phones.push(v);
+      });
+    }
+    const email = customer?.primaryEmail || '';
+    const lines = [
+      `Customer: ${customer?.name || 'Unknown'}`,
+      resolvedJob?.title ? `Job: ${resolvedJob.title}` : null,
+      phones.length ? `Phone: ${phones.join(', ')}` : null,
+      email ? `Email: ${email}` : null,
+      address ? `Address: ${address}` : null,
+    ].filter(Boolean);
+    return lines.join('\n');
+  };
+
+  const handleOpenShareDialog = () => {
+    setSharePhone(headerPhoneLine || '');
+    setShareMessage(buildCustomerShareMessage());
+    setShareDialogOpen(true);
+  };
+
+  const handleCloseShareDialog = () => {
+    setShareDialogOpen(false);
+    setSharePhone('');
+    setShareMessage('');
+    setSendingShare(false);
+  };
+
+  const handleSendShareSms = async () => {
+    if (!sharePhone.trim()) {
+      toast.error('Enter a phone number to send to');
+      return;
+    }
+    if (!shareMessage.trim()) {
+      toast.error('Message cannot be empty');
+      return;
+    }
+    try {
+      setSendingShare(true);
+      await axios.post(`${API_URL}/twilio/send-sms`, {
+        to: sharePhone.trim(),
+        message: shareMessage.trim(),
+        customerId: resolvedJob?.customerId?._id || resolvedJob?.customerId || undefined,
+      });
+      toast.success('Customer info sent by text');
+      handleCloseShareDialog();
+    } catch (error) {
+      console.error('Error sending customer info text:', error);
+      toast.error(error.response?.data?.error || 'Failed to send text');
+    } finally {
+      setSendingShare(false);
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -479,7 +551,8 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
         <Box sx={{ minWidth: 120 }}>
           <span>{job ? 'Edit Event' : 'Schedule Job'}</span>
         </Box>
-        <Box sx={{ flex: 1, textAlign: 'center', px: 1, minWidth: 0 }}>
+        <Box sx={{ flex: 1, textAlign: 'center', px: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+          <Box sx={{ minWidth: 0 }}>
           {headerAddressLine ? (
             <Typography
               variant="caption"
@@ -516,6 +589,14 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
               {headerPhoneLine}
             </Typography>
           ) : null}
+          </Box>
+          {(headerAddressLine || headerPhoneLine) && (
+            <Tooltip title="Text customer info">
+              <IconButton size="small" onClick={handleOpenShareDialog}>
+                <ShareIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
         {(job || formData.jobId) && onViewJob && (
           <Button
@@ -886,6 +967,35 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
           {loading ? <CircularProgress size={20} /> : 'Save'}
         </Button>
       </DialogActions>
+
+      <Dialog open={shareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Share Customer by Text</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Send to phone number"
+            placeholder="+19495551234"
+            value={sharePhone}
+            onChange={(e) => setSharePhone(e.target.value)}
+            sx={{ mt: 1, mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={4}
+            label="Message"
+            value={shareMessage}
+            onChange={(e) => setShareMessage(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseShareDialog} disabled={sendingShare}>Cancel</Button>
+          <Button onClick={handleSendShareSms} variant="contained" disabled={sendingShare}>
+            {sendingShare ? 'Sending...' : 'Send Text'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }
