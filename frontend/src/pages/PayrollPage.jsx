@@ -449,6 +449,21 @@ function PayrollPage() {
     setPayrollTextDialogOpen(true);
   };
 
+  const buildPayrollSmsMessage = () => {
+    const rate = (parseFloat(ratePerHour) || 0).toFixed(2);
+    return [
+      `Payroll Summary`,
+      `Employee: ${employeeName || '-'}`,
+      `Date: ${date || '-'}`,
+      `Rate: $${rate}/hr`,
+      `Total Hours: ${totalHours.toFixed(2)}`,
+      `Weighted Hours: ${weightedHoursData.weighted.toFixed(2)}`,
+      `Travel: $${travelCost.toFixed(2)}`,
+      `Receipts: $${totalReceipts.toFixed(2)}`,
+      `Total Pay: $${overallTotal.toFixed(2)}`,
+    ].join('\n');
+  };
+
   const handleSendPayrollText = async () => {
     if (!payrollTextPhone.trim()) {
       toast.error('Enter a phone number');
@@ -456,14 +471,11 @@ function PayrollPage() {
     }
     try {
       setSendingPayrollText(true);
-      setCapturingPdf(true);
-      const payrollPdfFileId = await uploadPayrollPdfAndGetLink();
       await axios.post(`${API_URL}/twilio/send-sms`, {
         to: payrollTextPhone.trim(),
-        message: `Payroll PDF for ${employeeName || 'Employee'}`,
-        mediaFileId: payrollPdfFileId,
+        message: buildPayrollSmsMessage(),
       });
-      toast.success('Payroll PDF sent');
+      toast.success('Payroll text sent');
       setPayrollTextDialogOpen(false);
       setPayrollTextPhone('');
     } catch (error) {
@@ -471,7 +483,6 @@ function PayrollPage() {
       toast.error(error.response?.data?.error || 'Failed to send payroll text');
     } finally {
       setSendingPayrollText(false);
-      setCapturingPdf(false);
     }
   };
 
@@ -1318,10 +1329,10 @@ function PayrollPage() {
       </Dialog>
 
       <Dialog open={payrollTextDialogOpen} onClose={() => setPayrollTextDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Send Payroll PDF by Text</DialogTitle>
+        <DialogTitle>Send Payroll Text</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-            Enter a phone number. When you send, we will generate the payroll PDF and text it.
+            Enter a phone number. We will send a formatted payroll summary by text.
           </Typography>
           <TextField
             sx={{ mb: 2 }}
@@ -1342,7 +1353,7 @@ function PayrollPage() {
             Cancel
           </Button>
           <Button onClick={handleSendPayrollText} variant="contained" disabled={sendingPayrollText}>
-            {sendingPayrollText ? 'Sending...' : 'Send Payroll PDF'}
+            {sendingPayrollText ? 'Sending...' : 'Send Payroll Text'}
           </Button>
         </DialogActions>
       </Dialog>
