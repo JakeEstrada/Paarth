@@ -442,7 +442,7 @@ function PayrollPage() {
     });
     const uploaded = uploadRes.data;
     if (!uploaded?._id) throw new Error('Could not upload payroll PDF');
-    return `${API_URL}/files/${uploaded._id}/download`;
+    return uploaded._id;
   };
 
   const openPayrollTextDialog = () => {
@@ -457,11 +457,11 @@ function PayrollPage() {
     try {
       setSendingPayrollText(true);
       setCapturingPdf(true);
-      const payrollPdfLink = await uploadPayrollPdfAndGetLink();
+      const payrollPdfFileId = await uploadPayrollPdfAndGetLink();
       await axios.post(`${API_URL}/twilio/send-sms`, {
         to: payrollTextPhone.trim(),
         message: `Payroll PDF for ${employeeName || 'Employee'}`,
-        mediaUrl: payrollPdfLink,
+        mediaFileId: payrollPdfFileId,
       });
       toast.success('Payroll PDF sent');
       setPayrollTextDialogOpen(false);

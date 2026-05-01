@@ -1,4 +1,5 @@
 const ScheduledSms = require('../models/ScheduledSms');
+const File = require('../models/File');
 
 /**
  * Basic Twilio webhook handlers.
@@ -83,6 +84,28 @@ function normalizeMediaUrls(input) {
     .filter((value) => /^https?:\/\//i.test(value));
 }
 
+function getApiBaseUrl(req) {
+  const envBase = String(process.env.PUBLIC_API_BASE_URL || '').trim();
+  if (envBase) return envBase.replace(/\/$/, '');
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+  const host = req.get('host');
+  return `${proto}://${host}`;
+}
+
+async function resolveMediaUrls(req) {
+  const directUrls = normalizeMediaUrls(req.body?.mediaUrl);
+  const mediaFileId = String(req.body?.mediaFileId || '').trim();
+  if (!mediaFileId) return directUrls;
+
+  const file = await File.findById(mediaFileId).select('_id');
+  if (!file) {
+    throw new Error('Media file not found');
+  }
+
+  const downloadUrl = `${getApiBaseUrl(req)}/files/${file._id}/download`;
+  return [...directUrls, downloadUrl];
+}
+
 async function sendSmsViaTwilio({ to, message, mediaUrl }) {
   const { accountSid, authToken, from } = getTwilioConfig();
   const normalizedTo = normalizeToE164(to);
@@ -136,10 +159,11 @@ async function sendSmsViaTwilio({ to, message, mediaUrl }) {
 
 async function sendSms(req, res) {
   try {
+    const mediaUrls = await resolveMediaUrls(req);
     const data = await sendSmsViaTwilio({
       to: req.body?.to,
       message: req.body?.message,
-      mediaUrl: req.body?.mediaUrl,
+      mediaUrl: mediaUrls,
     });
     return res.status(200).json({ success: true, ...data });
   } catch (error) {
