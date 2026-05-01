@@ -64,8 +64,6 @@ function PayrollPage() {
   const [payrollBaseDirHandle, setPayrollBaseDirHandle] = useState(null);
   const [payrollTextDialogOpen, setPayrollTextDialogOpen] = useState(false);
   const [payrollTextPhone, setPayrollTextPhone] = useState('');
-  const [payrollPdfLink, setPayrollPdfLink] = useState('');
-  const [preparingPayrollPdf, setPreparingPayrollPdf] = useState(false);
   const [sendingPayrollText, setSendingPayrollText] = useState(false);
   
   // Work hours - default 6:00 AM - 2:30 PM (600 - 1430)
@@ -447,20 +445,8 @@ function PayrollPage() {
     return `${API_URL}/files/${uploaded._id}/download`;
   };
 
-  const openPayrollTextDialog = async () => {
-    try {
-      setPreparingPayrollPdf(true);
-      setCapturingPdf(true);
-      const pdfLink = await uploadPayrollPdfAndGetLink();
-      setPayrollPdfLink(pdfLink);
-      setPayrollTextDialogOpen(true);
-    } catch (error) {
-      console.error('Failed to prepare payroll PDF for texting:', error);
-      toast.error(error.response?.data?.error || 'Failed to generate payroll PDF');
-    } finally {
-      setPreparingPayrollPdf(false);
-      setCapturingPdf(false);
-    }
+  const openPayrollTextDialog = () => {
+    setPayrollTextDialogOpen(true);
   };
 
   const handleSendPayrollText = async () => {
@@ -468,12 +454,10 @@ function PayrollPage() {
       toast.error('Enter a phone number');
       return;
     }
-    if (!payrollPdfLink) {
-      toast.error('Payroll PDF is not ready yet');
-      return;
-    }
     try {
       setSendingPayrollText(true);
+      setCapturingPdf(true);
+      const payrollPdfLink = await uploadPayrollPdfAndGetLink();
       await axios.post(`${API_URL}/twilio/send-sms`, {
         to: payrollTextPhone.trim(),
         message: `Payroll PDF for ${employeeName || 'Employee'}`,
@@ -482,12 +466,12 @@ function PayrollPage() {
       toast.success('Payroll PDF sent');
       setPayrollTextDialogOpen(false);
       setPayrollTextPhone('');
-      setPayrollPdfLink('');
     } catch (error) {
       console.error('Failed to text payroll:', error);
       toast.error(error.response?.data?.error || 'Failed to send payroll text');
     } finally {
       setSendingPayrollText(false);
+      setCapturingPdf(false);
     }
   };
 
@@ -851,10 +835,10 @@ function PayrollPage() {
               variant="outlined"
               startIcon={<ShareIcon />}
               onClick={openPayrollTextDialog}
-              disabled={preparingPayrollPdf}
+              disabled={sendingPayrollText}
               sx={{ textTransform: 'none', borderRadius: 2 }}
             >
-              {preparingPayrollPdf ? 'Preparing PDF…' : 'Text Payroll'}
+              Text Payroll
             </Button>
           </Box>
         </Box>
@@ -1337,7 +1321,7 @@ function PayrollPage() {
         <DialogTitle>Send Payroll PDF by Text</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-            Payroll PDF is ready. Enter a phone number to send it.
+            Enter a phone number. When you send, we will generate the payroll PDF and text it.
           </Typography>
           <TextField
             sx={{ mb: 2 }}
@@ -1352,7 +1336,6 @@ function PayrollPage() {
           <Button
             onClick={() => {
               setPayrollTextDialogOpen(false);
-              setPayrollPdfLink('');
             }}
             disabled={sendingPayrollText}
           >
