@@ -451,17 +451,24 @@ function PayrollPage() {
 
   const buildPayrollSmsMessage = () => {
     const rate = (parseFloat(ratePerHour) || 0).toFixed(2);
-    return [
-      `Payroll Summary`,
-      `Employee: ${employeeName || '-'}`,
-      `Date: ${date || '-'}`,
-      `Rate: $${rate}/hr`,
-      `Total Hours: ${totalHours.toFixed(2)}`,
-      `Weighted Hours: ${weightedHoursData.weighted.toFixed(2)}`,
+    const employee = (employeeName || '-').trim() || '-';
+    const payrollDate = (date || '-').trim() || '-';
+    const lines = [
+      'PAYROLL SUMMARY',
+      `Employee: ${employee}`,
+      `Date: ${payrollDate}`,
+      '',
+      `Rate/hr: $${rate}`,
+      `Hours: ${totalHours.toFixed(2)}`,
+      `Weighted: ${weightedHoursData.weighted.toFixed(2)}`,
+      '',
       `Travel: $${travelCost.toFixed(2)}`,
       `Receipts: $${totalReceipts.toFixed(2)}`,
-      `Total Pay: $${overallTotal.toFixed(2)}`,
-    ].join('\n');
+      '--------------------',
+      `TOTAL PAY: $${overallTotal.toFixed(2)}`,
+    ];
+    // Use CRLF for better compatibility across SMS clients/carriers.
+    return lines.join('\r\n');
   };
 
   const handleSendPayrollText = async () => {
