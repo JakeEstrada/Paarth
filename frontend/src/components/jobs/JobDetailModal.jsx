@@ -46,6 +46,7 @@ import {
   InsertDriveFile as InsertDriveFileIcon,
   Lock as LockIcon,
   LockOpen as LockOpenIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import axios from 'axios';
@@ -176,6 +177,10 @@ function JobDetailModal({
   const [unlockPinDialogOpen, setUnlockPinDialogOpen] = useState(false);
   const [unlockPinInput, setUnlockPinInput] = useState('');
   const [lockedFileToUnlock, setLockedFileToUnlock] = useState(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [sharePhone, setSharePhone] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [sendingShare, setSendingShare] = useState(false);
 
   useEffect(() => {
     if (open && jobId) {
@@ -596,11 +601,33 @@ function JobDetailModal({
         }}
       >
         {name && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <PersonIcon sx={{ ...iconSm, color: 'primary.main', mt: '1px' }} />
-            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.78rem', lineHeight: 1.35 }}>
-              {name}
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+              <PersonIcon sx={{ ...iconSm, color: 'primary.main', mt: '1px' }} />
+              <Typography
+                variant="body2"
+                sx={{ fontWeight: 600, fontSize: '0.78rem', lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {name}
+              </Typography>
+            </Box>
+            <Tooltip title="Share customer info by text">
+              <IconButton size="small" sx={{ p: 0.25 }} onClick={(e) => {
+                e.stopPropagation();
+                const messageLines = [
+                  `Customer: ${name || 'Unknown'}`,
+                  j?.title ? `Job: ${j.title}` : null,
+                  addressLine ? `Address: ${addressLine}` : null,
+                  email ? `Email: ${email}` : null,
+                  phone ? `Phone: ${phone}` : null,
+                ].filter(Boolean);
+                setSharePhone(phone || '');
+                setShareMessage(messageLines.join('\n'));
+                setShareDialogOpen(true);
+              }}>
+                <ShareIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Box>
         )}
         {addressLine && (
@@ -652,6 +679,39 @@ function JobDetailModal({
     job?.customerId && typeof job.customerId === 'object'
       ? job.customerId?._id
       : job?.customerId || null;
+
+  const handleCloseShareDialog = () => {
+    setShareDialogOpen(false);
+    setSharePhone('');
+    setShareMessage('');
+    setSendingShare(false);
+  };
+
+  const handleSendShareSms = async () => {
+    if (!sharePhone.trim()) {
+      toast.error('Enter a phone number to send to');
+      return;
+    }
+    if (!shareMessage.trim()) {
+      toast.error('Message cannot be empty');
+      return;
+    }
+    try {
+      setSendingShare(true);
+      await axios.post(`${API_URL}/twilio/send-sms`, {
+        to: sharePhone.trim(),
+        message: shareMessage.trim(),
+        customerId: customerEntityId || undefined,
+      });
+      toast.success('Customer info sent by text');
+      handleCloseShareDialog();
+    } catch (error) {
+      console.error('Error sending customer info text:', error);
+      toast.error(error.response?.data?.error || 'Failed to send text');
+    } finally {
+      setSendingShare(false);
+    }
+  };
 
   return (
     <Dialog
@@ -1762,6 +1822,35 @@ function JobDetailModal({
           job={job}
         />
       )}
+
+      <Dialog open={shareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Share Customer by Text</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Send to phone number"
+            placeholder="+19495551234"
+            value={sharePhone}
+            onChange={(e) => setSharePhone(e.target.value)}
+            sx={{ mt: 1, mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={4}
+            label="Message"
+            value={shareMessage}
+            onChange={(e) => setShareMessage(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseShareDialog} disabled={sendingShare}>Cancel</Button>
+          <Button onClick={handleSendShareSms} variant="contained" disabled={sendingShare}>
+            {sendingShare ? 'Sending...' : 'Send Text'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }
