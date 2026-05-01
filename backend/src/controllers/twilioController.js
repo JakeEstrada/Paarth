@@ -1,5 +1,7 @@
 const ScheduledSms = require('../models/ScheduledSms');
 const File = require('../models/File');
+const crypto = require('crypto');
+const { getFileStream } = require('./fileController');
 
 /**
  * Basic Twilio webhook handlers.
@@ -92,6 +94,26 @@ function getApiBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
+function getMediaSigningSecret() {
+  return (
+    String(process.env.TWILIO_MEDIA_SECRET || '').trim() ||
+    String(process.env.JWT_SECRET || '').trim() ||
+    'fallback-media-secret'
+  );
+}
+
+function signMediaToken({ fileId, expiresAt }) {
+  const payload = `${String(fileId)}:${String(expiresAt)}`;
+  return crypto.createHmac('sha256', getMediaSigningSecret()).update(payload).digest('hex');
+}
+
+function buildSignedMediaUrl(req, fileId, ttlMs = 10 * 60 * 1000) {
+  const expiresAt = Date.now() + ttlMs;
+  const sig = signMediaToken({ fileId, expiresAt });
+  const base = getApiBaseUrl(req);
+  return `${base}/twilio/media/${fileId}?exp=${expiresAt}&sig=${sig}`;
+}
+
 async function resolveMediaUrls(req) {
   const directUrls = normalizeMediaUrls(req.body?.mediaUrl);
   const mediaFileId = String(req.body?.mediaFileId || '').trim();
@@ -102,8 +124,39 @@ async function resolveMediaUrls(req) {
     throw new Error('Media file not found');
   }
 
-  const downloadUrl = `${getApiBaseUrl(req)}/files/${file._id}/download`;
+  const downloadUrl = buildSignedMediaUrl(req, file._id);
   return [...directUrls, downloadUrl];
+}
+
+async function twilioMediaDownload(req, res) {
+  try {
+    const fileId = String(req.params?.id || '').trim();
+    const exp = Number(req.query?.exp);
+    const sig = String(req.query?.sig || '').trim();
+    if (!fileId || !Number.isFinite(exp) || !sig) {
+      return res.status(400).json({ error: 'Missing media access parameters' });
+    }
+    if (Date.now() > exp) {
+      return res.status(403).json({ error: 'Media link expired' });
+    }
+    const expected = signMediaToken({ fileId, expiresAt: exp });
+    if (sig !== expected) {
+      return res.status(403).json({ error: 'Invalid media signature' });
+    }
+
+    const file = await File.findById(fileId).setOptions({ bypassTenant: true });
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${file.originalName || 'file'}"`);
+    const fileStream = await getFileStream(file);
+    return fileStream.pipe(res);
+  } catch (error) {
+    console.error('Twilio media download error:', error?.message || error);
+    return res.status(500).json({ error: 'Failed to serve media file' });
+  }
 }
 
 async function sendSmsViaTwilio({ to, message, mediaUrl }) {
@@ -266,4 +319,5 @@ module.exports = {
   scheduleSms,
   startSmsScheduler,
   sendSmsViaTwilio,
+  twilioMediaDownload,
 };
