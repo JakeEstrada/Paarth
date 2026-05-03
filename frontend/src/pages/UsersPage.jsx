@@ -24,6 +24,7 @@ import {
   Switch,
   FormControlLabel,
   useTheme,
+  Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -31,13 +32,25 @@ import {
   Delete as DeleteIcon,
   Person as PersonIcon,
   CheckCircle as CheckCircleIcon,
-  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+function previousPhonesToText(arr) {
+  if (!Array.isArray(arr) || !arr.length) return '';
+  return arr.join('\n');
+}
+
+function textToPreviousPhones(text) {
+  if (!text || typeof text !== 'string') return [];
+  return text
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 function UsersPage() {
   const theme = useTheme();
@@ -55,6 +68,8 @@ function UsersPage() {
     password: '',
     role: 'employee',
     isActive: true,
+    mobile: '',
+    previousPhonesText: '',
   });
   const [approveFormData, setApproveFormData] = useState({
     role: 'employee',
@@ -94,6 +109,8 @@ function UsersPage() {
         password: '',
         role: user.role,
         isActive: user.isActive,
+        mobile: user.mobile ?? '',
+        previousPhonesText: previousPhonesToText(user.previousPhoneNumbers),
       });
     } else {
       setEditingUser(null);
@@ -103,6 +120,8 @@ function UsersPage() {
         password: '',
         role: 'employee',
         isActive: true,
+        mobile: '',
+        previousPhonesText: '',
       });
     }
     setDialogOpen(true);
@@ -117,6 +136,8 @@ function UsersPage() {
       password: '',
       role: 'sales',
       isActive: true,
+      mobile: '',
+      previousPhonesText: '',
     });
   };
 
@@ -166,6 +187,8 @@ function UsersPage() {
         email: formData.email,
         role: formData.role,
         isActive: formData.isActive,
+        mobile: formData.mobile.trim(),
+        previousPhoneNumbers: textToPreviousPhones(formData.previousPhonesText),
       };
 
       if (formData.password) {
@@ -230,6 +253,72 @@ function UsersPage() {
     return colors[role] || 'default';
   };
 
+  const employeeUsers = users.filter((u) => u.role === 'employee');
+  const nonEmployeeUsers = users.filter((u) => u.role !== 'employee');
+
+  const renderUserRow = (user, { showRoleChip = true } = {}) => {
+    const prevList = Array.isArray(user.previousPhoneNumbers) ? user.previousPhoneNumbers : [];
+    const prevJoined = prevList.join(', ');
+    return (
+    <TableRow key={user._id} hover>
+      <TableCell>{user.name}</TableCell>
+      <TableCell>{user.email}</TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}>{user.mobile?.trim() ? user.mobile.trim() : '—'}</TableCell>
+      <TableCell sx={{ maxWidth: 220 }}>
+        {prevList.length ? (
+          <Tooltip title={prevJoined}>
+            <Typography variant="body2" noWrap>
+              {prevJoined}
+            </Typography>
+          </Tooltip>
+        ) : (
+          '—'
+        )}
+      </TableCell>
+      {showRoleChip ? (
+        <TableCell>
+          <Chip
+            label={user.role.replace('_', ' ').toUpperCase()}
+            color={getRoleColor(user.role)}
+            size="small"
+          />
+        </TableCell>
+      ) : (
+        <TableCell>
+          <Chip label="EMPLOYEE" color={getRoleColor('employee')} size="small" />
+        </TableCell>
+      )}
+      <TableCell>
+        <Chip
+          label={user.isActive ? 'Active' : 'Inactive'}
+          color={user.isActive ? 'success' : 'default'}
+          size="small"
+        />
+      </TableCell>
+      <TableCell align="right">
+        <IconButton
+          size="small"
+          onClick={() => handleOpenDialog(user)}
+          color="primary"
+          title="View/Edit User"
+        >
+          <EditIcon />
+        </IconButton>
+        {user._id !== currentUser?._id && (
+          <IconButton
+            size="small"
+            onClick={() => handleDelete(user._id)}
+            color="error"
+            title="Delete User"
+          >
+            <DeleteIcon />
+          </IconButton>
+        )}
+      </TableCell>
+    </TableRow>
+    );
+  };
+
   if (!isAdmin()) {
     return (
       <Box sx={{ p: 4, textAlign: 'center' }}>
@@ -274,6 +363,8 @@ function UsersPage() {
                 <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? 'rgba(245, 124, 0, 0.16)' : '#fff3e0' }}>
                   <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Mobile</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Previous numbers</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Registered</TableCell>
                   <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
                 </TableRow>
@@ -283,6 +374,18 @@ function UsersPage() {
                   <TableRow key={user._id} hover>
                     <TableCell>{user.name}</TableCell>
                     <TableCell>{user.email}</TableCell>
+                    <TableCell>{user.mobile?.trim() ? user.mobile.trim() : '—'}</TableCell>
+                    <TableCell sx={{ maxWidth: 180 }}>
+                      {Array.isArray(user.previousPhoneNumbers) && user.previousPhoneNumbers.length ? (
+                        <Tooltip title={user.previousPhoneNumbers.join(', ')}>
+                          <Typography variant="body2" noWrap>
+                            {user.previousPhoneNumbers.join(', ')}
+                          </Typography>
+                        </Tooltip>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
                     <TableCell>
                       {new Date(user.createdAt).toLocaleDateString()}
                     </TableCell>
@@ -312,16 +415,21 @@ function UsersPage() {
         </Box>
       )}
 
-      {/* Active Users Section */}
+      {/* Active users (non-employee roles): admins, sales, installers, shop view, etc. */}
       <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-        Active Users ({users.length})
+        Active users ({nonEmployeeUsers.length})
       </Typography>
-      <TableContainer component={Paper}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Accounts with specialized roles. Employee-only accounts are listed in the Employees section below.
+      </Typography>
+      <TableContainer component={Paper} sx={{ mb: 4 }}>
         <Table>
           <TableHead>
             <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
               <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Mobile</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Previous numbers</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Role</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
               <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
@@ -330,57 +438,82 @@ function UsersPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} align="center">
+                <TableCell colSpan={7} align="center">
                   <Typography>Loading...</Typography>
                 </TableCell>
               </TableRow>
-            ) : users.length === 0 ? (
+            ) : nonEmployeeUsers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} align="center">
-                  <Typography color="text.secondary">No users found</Typography>
+                <TableCell colSpan={7} align="center">
+                  <Typography color="text.secondary">No active users in this group</Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              users.map((user) => (
-                <TableRow key={user._id} hover>
-                  <TableCell>{user.name}</TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={user.role.replace('_', ' ').toUpperCase()}
-                      color={getRoleColor(user.role)}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={user.isActive ? 'Active' : 'Inactive'}
-                      color={user.isActive ? 'success' : 'default'}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleOpenDialog(user)}
-                      color="primary"
-                      title="View/Edit User"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    {user._id !== currentUser?._id && (
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDelete(user._id)}
-                        color="error"
-                        title="Delete User"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))
+              nonEmployeeUsers.map((user) => renderUserRow(user))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Employees: staff with the Employee role */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Employees ({employeeUsers.length})
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Team members with the Employee role. Use Add employee to create login accounts for your staff.
+          </Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setEditingUser(null);
+            setFormData({
+              name: '',
+              email: '',
+              password: '',
+              role: 'employee',
+              isActive: true,
+              mobile: '',
+              previousPhonesText: '',
+            });
+            setDialogOpen(true);
+          }}
+          sx={{ textTransform: 'none' }}
+        >
+          Add employee
+        </Button>
+      </Box>
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
+              <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Mobile</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Previous numbers</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Role</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  <Typography>Loading...</Typography>
+                </TableCell>
+              </TableRow>
+            ) : employeeUsers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  <Typography color="text.secondary">No employees yet — use Add employee or Create User with role Employee.</Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              employeeUsers.map((user) => renderUserRow(user, { showRoleChip: false }))
             )}
           </TableBody>
         </Table>
@@ -435,6 +568,24 @@ function UsersPage() {
                   fullWidth
                   required={!editingUser}
                   helperText={editingUser ? "Leave blank to keep current password. Passwords are securely hashed." : "Minimum 6 characters. Password will be securely hashed."}
+                />
+                <TextField
+                  label="Mobile number"
+                  value={formData.mobile}
+                  onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                  fullWidth
+                  placeholder="e.g. +1 555 123 4567"
+                  helperText="Current contact number for this person."
+                />
+                <TextField
+                  label="Previous phone numbers"
+                  value={formData.previousPhonesText}
+                  onChange={(e) => setFormData({ ...formData, previousPhonesText: e.target.value })}
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  placeholder={'One per line, or separate with commas.\nExample: old office line, previous mobile from another system.'}
+                  helperText="Archive numbers from an old roster or before they changed phones. Stored as a list."
                 />
               </Box>
             </Box>

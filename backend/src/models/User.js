@@ -14,6 +14,16 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     trim: true
   },
+  mobile: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  /** Prior phone numbers (e.g. from an old system or before they changed devices). */
+  previousPhoneNumbers: {
+    type: [String],
+    default: [],
+  },
   password: {
     type: String,
     required: true,

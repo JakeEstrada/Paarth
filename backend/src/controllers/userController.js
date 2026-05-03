@@ -1,6 +1,20 @@
 const User = require('../models/User');
 const { requireAuth } = require('../middleware/auth');
 
+function normalizePreviousPhoneNumbers(input) {
+  if (input == null) return [];
+  if (Array.isArray(input)) {
+    return input.map((s) => String(s).trim()).filter(Boolean);
+  }
+  if (typeof input === 'string') {
+    return input
+      .split(/[\n,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 // Get all users (admin only)
 async function getUsers(req, res) {
   try {
@@ -30,7 +44,7 @@ async function createUser(req, res) {
       return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
     }
 
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, mobile, previousPhoneNumbers } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -53,13 +67,16 @@ async function createUser(req, res) {
       return res.status(403).json({ error: 'Only super admin can create admin users' });
     }
 
-    // Create user
+    // Create user (admin-created accounts are active immediately, not self-registration pending)
     const user = new User({
       name,
       email: email.toLowerCase(),
       password,
       role: role || 'sales',
-      isActive: true
+      isActive: true,
+      isPending: false,
+      mobile: mobile != null ? String(mobile).trim() : '',
+      previousPhoneNumbers: normalizePreviousPhoneNumbers(previousPhoneNumbers),
     });
 
     await user.save();
@@ -83,7 +100,7 @@ async function updateUser(req, res) {
     }
 
     const { userId } = req.params;
-    const { name, email, role, isActive, password, approve, isPending } = req.body;
+    const { name, email, role, isActive, password, approve, isPending, mobile, previousPhoneNumbers } = req.body;
 
     const user = await User.findById(userId);
     if (!user) {
@@ -116,6 +133,12 @@ async function updateUser(req, res) {
       user.isPending = isPending;
     }
     if (password) user.password = password; // Will be hashed by pre-save hook
+    if (mobile !== undefined) {
+      user.mobile = String(mobile).trim();
+    }
+    if (previousPhoneNumbers !== undefined) {
+      user.previousPhoneNumbers = normalizePreviousPhoneNumbers(previousPhoneNumbers);
+    }
 
     await user.save();
 
