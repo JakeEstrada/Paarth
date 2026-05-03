@@ -50,6 +50,7 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import JobDetailModal from '../components/jobs/JobDetailModal';
+import EmployeeSmsRecipientField from '../components/common/EmployeeSmsRecipientField';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
@@ -78,7 +79,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const [sharePhone, setSharePhone] = useState('');
+  const [shareEmployeeUserId, setShareEmployeeUserId] = useState('');
   const [shareMessage, setShareMessage] = useState('');
   const [sendingShare, setSendingShare] = useState(false);
 
@@ -274,23 +275,22 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
 
   const handleOpenShareDialog = () => {
     if (!selectedCustomer) return;
-    setSharePhone(selectedCustomer.primaryPhone || '');
+    setShareEmployeeUserId('');
     setShareMessage(buildShareMessage(selectedCustomer));
     setShareDialogOpen(true);
   };
 
   const handleCloseShareDialog = () => {
     setShareDialogOpen(false);
-    setSharePhone('');
+    setShareEmployeeUserId('');
     setShareMessage('');
     setSendingShare(false);
   };
 
   const handleSendShareSms = async () => {
-    const to = sharePhone.trim();
     const message = shareMessage.trim();
-    if (!to) {
-      toast.error('Enter a phone number to text');
+    if (!shareEmployeeUserId) {
+      toast.error('Select an employee to send the text to');
       return;
     }
     if (!message) {
@@ -300,7 +300,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     try {
       setSendingShare(true);
       await axios.post(`${API_URL}/twilio/send-sms`, {
-        to,
+        employeeUserId: shareEmployeeUserId,
         message,
         customerId: selectedCustomer?._id,
       });
@@ -1573,15 +1573,13 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
         <DialogTitle>Share Customer by Text</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            Enter the phone number and message to send.
+            Choose which employee receives the text (must have a mobile number on file in Users).
           </DialogContentText>
-          <TextField
-            autoFocus
-            fullWidth
-            label="Send to phone number"
-            placeholder="+19495551234"
-            value={sharePhone}
-            onChange={(e) => setSharePhone(e.target.value)}
+          <EmployeeSmsRecipientField
+            dialogOpen={shareDialogOpen}
+            value={shareEmployeeUserId}
+            onChange={setShareEmployeeUserId}
+            disabled={sendingShare}
             sx={{ mb: 2 }}
           />
           <TextField

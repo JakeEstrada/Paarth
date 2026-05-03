@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const {
+  getEmployeesForSms,
   getUsers,
   createUser,
   updateUser,
@@ -11,6 +12,7 @@ const {
 // All routes require authentication
 router.use(requireAuth);
 
+router.get('/employees-for-sms', getEmployeesForSms);
 router.get('/', getUsers);
 router.post('/', createUser);
 router.patch('/:userId', updateUser);

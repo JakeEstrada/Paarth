@@ -15,6 +15,34 @@ function normalizePreviousPhoneNumbers(input) {
   return [];
 }
 
+// Active employees with mobile (for Twilio recipient picker; any authenticated user in tenant)
+async function getEmployeesForSms(req, res) {
+  try {
+    const users = await User.find({
+      role: 'employee',
+      isPending: false,
+      isActive: true,
+    })
+      .select('name email mobile')
+      .sort({ name: 1 });
+
+    res.json({
+      employees: users.map((u) => {
+        const m = u.mobile != null ? String(u.mobile).trim() : '';
+        return {
+          _id: u._id,
+          name: u.name,
+          email: u.email,
+          mobile: m,
+          hasMobile: Boolean(m),
+        };
+      }),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 // Get all users (admin only)
 async function getUsers(req, res) {
   try {
@@ -184,6 +212,7 @@ async function deleteUser(req, res) {
 }
 
 module.exports = {
+  getEmployeesForSms,
   getUsers,
   createUser,
   updateUser,

@@ -31,6 +31,7 @@ import {
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
+import EmployeeSmsRecipientField from '../components/common/EmployeeSmsRecipientField';
 import {
   Print as PrintIcon,
   Download as DownloadIcon,
@@ -63,7 +64,7 @@ function PayrollPage() {
   const [capturingPdf, setCapturingPdf] = useState(false);
   const [payrollBaseDirHandle, setPayrollBaseDirHandle] = useState(null);
   const [payrollTextDialogOpen, setPayrollTextDialogOpen] = useState(false);
-  const [payrollTextPhone, setPayrollTextPhone] = useState('');
+  const [payrollTextEmployeeUserId, setPayrollTextEmployeeUserId] = useState('');
   const [sendingPayrollText, setSendingPayrollText] = useState(false);
   
   // Work hours - default 6:00 AM - 2:30 PM (600 - 1430)
@@ -472,19 +473,19 @@ function PayrollPage() {
   };
 
   const handleSendPayrollText = async () => {
-    if (!payrollTextPhone.trim()) {
-      toast.error('Enter a phone number');
+    if (!payrollTextEmployeeUserId) {
+      toast.error('Select an employee');
       return;
     }
     try {
       setSendingPayrollText(true);
       await axios.post(`${API_URL}/twilio/send-sms`, {
-        to: payrollTextPhone.trim(),
+        employeeUserId: payrollTextEmployeeUserId,
         message: buildPayrollSmsMessage(),
       });
       toast.success('Payroll text sent');
       setPayrollTextDialogOpen(false);
-      setPayrollTextPhone('');
+      setPayrollTextEmployeeUserId('');
     } catch (error) {
       console.error('Failed to text payroll:', error);
       toast.error(error.response?.data?.error || 'Failed to send payroll text');
@@ -1335,19 +1336,27 @@ function PayrollPage() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={payrollTextDialogOpen} onClose={() => setPayrollTextDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={payrollTextDialogOpen}
+        onClose={() => {
+          setPayrollTextDialogOpen(false);
+          setPayrollTextEmployeeUserId('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Send Payroll Text</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-            Enter a phone number. We will send a formatted payroll summary by text.
+            Choose an employee with a mobile number on file. We send the payroll summary to their phone.
           </Typography>
-          <TextField
+          <EmployeeSmsRecipientField
+            dialogOpen={payrollTextDialogOpen}
+            value={payrollTextEmployeeUserId}
+            onChange={setPayrollTextEmployeeUserId}
+            disabled={sendingPayrollText}
+            autoSelectByName={employeeName}
             sx={{ mb: 2 }}
-            fullWidth
-            label="Send to phone number"
-            placeholder="+19495551234"
-            value={payrollTextPhone}
-            onChange={(e) => setPayrollTextPhone(e.target.value)}
           />
         </DialogContent>
         <DialogActions>
