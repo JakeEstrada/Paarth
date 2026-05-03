@@ -12,9 +12,26 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+/** `value` format: `user:<mongoId>` or `contact:<mongoId>` */
+export function parseSmsRecipientSelection(value) {
+  if (!value || typeof value !== 'string') return {};
+  if (value.startsWith('user:')) {
+    return { employeeUserId: value.slice(5) };
+  }
+  if (value.startsWith('contact:')) {
+    return { employeeContactId: value.slice(8) };
+  }
+  return {};
+}
+
+function formatRoleLabel(role) {
+  if (!role) return 'No app login';
+  return String(role).replace(/_/g, ' ');
+}
+
 /**
- * Dropdown of tenant employees (role Employee) with a mobile on file for Twilio.
- * Value is the user `_id` string sent as `employeeUserId` to `/twilio/send-sms`.
+ * Active user accounts (any role) and roster-only employees without login.
+ * Sends `employeeUserId` or `employeeContactId` to `/twilio/send-sms`.
  */
 export default function EmployeeSmsRecipientField({
   value,
@@ -23,13 +40,11 @@ export default function EmployeeSmsRecipientField({
   label = 'Send to employee',
   helperText,
   sx,
-  /** When set, picks the best name match once per dialog open (see dialogOpen). */
   autoSelectByName,
-  /** When this flips true, internal auto-select can run again. */
   dialogOpen = false,
 }) {
   const [loading, setLoading] = useState(true);
-  const [employees, setEmployees] = useState([]);
+  const [recipients, setRecipients] = useState([]);
   const [didAutoSelect, setDidAutoSelect] = useState(false);
 
   useEffect(() => {
@@ -40,9 +55,10 @@ export default function EmployeeSmsRecipientField({
         const res = await axios.get(`${API_URL}/users/employees-for-sms`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!cancelled) setEmployees(res.data.employees || []);
+        const list = res.data.recipients || res.data.employees || [];
+        if (!cancelled) setRecipients(list);
       } catch {
-        if (!cancelled) setEmployees([]);
+        if (!cancelled) setRecipients([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -57,22 +73,23 @@ export default function EmployeeSmsRecipientField({
   }, [dialogOpen]);
 
   useEffect(() => {
-    if (!autoSelectByName || didAutoSelect || value || !employees.length) return;
+    if (!autoSelectByName || didAutoSelect || value || !recipients.length) return;
     const q = String(autoSelectByName || '').trim().toLowerCase();
     if (!q) return;
-    const exact = employees.find((e) => e.name && e.name.trim().toLowerCase() === q && e.hasMobile);
-    const partial = employees.find(
-      (e) =>
-        e.hasMobile &&
-        e.name &&
-        (e.name.toLowerCase().includes(q) || q.includes(e.name.toLowerCase()))
-    );
+    const match = (r) => {
+      if (!r.name) return false;
+      const n = r.name.trim().toLowerCase();
+      return n === q || n.includes(q) || q.includes(n);
+    };
+    const exact = recipients.find((r) => r.hasMobile && match(r) && r.name.trim().toLowerCase() === q);
+    const partial = recipients.find((r) => r.hasMobile && match(r));
     const pick = exact || partial;
     if (pick) {
       setDidAutoSelect(true);
-      onChange(String(pick._id));
+      const v = pick.kind === 'contact' ? `contact:${pick._id}` : `user:${pick._id}`;
+      onChange(v);
     }
-  }, [autoSelectByName, didAutoSelect, value, employees, onChange]);
+  }, [autoSelectByName, didAutoSelect, value, recipients, onChange]);
 
   if (loading) {
     return (
@@ -92,19 +109,26 @@ export default function EmployeeSmsRecipientField({
         onChange={(e) => onChange(e.target.value)}
       >
         <MenuItem value="">
-          <em>Select an employee</em>
+          <em>Select a recipient</em>
         </MenuItem>
-        {employees.map((emp) => (
-          <MenuItem key={emp._id} value={emp._id} disabled={!emp.hasMobile}>
-            {emp.name}
-            {emp.mobile ? ` (${emp.mobile})` : ' — add mobile in Users'}
-          </MenuItem>
-        ))}
+        {recipients.map((r) => {
+          const v = r.kind === 'contact' ? `contact:${r._id}` : `user:${r._id}`;
+          const sub =
+            r.kind === 'contact'
+              ? 'Roster (no login)'
+              : formatRoleLabel(r.role);
+          return (
+            <MenuItem key={v} value={v} disabled={!r.hasMobile}>
+              {r.name} — {sub}
+              {r.mobile ? ` · ${r.mobile}` : ' — add mobile in Users / roster'}
+            </MenuItem>
+          );
+        })}
       </Select>
       {helperText ? <FormHelperText>{helperText}</FormHelperText> : null}
-      {!employees.length ? (
+      {!recipients.length ? (
         <FormHelperText error>
-          No employees with mobile numbers. Add them under User Management (Employees).
+          No team members with mobile numbers. Add users or roster employees.
         </FormHelperText>
       ) : null}
     </FormControl>

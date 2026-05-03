@@ -50,7 +50,9 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import JobDetailModal from '../components/jobs/JobDetailModal';
-import EmployeeSmsRecipientField from '../components/common/EmployeeSmsRecipientField';
+import EmployeeSmsRecipientField, {
+  parseSmsRecipientSelection,
+} from '../components/common/EmployeeSmsRecipientField';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
@@ -79,7 +81,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const [shareEmployeeUserId, setShareEmployeeUserId] = useState('');
+  const [shareSmsRecipient, setShareSmsRecipient] = useState('');
   const [shareMessage, setShareMessage] = useState('');
   const [sendingShare, setSendingShare] = useState(false);
 
@@ -275,21 +277,21 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
 
   const handleOpenShareDialog = () => {
     if (!selectedCustomer) return;
-    setShareEmployeeUserId('');
+    setShareSmsRecipient('');
     setShareMessage(buildShareMessage(selectedCustomer));
     setShareDialogOpen(true);
   };
 
   const handleCloseShareDialog = () => {
     setShareDialogOpen(false);
-    setShareEmployeeUserId('');
+    setShareSmsRecipient('');
     setShareMessage('');
     setSendingShare(false);
   };
 
   const handleSendShareSms = async () => {
     const message = shareMessage.trim();
-    if (!shareEmployeeUserId) {
+    if (!shareSmsRecipient) {
       toast.error('Select an employee to send the text to');
       return;
     }
@@ -300,7 +302,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     try {
       setSendingShare(true);
       await axios.post(`${API_URL}/twilio/send-sms`, {
-        employeeUserId: shareEmployeeUserId,
+        ...parseSmsRecipientSelection(shareSmsRecipient),
         message,
         customerId: selectedCustomer?._id,
       });
@@ -1577,8 +1579,8 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
           </DialogContentText>
           <EmployeeSmsRecipientField
             dialogOpen={shareDialogOpen}
-            value={shareEmployeeUserId}
-            onChange={setShareEmployeeUserId}
+            value={shareSmsRecipient}
+            onChange={setShareSmsRecipient}
             disabled={sendingShare}
             sx={{ mb: 2 }}
           />

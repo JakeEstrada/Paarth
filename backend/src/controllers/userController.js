@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const EmployeeContact = require('../models/EmployeeContact');
 const { requireAuth } = require('../middleware/auth');
 
 function normalizePreviousPhoneNumbers(input) {
@@ -15,28 +16,53 @@ function normalizePreviousPhoneNumbers(input) {
   return [];
 }
 
-// Active employees with mobile (for Twilio recipient picker; any authenticated user in tenant)
+/**
+ * SMS recipients: all active user accounts (every role) plus roster-only EmployeeContacts (no login).
+ */
 async function getEmployeesForSms(req, res) {
   try {
-    const users = await User.find({
-      role: 'employee',
+    const accountHolders = await User.find({
       isPending: false,
       isActive: true,
     })
+      .select('name email mobile role')
+      .sort({ name: 1 });
+
+    const directory = await EmployeeContact.find({})
       .select('name email mobile')
       .sort({ name: 1 });
 
+    const fromAccounts = accountHolders.map((u) => {
+      const m = u.mobile != null ? String(u.mobile).trim() : '';
+      return {
+        kind: 'user',
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+        mobile: m,
+        hasMobile: Boolean(m),
+        role: u.role,
+      };
+    });
+
+    const fromDirectory = directory.map((c) => {
+      const m = c.mobile != null ? String(c.mobile).trim() : '';
+      return {
+        kind: 'contact',
+        _id: c._id,
+        name: c.name,
+        email: c.email || '',
+        mobile: m,
+        hasMobile: Boolean(m),
+        role: null,
+      };
+    });
+
+    const recipients = [...fromAccounts, ...fromDirectory];
+
     res.json({
-      employees: users.map((u) => {
-        const m = u.mobile != null ? String(u.mobile).trim() : '';
-        return {
-          _id: u._id,
-          name: u.name,
-          email: u.email,
-          mobile: m,
-          hasMobile: Boolean(m),
-        };
-      }),
+      recipients,
+      employees: recipients,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

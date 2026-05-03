@@ -159,14 +159,16 @@ async function twilioMediaDownload(req, res) {
   }
 }
 
-async function phoneMatchesEmployeeOnFile(normalizedE164) {
+async function phoneMatchesAllowedRecipient(normalizedE164) {
   const User = require('../models/User');
-  const employees = await User.find({
-    role: 'employee',
+  const EmployeeContact = require('../models/EmployeeContact');
+
+  const activeUsers = await User.find({
     isPending: false,
+    isActive: true,
   }).select('mobile previousPhoneNumbers');
 
-  for (const u of employees) {
+  for (const u of activeUsers) {
     const candidates = [u.mobile, ...(Array.isArray(u.previousPhoneNumbers) ? u.previousPhoneNumbers : [])];
     for (const c of candidates) {
       if (c == null || !String(c).trim()) continue;
@@ -174,35 +176,58 @@ async function phoneMatchesEmployeeOnFile(normalizedE164) {
       if (n && n === normalizedE164) return true;
     }
   }
+
+  const contacts = await EmployeeContact.find({}).select('mobile previousPhoneNumbers');
+  for (const ec of contacts) {
+    const candidates = [ec.mobile, ...(Array.isArray(ec.previousPhoneNumbers) ? ec.previousPhoneNumbers : [])];
+    for (const c of candidates) {
+      if (c == null || !String(c).trim()) continue;
+      const n = normalizeToE164(c);
+      if (n && n === normalizedE164) return true;
+    }
+  }
+
   return false;
 }
 
 /**
- * Resolves destination E.164 from `employeeUserId` (preferred) or validates `to` against employee phones on file.
+ * Resolves destination E.164 from employeeUserId, employeeContactId, or validates legacy `to`.
  */
 async function resolveOutgoingSmsTo(req) {
   const User = require('../models/User');
+  const EmployeeContact = require('../models/EmployeeContact');
   const employeeUserId = String(req.body?.employeeUserId || '').trim();
+  const employeeContactId = String(req.body?.employeeContactId || '').trim();
   const rawTo = req.body?.to;
+
+  if (employeeContactId) {
+    if (!/^[a-fA-F0-9]{24}$/.test(employeeContactId)) {
+      throw new Error('Invalid recipient selection');
+    }
+    const c = await EmployeeContact.findById(employeeContactId).select('mobile');
+    if (!c) throw new Error('Employee contact not found');
+    const normalized = normalizeToE164(c.mobile);
+    if (!normalized) {
+      throw new Error('That employee has no mobile number on file. Add it under Employees without a login.');
+    }
+    return normalized;
+  }
 
   if (employeeUserId) {
     if (!/^[a-fA-F0-9]{24}$/.test(employeeUserId)) {
       throw new Error('Invalid employee selection');
     }
-    const u = await User.findById(employeeUserId).select('role mobile isPending isActive');
+    const u = await User.findById(employeeUserId).select('mobile isPending isActive');
     if (!u) throw new Error('User not found');
     if (u.isPending) {
       throw new Error('That account is not active yet');
     }
-    if (u.role !== 'employee') {
-      throw new Error('SMS can only be sent to users with the Employee role');
-    }
     if (u.isActive === false) {
-      throw new Error('That employee account is inactive');
+      throw new Error('That account is inactive');
     }
     const normalized = normalizeToE164(u.mobile);
     if (!normalized) {
-      throw new Error('That employee has no mobile number on file. Add it in User Management.');
+      throw new Error('That team member has no mobile number on file. Add it in User Management.');
     }
     return normalized;
   }
@@ -212,10 +237,10 @@ async function resolveOutgoingSmsTo(req) {
     if (!normalized) {
       throw new Error('Recipient phone number is invalid');
     }
-    const allowed = await phoneMatchesEmployeeOnFile(normalized);
+    const allowed = await phoneMatchesAllowedRecipient(normalized);
     if (!allowed) {
       throw new Error(
-        'SMS can only be sent to employee phone numbers on file. Select an employee in the app, or add that number under the employee in User Management.'
+        'SMS can only be sent to numbers on file for active team members or roster employees. Use the recipient picker in the app.'
       );
     }
     return normalized;
@@ -287,7 +312,9 @@ async function sendSms(req, res) {
     return res.status(200).json({ success: true, ...data });
   } catch (error) {
     console.error('Twilio sendSms error:', error?.message || error);
-    const status = /select an employee|invalid|not found|inactive|no mobile/i.test(String(error?.message))
+    const status = /select an employee|invalid|not found|inactive|no mobile|team member|roster|contact/i.test(
+      String(error?.message)
+    )
       ? 400
       : 500;
     return res.status(status).json({ error: error?.message || 'Failed to send SMS' });

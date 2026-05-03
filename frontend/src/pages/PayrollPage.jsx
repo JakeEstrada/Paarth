@@ -31,7 +31,9 @@ import {
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
-import EmployeeSmsRecipientField from '../components/common/EmployeeSmsRecipientField';
+import EmployeeSmsRecipientField, {
+  parseSmsRecipientSelection,
+} from '../components/common/EmployeeSmsRecipientField';
 import {
   Print as PrintIcon,
   Download as DownloadIcon,
@@ -64,7 +66,7 @@ function PayrollPage() {
   const [capturingPdf, setCapturingPdf] = useState(false);
   const [payrollBaseDirHandle, setPayrollBaseDirHandle] = useState(null);
   const [payrollTextDialogOpen, setPayrollTextDialogOpen] = useState(false);
-  const [payrollTextEmployeeUserId, setPayrollTextEmployeeUserId] = useState('');
+  const [payrollSmsRecipient, setPayrollSmsRecipient] = useState('');
   const [sendingPayrollText, setSendingPayrollText] = useState(false);
   
   // Work hours - default 6:00 AM - 2:30 PM (600 - 1430)
@@ -473,19 +475,19 @@ function PayrollPage() {
   };
 
   const handleSendPayrollText = async () => {
-    if (!payrollTextEmployeeUserId) {
+    if (!payrollSmsRecipient) {
       toast.error('Select an employee');
       return;
     }
     try {
       setSendingPayrollText(true);
       await axios.post(`${API_URL}/twilio/send-sms`, {
-        employeeUserId: payrollTextEmployeeUserId,
+        ...parseSmsRecipientSelection(payrollSmsRecipient),
         message: buildPayrollSmsMessage(),
       });
       toast.success('Payroll text sent');
       setPayrollTextDialogOpen(false);
-      setPayrollTextEmployeeUserId('');
+      setPayrollSmsRecipient('');
     } catch (error) {
       console.error('Failed to text payroll:', error);
       toast.error(error.response?.data?.error || 'Failed to send payroll text');
@@ -1340,7 +1342,7 @@ function PayrollPage() {
         open={payrollTextDialogOpen}
         onClose={() => {
           setPayrollTextDialogOpen(false);
-          setPayrollTextEmployeeUserId('');
+          setPayrollSmsRecipient('');
         }}
         maxWidth="sm"
         fullWidth
@@ -1352,8 +1354,8 @@ function PayrollPage() {
           </Typography>
           <EmployeeSmsRecipientField
             dialogOpen={payrollTextDialogOpen}
-            value={payrollTextEmployeeUserId}
-            onChange={setPayrollTextEmployeeUserId}
+            value={payrollSmsRecipient}
+            onChange={setPayrollSmsRecipient}
             disabled={sendingPayrollText}
             autoSelectByName={employeeName}
             sx={{ mb: 2 }}

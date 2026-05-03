@@ -54,7 +54,9 @@ import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
 import { getConnectedSocketId } from '../services/socket';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
-import EmployeeSmsRecipientField from '../components/common/EmployeeSmsRecipientField';
+import EmployeeSmsRecipientField, {
+  parseSmsRecipientSelection,
+} from '../components/common/EmployeeSmsRecipientField';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -185,7 +187,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
   const [availableJobs, setAvailableJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const [shareEmployeeUserId, setShareEmployeeUserId] = useState('');
+  const [shareSmsRecipient, setShareSmsRecipient] = useState('');
   const [shareMessage, setShareMessage] = useState('');
   const [sendingShare, setSendingShare] = useState(false);
   const resolvedJob =
@@ -238,20 +240,20 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
   };
 
   const handleOpenShareDialog = () => {
-    setShareEmployeeUserId('');
+    setShareSmsRecipient('');
     setShareMessage(buildCustomerShareMessage());
     setShareDialogOpen(true);
   };
 
   const handleCloseShareDialog = () => {
     setShareDialogOpen(false);
-    setShareEmployeeUserId('');
+    setShareSmsRecipient('');
     setShareMessage('');
     setSendingShare(false);
   };
 
   const handleSendShareSms = async () => {
-    if (!shareEmployeeUserId) {
+    if (!shareSmsRecipient) {
       toast.error('Select an employee to send to');
       return;
     }
@@ -262,7 +264,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
     try {
       setSendingShare(true);
       await axios.post(`${API_URL}/twilio/send-sms`, {
-        employeeUserId: shareEmployeeUserId,
+        ...parseSmsRecipientSelection(shareSmsRecipient),
         message: shareMessage.trim(),
         customerId: resolvedJob?.customerId?._id || resolvedJob?.customerId || undefined,
       });
@@ -974,8 +976,8 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
         <DialogContent>
           <EmployeeSmsRecipientField
             dialogOpen={shareDialogOpen}
-            value={shareEmployeeUserId}
-            onChange={setShareEmployeeUserId}
+            value={shareSmsRecipient}
+            onChange={setShareSmsRecipient}
             disabled={sendingShare}
             sx={{ mt: 1, mb: 2 }}
           />

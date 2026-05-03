@@ -74,12 +74,35 @@ function UsersPage() {
   const [approveFormData, setApproveFormData] = useState({
     role: 'employee',
   });
+  const [directoryContacts, setDirectoryContacts] = useState([]);
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState(null);
+  const [contactForm, setContactForm] = useState({
+    name: '',
+    email: '',
+    mobile: '',
+    previousPhonesText: '',
+  });
 
   useEffect(() => {
     if (isAdmin()) {
       fetchUsers();
+      fetchDirectoryContacts();
     }
   }, [isAdmin]);
+
+  const fetchDirectoryContacts = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await axios.get(`${API_URL}/employee-contacts`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDirectoryContacts(response.data.contacts || []);
+    } catch (error) {
+      console.error('Error loading roster contacts:', error);
+      toast.error('Failed to load roster employees');
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -239,6 +262,79 @@ function UsersPage() {
     }
   };
 
+  const handleOpenContactDialog = (contact = null) => {
+    if (contact) {
+      setEditingContact(contact);
+      setContactForm({
+        name: contact.name || '',
+        email: contact.email || '',
+        mobile: contact.mobile ?? '',
+        previousPhonesText: previousPhonesToText(contact.previousPhoneNumbers),
+      });
+    } else {
+      setEditingContact(null);
+      setContactForm({
+        name: '',
+        email: '',
+        mobile: '',
+        previousPhonesText: '',
+      });
+    }
+    setContactDialogOpen(true);
+  };
+
+  const handleCloseContactDialog = () => {
+    setContactDialogOpen(false);
+    setEditingContact(null);
+  };
+
+  const handleSaveContact = async () => {
+    if (!contactForm.name.trim()) {
+      toast.error('Name is required');
+      return;
+    }
+    try {
+      const token = localStorage.getItem('accessToken');
+      const payload = {
+        name: contactForm.name.trim(),
+        email: contactForm.email.trim(),
+        mobile: contactForm.mobile.trim(),
+        previousPhoneNumbers: textToPreviousPhones(contactForm.previousPhonesText),
+      };
+      if (editingContact) {
+        await axios.patch(`${API_URL}/employee-contacts/${editingContact._id}`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        toast.success('Roster employee updated');
+      } else {
+        await axios.post(`${API_URL}/employee-contacts`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        toast.success('Roster employee added');
+      }
+      handleCloseContactDialog();
+      fetchDirectoryContacts();
+    } catch (error) {
+      console.error('Error saving roster employee:', error);
+      toast.error(error.response?.data?.error || 'Failed to save');
+    }
+  };
+
+  const handleDeleteContact = async (contactId) => {
+    if (!window.confirm('Remove this person from the roster?')) return;
+    try {
+      const token = localStorage.getItem('accessToken');
+      await axios.delete(`${API_URL}/employee-contacts/${contactId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success('Removed');
+      fetchDirectoryContacts();
+    } catch (error) {
+      console.error('Error deleting roster employee:', error);
+      toast.error(error.response?.data?.error || 'Failed to delete');
+    }
+  };
+
   const getRoleColor = (role) => {
     const colors = {
       super_admin: 'error',
@@ -253,10 +349,7 @@ function UsersPage() {
     return colors[role] || 'default';
   };
 
-  const employeeUsers = users.filter((u) => u.role === 'employee');
-  const nonEmployeeUsers = users.filter((u) => u.role !== 'employee');
-
-  const renderUserRow = (user, { showRoleChip = true } = {}) => {
+  const renderUserRow = (user) => {
     const prevList = Array.isArray(user.previousPhoneNumbers) ? user.previousPhoneNumbers : [];
     const prevJoined = prevList.join(', ');
     return (
@@ -275,19 +368,13 @@ function UsersPage() {
           '—'
         )}
       </TableCell>
-      {showRoleChip ? (
-        <TableCell>
-          <Chip
-            label={user.role.replace('_', ' ').toUpperCase()}
-            color={getRoleColor(user.role)}
-            size="small"
-          />
-        </TableCell>
-      ) : (
-        <TableCell>
-          <Chip label="EMPLOYEE" color={getRoleColor('employee')} size="small" />
-        </TableCell>
-      )}
+      <TableCell>
+        <Chip
+          label={user.role.replace('_', ' ').toUpperCase()}
+          color={getRoleColor(user.role)}
+          size="small"
+        />
+      </TableCell>
       <TableCell>
         <Chip
           label={user.isActive ? 'Active' : 'Inactive'}
@@ -415,12 +502,12 @@ function UsersPage() {
         </Box>
       )}
 
-      {/* Active users (non-employee roles): admins, sales, installers, shop view, etc. */}
+      {/* All active accounts = team employees with app login */}
       <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-        Active users ({nonEmployeeUsers.length})
+        Team — active accounts ({users.length})
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Accounts with specialized roles. Employee-only accounts are listed in the Employees section below.
+        Everyone here is an employee with a login (admins, sales, installers, shop view, etc.). Twilio texts can be sent to anyone listed with a mobile number.
       </Typography>
       <TableContainer component={Paper} sx={{ mb: 4 }}>
         <Table>
@@ -442,49 +529,59 @@ function UsersPage() {
                   <Typography>Loading...</Typography>
                 </TableCell>
               </TableRow>
-            ) : nonEmployeeUsers.length === 0 ? (
+            ) : users.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center">
-                  <Typography color="text.secondary">No active users in this group</Typography>
+                  <Typography color="text.secondary">No active accounts</Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              nonEmployeeUsers.map((user) => renderUserRow(user))
+              users.map((user) => renderUserRow(user))
             )}
           </TableBody>
         </Table>
       </TableContainer>
 
-      {/* Employees: staff with the Employee role */}
+      {/* Roster-only: employees without a login */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Employees ({employeeUsers.length})
+            Employees without a login ({directoryContacts.length})
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Team members with the Employee role. Use Add employee to create login accounts for your staff.
+            People on your team who do not need an app account (still reachable by SMS if mobile is set).
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
-          startIcon={<AddIcon />}
-          onClick={() => {
-            setEditingUser(null);
-            setFormData({
-              name: '',
-              email: '',
-              password: '',
-              role: 'employee',
-              isActive: true,
-              mobile: '',
-              previousPhonesText: '',
-            });
-            setDialogOpen(true);
-          }}
-          sx={{ textTransform: 'none' }}
-        >
-          Add employee
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenContactDialog(null)}
+            sx={{ textTransform: 'none' }}
+          >
+            Add roster employee
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              setEditingUser(null);
+              setFormData({
+                name: '',
+                email: '',
+                password: '',
+                role: 'employee',
+                isActive: true,
+                mobile: '',
+                previousPhonesText: '',
+              });
+              setDialogOpen(true);
+            }}
+            sx={{ textTransform: 'none' }}
+          >
+            Add employee account
+          </Button>
+        </Box>
       </Box>
       <TableContainer component={Paper}>
         <Table>
@@ -494,26 +591,51 @@ function UsersPage() {
               <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Mobile</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Previous numbers</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Role</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Account</TableCell>
               <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {loading ? (
+            {directoryContacts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center">
-                  <Typography>Loading...</Typography>
-                </TableCell>
-              </TableRow>
-            ) : employeeUsers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center">
-                  <Typography color="text.secondary">No employees yet — use Add employee or Create User with role Employee.</Typography>
+                <TableCell colSpan={6} align="center">
+                  <Typography color="text.secondary">No roster-only employees yet.</Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              employeeUsers.map((user) => renderUserRow(user, { showRoleChip: false }))
+              directoryContacts.map((c) => {
+                const prevList = Array.isArray(c.previousPhoneNumbers) ? c.previousPhoneNumbers : [];
+                const prevJoined = prevList.join(', ');
+                return (
+                  <TableRow key={c._id} hover>
+                    <TableCell>{c.name}</TableCell>
+                    <TableCell>{c.email || '—'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{c.mobile?.trim() ? c.mobile.trim() : '—'}</TableCell>
+                    <TableCell sx={{ maxWidth: 220 }}>
+                      {prevList.length ? (
+                        <Tooltip title={prevJoined}>
+                          <Typography variant="body2" noWrap>
+                            {prevJoined}
+                          </Typography>
+                        </Tooltip>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Chip label="Roster only" size="small" variant="outlined" />
+                    </TableCell>
+                    <TableCell align="right">
+                      <IconButton size="small" color="primary" onClick={() => handleOpenContactDialog(c)} title="Edit">
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton size="small" color="error" onClick={() => handleDeleteContact(c._id)} title="Remove">
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -693,6 +815,55 @@ function UsersPage() {
           <Button onClick={handleCloseDialog}>Cancel</Button>
           <Button onClick={handleSubmit} variant="contained">
             {editingUser ? 'Save Changes' : 'Create User'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={contactDialogOpen} onClose={handleCloseContactDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {editingContact ? `Edit roster employee: ${editingContact.name}` : 'Add roster employee'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              No login is created — used for SMS and internal roster only.
+            </Typography>
+            <TextField
+              label="Name"
+              required
+              fullWidth
+              value={contactForm.name}
+              onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+            />
+            <TextField
+              label="Email (optional)"
+              type="email"
+              fullWidth
+              value={contactForm.email}
+              onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+            />
+            <TextField
+              label="Mobile number"
+              fullWidth
+              value={contactForm.mobile}
+              onChange={(e) => setContactForm({ ...contactForm, mobile: e.target.value })}
+              helperText="Required for SMS to this person."
+            />
+            <TextField
+              label="Previous phone numbers"
+              multiline
+              minRows={3}
+              fullWidth
+              value={contactForm.previousPhonesText}
+              onChange={(e) => setContactForm({ ...contactForm, previousPhonesText: e.target.value })}
+              placeholder={'One per line or comma-separated'}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseContactDialog}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveContact}>
+            Save
           </Button>
         </DialogActions>
       </Dialog>
