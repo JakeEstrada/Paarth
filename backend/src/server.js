@@ -185,6 +185,7 @@ const plaidRoutes = require('./routes/plaid');
 const estimateRoutes = require('./routes/estimates');
 const invoiceRoutes = require('./routes/invoices');
 const contractRoutes = require('./routes/contracts');
+const assistantRoutes = require('./routes/assistant');
 
 // Use routes
 app.use('/auth', authRoutes);
@@ -206,6 +207,7 @@ app.use('/plaid', plaidRoutes);
 app.use('/estimates', estimateRoutes);
 app.use('/invoices', invoiceRoutes);
 app.use('/contracts', contractRoutes);
+app.use('/assistant', assistantRoutes);
 // Some deployments expose the API under `/api` without stripping the prefix from the path.
 app.use('/api/auth', authRoutes);
 app.use('/api/tenants', tenantRoutes);
@@ -226,6 +228,7 @@ app.use('/api/plaid', plaidRoutes);
 app.use('/api/estimates', estimateRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/contracts', contractRoutes);
+app.use('/api/assistant', assistantRoutes);
 
 // Test route
 app.get('/', (req, res) => {

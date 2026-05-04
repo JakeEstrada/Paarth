@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Box } from '@mui/material';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import SiteAssistantChat from '../assistant/SiteAssistantChat';
 
 function MainLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -38,6 +39,7 @@ function MainLayout({ children }) {
           {children}
         </Box>
       </Box>
+      <SiteAssistantChat />
     </Box>
   );
 }

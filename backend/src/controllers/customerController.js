@@ -502,23 +502,24 @@ async function uploadCustomersCSV(req, res) {
   }
 }
 
-async function globalCustomerSearch(req, res) {
-  try {
-    const q = String(req.query.q || '').trim();
-    const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 30);
-    const tenantId = req.user?.tenantId;
+/**
+ * Same data as GET /customers/global-search (tenant-scoped). Used by assistant tools.
+ * @returns {Promise<Array<{id:string,type:string,title:string,subtitle:string,locationLabel:string,path:string}>>}
+ */
+async function fetchGlobalCustomerSearchResults({ tenantId, q, limit: limitArg }) {
+  const qTrim = String(q || '').trim();
+  const limit = Math.min(Math.max(Number(limitArg) || 8, 1), 30);
+  if (!qTrim) {
+    return [];
+  }
+  if (!tenantId) {
+    throw new Error('Missing tenant context');
+  }
 
-    if (!q) {
-      return res.json({ results: [] });
-    }
-    if (!tenantId) {
-      return res.status(400).json({ error: 'Missing tenant context' });
-    }
+  const escaped = qTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const nameRegex = new RegExp(escaped, 'i');
 
-    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const nameRegex = new RegExp(escaped, 'i');
-
-    const [archivedCustomers, finishedJobs, customersWithNoJobs, pipelineJobs] = await Promise.all([
+  const [archivedCustomers, finishedJobs, customersWithNoJobs, pipelineJobs] = await Promise.all([
       Customer.aggregate([
         { $match: { tenantId } },
         {
@@ -671,8 +672,25 @@ async function globalCustomerSearch(req, res) {
         locationLabel: 'Pipeline',
         path: `/pipeline?jobId=${j._id}`,
       })),
-    ].slice(0, limit * 4);
+  ].slice(0, limit * 4);
 
+  return results;
+}
+
+async function globalCustomerSearch(req, res) {
+  try {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 30);
+    const tenantId = req.user?.tenantId;
+
+    if (!q) {
+      return res.json({ results: [] });
+    }
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Missing tenant context' });
+    }
+
+    const results = await fetchGlobalCustomerSearchResults({ tenantId, q, limit });
     return res.json({ results });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -688,4 +706,5 @@ module.exports = {
   getCustomerJobs,
   uploadCustomersCSV,
   globalCustomerSearch,
+  fetchGlobalCustomerSearchResults,
 };
