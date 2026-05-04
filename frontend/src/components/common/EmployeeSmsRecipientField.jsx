@@ -1,13 +1,5 @@
-import { useState, useEffect } from 'react';
-import {
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  FormHelperText,
-  Box,
-  CircularProgress,
-} from '@mui/material';
+import { useState, useEffect, useMemo } from 'react';
+import { Autocomplete, TextField, Box, CircularProgress, Typography, FormHelperText } from '@mui/material';
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -29,9 +21,20 @@ function formatRoleLabel(role) {
   return String(role).replace(/_/g, ' ');
 }
 
+function toSmsOption(r) {
+  const selectionKey = r.kind === 'contact' ? `contact:${r._id}` : `user:${r._id}`;
+  const sub = r.kind === 'contact' ? 'Roster (no login)' : formatRoleLabel(r.role);
+  return {
+    selectionKey,
+    mobile: r.mobile || '',
+    name: r.name || 'Unnamed',
+    sub,
+  };
+}
+
 /**
- * Active user accounts (any role) and roster-only employees without login.
- * Sends `employeeUserId` or `employeeContactId` to `/twilio/send-sms`.
+ * Searchable combo of team members who have a mobile on file (users + roster).
+ * Sends `employeeUserId` or `employeeContactId` to `/twilio/send-sms`. Arbitrary phone numbers cannot be entered.
  */
 export default function EmployeeSmsRecipientField({
   value,
@@ -46,6 +49,16 @@ export default function EmployeeSmsRecipientField({
   const [loading, setLoading] = useState(true);
   const [recipients, setRecipients] = useState([]);
   const [didAutoSelect, setDidAutoSelect] = useState(false);
+
+  const smsOptions = useMemo(
+    () => recipients.filter((r) => r.hasMobile && r.mobile).map(toSmsOption),
+    [recipients]
+  );
+
+  const selectedOption = useMemo(
+    () => smsOptions.find((o) => o.selectionKey === value) || null,
+    [smsOptions, value]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -81,8 +94,9 @@ export default function EmployeeSmsRecipientField({
       const n = r.name.trim().toLowerCase();
       return n === q || n.includes(q) || q.includes(n);
     };
-    const exact = recipients.find((r) => r.hasMobile && match(r) && r.name.trim().toLowerCase() === q);
-    const partial = recipients.find((r) => r.hasMobile && match(r));
+    const withMobile = recipients.filter((r) => r.hasMobile);
+    const exact = withMobile.find((r) => match(r) && r.name.trim().toLowerCase() === q);
+    const partial = withMobile.find((r) => match(r));
     const pick = exact || partial;
     if (pick) {
       setDidAutoSelect(true);
@@ -100,37 +114,62 @@ export default function EmployeeSmsRecipientField({
   }
 
   return (
-    <FormControl fullWidth disabled={disabled} sx={sx} required>
-      <InputLabel id="employee-sms-recipient-label">{label}</InputLabel>
-      <Select
-        labelId="employee-sms-recipient-label"
-        label={label}
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <MenuItem value="">
-          <em>Select a recipient</em>
-        </MenuItem>
-        {recipients.map((r) => {
-          const v = r.kind === 'contact' ? `contact:${r._id}` : `user:${r._id}`;
-          const sub =
-            r.kind === 'contact'
-              ? 'Roster (no login)'
-              : formatRoleLabel(r.role);
-          return (
-            <MenuItem key={v} value={v} disabled={!r.hasMobile}>
-              {r.name} — {sub}
-              {r.mobile ? ` · ${r.mobile}` : ' — add mobile in Users / roster'}
-            </MenuItem>
-          );
-        })}
-      </Select>
-      {helperText ? <FormHelperText>{helperText}</FormHelperText> : null}
+    <Box sx={sx}>
+      <Autocomplete
+        options={smsOptions}
+        value={selectedOption}
+        onChange={(_, newVal) => onChange(newVal?.selectionKey || '')}
+        disabled={disabled}
+        freeSolo={false}
+        autoHighlight
+        selectOnFocus
+        handleHomeEndKeys
+        isOptionEqualToValue={(a, b) => a.selectionKey === b.selectionKey}
+        getOptionLabel={(opt) => (opt ? `${opt.mobile} · ${opt.name}` : '')}
+        filterOptions={(opts, state) => {
+          const q = state.inputValue.trim().toLowerCase();
+          if (!q) return opts;
+          return opts.filter((o) => {
+            const hay = `${o.mobile} ${o.name} ${o.sub}`.toLowerCase();
+            return hay.includes(q);
+          });
+        }}
+        noOptionsText="No employee matches that search (with a mobile on file)."
+        renderOption={(props, option) => (
+          <Box component="li" {...props} key={option.selectionKey}>
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {option.mobile}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {option.name} · {option.sub}
+              </Typography>
+            </Box>
+          </Box>
+        )}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label={label}
+            required
+            placeholder="Search by phone or name…"
+            helperText={helperText}
+            inputProps={{
+              ...params.inputProps,
+              autoComplete: 'off',
+            }}
+          />
+        )}
+      />
       {!recipients.length ? (
-        <FormHelperText error>
-          No team members with mobile numbers. Add users or roster employees.
+        <FormHelperText error sx={{ mx: 1.75 }}>
+          No team members found. Add users or roster employees.
+        </FormHelperText>
+      ) : !smsOptions.length ? (
+        <FormHelperText error sx={{ mx: 1.75 }}>
+          No one has a mobile number on file. Add mobile in Users or roster before sending SMS.
         </FormHelperText>
       ) : null}
-    </FormControl>
+    </Box>
   );
 }
