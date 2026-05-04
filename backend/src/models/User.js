@@ -41,7 +41,31 @@ const userSchema = new mongoose.Schema({
   isPending: {
     type: Boolean,
     default: true // New registrations are pending approval
-  }
+  },
+  address: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  /** Used in both themes when light/dark-specific photos are not set */
+  profilePhoto: {
+    filename: { type: String },
+    path: { type: String },
+    s3Key: { type: String },
+    mimetype: { type: String, default: 'image/png' },
+  },
+  profilePhotoLight: {
+    filename: { type: String },
+    path: { type: String },
+    s3Key: { type: String },
+    mimetype: { type: String, default: 'image/png' },
+  },
+  profilePhotoDark: {
+    filename: { type: String },
+    path: { type: String },
+    s3Key: { type: String },
+    mimetype: { type: String, default: 'image/png' },
+  },
 }, {
   timestamps: true  // Automatically adds createdAt and updatedAt
 });

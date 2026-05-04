@@ -24,7 +24,6 @@ import {
   Lock as LockIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
-  Input as InputIcon,
   PhotoCamera as PhotoCameraIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
@@ -32,6 +31,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/axios';
 import BrandLogo from '../components/common/BrandLogo';
+import ProfilePhotoFieldPreview from '../components/common/ProfilePhotoFieldPreview';
 import { useTheme } from '@mui/material/styles';
 import { useShopViewSensitive, SHOP_VIEW_SENSITIVE_PIN } from '../hooks/useShopViewSensitive';
 
@@ -49,6 +49,7 @@ function AccountSettingsPage() {
   // Profile form state
   const [profileForm, setProfileForm] = useState({
     name: '',
+    address: '',
   });
 
   // Password form state
@@ -65,6 +66,9 @@ function AccountSettingsPage() {
   });
   const [uploadingLogoLight, setUploadingLogoLight] = useState(false);
   const [uploadingLogoDark, setUploadingLogoDark] = useState(false);
+  const [uploadingProfileDefault, setUploadingProfileDefault] = useState(false);
+  const [uploadingProfileLight, setUploadingProfileLight] = useState(false);
+  const [uploadingProfileDark, setUploadingProfileDark] = useState(false);
   const [resettingEstimates, setResettingEstimates] = useState(false);
   const [shopViewPinDialogOpen, setShopViewPinDialogOpen] = useState(false);
   const [shopViewPinInput, setShopViewPinInput] = useState('');
@@ -90,6 +94,7 @@ function AccountSettingsPage() {
       setUserData(user);
       setProfileForm({
         name: user.name || '',
+        address: user.address || '',
       });
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -110,6 +115,7 @@ function AccountSettingsPage() {
       const token = localStorage.getItem('accessToken');
       await axios.patch(`${API_URL}/auth/profile`, {
         name: profileForm.name,
+        address: profileForm.address,
       }, {
         headers: {
           Authorization: `Bearer ${token}`
@@ -161,6 +167,48 @@ function AccountSettingsPage() {
     } finally {
       setUploadingLogoLight(false);
       setUploadingLogoDark(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleUserProfilePhotoUpload = async (e, variant) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file');
+      e.target.value = '';
+      return;
+    }
+    const setBusy =
+      variant === 'default'
+        ? setUploadingProfileDefault
+        : variant === 'light'
+          ? setUploadingProfileLight
+          : setUploadingProfileDark;
+    try {
+      setBusy(true);
+      const formData = new FormData();
+      formData.append('photo', file);
+      await api.post(`/auth/profile-photo/${variant}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast.success(
+        variant === 'default'
+          ? 'Default profile photo updated.'
+          : variant === 'light'
+            ? 'Light mode profile photo updated.'
+            : 'Dark mode profile photo updated.'
+      );
+      await fetchUserData();
+      const token = localStorage.getItem('accessToken');
+      if (token && fetchCurrentUser) {
+        await fetchCurrentUser(token);
+      }
+    } catch (error) {
+      console.error('Profile photo upload:', error);
+      toast.error(error.response?.data?.error || 'Failed to upload profile photo');
+    } finally {
+      setBusy(false);
       e.target.value = '';
     }
   };
@@ -358,6 +406,108 @@ function AccountSettingsPage() {
               />
             </Grid>
 
+            <Grid item xs={12}>
+              <TextField
+                label="Address"
+                value={profileForm.address}
+                onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+                fullWidth
+                multiline
+                minRows={2}
+                placeholder="Street, city, state, postal code"
+                helperText="Optional. Stored on your account for your reference."
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                Profile photos
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Upload a default photo to use in the header in both light and dark mode, or add separate
+                light and dark images. Themed photos override the default for that mode only.
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Default
+                  </Typography>
+                  <ProfilePhotoFieldPreview
+                    variant="default"
+                    revision={userData?.updatedAt}
+                    emptyLabel="No default photo"
+                    sx={{ width: 88, height: 88 }}
+                  />
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    disabled={uploadingProfileDefault}
+                    startIcon={uploadingProfileDefault ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
+                  >
+                    {uploadingProfileDefault ? 'Uploading…' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                      hidden
+                      onChange={(e) => handleUserProfilePhotoUpload(e, 'default')}
+                    />
+                  </Button>
+                </Box>
+
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Light mode only
+                  </Typography>
+                  <ProfilePhotoFieldPreview
+                    variant="light"
+                    revision={userData?.updatedAt}
+                    emptyLabel="Uses default"
+                    sx={{ width: 88, height: 88 }}
+                  />
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    disabled={uploadingProfileLight}
+                    startIcon={uploadingProfileLight ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
+                  >
+                    {uploadingProfileLight ? 'Uploading…' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                      hidden
+                      onChange={(e) => handleUserProfilePhotoUpload(e, 'light')}
+                    />
+                  </Button>
+                </Box>
+
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Dark mode only
+                  </Typography>
+                  <ProfilePhotoFieldPreview
+                    variant="dark"
+                    revision={userData?.updatedAt}
+                    emptyLabel="Uses default"
+                    sx={{ width: 88, height: 88 }}
+                  />
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    disabled={uploadingProfileDark}
+                    startIcon={uploadingProfileDark ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
+                  >
+                    {uploadingProfileDark ? 'Uploading…' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                      hidden
+                      onChange={(e) => handleUserProfilePhotoUpload(e, 'dark')}
+                    />
+                  </Button>
+                </Box>
+              </Box>
+            </Grid>
+
             <Grid item xs={12} sm={6}>
               <Box>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
@@ -422,7 +572,11 @@ function AccountSettingsPage() {
               <Button
                 variant="contained"
                 onClick={handleProfileUpdate}
-                disabled={updating || profileForm.name === userData.name}
+                disabled={
+                  updating ||
+                  (profileForm.name === userData.name &&
+                    (profileForm.address || '') === (userData.address || ''))
+                }
                 sx={{ mt: 1 }}
               >
                 {updating ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}

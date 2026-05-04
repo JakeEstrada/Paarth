@@ -1,5 +1,41 @@
 const User = require('../models/User');
 const { generateAccessToken, generateRefreshToken } = require('../utils/generateToken');
+const { getFileStream, deleteStoredFileBinary } = require('./fileController');
+
+function photoPayloadFromMulterFile(file) {
+  if (!file) return null;
+  if (file.key) {
+    return {
+      filename: file.originalname || 'photo.png',
+      path: file.key,
+      s3Key: file.key,
+      mimetype: file.mimetype || 'image/png',
+    };
+  }
+  return {
+    filename: file.filename,
+    path: file.path,
+    s3Key: undefined,
+    mimetype: file.mimetype || 'image/png',
+  };
+}
+
+function hasPhotoDoc(doc) {
+  return !!(doc && (doc.path || doc.s3Key || doc.filename));
+}
+
+/** Light: themed light, else default. Dark: themed dark, else default. */
+function resolveUserProfilePhoto(user, themeMode) {
+  const isDark = themeMode === 'dark';
+  if (isDark) {
+    if (hasPhotoDoc(user?.profilePhotoDark)) return user.profilePhotoDark;
+    if (hasPhotoDoc(user?.profilePhoto)) return user.profilePhoto;
+    return null;
+  }
+  if (hasPhotoDoc(user?.profilePhotoLight)) return user.profilePhotoLight;
+  if (hasPhotoDoc(user?.profilePhoto)) return user.profilePhoto;
+  return null;
+}
 
 // Register new user (requires admin approval)
 async function register(req, res) {
@@ -209,10 +245,122 @@ async function resetPassword(req, res) {
   }
 }
 
-// Update own profile (name only, email cannot be changed)
+/** Stream a single stored variant (default | light | dark) for previews in account settings. */
+async function getMyProfilePhotoRaw(req, res) {
+  try {
+    const v = String(req.params.variant || '').toLowerCase();
+    const fieldMap = { default: 'profilePhoto', light: 'profilePhotoLight', dark: 'profilePhotoDark' };
+    const field = fieldMap[v];
+    if (!field) {
+      return res.status(400).json({ error: 'Invalid variant' });
+    }
+    const user = await User.findById(req.user._id)
+      .select(`${field}`)
+      .setOptions({ bypassTenant: true });
+    const doc = user[field];
+    if (!hasPhotoDoc(doc)) {
+      return res.status(404).end();
+    }
+    const pseudoFile = {
+      filename: doc.filename,
+      path: doc.path,
+      s3Key: doc.s3Key,
+      mimetype: doc.mimetype,
+    };
+    res.setHeader('Content-Type', doc.mimetype || 'image/png');
+    res.setHeader('Cache-Control', 'private, no-cache');
+    const stream = await getFileStream(pseudoFile);
+    stream.on('error', (err) => {
+      console.error('getMyProfilePhotoRaw stream:', err);
+      if (!res.headersSent) res.status(500).end();
+      else res.destroy();
+    });
+    stream.pipe(res);
+  } catch (error) {
+    console.error('getMyProfilePhotoRaw:', error);
+    if (!res.headersSent) res.status(500).end();
+  }
+}
+
+/** Authenticated: stream resolved profile photo for current user (for light/dark UI). */
+async function getMyProfilePhoto(req, res) {
+  try {
+    const themeMode = String(req.query.mode || 'light').toLowerCase() === 'dark' ? 'dark' : 'light';
+    const user = await User.findById(req.user._id)
+      .select('profilePhoto profilePhotoLight profilePhotoDark')
+      .setOptions({ bypassTenant: true });
+    const resolved = resolveUserProfilePhoto(user, themeMode);
+    if (!resolved) {
+      return res.status(404).end();
+    }
+    const pseudoFile = {
+      filename: resolved.filename,
+      path: resolved.path,
+      s3Key: resolved.s3Key,
+      mimetype: resolved.mimetype,
+    };
+    res.setHeader('Content-Type', resolved.mimetype || 'image/png');
+    res.setHeader('Cache-Control', 'private, no-cache');
+    const stream = await getFileStream(pseudoFile);
+    stream.on('error', (err) => {
+      console.error('getMyProfilePhoto stream:', err);
+      if (!res.headersSent) res.status(500).end();
+      else res.destroy();
+    });
+    stream.pipe(res);
+  } catch (error) {
+    console.error('getMyProfilePhoto:', error);
+    if (!res.headersSent) res.status(500).end();
+  }
+}
+
+/** variant: default | light | dark */
+async function uploadUserProfilePhoto(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded.' });
+    }
+    const variant = String(req.params.variant || 'default').toLowerCase();
+    const fieldMap = { default: 'profilePhoto', light: 'profilePhotoLight', dark: 'profilePhotoDark' };
+    const field = fieldMap[variant];
+    if (!field) {
+      return res.status(400).json({ error: 'Invalid variant. Use default, light, or dark.' });
+    }
+
+    const user = await User.findById(req.user._id).setOptions({ bypassTenant: true });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const previous = user[field];
+    if (previous && (previous.path || previous.s3Key || previous.filename)) {
+      await deleteStoredFileBinary({
+        filename: previous.filename,
+        path: previous.path,
+        s3Key: previous.s3Key,
+        mimetype: previous.mimetype,
+      });
+    }
+
+    user[field] = photoPayloadFromMulterFile(req.file);
+    await user.save();
+
+    const userResponse = user.toJSON();
+    delete userResponse.password;
+    res.json({
+      message: 'Profile photo updated',
+      user: userResponse,
+    });
+  } catch (error) {
+    console.error('uploadUserProfilePhoto:', error);
+    res.status(500).json({ error: error.message || 'Failed to upload profile photo' });
+  }
+}
+
+// Update own profile (name required; address optional; email cannot be changed)
 async function updateProfile(req, res) {
   try {
-    const { name } = req.body;
+    const { name, address } = req.body;
     
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Name is required' });
@@ -221,6 +369,9 @@ async function updateProfile(req, res) {
     // User is already attached to req by requireAuth middleware
     const user = req.user;
     user.name = name.trim();
+    if (address !== undefined) {
+      user.address = address == null ? '' : String(address).trim();
+    }
     await user.save();
     
     const userResponse = user.toJSON();
@@ -276,5 +427,8 @@ module.exports = {
   forgotUsername,
   resetPassword,
   updateProfile,
-  changePassword
+  changePassword,
+  getMyProfilePhoto,
+  getMyProfilePhotoRaw,
+  uploadUserProfilePhoto,
 };

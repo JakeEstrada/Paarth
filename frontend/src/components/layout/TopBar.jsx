@@ -16,9 +16,9 @@ import {
   ClickAwayListener,
   useMediaQuery,
   useTheme as useMuiTheme,
+  Avatar,
 } from '@mui/material';
 import {
-  Settings as SettingsIcon,
   Logout as LogoutIcon,
   Person as PersonIcon,
   DarkMode as DarkModeIcon,
@@ -31,12 +31,23 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuthenticatedProfilePhotoUrl } from '../../hooks/useAuthenticatedProfilePhotoUrl';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+function userInitials(name) {
+  if (!name || !String(name).trim()) return '?';
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }
+  return parts[0].slice(0, 2).toUpperCase();
+}
 
 function TopBar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useTheme();
+  const profilePhotoUrl = useAuthenticatedProfilePhotoUrl(user, mode);
   const navigate = useNavigate();
   const theme = useMuiTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -123,9 +134,6 @@ function TopBar({ onMenuClick }) {
               <MenuIcon fontSize="small" />
             </IconButton>
           )}
-          <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, fontWeight: 500 }}>
-            {user?.name || 'User'}
-          </Typography>
           {!isMobile && (
             <ClickAwayListener onClickAway={() => setSearchOpen(false)}>
               <Box sx={{ position: 'relative', ml: 1, width: { md: 340, lg: 440 } }}>
@@ -182,7 +190,7 @@ function TopBar({ onMenuClick }) {
             </ClickAwayListener>
           )}
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <IconButton
             onClick={toggleColorMode}
             size="small"
@@ -195,17 +203,51 @@ function TopBar({ onMenuClick }) {
           >
             {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
           </IconButton>
-          <IconButton
+          <Box
+            component="button"
+            type="button"
             onClick={handleSettingsClick}
-            size="small"
             sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              cursor: 'pointer',
+              border: 'none',
+              background: 'none',
+              font: 'inherit',
+              color: 'inherit',
+              borderRadius: 1,
+              py: 0.25,
+              pl: 0.5,
+              pr: 0.75,
+              maxWidth: { xs: 140, sm: 220 },
               '&:hover': {
                 backgroundColor: 'action.hover',
               },
             }}
           >
-            <SettingsIcon fontSize="small" />
-          </IconButton>
+            <Typography
+              variant="body2"
+              sx={{
+                fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                fontWeight: 500,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                minWidth: 0,
+                textAlign: 'left',
+              }}
+            >
+              {user?.name || 'User'}
+            </Typography>
+            <Avatar
+              src={profilePhotoUrl || undefined}
+              alt=""
+              sx={{ width: 32, height: 32, flexShrink: 0, fontSize: '0.8rem' }}
+            >
+              {userInitials(user?.name)}
+            </Avatar>
+          </Box>
         </Box>
         <Menu
           anchorEl={anchorEl}
@@ -214,7 +256,7 @@ function TopBar({ onMenuClick }) {
         >
           <MenuItem onClick={handleAccountSettings}>
             <PersonIcon sx={{ mr: 1, fontSize: 20 }} />
-            Account Settings
+            Account settings
           </MenuItem>
           <MenuItem onClick={handleLogout}>
             <LogoutIcon sx={{ mr: 1, fontSize: 20 }} />
