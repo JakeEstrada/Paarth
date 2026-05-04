@@ -19,6 +19,8 @@ import {
 import { Add as AddIcon } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import PhoneTextField from '../common/PhoneTextField';
+import { formatNanpTyping, formatPhoneForDisplay } from '../../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -124,7 +126,7 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
           ...prev,
           customerId: newValue._id,
           customerName: newValue.name,
-          customerPhone: newValue.primaryPhone || '',
+          customerPhone: newValue.primaryPhone ? formatNanpTyping(newValue.primaryPhone) : '',
           customerEmail: newValue.primaryEmail || '',
           customerAddress: newValue.address || {
             street: '',
@@ -424,7 +426,9 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
                     <Typography variant="body1">{option.name}</Typography>
                     {(option.primaryPhone || option.primaryEmail) && (
                       <Typography variant="caption" color="text.secondary">
-                        {[option.primaryPhone, option.primaryEmail].filter(Boolean).join(' • ')}
+                        {[option.primaryPhone ? formatPhoneForDisplay(option.primaryPhone) : '', option.primaryEmail]
+                          .filter(Boolean)
+                          .join(' • ')}
                       </Typography>
                     )}
                   </Box>
@@ -446,7 +450,7 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
           />
 
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
+            <PhoneTextField
               label="Phone"
               value={formData.customerPhone}
               onChange={(e) => handleChange('customerPhone', e.target.value)}

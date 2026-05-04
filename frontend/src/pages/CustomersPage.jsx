@@ -53,6 +53,8 @@ import JobDetailModal from '../components/jobs/JobDetailModal';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../components/common/EmployeeSmsRecipientField';
+import PhoneTextField from '../components/common/PhoneTextField';
+import { formatNanpTyping, formatPhoneForDisplay, phoneSearchMatch } from '../utils/phoneFormat';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
@@ -158,7 +160,9 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
       return (
         customer.name?.toLowerCase().includes(searchLower) ||
         customer.primaryEmail?.toLowerCase().includes(searchLower) ||
-        customer.primaryPhone?.includes(searchTerm) ||
+        phoneSearchMatch(customer.primaryPhone, searchTerm) ||
+        (Array.isArray(customer.contactPhones) &&
+          customer.contactPhones.some((cp) => phoneSearchMatch(cp?.value, searchTerm))) ||
         customer.address?.street?.toLowerCase().includes(searchLower) ||
         customer.address?.city?.toLowerCase().includes(searchLower)
       );
@@ -268,7 +272,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     const addr = formatAddress(customer.address);
     const lines = [
       `Customer: ${customer.name || 'Unknown'}`,
-      phones.length ? `Phone: ${phones.join(', ')}` : null,
+      phones.length ? `Phone: ${phones.map((p) => formatPhoneForDisplay(p)).join(', ')}` : null,
       emails.length ? `Email: ${emails.join(', ')}` : null,
       addr && addr !== '-' ? `Address: ${addr}` : null,
     ].filter(Boolean);
@@ -348,11 +352,14 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     
     setEditCustomerForm({
       name: selectedCustomer.name || '',
-      primaryPhone: selectedCustomer.primaryPhone || '',
+      primaryPhone: selectedCustomer.primaryPhone ? formatNanpTyping(selectedCustomer.primaryPhone) : '',
       primaryEmail: selectedCustomer.primaryEmail || '',
       phones: selectedCustomer.phones ? [...selectedCustomer.phones] : [],
       emails: selectedCustomer.emails ? [...selectedCustomer.emails] : [],
-      contactPhones: contactPhones,
+      contactPhones: contactPhones.map((cp) => ({
+        ...cp,
+        value: cp.value ? formatNanpTyping(cp.value) : '',
+      })),
       contactEmails: contactEmails,
       address: {
         street: selectedCustomer.address?.street || '',
@@ -443,9 +450,11 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
 
   // Update phone value
   const handleUpdatePhoneValue = (index, value) => {
-    setEditCustomerForm(prev => ({
+    setEditCustomerForm((prev) => ({
       ...prev,
-      contactPhones: prev.contactPhones.map((p, i) => i === index ? { ...p, value } : p)
+      contactPhones: prev.contactPhones.map((p, i) =>
+        i === index ? { ...p, value: formatNanpTyping(value) } : p
+      ),
     }));
   };
 
@@ -894,7 +903,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     sx={{ cursor: isReadonlyView ? 'pointer' : 'pointer' }}
                   >
                     <TableCell>{customer.name || '-'}</TableCell>
-                    <TableCell>{customer.primaryPhone || '-'}</TableCell>
+                    <TableCell>{formatPhoneForDisplay(customer.primaryPhone) || '-'}</TableCell>
                     <TableCell>{customer.primaryEmail || '-'}</TableCell>
                     <TableCell>
                       {formatAddress(customer.address)}
@@ -1067,11 +1076,11 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                           placeholder="Label (e.g., John's number, Office)"
                           sx={{ width: '40%' }}
                         />
-                        <TextField
+                        <PhoneTextField
                           size="small"
                           value={phone.value || ''}
                           onChange={(e) => handleUpdatePhoneValue(idx, e.target.value)}
-                          placeholder="Phone number"
+                          placeholder="(949) 555-1234"
                           fullWidth
                           InputProps={{
                             startAdornment: <PhoneIcon sx={{ mr: 1, color: 'action.active', fontSize: '1rem' }} />,
@@ -1329,7 +1338,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                                 flex: 1
                               }}
                             >
-                              {phone.value}
+                              {formatPhoneForDisplay(phone.value)}
                             </Typography>
                           </Box>
                         ))}

@@ -86,7 +86,7 @@ function collectDescriptionsFromEstimateSnapshot(est) {
     .filter(Boolean);
 }
 
-const COMPANY_PHONE = '951 491-1137';
+const COMPANY_PHONE = '(951)491-1137';
 const COMPANY_EMAIL = 'office@sanclementewoodworking.com';
 const COMPANY_WEBSITE = 'www.sanclementewoodworking.com';
 

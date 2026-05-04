@@ -59,6 +59,7 @@ import JobContractPacketDialog from './JobContractPacketDialog';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
+import { formatPhoneForDisplay, telHref } from '../../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -622,7 +623,7 @@ function JobDetailModal({
                   j?.title ? `Job: ${j.title}` : null,
                   addressLine ? `Address: ${addressLine}` : null,
                   email ? `Email: ${email}` : null,
-                  phone ? `Phone: ${phone}` : null,
+                  phone ? `Phone: ${formatPhoneForDisplay(phone)}` : null,
                 ].filter(Boolean);
                 setShareSmsRecipient('');
                 setShareMessage(messageLines.join('\n'));
@@ -664,10 +665,10 @@ function JobDetailModal({
                   variant="caption"
                   color="text.secondary"
                   component="a"
-                  href={`tel:${phone}`}
+                  href={telHref(phone) || `tel:${phone.replace(/\s/g, '')}`}
                   sx={{ ...smallText, wordBreak: 'break-all', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
                 >
-                  {phone}
+                  {formatPhoneForDisplay(phone)}
                 </Typography>
               </Box>
             )}
@@ -1079,7 +1080,10 @@ function JobDetailModal({
                   {/* Show job-specific contact if available, otherwise show customer contact */}
                   {(job.jobContact?.phone || job.customerId?.primaryPhone) && (
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      Phone: {job.jobContact?.phone || job.customerId.primaryPhone}
+                      Phone:{' '}
+                      {formatPhoneForDisplay(
+                        String(job.jobContact?.phone || job.customerId?.primaryPhone || '').trim()
+                      )}
                     </Typography>
                   )}
                   {(job.jobContact?.email || job.customerId?.primaryEmail) && (

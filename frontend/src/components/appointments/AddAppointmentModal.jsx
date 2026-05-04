@@ -18,6 +18,8 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import PhoneTextField from '../common/PhoneTextField';
+import { formatNanpTyping } from '../../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -98,7 +100,7 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
     fetchJobsForCustomer(customerId);
     const selectedCustomer = customers.find((c) => String(c._id) === String(customerId));
     if (selectedCustomer?.primaryPhone && !reminderPhone) {
-      setReminderPhone(selectedCustomer.primaryPhone);
+      setReminderPhone(formatNanpTyping(selectedCustomer.primaryPhone));
     }
   };
 
@@ -176,7 +178,7 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
         setReminderDate('');
         setReminderTime('');
       }
-      setReminderPhone(appt.reminderPhone || '');
+      setReminderPhone(appt.reminderPhone ? formatNanpTyping(appt.reminderPhone) : '');
       setReminderMessage(appt.reminderMessage || '');
     } catch (error) {
       console.error('Error loading appointment:', error);
@@ -512,9 +514,9 @@ function AddAppointmentModal({ open, onClose, onSuccess, job, appointmentId }) {
                     </Grid>
                   </Grid>
 
-                  <TextField
+                  <PhoneTextField
                     label="Reminder Phone"
-                    placeholder="+19495551234"
+                    placeholder="(949) 555-1234"
                     value={reminderPhone}
                     onChange={(e) => setReminderPhone(e.target.value)}
                     fullWidth

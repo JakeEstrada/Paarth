@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Autocomplete, TextField, Box, CircularProgress, Typography, FormHelperText } from '@mui/material';
 import axios from 'axios';
+import { formatPhoneForDisplay } from '../../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -125,12 +126,14 @@ export default function EmployeeSmsRecipientField({
         selectOnFocus
         handleHomeEndKeys
         isOptionEqualToValue={(a, b) => a.selectionKey === b.selectionKey}
-        getOptionLabel={(opt) => (opt ? `${opt.mobile} · ${opt.name}` : '')}
+        getOptionLabel={(opt) =>
+          opt ? `${formatPhoneForDisplay(opt.mobile) || opt.mobile} · ${opt.name}` : ''
+        }
         filterOptions={(opts, state) => {
           const q = state.inputValue.trim().toLowerCase();
           if (!q) return opts;
           return opts.filter((o) => {
-            const hay = `${o.mobile} ${o.name} ${o.sub}`.toLowerCase();
+            const hay = `${o.mobile} ${formatPhoneForDisplay(o.mobile)} ${o.name} ${o.sub}`.toLowerCase();
             return hay.includes(q);
           });
         }}
@@ -139,7 +142,7 @@ export default function EmployeeSmsRecipientField({
           <Box component="li" {...props} key={option.selectionKey}>
             <Box>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {option.mobile}
+                {formatPhoneForDisplay(option.mobile) || option.mobile}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {option.name} · {option.sub}

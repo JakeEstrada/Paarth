@@ -57,6 +57,7 @@ import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../components/common/EmployeeSmsRecipientField';
+import { formatPhoneForDisplay, nanpDigitsOnly } from '../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -204,12 +205,13 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
             .filter(Boolean)
             .join(', ')
         : '';
-  const headerPhoneLine =
+  const headerPhoneRaw =
     resolvedJob?.jobContact?.phone?.trim()
       ? resolvedJob.jobContact.phone.trim()
       : resolvedJob?.customerId?.primaryPhone?.trim()
         ? resolvedJob.customerId.primaryPhone.trim()
         : '';
+  const headerPhoneLine = headerPhoneRaw ? formatPhoneForDisplay(headerPhoneRaw) : '';
 
   const formatAddress = (address) => {
     if (!address) return '';
@@ -220,13 +222,20 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
     const customer = resolvedJob?.customerId || {};
     const address = resolvedJob?.jobAddress ? formatAddress(resolvedJob.jobAddress) : formatAddress(customer.address);
     const phones = [];
-    if (resolvedJob?.jobContact?.phone) phones.push(resolvedJob.jobContact.phone);
-    if (customer?.primaryPhone && !phones.includes(customer.primaryPhone)) phones.push(customer.primaryPhone);
+    const seenDigits = new Set();
+    const addPhone = (raw) => {
+      const v = String(raw || '').trim();
+      if (!v) return;
+      const d = nanpDigitsOnly(v);
+      const dedupeKey = d.length === 10 ? d : v.toLowerCase();
+      if (seenDigits.has(dedupeKey)) return;
+      seenDigits.add(dedupeKey);
+      phones.push(formatPhoneForDisplay(v));
+    };
+    if (resolvedJob?.jobContact?.phone) addPhone(resolvedJob.jobContact.phone);
+    if (customer?.primaryPhone) addPhone(customer.primaryPhone);
     if (Array.isArray(customer?.contactPhones)) {
-      customer.contactPhones.forEach((p) => {
-        const v = p?.value?.trim();
-        if (v && !phones.includes(v)) phones.push(v);
-      });
+      customer.contactPhones.forEach((p) => addPhone(p?.value));
     }
     const email = customer?.primaryEmail || '';
     const lines = [

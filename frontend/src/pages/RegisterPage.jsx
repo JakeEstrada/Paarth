@@ -25,6 +25,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
+import PhoneTextField from '../components/common/PhoneTextField';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -186,14 +187,13 @@ function RegisterPage() {
                 sx={{ mb: 2 }}
               />
 
-              <TextField
+              <PhoneTextField
                 fullWidth
                 label="Phone Number (optional)"
-                type="tel"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 margin="normal"
-                placeholder="+19495551234"
+                placeholder="(949) 555-1234"
                 sx={{ mb: 2 }}
               />
 

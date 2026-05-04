@@ -36,6 +36,8 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import PhoneTextField from '../components/common/PhoneTextField';
+import { formatNanpTyping, formatPhoneForDisplay } from '../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -132,7 +134,7 @@ function UsersPage() {
         password: '',
         role: user.role,
         isActive: user.isActive,
-        mobile: user.mobile ?? '',
+        mobile: user.mobile ? formatNanpTyping(user.mobile) : '',
         previousPhonesText: previousPhonesToText(user.previousPhoneNumbers),
       });
     } else {
@@ -268,7 +270,7 @@ function UsersPage() {
       setContactForm({
         name: contact.name || '',
         email: contact.email || '',
-        mobile: contact.mobile ?? '',
+        mobile: contact.mobile ? formatNanpTyping(contact.mobile) : '',
         previousPhonesText: previousPhonesToText(contact.previousPhoneNumbers),
       });
     } else {
@@ -356,7 +358,9 @@ function UsersPage() {
     <TableRow key={user._id} hover>
       <TableCell>{user.name}</TableCell>
       <TableCell>{user.email}</TableCell>
-      <TableCell sx={{ whiteSpace: 'nowrap' }}>{user.mobile?.trim() ? user.mobile.trim() : '—'}</TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+        {user.mobile?.trim() ? formatPhoneForDisplay(user.mobile.trim()) : '—'}
+      </TableCell>
       <TableCell sx={{ maxWidth: 220 }}>
         {prevList.length ? (
           <Tooltip title={prevJoined}>
@@ -461,7 +465,7 @@ function UsersPage() {
                   <TableRow key={user._id} hover>
                     <TableCell>{user.name}</TableCell>
                     <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.mobile?.trim() ? user.mobile.trim() : '—'}</TableCell>
+                    <TableCell>{user.mobile?.trim() ? formatPhoneForDisplay(user.mobile.trim()) : '—'}</TableCell>
                     <TableCell sx={{ maxWidth: 180 }}>
                       {Array.isArray(user.previousPhoneNumbers) && user.previousPhoneNumbers.length ? (
                         <Tooltip title={user.previousPhoneNumbers.join(', ')}>
@@ -610,7 +614,9 @@ function UsersPage() {
                   <TableRow key={c._id} hover>
                     <TableCell>{c.name}</TableCell>
                     <TableCell>{c.email || '—'}</TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{c.mobile?.trim() ? c.mobile.trim() : '—'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      {c.mobile?.trim() ? formatPhoneForDisplay(c.mobile.trim()) : '—'}
+                    </TableCell>
                     <TableCell sx={{ maxWidth: 220 }}>
                       {prevList.length ? (
                         <Tooltip title={prevJoined}>
@@ -691,13 +697,13 @@ function UsersPage() {
                   required={!editingUser}
                   helperText={editingUser ? "Leave blank to keep current password. Passwords are securely hashed." : "Minimum 6 characters. Password will be securely hashed."}
                 />
-                <TextField
+                <PhoneTextField
                   label="Mobile number"
                   value={formData.mobile}
                   onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
                   fullWidth
-                  placeholder="e.g. +1 555 123 4567"
-                  helperText="Current contact number for this person."
+                  placeholder="(949) 555-1234"
+                  helperText="US/Canada 10-digit number. Stored and shown formatted."
                 />
                 <TextField
                   label="Previous phone numbers"
@@ -842,12 +848,13 @@ function UsersPage() {
               value={contactForm.email}
               onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
             />
-            <TextField
+            <PhoneTextField
               label="Mobile number"
               fullWidth
               value={contactForm.mobile}
               onChange={(e) => setContactForm({ ...contactForm, mobile: e.target.value })}
-              helperText="Required for SMS to this person."
+              helperText="Required for SMS to this person. US/Canada format."
+              placeholder="(949) 555-1234"
             />
             <TextField
               label="Previous phone numbers"

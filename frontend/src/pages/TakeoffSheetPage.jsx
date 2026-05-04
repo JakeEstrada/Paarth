@@ -22,6 +22,7 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { formatPhoneForDisplay } from '../utils/phoneFormat';
 
 const DEFAULT_ROWS = 12;
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -112,7 +113,10 @@ function normalizeSavedForm(saved) {
   return {
     customerId: saved.customerId ?? null,
     soldTo: typeof saved.soldTo === 'string' ? saved.soldTo : '',
-    phoneNumber: typeof saved.phoneNumber === 'string' ? saved.phoneNumber : '',
+    phoneNumber:
+      typeof saved.phoneNumber === 'string' && saved.phoneNumber.trim()
+        ? formatPhoneForDisplay(saved.phoneNumber.trim())
+        : '',
     date:
       typeof saved.date === 'string' && saved.date.trim()
         ? saved.date
@@ -196,7 +200,7 @@ function takeoffCustomerFieldsFromJob(job) {
   return {
     customerId: cust._id,
     soldTo: String(cust.name || '').trim(),
-    phoneNumber: cust.primaryPhone || '',
+    phoneNumber: cust.primaryPhone ? formatPhoneForDisplay(cust.primaryPhone) : '',
     nameAddress: [streetLine, cityLine].filter(Boolean).join('\n'),
   };
 }
@@ -264,7 +268,9 @@ function TakeoffSheetPage() {
             ...normalized,
             customerId: fromJob.customerId,
             soldTo: fromJob.soldTo,
-            phoneNumber: normalized.phoneNumber?.trim() ? normalized.phoneNumber : fromJob.phoneNumber,
+            phoneNumber: normalized.phoneNumber?.trim()
+              ? formatPhoneForDisplay(normalized.phoneNumber.trim())
+              : fromJob.phoneNumber,
             nameAddress: normalized.nameAddress?.trim() ? normalized.nameAddress : fromJob.nameAddress,
           });
           return;
