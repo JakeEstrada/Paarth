@@ -3,15 +3,15 @@ import api from '../utils/axios';
 
 export function userHasProfilePhoto(user) {
   if (!user) return false;
-  const has = (p) => p && (p.path || p.s3Key || p.filename);
-  return has(user.profilePhoto) || has(user.profilePhotoLight) || has(user.profilePhotoDark);
+  const p = user.profilePhoto;
+  return !!(p && (p.path || p.s3Key || p.filename));
 }
 
 /**
- * Fetches the current user's theme-resolved profile photo (authenticated).
+ * Fetches the current user's profile photo (authenticated).
  * Returns a blob object URL or null; revoked on change/unmount.
  */
-export function useAuthenticatedProfilePhotoUrl(user, themeMode) {
+export function useAuthenticatedProfilePhotoUrl(user) {
   const [url, setUrl] = useState(null);
   const blobRef = useRef(null);
 
@@ -27,14 +27,10 @@ export function useAuthenticatedProfilePhotoUrl(user, themeMode) {
     }
 
     let cancelled = false;
-    const mode = themeMode === 'dark' ? 'dark' : 'light';
 
     (async () => {
       try {
-        const res = await api.get('/auth/profile-photo', {
-          params: { mode },
-          responseType: 'blob',
-        });
+        const res = await api.get('/auth/profile-photo', { responseType: 'blob' });
         if (cancelled) return;
         const objectUrl = URL.createObjectURL(res.data);
         blobRef.current = objectUrl;
@@ -51,7 +47,7 @@ export function useAuthenticatedProfilePhotoUrl(user, themeMode) {
         blobRef.current = null;
       }
     };
-  }, [user?._id, user?.updatedAt, themeMode]);
+  }, [user?._id, user?.updatedAt]);
 
   return url;
 }

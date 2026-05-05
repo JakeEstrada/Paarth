@@ -172,6 +172,7 @@ function JobDetailModal({
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
   const [jobTasks, setJobTasks] = useState([]);
   const [contractPacketOpen, setContractPacketOpen] = useState(false);
+  const [creatingContractPacket, setCreatingContractPacket] = useState(false);
   const hideFinancials = hideSensitive;
   const [fileMenuAnchor, setFileMenuAnchor] = useState(null);
   const [selectedFileForMenu, setSelectedFileForMenu] = useState(null);
@@ -533,6 +534,58 @@ function JobDetailModal({
       toast.error('Failed to archive job');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCreateContractPacket = async () => {
+    if (!job?._id) return;
+    if (!customerEntityId) {
+      toast.error('Customer is required to create a contract packet');
+      return;
+    }
+    try {
+      setCreatingContractPacket(true);
+      let estimateDoc = null;
+      const { data: estimateData } = await axios.get(`${API_URL}/estimates`, { params: { jobId: job._id } });
+      const estimateList = Array.isArray(estimateData) ? estimateData : estimateData?.estimates || [];
+      estimateDoc = estimateList[0] || null;
+
+      if (!estimateDoc?._id) {
+        const defaultLineTotal = Number(headerEstimatedValue || job?.valueEstimated || 0);
+        const { data: createdEstimate } = await axios.post(`${API_URL}/estimates`, {
+          customerId: customerEntityId,
+          jobId: job._id,
+          status: 'draft',
+          projectName: String(job?.title || '').trim(),
+          lineItems: [
+            {
+              itemName: String(job?.title || 'Project').trim() || 'Project',
+              description: 'Auto-created estimate for contract packet',
+              quantity: 1,
+              unitPrice: defaultLineTotal,
+              total: defaultLineTotal,
+            },
+          ],
+        });
+        estimateDoc = createdEstimate;
+      }
+
+      const { data: packet } = await axios.post(
+        `${API_URL}/estimates/${estimateDoc._id}/generate-contract`,
+        {}
+      );
+      toast.success(
+        `Contract packet created: ${packet?.contract?.contractNumber || 'contract'} + ${
+          packet?.depositInvoice?.invoiceNumber || 'deposit invoice'
+        }`
+      );
+      await fetchJobDetails();
+      setContractPacketOpen(true);
+    } catch (error) {
+      console.error('Error creating contract packet:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to create contract packet');
+    } finally {
+      setCreatingContractPacket(false);
     }
   };
 
@@ -1313,9 +1366,10 @@ function JobDetailModal({
                         size="small"
                         variant="contained"
                         color="primary"
-                        onClick={() => setContractPacketOpen(true)}
+                        onClick={handleCreateContractPacket}
+                        disabled={creatingContractPacket}
                       >
-                        Create contract
+                        {creatingContractPacket ? 'Creating contract packet...' : 'Create contract'}
                       </Button>
                       <Button
                         size="small"

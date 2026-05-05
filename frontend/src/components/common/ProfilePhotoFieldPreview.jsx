@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import api from '../../utils/axios';
 
-/** Authenticated preview of one stored profile field: default | light | dark */
-export default function ProfilePhotoFieldPreview({ variant, revision, sx, emptyLabel }) {
+/** Authenticated preview of the signed-in user's profile photo (account settings). */
+export default function ProfilePhotoFieldPreview({ revision, sx, emptyLabel }) {
   const [url, setUrl] = useState(null);
   const blobRef = useRef(null);
 
@@ -17,13 +17,13 @@ export default function ProfilePhotoFieldPreview({ variant, revision, sx, emptyL
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.get(`/auth/profile-photo/raw/${variant}`, { responseType: 'blob' });
+        const res = await api.get('/auth/profile-photo', { responseType: 'blob' });
         if (cancelled) return;
         const u = URL.createObjectURL(res.data);
         blobRef.current = u;
         setUrl(u);
       } catch {
-        /* 404 — no image for this slot */
+        /* 404 — no photo */
       }
     })();
 
@@ -34,7 +34,7 @@ export default function ProfilePhotoFieldPreview({ variant, revision, sx, emptyL
         blobRef.current = null;
       }
     };
-  }, [variant, revision]);
+  }, [revision]);
 
   if (!url) {
     return (

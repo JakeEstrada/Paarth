@@ -47,20 +47,8 @@ const userSchema = new mongoose.Schema({
     trim: true,
     default: '',
   },
-  /** Used in both themes when light/dark-specific photos are not set */
+  /** Single profile image for the user (header, etc.) */
   profilePhoto: {
-    filename: { type: String },
-    path: { type: String },
-    s3Key: { type: String },
-    mimetype: { type: String, default: 'image/png' },
-  },
-  profilePhotoLight: {
-    filename: { type: String },
-    path: { type: String },
-    s3Key: { type: String },
-    mimetype: { type: String, default: 'image/png' },
-  },
-  profilePhotoDark: {
     filename: { type: String },
     path: { type: String },
     s3Key: { type: String },

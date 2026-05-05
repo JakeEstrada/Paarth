@@ -47,7 +47,7 @@ function userInitials(name) {
 function TopBar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useTheme();
-  const profilePhotoUrl = useAuthenticatedProfilePhotoUrl(user, mode);
+  const profilePhotoUrl = useAuthenticatedProfilePhotoUrl(user);
   const navigate = useNavigate();
   const theme = useMuiTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));

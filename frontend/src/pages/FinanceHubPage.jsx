@@ -991,7 +991,13 @@ function FinanceHubPage() {
         `${API_URL}/estimates/${loadedEstimateDoc._id}/generate-contract`,
         {}
       );
-      toast.success(`Contract ${data?.contract?.contractNumber || ''} created`);
+      const contractNumber = data?.contract?.contractNumber || '';
+      const depositInvoiceNumber = data?.depositInvoice?.invoiceNumber || '';
+      toast.success(
+        depositInvoiceNumber
+          ? `Contract ${contractNumber} and deposit invoice ${depositInvoiceNumber} created`
+          : `Contract ${contractNumber} created`
+      );
       const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
       const hydrated = await hydrateJobWithEstimate(refreshed);
       setLoadedEstimateJob(hydrated.job);

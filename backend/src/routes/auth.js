@@ -11,7 +11,6 @@ const {
   updateProfile,
   changePassword,
   getMyProfilePhoto,
-  getMyProfilePhotoRaw,
   uploadUserProfilePhoto,
 } = require('../controllers/authController');
 const { requireAuth } = require('../middleware/auth');
@@ -29,13 +28,7 @@ router.get('/me', requireAuth, me);
 router.post('/logout', requireAuth, logout);
 router.patch('/profile', requireAuth, updateProfile);
 router.patch('/change-password', requireAuth, changePassword);
-router.get('/profile-photo/raw/:variant', requireAuth, getMyProfilePhotoRaw);
 router.get('/profile-photo', requireAuth, getMyProfilePhoto);
-router.post(
-  '/profile-photo/:variant',
-  requireAuth,
-  uploadUserProfilePhotoMw.single('photo'),
-  uploadUserProfilePhoto
-);
+router.post('/profile-photo', requireAuth, uploadUserProfilePhotoMw.single('photo'), uploadUserProfilePhoto);
 
 module.exports = router;

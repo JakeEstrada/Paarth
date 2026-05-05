@@ -24,19 +24,6 @@ function hasPhotoDoc(doc) {
   return !!(doc && (doc.path || doc.s3Key || doc.filename));
 }
 
-/** Light: themed light, else default. Dark: themed dark, else default. */
-function resolveUserProfilePhoto(user, themeMode) {
-  const isDark = themeMode === 'dark';
-  if (isDark) {
-    if (hasPhotoDoc(user?.profilePhotoDark)) return user.profilePhotoDark;
-    if (hasPhotoDoc(user?.profilePhoto)) return user.profilePhoto;
-    return null;
-  }
-  if (hasPhotoDoc(user?.profilePhotoLight)) return user.profilePhotoLight;
-  if (hasPhotoDoc(user?.profilePhoto)) return user.profilePhoto;
-  return null;
-}
-
 // Register new user (requires admin approval)
 async function register(req, res) {
   try {
@@ -245,52 +232,12 @@ async function resetPassword(req, res) {
   }
 }
 
-/** Stream a single stored variant (default | light | dark) for previews in account settings. */
-async function getMyProfilePhotoRaw(req, res) {
-  try {
-    const v = String(req.params.variant || '').toLowerCase();
-    const fieldMap = { default: 'profilePhoto', light: 'profilePhotoLight', dark: 'profilePhotoDark' };
-    const field = fieldMap[v];
-    if (!field) {
-      return res.status(400).json({ error: 'Invalid variant' });
-    }
-    const user = await User.findById(req.user._id)
-      .select(`${field}`)
-      .setOptions({ bypassTenant: true });
-    const doc = user[field];
-    if (!hasPhotoDoc(doc)) {
-      return res.status(404).end();
-    }
-    const pseudoFile = {
-      filename: doc.filename,
-      path: doc.path,
-      s3Key: doc.s3Key,
-      mimetype: doc.mimetype,
-    };
-    res.setHeader('Content-Type', doc.mimetype || 'image/png');
-    res.setHeader('Cache-Control', 'private, no-cache');
-    const stream = await getFileStream(pseudoFile);
-    stream.on('error', (err) => {
-      console.error('getMyProfilePhotoRaw stream:', err);
-      if (!res.headersSent) res.status(500).end();
-      else res.destroy();
-    });
-    stream.pipe(res);
-  } catch (error) {
-    console.error('getMyProfilePhotoRaw:', error);
-    if (!res.headersSent) res.status(500).end();
-  }
-}
-
-/** Authenticated: stream resolved profile photo for current user (for light/dark UI). */
+/** Authenticated: stream the current user's profile photo. */
 async function getMyProfilePhoto(req, res) {
   try {
-    const themeMode = String(req.query.mode || 'light').toLowerCase() === 'dark' ? 'dark' : 'light';
-    const user = await User.findById(req.user._id)
-      .select('profilePhoto profilePhotoLight profilePhotoDark')
-      .setOptions({ bypassTenant: true });
-    const resolved = resolveUserProfilePhoto(user, themeMode);
-    if (!resolved) {
+    const user = await User.findById(req.user._id).select('profilePhoto').setOptions({ bypassTenant: true });
+    const resolved = user?.profilePhoto;
+    if (!hasPhotoDoc(resolved)) {
       return res.status(404).end();
     }
     const pseudoFile = {
@@ -314,17 +261,10 @@ async function getMyProfilePhoto(req, res) {
   }
 }
 
-/** variant: default | light | dark */
 async function uploadUserProfilePhoto(req, res) {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file uploaded.' });
-    }
-    const variant = String(req.params.variant || 'default').toLowerCase();
-    const fieldMap = { default: 'profilePhoto', light: 'profilePhotoLight', dark: 'profilePhotoDark' };
-    const field = fieldMap[variant];
-    if (!field) {
-      return res.status(400).json({ error: 'Invalid variant. Use default, light, or dark.' });
     }
 
     const user = await User.findById(req.user._id).setOptions({ bypassTenant: true });
@@ -332,20 +272,30 @@ async function uploadUserProfilePhoto(req, res) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const previous = user[field];
-    if (previous && (previous.path || previous.s3Key || previous.filename)) {
-      await deleteStoredFileBinary({
-        filename: previous.filename,
-        path: previous.path,
-        s3Key: previous.s3Key,
-        mimetype: previous.mimetype,
-      });
+    const raw = await User.collection.findOne({ _id: user._id });
+    async function delPhotoDoc(doc) {
+      if (doc && (doc.path || doc.s3Key || doc.filename)) {
+        await deleteStoredFileBinary({
+          filename: doc.filename,
+          path: doc.path,
+          s3Key: doc.s3Key,
+          mimetype: doc.mimetype,
+        });
+      }
     }
+    await delPhotoDoc(raw?.profilePhotoLight);
+    await delPhotoDoc(raw?.profilePhotoDark);
+    await delPhotoDoc(user.profilePhoto);
 
-    user[field] = photoPayloadFromMulterFile(req.file);
+    user.profilePhoto = photoPayloadFromMulterFile(req.file);
     await user.save();
+    await User.collection.updateOne(
+      { _id: user._id },
+      { $unset: { profilePhotoLight: '', profilePhotoDark: '' } }
+    );
 
-    const userResponse = user.toJSON();
+    const fresh = await User.findById(user._id).setOptions({ bypassTenant: true });
+    const userResponse = fresh.toJSON();
     delete userResponse.password;
     res.json({
       message: 'Profile photo updated',
@@ -429,6 +379,5 @@ module.exports = {
   updateProfile,
   changePassword,
   getMyProfilePhoto,
-  getMyProfilePhotoRaw,
   uploadUserProfilePhoto,
 };

@@ -380,7 +380,60 @@ async function generateContractFromEstimate(req, res) {
     estimate.status = 'converted_to_contract';
     estimate.updatedBy = req.user?._id || estimate.updatedBy;
     await estimate.save();
-    res.status(201).json(contract);
+
+    const contractTotal = roundMoney(Number(estimate.grandTotal) || 0);
+    let depositInvoice = null;
+    if (contractTotal > 0) {
+      const depositAmount = roundMoney(contractTotal * 0.6);
+      const invoiceNumbering = await getNextDocumentNumber({
+        documentType: 'invoice',
+        prefix: estimate.prefix || '1102',
+      });
+      const invoiceLineItems = [
+        {
+          itemName: 'Deposit invoice',
+          description: `60% of contract total per estimate ${estimate.estimateNumber || ''}`.trim(),
+          quantity: 1,
+          unitPrice: depositAmount,
+          total: depositAmount,
+        },
+      ];
+      depositInvoice = await Invoice.create({
+        customerId: estimate.customerId,
+        jobId: estimate.jobId,
+        estimateId: estimate._id,
+        estimateRevisionId: undefined,
+        invoiceNumber: invoiceNumbering.display,
+        prefix: invoiceNumbering.prefix,
+        sequenceNumber: invoiceNumbering.sequenceNumber,
+        status: 'draft',
+        issuedAt: new Date(),
+        lineItems: invoiceLineItems,
+        subtotal: depositAmount,
+        taxRate: 0,
+        taxAmount: 0,
+        discountAmount: 0,
+        total: depositAmount,
+        balanceDue: depositAmount,
+        notes: `Generated with contract from estimate ${estimate.estimateNumber} (deposit, 60%)`,
+        invoiceKind: 'deposit',
+        contractTotal,
+        estimateNumber: String(estimate.estimateNumber || '').trim(),
+        sourceType: 'derived_from_estimate',
+        createdBy: req.user?._id || null,
+        updatedBy: req.user?._id || null,
+      });
+      estimate.derivedDocuments.invoiceIds = estimate.derivedDocuments.invoiceIds || [];
+      estimate.derivedDocuments.invoiceIds.push(depositInvoice._id);
+      estimate.updatedBy = req.user?._id || estimate.updatedBy;
+      await estimate.save();
+    }
+
+    res.status(201).json({
+      estimate,
+      contract,
+      depositInvoice,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to generate contract' });
   }

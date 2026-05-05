@@ -66,9 +66,7 @@ function AccountSettingsPage() {
   });
   const [uploadingLogoLight, setUploadingLogoLight] = useState(false);
   const [uploadingLogoDark, setUploadingLogoDark] = useState(false);
-  const [uploadingProfileDefault, setUploadingProfileDefault] = useState(false);
-  const [uploadingProfileLight, setUploadingProfileLight] = useState(false);
-  const [uploadingProfileDark, setUploadingProfileDark] = useState(false);
+  const [uploadingProfilePhoto, setUploadingProfilePhoto] = useState(false);
   const [resettingEstimates, setResettingEstimates] = useState(false);
   const [shopViewPinDialogOpen, setShopViewPinDialogOpen] = useState(false);
   const [shopViewPinInput, setShopViewPinInput] = useState('');
@@ -136,6 +134,11 @@ function AccountSettingsPage() {
   };
 
   const handleTenantLogoUpload = async (e, themeMode) => {
+    if (!isSuperAdmin()) {
+      toast.error('Only the organization super admin can change company logos.');
+      e.target.value = '';
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -171,7 +174,7 @@ function AccountSettingsPage() {
     }
   };
 
-  const handleUserProfilePhotoUpload = async (e, variant) => {
+  const handleUserProfilePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -179,26 +182,14 @@ function AccountSettingsPage() {
       e.target.value = '';
       return;
     }
-    const setBusy =
-      variant === 'default'
-        ? setUploadingProfileDefault
-        : variant === 'light'
-          ? setUploadingProfileLight
-          : setUploadingProfileDark;
     try {
-      setBusy(true);
+      setUploadingProfilePhoto(true);
       const formData = new FormData();
       formData.append('photo', file);
-      await api.post(`/auth/profile-photo/${variant}`, formData, {
+      await api.post('/auth/profile-photo', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      toast.success(
-        variant === 'default'
-          ? 'Default profile photo updated.'
-          : variant === 'light'
-            ? 'Light mode profile photo updated.'
-            : 'Dark mode profile photo updated.'
-      );
+      toast.success('Profile photo updated.');
       await fetchUserData();
       const token = localStorage.getItem('accessToken');
       if (token && fetchCurrentUser) {
@@ -208,7 +199,7 @@ function AccountSettingsPage() {
       console.error('Profile photo upload:', error);
       toast.error(error.response?.data?.error || 'Failed to upload profile photo');
     } finally {
-      setBusy(false);
+      setUploadingProfilePhoto(false);
       e.target.value = '';
     }
   };
@@ -421,87 +412,31 @@ function AccountSettingsPage() {
 
             <Grid item xs={12}>
               <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                Profile photos
+                Profile photo
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Upload a default photo to use in the header in both light and dark mode, or add separate
-                light and dark images. Themed photos override the default for that mode only.
+                One image for your account (shown in the header next to your name). PNG, JPG, GIF, WebP, or SVG.
+                Max 2&nbsp;MB.
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3, flexWrap: 'wrap' }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Default
-                  </Typography>
                   <ProfilePhotoFieldPreview
-                    variant="default"
                     revision={userData?.updatedAt}
-                    emptyLabel="No default photo"
+                    emptyLabel="No profile photo"
                     sx={{ width: 88, height: 88 }}
                   />
                   <Button
                     variant="outlined"
                     component="label"
-                    disabled={uploadingProfileDefault}
-                    startIcon={uploadingProfileDefault ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
+                    disabled={uploadingProfilePhoto}
+                    startIcon={uploadingProfilePhoto ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
                   >
-                    {uploadingProfileDefault ? 'Uploading…' : 'Upload'}
+                    {uploadingProfilePhoto ? 'Uploading…' : 'Upload or replace'}
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
                       hidden
-                      onChange={(e) => handleUserProfilePhotoUpload(e, 'default')}
-                    />
-                  </Button>
-                </Box>
-
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Light mode only
-                  </Typography>
-                  <ProfilePhotoFieldPreview
-                    variant="light"
-                    revision={userData?.updatedAt}
-                    emptyLabel="Uses default"
-                    sx={{ width: 88, height: 88 }}
-                  />
-                  <Button
-                    variant="outlined"
-                    component="label"
-                    disabled={uploadingProfileLight}
-                    startIcon={uploadingProfileLight ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
-                  >
-                    {uploadingProfileLight ? 'Uploading…' : 'Upload'}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
-                      hidden
-                      onChange={(e) => handleUserProfilePhotoUpload(e, 'light')}
-                    />
-                  </Button>
-                </Box>
-
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Dark mode only
-                  </Typography>
-                  <ProfilePhotoFieldPreview
-                    variant="dark"
-                    revision={userData?.updatedAt}
-                    emptyLabel="Uses default"
-                    sx={{ width: 88, height: 88 }}
-                  />
-                  <Button
-                    variant="outlined"
-                    component="label"
-                    disabled={uploadingProfileDark}
-                    startIcon={uploadingProfileDark ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
-                  >
-                    {uploadingProfileDark ? 'Uploading…' : 'Upload'}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
-                      hidden
-                      onChange={(e) => handleUserProfilePhotoUpload(e, 'dark')}
+                      onChange={handleUserProfilePhotoUpload}
                     />
                   </Button>
                 </Box>
@@ -604,11 +539,12 @@ function AccountSettingsPage() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
             <PhotoCameraIcon sx={{ fontSize: 28, color: 'primary.main' }} />
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Organization logo
+              Organization logo (super admin only)
             </Typography>
           </Box>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Upload your company logo. It appears in the sidebar, login screen (for your team), payroll, and printed reports for all users in your organization. PNG, JPG, GIF, WebP, or SVG. Max 2&nbsp;MB.
+            Only a super admin can change these. They appear in the sidebar, login screen for your team, payroll,
+            and printed reports for everyone in your organization. PNG, JPG, GIF, WebP, or SVG. Max 2&nbsp;MB.
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3, flexWrap: 'wrap' }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
