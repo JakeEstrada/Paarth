@@ -14,12 +14,16 @@ function normalizeLineItems(rows = []) {
 
 async function listInvoices(req, res) {
   try {
-    const { customerId, jobId, estimateId } = req.query;
+    const { customerId, jobId, estimateId, invoiceKind } = req.query;
     const query = {};
     if (customerId) query.customerId = customerId;
     if (jobId) query.jobId = jobId;
     if (estimateId) query.estimateId = estimateId;
-    const invoices = await Invoice.find(query).sort({ createdAt: -1 });
+    if (invoiceKind) query.invoiceKind = String(invoiceKind).trim();
+    const invoices = await Invoice.find(query)
+      .populate('customerId', 'name')
+      .populate('jobId', 'title')
+      .sort({ createdAt: -1 });
     res.json(invoices);
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to fetch invoices' });
@@ -36,6 +40,10 @@ async function createInvoice(req, res) {
     const taxAmount = Number(req.body?.taxAmount) || subtotal * (taxRate / 100);
     const discountAmount = Number(req.body?.discountAmount) || 0;
     const total = Number(req.body?.total) || subtotal + taxAmount - discountAmount;
+    const allowedKinds = new Set(['deposit', 'final', 'full', 'change_order']);
+    const requestedKind = String(req.body?.invoiceKind || '').trim();
+    const invoiceKind = allowedKinds.has(requestedKind) ? requestedKind : undefined;
+
     const invoice = await Invoice.create({
       customerId: req.body.customerId,
       jobId: req.body.jobId || undefined,
@@ -55,6 +63,9 @@ async function createInvoice(req, res) {
       total,
       balanceDue: Number(req.body?.balanceDue) || total,
       notes: String(req.body?.notes || '').trim(),
+      invoiceKind,
+      contractTotal: Number(req.body?.contractTotal) || undefined,
+      estimateNumber: String(req.body?.estimateNumber || '').trim() || undefined,
       sourceType: req.body?.sourceType || 'manual',
       createdBy: req.user?._id || null,
       updatedBy: req.user?._id || null,

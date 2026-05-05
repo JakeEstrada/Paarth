@@ -10,6 +10,7 @@ const {
   updateEstimateStatus,
   generateInvoiceFromEstimate,
   generateContractFromEstimate,
+  generateChangeOrderFromEstimate,
   getEstimateSequenceSafety,
   renumberEstimate,
   markEstimateAsLegacy,
@@ -30,5 +31,6 @@ router.delete('/:id', deleteEstimate);
 router.post('/:id/status', updateEstimateStatus);
 router.post('/:id/generate-invoice', generateInvoiceFromEstimate);
 router.post('/:id/generate-contract', generateContractFromEstimate);
+router.post('/:id/generate-change-order', generateChangeOrderFromEstimate);
 
 module.exports = router;

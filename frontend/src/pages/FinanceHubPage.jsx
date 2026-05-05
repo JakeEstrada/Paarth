@@ -8,6 +8,7 @@ import {
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Container,
   Divider,
   Dialog,
@@ -22,6 +23,11 @@ import {
   RadioGroup,
   Link,
   Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   Tabs,
   TextField,
   Typography,
@@ -33,6 +39,7 @@ import {
   ChevronRight as ChevronRightIcon,
   Delete as DeleteIcon,
   PictureAsPdf as PictureAsPdfIcon,
+  PostAdd as PostAddIcon,
   Print as PrintIcon,
   ReceiptLong as ReceiptLongIcon,
 } from '@mui/icons-material';
@@ -359,6 +366,8 @@ function FinanceHubPage() {
   const [createInvoiceKind, setCreateInvoiceKind] = useState('deposit');
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [invoicePdfPayload, setInvoicePdfPayload] = useState(null);
+  const [changeOrdersList, setChangeOrdersList] = useState([]);
+  const [loadingChangeOrders, setLoadingChangeOrders] = useState(false);
   /** Full job JSON (consumer context only). */
   const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
   /** First-class estimate source of truth for current job context. */
@@ -908,7 +917,7 @@ function FinanceHubPage() {
 
   const renderInvoicePdfDoc = async () => {
     if (!invoicePdfRef.current) {
-      throw new Error('Invoice layout not ready');
+      throw new Error('Billing document layout not ready');
     }
     const canvas = await html2canvas(invoicePdfRef.current, {
       backgroundColor: '#ffffff',
@@ -940,6 +949,7 @@ function FinanceHubPage() {
       );
       const dueToday = roundMoneyClient(Number(inv?.total ?? 0));
       const payload = {
+        docKind: 'invoice',
         kind,
         contractTotal,
         dueToday,
@@ -1010,6 +1020,65 @@ function FinanceHubPage() {
     }
   };
 
+  const handleCreateChangeOrder = async () => {
+    if (!estimateJobId || !loadedEstimateDoc?._id || !canCreateInvoice) return;
+    try {
+      setSavingInvoice(true);
+      const { data } = await axios.post(
+        `${API_URL}/estimates/${loadedEstimateDoc._id}/generate-change-order`,
+        {}
+      );
+      const co = data?.changeOrder;
+      if (!co?._id && !co?.invoiceNumber) throw new Error('Change order was not created');
+
+      const mapLinesForPdf = (items) =>
+        (Array.isArray(items) ? items : []).map((row) => ({
+          itemName: row.itemName || '',
+          description: row.description || '',
+          quantity: row.quantity != null && row.quantity !== '' ? row.quantity : '',
+          total: row.total != null && row.total !== '' ? row.total : '',
+        }));
+
+      const payload = {
+        docKind: 'change_order',
+        estimateNumber: co.estimateNumber || data?.estimateNumber || invoiceEstimateNumber,
+        invoiceNumber: co.invoiceNumber || '',
+        invoiceDate: (co.issuedAt ? new Date(co.issuedAt) : new Date()).toISOString().slice(0, 10),
+        customerName: estimateForm.customerName,
+        projectName: estimateForm.projectName,
+        customerAddress: estimateForm.customerAddress,
+        lineItems: mapLinesForPdf(co.lineItems),
+        footerNote: String(estimateForm.footerNote || '').trim(),
+        referencedEstimateTotal: Number(co.contractTotal) || 0,
+        grandTotal: Number(co.total) || 0,
+      };
+
+      flushSync(() => {
+        setInvoicePdfPayload(payload);
+      });
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const doc = await renderInvoicePdfDoc();
+      doc.save(`Change-order-${co.invoiceNumber || invoiceEstimateNumber || 'draft'}.pdf`);
+      flushSync(() => {
+        setInvoicePdfPayload(null);
+      });
+      toast.success(`Change order ${co.invoiceNumber || ''} created and downloaded`);
+
+      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+      const hydrated = await hydrateJobWithEstimate(refreshed);
+      setLoadedEstimateJob(hydrated.job);
+      setLoadedEstimateDoc(hydrated.estimateDoc || null);
+    } catch (error) {
+      console.error('Error creating change order:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to create change order');
+      flushSync(() => {
+        setInvoicePdfPayload(null);
+      });
+    } finally {
+      setSavingInvoice(false);
+    }
+  };
+
   const estimatePrevJobIdRef = useRef(undefined);
   useEffect(() => {
     const prev = estimatePrevJobIdRef.current;
@@ -1037,6 +1106,31 @@ function FinanceHubPage() {
       setEstimateSaveTargetId(null);
     }
   }, [estimateJobId, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'change-orders') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingChangeOrders(true);
+        const { data } = await axios.get(`${API_URL}/invoices`, {
+          params: { invoiceKind: 'change_order' },
+        });
+        if (!cancelled) setChangeOrdersList(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Error loading change orders:', error);
+        if (!cancelled) {
+          setChangeOrdersList([]);
+          toast.error(error.response?.data?.error || 'Failed to load change orders');
+        }
+      } finally {
+        if (!cancelled) setLoadingChangeOrders(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
 
   const estimateFormIsDirty = useMemo(() => {
     return (
@@ -1325,6 +1419,64 @@ function FinanceHubPage() {
               headerTitle={activeSection.label}
               headerSubtitle={activeSection.subtitle}
             />
+          </CardContent>
+        </Card>
+      ) : activeTab === 'change-orders' ? (
+        <Card>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+              Change Orders
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Same PDF layout as an invoice, titled Change Order, numbered as CO (not INV). Each references an
+              estimate number.
+            </Typography>
+            {loadingChangeOrders ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress size={32} />
+              </Box>
+            ) : changeOrdersList.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No change orders yet. Create one from the Estimates tab while editing an estimate on a job.
+              </Typography>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Change Order #</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Estimate #</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Customer</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Job</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }} align="right">
+                      Amount
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Issued</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {changeOrdersList.map((row) => (
+                    <TableRow key={row._id}>
+                      <TableCell>{row.invoiceNumber}</TableCell>
+                      <TableCell>{row.estimateNumber || '—'}</TableCell>
+                      <TableCell>
+                        {typeof row.customerId === 'object' && row.customerId?.name
+                          ? row.customerId.name
+                          : '—'}
+                      </TableCell>
+                      <TableCell>
+                        {typeof row.jobId === 'object' && row.jobId?.title ? row.jobId.title : '—'}
+                      </TableCell>
+                      <TableCell align="right">${formatInvoiceMoney(row.total)}</TableCell>
+                      <TableCell>
+                        {row.issuedAt
+                          ? new Date(row.issuedAt).toLocaleDateString('en-US')
+                          : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       ) : activeTab !== 'estimates' ? (
@@ -1971,6 +2123,14 @@ function FinanceHubPage() {
               </Button>
               <Button
                 variant="outlined"
+                startIcon={<PostAddIcon />}
+                onClick={handleCreateChangeOrder}
+                disabled={!canCreateInvoice || savingInvoice}
+              >
+                Create change order
+              </Button>
+              <Button
+                variant="outlined"
                 onClick={handleGenerateContract}
                 disabled={!canCreateInvoice || savingInvoice}
               >
@@ -2065,12 +2225,16 @@ function FinanceHubPage() {
             </Box>
 
             <Box sx={{ textAlign: 'right' }}>
-              <Typography sx={{ fontWeight: 700, fontSize: 22, mb: 1 }}>Invoice</Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: 22, mb: 1 }}>
+                {invoicePdfPayload.docKind === 'change_order' ? 'Change Order' : 'Invoice'}
+              </Typography>
               <Box sx={{ width: 280, border: '1px solid #000', ml: 'auto' }}>
                 <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12 }}>
                   <Box sx={{ width: '34%', p: 1, borderRight: '1px solid #fff' }}>Date</Box>
                   <Box sx={{ width: '33%', p: 1, borderRight: '1px solid #fff' }}>Estimate #</Box>
-                  <Box sx={{ width: '33%', p: 1 }}>Invoice #</Box>
+                  <Box sx={{ width: '33%', p: 1 }}>
+                    {invoicePdfPayload.docKind === 'change_order' ? 'Change Order #' : 'Invoice #'}
+                  </Box>
                 </Box>
                 <Box sx={{ display: 'flex' }}>
                   <Typography sx={{ width: '34%', fontSize: 12, px: 1, py: 0.8, borderRight: '1px solid #000' }}>
@@ -2093,6 +2257,21 @@ function FinanceHubPage() {
                   </Typography>
                 </Box>
               </Box>
+              {invoicePdfPayload.docKind === 'change_order' ? (
+                <Typography
+                  sx={{
+                    fontSize: 11,
+                    mt: 1,
+                    maxWidth: 280,
+                    ml: 'auto',
+                    textAlign: 'right',
+                    lineHeight: 1.35,
+                  }}
+                >
+                  References estimate #{invoicePdfPayload.estimateNumber}. Stored estimate total at generation: $
+                  {formatInvoiceMoney(invoicePdfPayload.referencedEstimateTotal)}
+                </Typography>
+              ) : null}
             </Box>
           </Box>
 
@@ -2176,23 +2355,46 @@ function FinanceHubPage() {
                 gap: 1,
               }}
             >
-              <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
-                <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
-                  Total
-                </Box>
-                <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
-                  $
-                  {formatInvoiceMoney(invoicePdfPayload.contractTotal)}
-                </Box>
-              </Box>
-              <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
-                <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
-                  {invoicePdfPayload.kind === 'final' ? 'Final due today' : 'Deposit due today'}
-                </Box>
-                <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
-                  ${formatInvoiceMoney(invoicePdfPayload.dueToday)}
-                </Box>
-              </Box>
+              {invoicePdfPayload.docKind === 'change_order' ? (
+                <>
+                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+                    <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
+                      Estimate reference total
+                    </Box>
+                    <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 14 }}>
+                      ${formatInvoiceMoney(invoicePdfPayload.referencedEstimateTotal)}
+                    </Box>
+                  </Box>
+                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+                    <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
+                      Change order total
+                    </Box>
+                    <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                      ${formatInvoiceMoney(invoicePdfPayload.grandTotal)}
+                    </Box>
+                  </Box>
+                </>
+              ) : (
+                <>
+                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+                    <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
+                      Total
+                    </Box>
+                    <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                      $
+                      {formatInvoiceMoney(invoicePdfPayload.contractTotal)}
+                    </Box>
+                  </Box>
+                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+                    <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
+                      {invoicePdfPayload.kind === 'final' ? 'Final due today' : 'Deposit due today'}
+                    </Box>
+                    <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                      ${formatInvoiceMoney(invoicePdfPayload.dueToday)}
+                    </Box>
+                  </Box>
+                </>
+              )}
             </Box>
 
             <Box sx={{ mt: 2 }}>

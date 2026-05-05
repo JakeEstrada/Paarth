@@ -6,7 +6,7 @@ const documentSequenceSchema = new mongoose.Schema(
     documentType: {
       type: String,
       required: true,
-      enum: ['estimate', 'invoice', 'contract'],
+      enum: ['estimate', 'invoice', 'contract', 'change_order'],
       index: true,
     },
     prefix: { type: String, trim: true, default: '1102' },

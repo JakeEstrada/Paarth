@@ -6,6 +6,7 @@ function formatDocumentNumber({ prefix, sequence, documentType }) {
   if (documentType === 'estimate') return `${prefix}-${seq}`;
   if (documentType === 'invoice') return `${prefix}-INV-${seq}`;
   if (documentType === 'contract') return `${prefix}-CON-${seq}`;
+  if (documentType === 'change_order') return `${prefix}-CO-${seq}`;
   return `${prefix}-${seq}`;
 }
 

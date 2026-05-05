@@ -445,6 +445,79 @@ async function generateContractFromEstimate(req, res) {
   }
 }
 
+async function generateChangeOrderFromEstimate(req, res) {
+  try {
+    const estimate = await Estimate.findById(req.params.id);
+    if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
+
+    const lineItems = parseLineItems(
+      req.body?.lineItems != null ? req.body.lineItems : estimate.lineItems || []
+    );
+    const effectiveTaxRate =
+      req.body?.taxRate !== undefined ? Number(req.body.taxRate) : estimate.taxRate;
+    const effectiveDiscount =
+      req.body?.discountAmount !== undefined ? Number(req.body.discountAmount) : estimate.discountAmount;
+
+    const totals = computeTotals({
+      lineItems,
+      taxRate: effectiveTaxRate,
+      discountAmount: effectiveDiscount,
+    });
+    const subtotal = roundMoney(totals.subtotal);
+    const taxAmount = roundMoney(totals.taxAmount);
+    const discountAmount = roundMoney(totals.discountAmount);
+    const grandTotal = roundMoney(totals.grandTotal);
+
+    const numbering = await getNextDocumentNumber({
+      documentType: 'change_order',
+      prefix: estimate.prefix || '1102',
+    });
+
+    const referencedEstimateTotal = roundMoney(Number(estimate.grandTotal) || 0);
+
+    const changeOrder = await Invoice.create({
+      customerId: estimate.customerId,
+      jobId: estimate.jobId,
+      estimateId: estimate._id,
+      estimateRevisionId: undefined,
+      invoiceNumber: numbering.display,
+      prefix: numbering.prefix,
+      sequenceNumber: numbering.sequenceNumber,
+      status: 'draft',
+      issuedAt: new Date(),
+      lineItems,
+      subtotal,
+      taxRate: Number(effectiveTaxRate) || 0,
+      taxAmount,
+      discountAmount,
+      total: grandTotal,
+      balanceDue: grandTotal,
+      notes:
+        String(req.body?.notes || '').trim() ||
+        `Change order referencing estimate ${estimate.estimateNumber || ''}`,
+      invoiceKind: 'change_order',
+      estimateNumber: String(estimate.estimateNumber || '').trim(),
+      contractTotal: referencedEstimateTotal,
+      sourceType: 'derived_from_estimate',
+      createdBy: req.user?._id || null,
+      updatedBy: req.user?._id || null,
+    });
+
+    estimate.derivedDocuments = estimate.derivedDocuments || {};
+    estimate.derivedDocuments.invoiceIds = estimate.derivedDocuments.invoiceIds || [];
+    estimate.derivedDocuments.invoiceIds.push(changeOrder._id);
+    estimate.updatedBy = req.user?._id || estimate.updatedBy;
+    await estimate.save();
+
+    res.status(201).json({
+      changeOrder,
+      estimateNumber: estimate.estimateNumber,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to generate change order' });
+  }
+}
+
 async function resetEstimateSequence(req, res) {
   try {
     if (!req.user || req.user.role !== 'super_admin') {
@@ -602,6 +675,7 @@ module.exports = {
   updateEstimateStatus,
   generateInvoiceFromEstimate,
   generateContractFromEstimate,
+  generateChangeOrderFromEstimate,
   getEstimateSequenceSafety,
   renumberEstimate,
   markEstimateAsLegacy,

@@ -37,13 +37,13 @@ const invoiceSchema = new mongoose.Schema(
     total: { type: Number, default: 0 },
     balanceDue: { type: Number, default: 0 },
     notes: { type: String, trim: true, default: '' },
-    /** When generated from an estimate: deposit (40%) or final (60%) of contract total. */
+    /** deposit/final/full billing splits; change_order is invoice-shaped but numbered separately (CO). */
     invoiceKind: {
       type: String,
-      enum: ['deposit', 'final', 'full'],
+      enum: ['deposit', 'final', 'full', 'change_order'],
       index: true,
     },
-    /** Full estimate/contract total when invoiceKind is deposit or final. */
+    /** Estimate/contract total when invoiceKind is deposit or final; for change_order = referenced estimate total. */
     contractTotal: { type: Number },
     /** Denormalized from estimate for PDFs and search. */
     estimateNumber: { type: String, trim: true, default: '' },
