@@ -90,9 +90,9 @@ const COMPANY_PHONE = '(951)491-1137';
 const COMPANY_EMAIL = 'office@sanclementewoodworking.com';
 const COMPANY_WEBSITE = 'www.sanclementewoodworking.com';
 
-/** Two-draw schedule from estimate: deposit 60%, final 40%. */
-const INVOICE_DEPOSIT_FRACTION = 0.6;
-const INVOICE_FINAL_FRACTION = 0.4;
+/** Two-draw schedule from estimate: deposit 40%, final 60%. */
+const INVOICE_DEPOSIT_FRACTION = 0.4;
+const INVOICE_FINAL_FRACTION = 0.6;
 
 const INVOICE_PERMITS_ACK_LINE =
   'Any city permits or engineer fees are either not included or are provided by the customer';
@@ -2218,7 +2218,7 @@ function FinanceHubPage() {
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             The PDF matches your estimate layout (line items and totals). Choose whether this bill is for the
-            deposit (60% of the contract total) or the final draw (40%).
+            deposit (40% of the contract total) or the final draw (60%).
           </Typography>
           <FormControl component="fieldset" variant="standard" sx={{ mb: 1 }}>
             <FormLabel component="legend">Invoice type</FormLabel>
@@ -2236,9 +2236,9 @@ function FinanceHubPage() {
             <strong>${formatInvoiceMoney(estimateTotal)}</strong>
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Deposit today (60%): <strong>${formatInvoiceMoney(roundMoneyClient(estimateTotal * INVOICE_DEPOSIT_FRACTION))}</strong>
+            Deposit today (40%): <strong>${formatInvoiceMoney(roundMoneyClient(estimateTotal * INVOICE_DEPOSIT_FRACTION))}</strong>
             {' · '}
-            Final (40%): <strong>${formatInvoiceMoney(roundMoneyClient(estimateTotal * INVOICE_FINAL_FRACTION))}</strong>
+            Final (60%): <strong>${formatInvoiceMoney(roundMoneyClient(estimateTotal * INVOICE_FINAL_FRACTION))}</strong>
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
             Estimate # {invoiceEstimateNumber}

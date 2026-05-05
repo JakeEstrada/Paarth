@@ -289,14 +289,14 @@ async function generateInvoiceFromEstimate(req, res) {
       return res.status(400).json({ error: 'Estimate must have a positive total' });
     }
 
-    /** Deposit 60%, final balance 40% (complements deposit). */
-    const depositShare = 0.6;
-    const finalShare = 0.4;
+    /** Deposit 40%, final balance 60% (matches standard contract payment schedule). */
+    const depositShare = 0.4;
+    const finalShare = 0.6;
     const fraction = kind === 'deposit' ? depositShare : finalShare;
     const amountDue = roundMoney(contractTotal * fraction);
 
     const numbering = await getNextDocumentNumber({ documentType: 'invoice', prefix: estimate.prefix || '1102' });
-    const pctLabel = kind === 'deposit' ? '60%' : '40%';
+    const pctLabel = kind === 'deposit' ? '40%' : '60%';
     const lineItems = [
       {
         itemName: kind === 'deposit' ? 'Deposit invoice' : 'Final invoice',
@@ -382,9 +382,15 @@ async function generateContractFromEstimate(req, res) {
     await estimate.save();
 
     const contractTotal = roundMoney(Number(estimate.grandTotal) || 0);
-    let depositInvoice = null;
-    if (contractTotal > 0) {
-      const depositAmount = roundMoney(contractTotal * 0.6);
+    let depositInvoice = await Invoice.findOne({
+      estimateId: estimate._id,
+      invoiceKind: 'deposit',
+    })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    if (contractTotal > 0 && !depositInvoice) {
+      const depositAmount = roundMoney(contractTotal * 0.4);
       const invoiceNumbering = await getNextDocumentNumber({
         documentType: 'invoice',
         prefix: estimate.prefix || '1102',
@@ -392,7 +398,7 @@ async function generateContractFromEstimate(req, res) {
       const invoiceLineItems = [
         {
           itemName: 'Deposit invoice',
-          description: `60% of contract total per estimate ${estimate.estimateNumber || ''}`.trim(),
+          description: `40% of contract total per estimate ${estimate.estimateNumber || ''}`.trim(),
           quantity: 1,
           unitPrice: depositAmount,
           total: depositAmount,
@@ -415,7 +421,7 @@ async function generateContractFromEstimate(req, res) {
         discountAmount: 0,
         total: depositAmount,
         balanceDue: depositAmount,
-        notes: `Generated with contract from estimate ${estimate.estimateNumber} (deposit, 60%)`,
+        notes: `Generated with contract from estimate ${estimate.estimateNumber} (deposit, 40%)`,
         invoiceKind: 'deposit',
         contractTotal,
         estimateNumber: String(estimate.estimateNumber || '').trim(),

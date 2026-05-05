@@ -118,6 +118,12 @@ function contractAmounts(job, estimateDoc) {
   return { total, totalDisplay, written };
 }
 
+function formatMoneyUsd(value) {
+  const x = Number(value);
+  if (!Number.isFinite(x)) return '0.00';
+  return x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 const pageSx = {
   width: 612,
   minHeight: 792,
@@ -134,8 +140,11 @@ const pageSx = {
 function JobContractPacketDialog({ open, onClose, job }) {
   const page1Ref = useRef(null);
   const page2Ref = useRef(null);
+  const page3Ref = useRef(null);
+  const page4Ref = useRef(null);
   const [exporting, setExporting] = useState(false);
   const [estimateDoc, setEstimateDoc] = useState(null);
+  const [depositInvoice, setDepositInvoice] = useState(null);
 
   useEffect(() => {
     if (!open || !job?._id) return;
@@ -148,6 +157,27 @@ function JobContractPacketDialog({ open, onClose, job }) {
         setEstimateDoc(list[0] || null);
       } catch (error) {
         if (!cancelled) setEstimateDoc(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, job?._id]);
+
+  useEffect(() => {
+    if (!open || !job?._id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API_URL}/invoices`, { params: { jobId: job._id } });
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : [];
+        const deposits = list
+          .filter((inv) => String(inv?.invoiceKind || '') === 'deposit')
+          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        setDepositInvoice(deposits[0] || null);
+      } catch {
+        if (!cancelled) setDepositInvoice(null);
       }
     })();
     return () => {
@@ -196,15 +226,16 @@ function JobContractPacketDialog({ open, onClose, job }) {
   };
 
   const buildPdf = useCallback(async () => {
-    if (!page1Ref.current || !page2Ref.current) throw new Error('Contract pages not ready');
-    const c1 = await capturePage(page1Ref.current);
-    const c2 = await capturePage(page2Ref.current);
+    const refs = [page1Ref, page2Ref, page3Ref, page4Ref];
+    if (!refs.every((r) => r.current)) throw new Error('Contract packet pages not ready');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
     const pageW = 612;
     const pageH = 792;
-    doc.addImage(c1.toDataURL('image/png'), 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
-    doc.addPage();
-    doc.addImage(c2.toDataURL('image/png'), 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+    for (let i = 0; i < refs.length; i += 1) {
+      if (i > 0) doc.addPage();
+      const canvas = await capturePage(refs[i].current);
+      doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+    }
     return doc;
   }, []);
 
@@ -269,8 +300,8 @@ function JobContractPacketDialog({ open, onClose, job }) {
       </DialogTitle>
       <DialogContent dividers sx={{ bgcolor: 'grey.100' }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Preview matches your company template. Customer name, address, estimate #, totals, and project location
-          come from this job.
+          Full packet PDF: cover, contract, estimate (first estimate on this job), and deposit invoice when one exists.
+          Customer name, address, estimate #, totals, and project location come from this job and linked documents.
         </Typography>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, pb: 2 }}>
@@ -395,6 +426,216 @@ function JobContractPacketDialog({ open, onClose, job }) {
             <Typography sx={{ fontSize: 12, mt: 2 }}>
               sign here____________________ date____________________
             </Typography>
+          </Box>
+
+          {/* Page 3 — Estimate */}
+          <Box ref={page3Ref} sx={{ ...pageSx, textAlign: 'left' }}>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, textAlign: 'center', mb: 2 }}>Estimate</Typography>
+            {estimateDoc ? (
+              <>
+                <Typography sx={{ fontSize: 12, mb: 1 }}>
+                  Estimate #{' '}
+                  <Box component="span" sx={{ fontWeight: 700 }}>
+                    {estimateDoc.estimateNumber || '—'}
+                  </Box>
+                  {' · '}
+                  Date{' '}
+                  <Box component="span" sx={{ fontWeight: 700 }}>
+                    {estimateDoc.estimateDate
+                      ? format(new Date(estimateDoc.estimateDate), 'M/d/yyyy')
+                      : '—'}
+                  </Box>
+                </Typography>
+                <Typography sx={{ fontSize: 12, mb: 0.5 }}>
+                  Customer:{' '}
+                  <Box component="span" sx={{ fontWeight: 700 }}>
+                    {data.customerName}
+                  </Box>
+                </Typography>
+                <Typography sx={{ fontSize: 11, mb: 1.5, lineHeight: 1.5 }}>
+                  {data.addr1}
+                  <br />
+                  {data.addr2}
+                </Typography>
+                {String(estimateDoc.projectName || '').trim() ? (
+                  <Typography sx={{ fontSize: 12, mb: 1.5 }}>
+                    Project:{' '}
+                    <Box component="span" sx={{ fontWeight: 700 }}>
+                      {String(estimateDoc.projectName).trim()}
+                    </Box>
+                  </Typography>
+                ) : null}
+
+                <Box sx={{ border: '1px solid #000', mb: 1 }}>
+                  <Box sx={{ display: 'flex', borderBottom: '1px solid #000', bgcolor: '#f0f0f0', fontSize: 10, fontWeight: 700 }}>
+                    <Box sx={{ flex: 2.2, p: 0.75, borderRight: '1px solid #000' }}>Item</Box>
+                    <Box sx={{ width: 44, p: 0.75, borderRight: '1px solid #000', textAlign: 'center' }}>Qty</Box>
+                    <Box sx={{ width: 72, p: 0.75, borderRight: '1px solid #000', textAlign: 'right' }}>Unit</Box>
+                    <Box sx={{ width: 80, p: 0.75, textAlign: 'right' }}>Total</Box>
+                  </Box>
+                  {(Array.isArray(estimateDoc.lineItems) ? estimateDoc.lineItems : []).slice(0, 14).map((li, idx) => (
+                    <Box
+                      key={idx}
+                      sx={{
+                        display: 'flex',
+                        borderBottom: idx === 13 ? 'none' : '1px solid #ddd',
+                        fontSize: 10,
+                        minHeight: 28,
+                        alignItems: 'stretch',
+                      }}
+                    >
+                      <Box sx={{ flex: 2.2, p: 0.6, borderRight: '1px solid #ddd', wordBreak: 'break-word' }}>
+                        <Box sx={{ fontWeight: 600 }}>{String(li?.itemName || '').trim() || '—'}</Box>
+                        {String(li?.description || '').trim() ? (
+                          <Box sx={{ fontSize: 9, mt: 0.25, color: '#333' }}>{String(li.description).trim()}</Box>
+                        ) : null}
+                      </Box>
+                      <Box sx={{ width: 44, p: 0.6, borderRight: '1px solid #ddd', textAlign: 'center' }}>
+                        {formatMoneyUsd(li?.quantity)}
+                      </Box>
+                      <Box sx={{ width: 72, p: 0.6, borderRight: '1px solid #ddd', textAlign: 'right' }}>
+                        ${formatMoneyUsd(li?.unitPrice)}
+                      </Box>
+                      <Box sx={{ width: 80, p: 0.6, textAlign: 'right', fontWeight: 600 }}>
+                        ${formatMoneyUsd(li?.total)}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+                {Array.isArray(estimateDoc.lineItems) && estimateDoc.lineItems.length > 14 ? (
+                  <Typography sx={{ fontSize: 9, fontStyle: 'italic', mb: 1 }}>
+                    Additional line items omitted from this packet preview — see Finance Hub for the full estimate.
+                  </Typography>
+                ) : null}
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                  <Box sx={{ width: 240, border: '1px solid #000', fontSize: 11 }}>
+                    <Box sx={{ display: 'flex', borderBottom: '1px solid #000', p: 0.75 }}>
+                      <Box sx={{ flex: 1 }}>Subtotal</Box>
+                      <Box sx={{ fontWeight: 700 }}>${formatMoneyUsd(estimateDoc.subtotal)}</Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', borderBottom: '1px solid #000', p: 0.75 }}>
+                      <Box sx={{ flex: 1 }}>Tax ({Number(estimateDoc.taxRate) || 0}%)</Box>
+                      <Box sx={{ fontWeight: 700 }}>${formatMoneyUsd(estimateDoc.taxAmount)}</Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', borderBottom: '1px solid #000', p: 0.75 }}>
+                      <Box sx={{ flex: 1 }}>Discount</Box>
+                      <Box sx={{ fontWeight: 700 }}>${formatMoneyUsd(estimateDoc.discountAmount)}</Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', p: 0.75, bgcolor: '#fafafa' }}>
+                      <Box sx={{ flex: 1, fontWeight: 700 }}>Grand total</Box>
+                      <Box sx={{ fontWeight: 700 }}>${formatMoneyUsd(estimateDoc.grandTotal)}</Box>
+                    </Box>
+                  </Box>
+                </Box>
+                {String(estimateDoc.footerNote || '').trim() ? (
+                  <Typography sx={{ fontSize: 10, mt: 2, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                    {String(estimateDoc.footerNote).trim()}
+                  </Typography>
+                ) : null}
+              </>
+            ) : (
+              <Typography sx={{ fontSize: 13, lineHeight: 1.6 }}>
+                No estimate document is linked to this job yet. Create or attach an estimate in Finance Hub, then reopen
+                this packet.
+              </Typography>
+            )}
+          </Box>
+
+          {/* Page 4 — Deposit invoice */}
+          <Box ref={page4Ref} sx={{ ...pageSx, textAlign: 'left' }}>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, textAlign: 'center', mb: 2 }}>
+              Invoice — Deposit (40%)
+            </Typography>
+            {depositInvoice ? (
+              <>
+                <Typography sx={{ fontSize: 12, mb: 1 }}>
+                  Invoice #{' '}
+                  <Box component="span" sx={{ fontWeight: 700 }}>
+                    {depositInvoice.invoiceNumber || '—'}
+                  </Box>
+                  {' · '}
+                  Issued{' '}
+                  <Box component="span" sx={{ fontWeight: 700 }}>
+                    {depositInvoice.issuedAt
+                      ? format(new Date(depositInvoice.issuedAt), 'M/d/yyyy')
+                      : '—'}
+                  </Box>
+                </Typography>
+                <Typography sx={{ fontSize: 12, mb: 1 }}>
+                  Estimate #{' '}
+                  <Box component="span" sx={{ fontWeight: 700 }}>
+                    {depositInvoice.estimateNumber || estimateDoc?.estimateNumber || '—'}
+                  </Box>
+                </Typography>
+                <Typography sx={{ fontSize: 12, mb: 1.5 }}>
+                  Bill to:{' '}
+                  <Box component="span" sx={{ fontWeight: 700 }}>
+                    {data.customerName}
+                  </Box>
+                </Typography>
+                <Typography sx={{ fontSize: 11, mb: 2, lineHeight: 1.5 }}>
+                  {data.addr1}
+                  <br />
+                  {data.addr2}
+                </Typography>
+                {depositInvoice.contractTotal != null ? (
+                  <Typography sx={{ fontSize: 12, mb: 1 }}>
+                    Contract total:{' '}
+                    <Box component="span" sx={{ fontWeight: 700 }}>
+                      ${formatMoneyUsd(depositInvoice.contractTotal)}
+                    </Box>
+                  </Typography>
+                ) : null}
+
+                <Box sx={{ border: '1px solid #000', mb: 2 }}>
+                  <Box sx={{ display: 'flex', borderBottom: '1px solid #000', bgcolor: '#f0f0f0', fontSize: 10, fontWeight: 700 }}>
+                    <Box sx={{ flex: 2, p: 0.75, borderRight: '1px solid #000' }}>Description</Box>
+                    <Box sx={{ width: 80, p: 0.75, textAlign: 'right' }}>Amount</Box>
+                  </Box>
+                  {(Array.isArray(depositInvoice.lineItems) ? depositInvoice.lineItems : []).map((li, idx) => (
+                    <Box
+                      key={idx}
+                      sx={{
+                        display: 'flex',
+                        borderBottom:
+                          idx === (depositInvoice.lineItems?.length || 0) - 1 ? 'none' : '1px solid #ddd',
+                        fontSize: 10,
+                      }}
+                    >
+                      <Box sx={{ flex: 2, p: 0.75, borderRight: '1px solid #ddd' }}>
+                        <Box sx={{ fontWeight: 600 }}>{String(li?.itemName || '').trim() || '—'}</Box>
+                        {String(li?.description || '').trim() ? (
+                          <Box sx={{ fontSize: 9, mt: 0.25 }}>{String(li.description).trim()}</Box>
+                        ) : null}
+                      </Box>
+                      <Box sx={{ width: 80, p: 0.75, textAlign: 'right', fontWeight: 700 }}>
+                        ${formatMoneyUsd(li?.total)}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Box sx={{ width: 220, border: '2px solid #000', p: 1.25, textAlign: 'right' }}>
+                    <Typography sx={{ fontSize: 11 }}>Amount due (deposit)</Typography>
+                    <Typography sx={{ fontSize: 18, fontWeight: 700, mt: 0.5 }}>
+                      ${formatMoneyUsd(depositInvoice.balanceDue ?? depositInvoice.total)}
+                    </Typography>
+                  </Box>
+                </Box>
+                {String(depositInvoice.notes || '').trim() ? (
+                  <Typography sx={{ fontSize: 10, mt: 2, lineHeight: 1.45 }}>
+                    {String(depositInvoice.notes).trim()}
+                  </Typography>
+                ) : null}
+              </>
+            ) : (
+              <Typography sx={{ fontSize: 13, lineHeight: 1.6 }}>
+                No deposit invoice found for this job yet. Use Create contract (job Files tab) or Finance Hub to generate
+                a deposit invoice — then reopen this packet or download again.
+              </Typography>
+            )}
           </Box>
         </Box>
       </DialogContent>

@@ -37,7 +37,7 @@ const invoiceSchema = new mongoose.Schema(
     total: { type: Number, default: 0 },
     balanceDue: { type: Number, default: 0 },
     notes: { type: String, trim: true, default: '' },
-    /** When generated from an estimate: deposit (60%) or final (40%) of contract total. */
+    /** When generated from an estimate: deposit (40%) or final (60%) of contract total. */
     invoiceKind: {
       type: String,
       enum: ['deposit', 'final', 'full'],
