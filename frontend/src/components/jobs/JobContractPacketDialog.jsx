@@ -145,6 +145,7 @@ function JobContractPacketDialog({ open, onClose, job }) {
   const [exporting, setExporting] = useState(false);
   const [estimateDoc, setEstimateDoc] = useState(null);
   const [depositInvoice, setDepositInvoice] = useState(null);
+  const [contractDoc, setContractDoc] = useState(null);
 
   useEffect(() => {
     if (!open || !job?._id) return;
@@ -163,6 +164,32 @@ function JobContractPacketDialog({ open, onClose, job }) {
       cancelled = true;
     };
   }, [open, job?._id]);
+
+  /** System-generated contract (Finance Hub / packet flow); drives Contract # on the PDF. */
+  useEffect(() => {
+    if (!open || !job?._id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API_URL}/contracts`, { params: { jobId: job._id } });
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : [];
+        const sorted = [...list].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        let pick = sorted[0] || null;
+        const estId = estimateDoc?._id ? String(estimateDoc._id) : '';
+        if (estId) {
+          const match = sorted.find((c) => String(c.estimateId || '') === estId);
+          if (match) pick = match;
+        }
+        setContractDoc(pick);
+      } catch {
+        if (!cancelled) setContractDoc(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, job?._id, estimateDoc?._id]);
 
   useEffect(() => {
     if (!open || !job?._id) return;
@@ -197,7 +224,11 @@ function JobContractPacketDialog({ open, onClose, job }) {
     }
     const estimateNumber = String(estimateDoc?.estimateNumber || job?.estimate?.number || '').trim() || '__________';
     const projectLocation = buildProjectLocationLine(job);
-    const contractDate = format(new Date(), 'M/d/yyyy');
+    const contractNumber = String(contractDoc?.contractNumber || '').trim();
+    const contractDate =
+      contractDoc?.contractDate != null
+        ? format(new Date(contractDoc.contractDate), 'M/d/yyyy')
+        : format(new Date(), 'M/d/yyyy');
     const qrData = `${COMPANY_NAME} Zelle ${ZELLE_PHONE} ${ZELLE_ACCOUNT_NOTE}`;
     const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(qrData)}`;
 
@@ -211,9 +242,10 @@ function JobContractPacketDialog({ open, onClose, job }) {
       estimateNumber,
       projectLocation,
       contractDate,
+      contractNumber,
       qrSrc,
     };
-  }, [job, estimateDoc]);
+  }, [job, estimateDoc, contractDoc]);
 
   const capturePage = async (el) => {
     if (!el) throw new Error('Page not ready');
@@ -300,8 +332,9 @@ function JobContractPacketDialog({ open, onClose, job }) {
       </DialogTitle>
       <DialogContent dividers sx={{ bgcolor: 'grey.100' }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Full packet PDF: cover, contract, estimate (first estimate on this job), and deposit invoice when one exists.
-          Customer name, address, estimate #, totals, and project location come from this job and linked documents.
+          Full packet PDF: cover, contract (with your saved Contract # when present), estimate, and deposit invoice when
+          one exists. Customer name, address, estimate #, totals, and project location come from this job and linked
+          documents.
         </Typography>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, pb: 2 }}>
@@ -314,6 +347,12 @@ function JobContractPacketDialog({ open, onClose, job }) {
             <Typography sx={{ fontSize: 16, fontWeight: 700, textAlign: 'center' }}>{data.customerName}</Typography>
             <Typography sx={{ fontSize: 16, fontWeight: 700, textAlign: 'center', mt: 0.5 }}>{data.addr1}</Typography>
             <Typography sx={{ fontSize: 16, fontWeight: 700, textAlign: 'center', mt: 0.5 }}>{data.addr2}</Typography>
+
+            {data.contractNumber ? (
+              <Typography sx={{ fontSize: 15, fontWeight: 700, textAlign: 'center', mt: 2 }}>
+                Contract #{data.contractNumber}
+              </Typography>
+            ) : null}
 
             <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
               <Box
@@ -364,7 +403,10 @@ function JobContractPacketDialog({ open, onClose, job }) {
 
           {/* Page 2 — Contract */}
           <Box ref={page2Ref} sx={{ ...pageSx, textAlign: 'left' }}>
-            <Typography sx={{ fontSize: 22, fontWeight: 700, textAlign: 'center', mb: 2 }}>Contract</Typography>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, textAlign: 'center', mb: 1 }}>Contract</Typography>
+            <Typography sx={{ fontSize: 14, fontWeight: 700, textAlign: 'center', mb: 2 }}>
+              Contract # {data.contractNumber || '__________'}
+            </Typography>
 
             <Typography sx={{ fontSize: 12, mb: 1.5, lineHeight: 1.6 }}>
               This agreement made and entered on todays date{' '}
