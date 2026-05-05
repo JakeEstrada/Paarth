@@ -932,6 +932,47 @@ function FinanceHubPage() {
     return doc;
   };
 
+  /** Same PDF used by Create invoice / Generate contract (deposit or final). */
+  const downloadBillingInvoicePdf = async (inv, kind, contractTotalHint) => {
+    if (!inv?._id && !inv?.invoiceNumber) throw new Error('Invalid invoice record');
+    let contractTotal;
+    if (contractTotalHint != null && Number.isFinite(Number(contractTotalHint))) {
+      contractTotal = Number(contractTotalHint);
+    } else if (inv.contractTotal != null && Number.isFinite(Number(inv.contractTotal))) {
+      contractTotal = Number(inv.contractTotal);
+    } else {
+      contractTotal = Number(estimateTotal) || 0;
+    }
+    const dueToday = roundMoneyClient(Number(inv?.total ?? 0));
+    const payload = {
+      docKind: 'invoice',
+      kind,
+      contractTotal,
+      dueToday,
+      estimateNumber: inv.estimateNumber || invoiceEstimateNumber,
+      invoiceNumber: inv.invoiceNumber || '',
+      invoiceDate: (inv.issuedAt ? new Date(inv.issuedAt) : new Date()).toISOString().slice(0, 10),
+      customerName: estimateForm.customerName,
+      projectName: estimateForm.projectName,
+      customerAddress: estimateForm.customerAddress,
+      lineItems: Array.isArray(estimateForm.lineItems) ? estimateForm.lineItems : [],
+      footerNote: String(estimateForm.footerNote || '').trim(),
+    };
+
+    flushSync(() => {
+      setInvoicePdfPayload(payload);
+    });
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const doc = await renderInvoicePdfDoc();
+    const kindSlug = kind === 'final' ? 'final' : 'deposit';
+    doc.save(
+      `Invoice-${kindSlug}-${inv.invoiceNumber || inv._id || invoiceEstimateNumber || 'draft'}.pdf`
+    );
+    flushSync(() => {
+      setInvoicePdfPayload(null);
+    });
+  };
+
   const handleConfirmCreateInvoice = async () => {
     if (!estimateJobId || !canCreateInvoice || !loadedEstimateDoc?._id) return;
     try {
@@ -947,34 +988,7 @@ function FinanceHubPage() {
       const contractTotal = Number(
         data?.contractTotal ?? inv?.contractTotal ?? estimateTotal ?? 0
       );
-      const dueToday = roundMoneyClient(Number(inv?.total ?? 0));
-      const payload = {
-        docKind: 'invoice',
-        kind,
-        contractTotal,
-        dueToday,
-        estimateNumber: inv.estimateNumber || data?.estimateNumber || invoiceEstimateNumber,
-        invoiceNumber: inv.invoiceNumber || '',
-        invoiceDate: (inv.issuedAt ? new Date(inv.issuedAt) : new Date()).toISOString().slice(0, 10),
-        customerName: estimateForm.customerName,
-        projectName: estimateForm.projectName,
-        customerAddress: estimateForm.customerAddress,
-        lineItems: Array.isArray(estimateForm.lineItems) ? estimateForm.lineItems : [],
-        footerNote: String(estimateForm.footerNote || '').trim(),
-      };
-
-      flushSync(() => {
-        setInvoicePdfPayload(payload);
-      });
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const doc = await renderInvoicePdfDoc();
-      const kindSlug = kind === 'final' ? 'final' : 'deposit';
-      doc.save(
-        `Invoice-${kindSlug}-${inv.invoiceNumber || inv._id || invoiceEstimateNumber || 'draft'}.pdf`
-      );
-      flushSync(() => {
-        setInvoicePdfPayload(null);
-      });
+      await downloadBillingInvoicePdf(inv, kind, contractTotal);
       setCreateInvoiceOpen(false);
       toast.success(`Invoice ${inv.invoiceNumber || ''} created and downloaded`);
 
@@ -995,6 +1009,13 @@ function FinanceHubPage() {
 
   const handleGenerateContract = async () => {
     if (!estimateJobId || !loadedEstimateDoc?._id) return;
+    const estimateDirty =
+      JSON.stringify(normalizeEstimateFormForCompare(estimateForm)) !==
+      JSON.stringify(lastSyncedEstimateForm);
+    if (estimateDirty) {
+      toast.error('Save your estimate first so the contract and deposit invoice use your latest line items.');
+      return;
+    }
     try {
       setSavingInvoice(true);
       const { data } = await axios.post(
@@ -1002,12 +1023,25 @@ function FinanceHubPage() {
         {}
       );
       const contractNumber = data?.contract?.contractNumber || '';
-      const depositInvoiceNumber = data?.depositInvoice?.invoiceNumber || '';
-      toast.success(
-        depositInvoiceNumber
-          ? `Contract ${contractNumber} and deposit invoice ${depositInvoiceNumber} created`
-          : `Contract ${contractNumber} created`
-      );
+      const depositInv = data?.depositInvoice;
+      const syncedGrandTotal = Number(data?.estimate?.grandTotal ?? 0);
+
+      if (depositInv && (depositInv.invoiceNumber || depositInv._id)) {
+        const contractTotalForPdf = Number(
+          depositInv.contractTotal ?? syncedGrandTotal ?? estimateTotal ?? 0
+        );
+        await downloadBillingInvoicePdf(depositInv, 'deposit', contractTotalForPdf);
+        toast.success(
+          `Contract ${contractNumber} created and deposit invoice ${depositInv.invoiceNumber || ''} downloaded`
+        );
+      } else {
+        toast.success(
+          contractNumber
+            ? `Contract ${contractNumber} created. No deposit invoice — contract total is $0 (check estimate line totals are saved).`
+            : 'Contract created'
+        );
+      }
+
       const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
       const hydrated = await hydrateJobWithEstimate(refreshed);
       setLoadedEstimateJob(hydrated.job);

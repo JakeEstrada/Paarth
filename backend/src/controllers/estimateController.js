@@ -353,6 +353,19 @@ async function generateContractFromEstimate(req, res) {
     const estimate = await Estimate.findById(req.params.id);
     if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
 
+    /** Recompute totals from stored line items so grandTotal matches lines (avoids skipping deposit when DB total was stale). */
+    const lineItems = parseLineItems(estimate.lineItems || []);
+    const totals = computeTotals({
+      lineItems,
+      taxRate: estimate.taxRate,
+      discountAmount: estimate.discountAmount,
+    });
+    estimate.lineItems = lineItems;
+    estimate.subtotal = roundMoney(totals.subtotal);
+    estimate.taxAmount = roundMoney(totals.taxAmount);
+    estimate.discountAmount = roundMoney(totals.discountAmount);
+    estimate.grandTotal = roundMoney(totals.grandTotal);
+
     const numbering = await getNextDocumentNumber({ documentType: 'contract', prefix: estimate.prefix || '1102' });
     const contract = await Contract.create({
       customerId: estimate.customerId,
@@ -366,7 +379,7 @@ async function generateContractFromEstimate(req, res) {
       contractDate: new Date(),
       terms: String(req.body?.terms || '').trim(),
       scopeOfWork: String(req.body?.scopeOfWork || estimate.projectName || '').trim(),
-      lineItems: estimate.lineItems || [],
+      lineItems,
       total: estimate.grandTotal || 0,
       depositRequired: Number(req.body?.depositRequired || 0),
       depositReceived: Number(req.body?.depositReceived || 0),
@@ -378,8 +391,6 @@ async function generateContractFromEstimate(req, res) {
     estimate.derivedDocuments.contractIds = estimate.derivedDocuments.contractIds || [];
     estimate.derivedDocuments.contractIds.push(contract._id);
     estimate.status = 'converted_to_contract';
-    estimate.updatedBy = req.user?._id || estimate.updatedBy;
-    await estimate.save();
 
     const contractTotal = roundMoney(Number(estimate.grandTotal) || 0);
     let depositInvoice = await Invoice.findOne({
@@ -431,9 +442,10 @@ async function generateContractFromEstimate(req, res) {
       });
       estimate.derivedDocuments.invoiceIds = estimate.derivedDocuments.invoiceIds || [];
       estimate.derivedDocuments.invoiceIds.push(depositInvoice._id);
-      estimate.updatedBy = req.user?._id || estimate.updatedBy;
-      await estimate.save();
     }
+
+    estimate.updatedBy = req.user?._id || estimate.updatedBy;
+    await estimate.save();
 
     res.status(201).json({
       estimate,
