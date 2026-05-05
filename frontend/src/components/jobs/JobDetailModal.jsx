@@ -47,6 +47,7 @@ import {
   Lock as LockIcon,
   LockOpen as LockOpenIcon,
   Share as ShareIcon,
+  PostAdd as PostAddIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import axios from 'axios';
@@ -56,6 +57,7 @@ import AddNoteModal from './AddNoteModal';
 import AddJobTaskModal from './AddJobTaskModal';
 import AddAppointmentModal from '../appointments/AddAppointmentModal';
 import JobContractPacketDialog from './JobContractPacketDialog';
+import JobChangeOrderDialog from './JobChangeOrderDialog';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
@@ -173,6 +175,7 @@ function JobDetailModal({
   const [jobTasks, setJobTasks] = useState([]);
   const [contractPacketOpen, setContractPacketOpen] = useState(false);
   const [creatingContractPacket, setCreatingContractPacket] = useState(false);
+  const [changeOrderOpen, setChangeOrderOpen] = useState(false);
   const hideFinancials = hideSensitive;
   const [fileMenuAnchor, setFileMenuAnchor] = useState(null);
   const [selectedFileForMenu, setSelectedFileForMenu] = useState(null);
@@ -1364,6 +1367,14 @@ function JobDetailModal({
                       </Button>
                       <Button
                         size="small"
+                        variant="outlined"
+                        startIcon={<PostAddIcon />}
+                        onClick={() => setChangeOrderOpen(true)}
+                      >
+                        Change order
+                      </Button>
+                      <Button
+                        size="small"
                         variant="contained"
                         color="primary"
                         onClick={handleCreateContractPacket}
@@ -1881,6 +1892,17 @@ function JobDetailModal({
           open={contractPacketOpen}
           onClose={() => setContractPacketOpen(false)}
           job={job}
+        />
+      )}
+
+      {job && (
+        <JobChangeOrderDialog
+          open={changeOrderOpen}
+          onClose={() => setChangeOrderOpen(false)}
+          job={job}
+          onCreated={() => {
+            fetchJobDetails();
+          }}
         />
       )}
 

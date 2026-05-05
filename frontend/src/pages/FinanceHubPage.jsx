@@ -39,7 +39,6 @@ import {
   ChevronRight as ChevronRightIcon,
   Delete as DeleteIcon,
   PictureAsPdf as PictureAsPdfIcon,
-  PostAdd as PostAddIcon,
   Print as PrintIcon,
   ReceiptLong as ReceiptLongIcon,
 } from '@mui/icons-material';
@@ -1054,65 +1053,6 @@ function FinanceHubPage() {
     }
   };
 
-  const handleCreateChangeOrder = async () => {
-    if (!estimateJobId || !loadedEstimateDoc?._id || !canCreateInvoice) return;
-    try {
-      setSavingInvoice(true);
-      const { data } = await axios.post(
-        `${API_URL}/estimates/${loadedEstimateDoc._id}/generate-change-order`,
-        {}
-      );
-      const co = data?.changeOrder;
-      if (!co?._id && !co?.invoiceNumber) throw new Error('Change order was not created');
-
-      const mapLinesForPdf = (items) =>
-        (Array.isArray(items) ? items : []).map((row) => ({
-          itemName: row.itemName || '',
-          description: row.description || '',
-          quantity: row.quantity != null && row.quantity !== '' ? row.quantity : '',
-          total: row.total != null && row.total !== '' ? row.total : '',
-        }));
-
-      const payload = {
-        docKind: 'change_order',
-        estimateNumber: co.estimateNumber || data?.estimateNumber || invoiceEstimateNumber,
-        invoiceNumber: co.invoiceNumber || '',
-        invoiceDate: (co.issuedAt ? new Date(co.issuedAt) : new Date()).toISOString().slice(0, 10),
-        customerName: estimateForm.customerName,
-        projectName: estimateForm.projectName,
-        customerAddress: estimateForm.customerAddress,
-        lineItems: mapLinesForPdf(co.lineItems),
-        footerNote: String(estimateForm.footerNote || '').trim(),
-        referencedEstimateTotal: Number(co.contractTotal) || 0,
-        grandTotal: Number(co.total) || 0,
-      };
-
-      flushSync(() => {
-        setInvoicePdfPayload(payload);
-      });
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const doc = await renderInvoicePdfDoc();
-      doc.save(`Change-order-${co.invoiceNumber || invoiceEstimateNumber || 'draft'}.pdf`);
-      flushSync(() => {
-        setInvoicePdfPayload(null);
-      });
-      toast.success(`Change order ${co.invoiceNumber || ''} created and downloaded`);
-
-      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
-      const hydrated = await hydrateJobWithEstimate(refreshed);
-      setLoadedEstimateJob(hydrated.job);
-      setLoadedEstimateDoc(hydrated.estimateDoc || null);
-    } catch (error) {
-      console.error('Error creating change order:', error);
-      toast.error(error.response?.data?.error || error.message || 'Failed to create change order');
-      flushSync(() => {
-        setInvoicePdfPayload(null);
-      });
-    } finally {
-      setSavingInvoice(false);
-    }
-  };
-
   const estimatePrevJobIdRef = useRef(undefined);
   useEffect(() => {
     const prev = estimatePrevJobIdRef.current;
@@ -1462,8 +1402,8 @@ function FinanceHubPage() {
               Change Orders
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Same PDF layout as an invoice, titled Change Order, numbered as CO (not INV). Each references an
-              estimate number.
+              Same PDF layout as an invoice, titled Change Order, numbered as CO (not INV). Create change orders from a
+              job&apos;s Files tab — estimate-style lines you edit — then find them listed here.
             </Typography>
             {loadingChangeOrders ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -2154,14 +2094,6 @@ function FinanceHubPage() {
                 disabled={!canCreateInvoice || savingInvoice}
               >
                 Create invoice
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<PostAddIcon />}
-                onClick={handleCreateChangeOrder}
-                disabled={!canCreateInvoice || savingInvoice}
-              >
-                Create change order
               </Button>
               <Button
                 variant="outlined"

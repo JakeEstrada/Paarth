@@ -462,6 +462,14 @@ async function generateChangeOrderFromEstimate(req, res) {
     const estimate = await Estimate.findById(req.params.id);
     if (!estimate) return res.status(404).json({ error: 'Estimate not found' });
 
+    /** Baseline estimate total (unchanged scope) for PDF reference — derived from stored estimate lines. */
+    const baselineTotals = computeTotals({
+      lineItems: parseLineItems(estimate.lineItems || []),
+      taxRate: estimate.taxRate,
+      discountAmount: estimate.discountAmount,
+    });
+    const referencedEstimateTotal = roundMoney(baselineTotals.grandTotal);
+
     const lineItems = parseLineItems(
       req.body?.lineItems != null ? req.body.lineItems : estimate.lineItems || []
     );
@@ -484,8 +492,6 @@ async function generateChangeOrderFromEstimate(req, res) {
       documentType: 'change_order',
       prefix: estimate.prefix || '1102',
     });
-
-    const referencedEstimateTotal = roundMoney(Number(estimate.grandTotal) || 0);
 
     const changeOrder = await Invoice.create({
       customerId: estimate.customerId,
