@@ -923,6 +923,21 @@ function FinanceHubPage() {
     }
   };
 
+  const persistBillingPdfArtifact = async (doc, { filename, description, fileType }) => {
+    if (!doc || !estimateForm.customerId) return;
+    try {
+      const blob = doc.output('blob');
+      const formData = new FormData();
+      formData.append('file', new File([blob], filename, { type: 'application/pdf' }));
+      formData.append('customerId', String(estimateForm.customerId));
+      formData.append('fileType', fileType || 'invoice');
+      if (description) formData.append('description', String(description));
+      await axios.post(`${API_URL}/files/upload-document`, formData);
+    } catch (error) {
+      console.warn('Failed to persist billing PDF artifact:', error);
+    }
+  };
+
   const renderInvoicePdfDoc = async () => {
     if (!invoicePdfRef.current) {
       throw new Error('Billing document layout not ready');
@@ -973,9 +988,14 @@ function FinanceHubPage() {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const doc = await renderInvoicePdfDoc();
     const kindSlug = kind === 'final' ? 'final' : 'deposit';
-    doc.save(
-      `Invoice-${kindSlug}-${inv.invoiceNumber || inv._id || invoiceEstimateNumber || 'draft'}.pdf`
-    );
+    const invoiceIdentifier = inv.invoiceNumber || inv._id || invoiceEstimateNumber || 'draft';
+    const artifactFilename = `Invoice-${kindSlug}-${invoiceIdentifier}.pdf`;
+    await persistBillingPdfArtifact(doc, {
+      filename: artifactFilename,
+      fileType: 'invoice',
+      description: `Immutable invoice PDF artifact (${kindSlug}) for invoice ${inv.invoiceNumber || invoiceIdentifier}`,
+    });
+    doc.save(artifactFilename);
     flushSync(() => {
       setInvoicePdfPayload(null);
     });

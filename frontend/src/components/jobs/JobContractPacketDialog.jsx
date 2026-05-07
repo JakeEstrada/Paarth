@@ -281,7 +281,21 @@ function JobContractPacketDialog({ open, onClose, job }) {
         .replace(/[^\w\s-]/g, '')
         .trim()
         .slice(0, 40) || 'Customer';
-      doc.save(`Contract-Packet-${safeName.replace(/\s+/g, '-')}.pdf`);
+      const filename = `Contract-Packet-${safeName.replace(/\s+/g, '-')}.pdf`;
+      const customerId = job?.customerId?._id || job?.customerId || null;
+      if (customerId) {
+        const blob = doc.output('blob');
+        const formData = new FormData();
+        formData.append('file', new File([blob], filename, { type: 'application/pdf' }));
+        formData.append('customerId', String(customerId));
+        formData.append('fileType', 'contract');
+        formData.append(
+          'description',
+          `Immutable contract packet PDF artifact for job ${String(job?._id || '').slice(-8) || 'unknown'}`
+        );
+        await axios.post(`${API_URL}/files/upload-document`, formData);
+      }
+      doc.save(filename);
       toast.success('Contract packet downloaded');
     } catch (e) {
       console.error(e);
