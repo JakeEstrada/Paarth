@@ -47,8 +47,9 @@ const workspaceItems = [
 const financeItems = [
   { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance' },
   { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
-  { text: 'Commission Logs', icon: <TableChartIcon />, path: '/finance?tab=commission-logs' },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
+  /** Opens Finance Hub on the Commission Logs tab (same page, deeper link). */
+  { text: 'Commission Logs', icon: <TableChartIcon />, path: '/finance?tab=commission-logs' },
 ];
 
 const operationsItems = [

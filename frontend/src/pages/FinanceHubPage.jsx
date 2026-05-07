@@ -166,7 +166,7 @@ const TAB_GROUPS = [
   },
   {
     title: 'Operations',
-    tabs: ['change-orders', 'payment-schedules', 'commission-logs'],
+    tabs: ['commission-logs', 'change-orders', 'payment-schedules'],
   },
 ];
 
