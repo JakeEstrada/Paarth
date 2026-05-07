@@ -35,21 +35,24 @@ import BrandLogo from '../common/BrandLogo';
 
 const DRAWER_WIDTH = 260;
 
-const menuItems = [
+const workspaceItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
   { text: 'Pipeline', icon: <PipelineIcon />, path: '/pipeline' },
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
-  { text: 'Projects / Tasks', icon: <TasksIcon />, path: '/tasks' },
+  { text: 'Projects & Tasks', icon: <TasksIcon />, path: '/tasks' },
+  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
+];
+
+const financeItems = [
+  { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance' },
+  { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
+  { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
 ];
 
 const operationsItems = [
-  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
   { text: 'Documents', icon: <DocumentsIcon />, path: '/documents' },
-  { text: 'Users', icon: <UsersIcon />, path: '/users', adminOnly: true },
-  { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance' },
-  { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
   { text: 'Take Off Sheet', icon: <TakeoffIcon />, path: '/takeoff-sheet' },
-  { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
+  { text: 'Users', icon: <UsersIcon />, path: '/users', adminOnly: true },
 ];
 
 const archiveItems = [
@@ -98,30 +101,11 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     },
   };
 
-  const drawerContent = (
-    <>
-      <Box
-        sx={{
-          p: 3,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderBottom: `1px solid ${theme.palette.divider}`,
-        }}
-      >
-        <BrandLogo
-          tenant={tenantForBranding}
-          alt="Organization logo"
-          sx={{
-            height: 80,
-            width: 80,
-            objectFit: 'contain',
-          }}
-        />
-      </Box>
-
-      <List sx={{ pt: 2 }}>
-        {menuItems.map((item) => (
+  const renderNavList = (items) => (
+    <List>
+      {items
+        .filter((item) => !item.adminOnly || isAdmin())
+        .map((item) => (
           <ListItem key={item.path} disablePadding>
             <ListItemButton
               onClick={() => handleNavigation(item.path)}
@@ -146,6 +130,49 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             </ListItemButton>
           </ListItem>
         ))}
+    </List>
+  );
+
+  const drawerContent = (
+    <>
+      <Box
+        sx={{
+          p: 3,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderBottom: `1px solid ${theme.palette.divider}`,
+        }}
+      >
+        <BrandLogo
+          tenant={tenantForBranding}
+          alt="Organization logo"
+          sx={{
+            height: 80,
+            width: 80,
+            objectFit: 'contain',
+          }}
+        />
+      </Box>
+
+      <Box sx={{ px: 2, pt: 2, pb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            fontWeight: 600,
+            color: theme.palette.text.secondary,
+            fontSize: '0.75rem',
+          }}
+        >
+          Workspace
+        </Typography>
+      </Box>
+
+      {renderNavList(workspaceItems)}
+
+      <List>
         {user?.role === 'shop_view' && (
           <ListItem disablePadding>
             <ListItemButton
@@ -186,39 +213,30 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             fontSize: '0.75rem',
           }}
         >
-          Operations Management
+          Finance
         </Typography>
       </Box>
 
-      <List>
-        {operationsItems
-          .filter((item) => !item.adminOnly || isAdmin())
-          .map((item) => (
-            <ListItem key={item.path} disablePadding>
-              <ListItemButton
-                onClick={() => handleNavigation(item.path)}
-                selected={isActive(item.path)}
-                sx={navButtonSx}
-              >
-                <ListItemIcon
-                  sx={{
-                    minWidth: 40,
-                    color: isActive(item.path) ? theme.palette.primary.main : 'inherit',
-                  }}
-                >
-                  {item.icon}
-                </ListItemIcon>
-                <ListItemText
-                  primary={item.text}
-                  primaryTypographyProps={{
-                    fontSize: '0.9375rem',
-                    fontWeight: isActive(item.path) ? 600 : 400,
-                  }}
-                />
-              </ListItemButton>
-            </ListItem>
-          ))}
-      </List>
+      {renderNavList(financeItems)}
+
+      <Divider sx={{ my: 2 }} />
+
+      <Box sx={{ px: 2, pb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            fontWeight: 600,
+            color: theme.palette.text.secondary,
+            fontSize: '0.75rem',
+          }}
+        >
+          Operations
+        </Typography>
+      </Box>
+
+      {renderNavList(operationsItems)}
 
       <Divider sx={{ my: 2 }} />
 
