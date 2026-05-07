@@ -162,9 +162,46 @@ export default function FileExplorer() {
     const q = searchTerm.trim().toLowerCase();
     const inFolder = (folder) => (parentFolderKey(folder) || null) === (selectedFolderId || null);
     const inFile = (file) => (fileFolderKey(file) || null) === (selectedFolderId || null);
+    const childFolderIdsByParent = new Map();
+    folders.forEach((folder) => {
+      const parentId = parentFolderKey(folder) || null;
+      if (!childFolderIdsByParent.has(parentId)) childFolderIdsByParent.set(parentId, []);
+      childFolderIdsByParent.get(parentId).push(String(folder._id));
+    });
+
+    const subtreeFolderIds = (() => {
+      if (!q || !selectedFolderId) return null;
+      const start = String(selectedFolderId);
+      const visited = new Set([start]);
+      const queue = [start];
+      while (queue.length) {
+        const cur = queue.shift();
+        const children = childFolderIdsByParent.get(cur) || [];
+        for (const childId of children) {
+          if (visited.has(childId)) continue;
+          visited.add(childId);
+          queue.push(childId);
+        }
+      }
+      return visited;
+    })();
+
+    const isFolderVisible = (folder) => {
+      if (!q) return inFolder(folder);
+      if (!selectedFolderId) return true; // root search: global across all folders
+      const id = String(folder._id);
+      return subtreeFolderIds?.has(id) && id !== String(selectedFolderId);
+    };
+
+    const isFileVisible = (file) => {
+      if (!q) return inFile(file);
+      if (!selectedFolderId) return true; // root search: global across all folders
+      const fid = fileFolderKey(file);
+      return !!fid && subtreeFolderIds?.has(String(fid));
+    };
 
     const folderRows = folders
-      .filter(inFolder)
+      .filter(isFolderVisible)
       .map((f) => ({
         id: `folder-${f._id}`,
         kind: 'folder',
@@ -177,7 +214,7 @@ export default function FileExplorer() {
       }));
 
     const fileRows = files
-      .filter(inFile)
+      .filter(isFileVisible)
       .map((f) => ({
         id: `file-${f._id}`,
         kind: 'file',
