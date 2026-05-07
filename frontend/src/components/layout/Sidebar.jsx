@@ -25,6 +25,7 @@ import {
   AccountBalance as PayrollIcon,
   Person as UsersIcon,
   Receipt as ReceiptIcon,
+  TableChart as TableChartIcon,
   Description as DocumentsIcon,
   ViewWeek as PipelineViewKioskIcon,
   AccountBalanceWallet as FinanceHubIcon,
@@ -46,6 +47,7 @@ const workspaceItems = [
 const financeItems = [
   { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance' },
   { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
+  { text: 'Commission Logs', icon: <TableChartIcon />, path: '/finance?tab=commission-logs' },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
 ];
 
@@ -69,6 +71,10 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const isActive = (path) => {
+    const [pathnameOnly, queryOnly] = String(path || '').split('?');
+    if (queryOnly) {
+      return location.pathname === pathnameOnly && location.search === `?${queryOnly}`;
+    }
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
