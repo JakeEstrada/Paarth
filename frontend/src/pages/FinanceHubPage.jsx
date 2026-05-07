@@ -22,13 +22,11 @@ import {
   Radio,
   RadioGroup,
   Link,
-  Tab,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
@@ -139,6 +137,17 @@ const TAB_DEFS = [
     key: 'payment-schedules',
     label: 'Payment Schedules',
     subtitle: 'Manage planned payment milestones and due timelines.',
+  },
+];
+
+const TAB_GROUPS = [
+  {
+    title: 'Core workflow',
+    tabs: ['register', 'estimates', 'contracts', 'invoices'],
+  },
+  {
+    title: 'Operations',
+    tabs: ['change-orders', 'payment-schedules'],
   },
 ];
 
@@ -1370,106 +1379,173 @@ function FinanceHubPage() {
         </Typography>
       </Box>
 
-      <Card sx={{ mb: 2 }}>
-        <Tabs
-          value={activeTab}
-          onChange={(_, value) => setActiveTab(value)}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
-          sx={{ px: { xs: 1, sm: 2 }, pt: 1 }}
-        >
-          {TAB_DEFS.map((tab) => (
-            <Tab key={tab.key} value={tab.key} label={tab.label} sx={{ textTransform: 'none' }} />
-          ))}
-        </Tabs>
-      </Card>
+      <Box
+        sx={{
+          display: 'flex',
+          gap: 2,
+          alignItems: 'flex-start',
+          flexDirection: { xs: 'column', md: 'row' },
+        }}
+      >
+        <Box sx={{ width: { xs: '100%', md: 300 }, flexShrink: 0 }}>
+          <Card
+            sx={{
+              position: { md: 'sticky' },
+              top: { md: 16 },
+            }}
+          >
+            <CardContent sx={{ p: 1.25 }}>
+              {TAB_GROUPS.map((group, groupIdx) => (
+                <Box key={group.title}>
+                  {groupIdx > 0 && <Divider sx={{ my: 1 }} />}
+                  <Typography
+                    variant="overline"
+                    color="text.secondary"
+                    sx={{ px: 1.25, letterSpacing: 0.6 }}
+                  >
+                    {group.title}
+                  </Typography>
+                  <Box sx={{ mt: 0.5, display: 'grid', gap: 0.5 }}>
+                    {group.tabs.map((key) => {
+                      const tab = TAB_DEFS.find((item) => item.key === key);
+                      if (!tab) return null;
+                      const selected = activeTab === tab.key;
+                      return (
+                        <Button
+                          key={tab.key}
+                          fullWidth
+                          onClick={() => setActiveTab(tab.key)}
+                          sx={{
+                            textTransform: 'none',
+                            justifyContent: 'flex-start',
+                            alignItems: 'flex-start',
+                            borderRadius: 1.25,
+                            px: 1.25,
+                            py: 1,
+                            borderLeft: 4,
+                            borderColor: selected ? 'primary.main' : 'transparent',
+                            bgcolor: selected ? 'action.selected' : 'transparent',
+                            '&:hover': {
+                              bgcolor: selected ? 'action.selected' : 'action.hover',
+                            },
+                          }}
+                        >
+                          <Box sx={{ textAlign: 'left' }}>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontWeight: selected ? 700 : 500,
+                                color: selected ? 'text.primary' : 'text.secondary',
+                              }}
+                            >
+                              {tab.label}
+                            </Typography>
+                            {selected && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block', mt: 0.2 }}
+                              >
+                                {tab.subtitle}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Button>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              ))}
+            </CardContent>
+          </Card>
+        </Box>
 
-      {activeTab === 'register' ? (
-        <Card>
-          <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
-            <RegisterLedgerSection
-              active
-              headerTitle={activeSection.label}
-              headerSubtitle={activeSection.subtitle}
-            />
-          </CardContent>
-        </Card>
-      ) : activeTab === 'change-orders' ? (
-        <Card>
-          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
-              Change Orders
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Same PDF layout as an invoice, titled Change Order, numbered as CO (not INV). Create change orders from a
-              job&apos;s Files tab — estimate-style lines you edit — then find them listed here.
-            </Typography>
-            {loadingChangeOrders ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress size={32} />
-              </Box>
-            ) : changeOrdersList.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                No change orders yet. Create one from the Estimates tab while editing an estimate on a job.
-              </Typography>
-            ) : (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Change Order #</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Estimate #</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Customer</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Job</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }} align="right">
-                      Amount
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Issued</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {changeOrdersList.map((row) => (
-                    <TableRow key={row._id}>
-                      <TableCell>{row.invoiceNumber}</TableCell>
-                      <TableCell>{row.estimateNumber || '—'}</TableCell>
-                      <TableCell>
-                        {typeof row.customerId === 'object' && row.customerId?.name
-                          ? row.customerId.name
-                          : '—'}
-                      </TableCell>
-                      <TableCell>
-                        {typeof row.jobId === 'object' && row.jobId?.title ? row.jobId.title : '—'}
-                      </TableCell>
-                      <TableCell align="right">${formatInvoiceMoney(row.total)}</TableCell>
-                      <TableCell>
-                        {row.issuedAt
-                          ? new Date(row.issuedAt).toLocaleDateString('en-US')
-                          : '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      ) : activeTab !== 'estimates' ? (
-        <Card>
-          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                {activeSection.label}
-              </Typography>
-              <Chip size="small" color="primary" label="New" />
-            </Box>
-            <Typography variant="body2" color="text.secondary">
-              {activeSection.subtitle}
-            </Typography>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          {activeTab === 'register' ? (
+            <Card>
+              <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+                <RegisterLedgerSection
+                  active
+                  headerTitle={activeSection.label}
+                  headerSubtitle={activeSection.subtitle}
+                />
+              </CardContent>
+            </Card>
+          ) : activeTab === 'change-orders' ? (
+            <Card>
+              <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+                  Change Orders
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Same PDF layout as an invoice, titled Change Order, numbered as CO (not INV). Create change orders from a
+                  job&apos;s Files tab — estimate-style lines you edit — then find them listed here.
+                </Typography>
+                {loadingChangeOrders ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress size={32} />
+                  </Box>
+                ) : changeOrdersList.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No change orders yet. Create one from the Estimates tab while editing an estimate on a job.
+                  </Typography>
+                ) : (
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 700 }}>Change Order #</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Estimate #</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Customer</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Job</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">
+                          Amount
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Issued</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {changeOrdersList.map((row) => (
+                        <TableRow key={row._id}>
+                          <TableCell>{row.invoiceNumber}</TableCell>
+                          <TableCell>{row.estimateNumber || '—'}</TableCell>
+                          <TableCell>
+                            {typeof row.customerId === 'object' && row.customerId?.name
+                              ? row.customerId.name
+                              : '—'}
+                          </TableCell>
+                          <TableCell>
+                            {typeof row.jobId === 'object' && row.jobId?.title ? row.jobId.title : '—'}
+                          </TableCell>
+                          <TableCell align="right">${formatInvoiceMoney(row.total)}</TableCell>
+                          <TableCell>
+                            {row.issuedAt
+                              ? new Date(row.issuedAt).toLocaleDateString('en-US')
+                              : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          ) : activeTab !== 'estimates' ? (
+            <Card>
+              <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                    {activeSection.label}
+                  </Typography>
+                  <Chip size="small" color="primary" label="New" />
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  {activeSection.subtitle}
+                </Typography>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
             <Box
               sx={{
                 display: 'flex',
@@ -2140,9 +2216,11 @@ function FinanceHubPage() {
                 {savingEstimate ? 'Saving...' : isNewEstimateDraft ? 'Create estimate' : 'Save estimate'}
               </Button>
             </Box>
-          </CardContent>
-        </Card>
-      )}
+              </CardContent>
+            </Card>
+          )}
+        </Box>
+      </Box>
 
       {invoicePdfPayload && (
         <Box

@@ -26,9 +26,6 @@ const COMPANY_PHONE = '(951)491-1137';
 const COMPANY_EMAIL = 'office@sanclementewoodworking.com';
 const COMPANY_WEBSITE = 'www.sanclementewoodworking.com';
 
-const INVOICE_PERMITS_ACK_LINE =
-  'Any city permits or engineer fees are either not included or are provided by the customer';
-
 function formatMoney(value) {
   return Number(value || 0).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -99,217 +96,9 @@ function mapLinesForApi(rows) {
   }));
 }
 
-function mapLinesForPdf(items) {
-  return (items || []).map((row) => ({
-    itemName: row.itemName || '',
-    description: row.description || '',
-    quantity: row.quantity != null && row.quantity !== '' ? row.quantity : '',
-    total: row.total != null && row.total !== '' ? row.total : '',
-  }));
-}
-
-/** Hidden letter PDF layout for change orders (matches Finance Hub styling). */
-function ChangeOrderPdfMarkup({ payload }) {
-  if (!payload) return null;
-  return (
-    <Box
-      sx={{
-        width: 816,
-        minHeight: 1056,
-        bgcolor: '#fff',
-        color: '#000',
-        p: 5,
-        boxSizing: 'border-box',
-        border: '1px solid #d9d9d9',
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        display: 'flex',
-        flexDirection: 'column',
-        '& .MuiTypography-root': { color: '#000' },
-      }}
-    >
-      <Box sx={{ flex: '0 0 auto', width: '100%' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <Box
-              component="img"
-              src="/logo.png"
-              alt="SCWW logo"
-              sx={{ width: 68, height: 68, objectFit: 'contain', borderRadius: '50%' }}
-            />
-            <Box>
-              <Typography sx={{ fontWeight: 700, fontSize: 24, lineHeight: 1 }}>
-                San Clemente Woodworking
-              </Typography>
-              <Typography sx={{ fontSize: 14, mt: 0.8 }}>1030 Calle Sombra, Unit F</Typography>
-              <Typography sx={{ fontSize: 14 }}>San Clemente, CA 92673</Typography>
-              <Box sx={{ mt: 2, ml: -9 }}>
-                <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
-                  <Typography sx={{ fontSize: 13 }}>Phone #</Typography>
-                  <Typography sx={{ fontSize: 13, minWidth: 150 }}>{COMPANY_PHONE}</Typography>
-                </Box>
-                <Typography sx={{ fontSize: 13, ml: 0 }}>{COMPANY_WEBSITE}</Typography>
-                <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{COMPANY_EMAIL}</Typography>
-              </Box>
-            </Box>
-          </Box>
-
-          <Box sx={{ textAlign: 'right' }}>
-            <Typography sx={{ fontWeight: 700, fontSize: 22, mb: 1 }}>Change Order</Typography>
-            <Box sx={{ width: 280, border: '1px solid #000', ml: 'auto' }}>
-              <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12 }}>
-                <Box sx={{ width: '34%', p: 1, borderRight: '1px solid #fff' }}>Date</Box>
-                <Box sx={{ width: '33%', p: 1, borderRight: '1px solid #fff' }}>Estimate #</Box>
-                <Box sx={{ width: '33%', p: 1 }}>Change Order #</Box>
-              </Box>
-              <Box sx={{ display: 'flex' }}>
-                <Typography sx={{ width: '34%', fontSize: 12, px: 1, py: 0.8, borderRight: '1px solid #000' }}>
-                  {payload.invoiceDate}
-                </Typography>
-                <Typography
-                  sx={{
-                    width: '33%',
-                    fontSize: 12,
-                    px: 1,
-                    py: 0.8,
-                    borderRight: '1px solid #000',
-                    textAlign: 'right',
-                  }}
-                >
-                  {payload.estimateNumber}
-                </Typography>
-                <Typography sx={{ width: '33%', fontSize: 12, px: 1, py: 0.8, textAlign: 'right' }}>
-                  {payload.invoiceNumber}
-                </Typography>
-              </Box>
-            </Box>
-            <Typography
-              sx={{
-                fontSize: 11,
-                mt: 1,
-                maxWidth: 280,
-                ml: 'auto',
-                textAlign: 'right',
-                lineHeight: 1.35,
-              }}
-            >
-              References estimate #{payload.estimateNumber}. Stored estimate total at generation: $
-              {formatMoney(payload.referencedEstimateTotal)}
-            </Typography>
-          </Box>
-        </Box>
-
-        <Box sx={{ mt: 3, width: '48%', border: '1px solid #000' }}>
-          <Box sx={{ bgcolor: '#000', color: '#fff', p: 1, fontWeight: 700, fontSize: 12 }}>Name / Address</Box>
-          <Box sx={{ p: 1 }}>
-            <Typography sx={{ fontSize: 13 }}>{payload.customerName}</Typography>
-            <Typography sx={{ fontSize: 13 }}>{payload.customerAddress?.street}</Typography>
-            <Typography sx={{ fontSize: 13 }}>{payload.customerAddress?.city}</Typography>
-            {payload.projectName ? (
-              <Typography sx={{ fontSize: 12, mt: 0.5 }}>Project: {payload.projectName}</Typography>
-            ) : null}
-          </Box>
-        </Box>
-
-        <Box sx={{ mt: 3, border: '1px solid #000' }}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: '20% 48% 12% 20%', bgcolor: '#000', color: '#fff' }}>
-            <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Item</Box>
-            <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Description</Box>
-            <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Qty</Box>
-            <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Total</Box>
-          </Box>
-          {payload.lineItems.map((row, index) => {
-            const qty = row.quantity != null && row.quantity !== '' ? row.quantity : '';
-            const tot = Number(row.total);
-            const totalStr = Number.isFinite(tot)
-              ? tot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-              : String(row.total ?? '').trim() || '—';
-            return (
-              <Box
-                key={`co-pdf-${index}`}
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: '20% 48% 12% 20%',
-                  borderTop: '1px solid #000',
-                  alignItems: 'stretch',
-                }}
-              >
-                <Box
-                  sx={{
-                    px: 0.75,
-                    py: 0.45,
-                    borderRight: '1px solid #000',
-                    fontSize: 12.5,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {row.itemName}
-                </Box>
-                <Box
-                  sx={{
-                    px: 0.75,
-                    py: 0.45,
-                    borderRight: '1px solid #000',
-                    fontSize: 12.5,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {row.description}
-                </Box>
-                <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000', fontSize: 12.5 }}>{qty}</Box>
-                <Box sx={{ px: 0.75, py: 0.45, fontSize: 12.5, textAlign: 'right' }}>${totalStr}</Box>
-              </Box>
-            );
-          })}
-        </Box>
-      </Box>
-
-      <Box sx={{ flex: '1 1 auto', minHeight: 32, width: '100%' }} aria-hidden />
-
-      <Box sx={{ flex: '0 0 auto', width: '100%', mt: 'auto' }}>
-        <Box
-          sx={{
-            mt: 1.5,
-            display: 'flex',
-            justifyContent: 'flex-end',
-            flexDirection: 'column',
-            alignItems: 'flex-end',
-            gap: 1,
-          }}
-        >
-          <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
-            <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
-              Estimate reference total
-            </Box>
-            <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 14 }}>
-              ${formatMoney(payload.referencedEstimateTotal)}
-            </Box>
-          </Box>
-          <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
-            <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
-              Change order total
-            </Box>
-            <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
-              ${formatMoney(payload.grandTotal)}
-            </Box>
-          </Box>
-        </Box>
-
-        <Box sx={{ mt: 2 }}>
-          <Typography sx={{ fontSize: 12, lineHeight: 1.5 }}>
-            {INVOICE_PERMITS_ACK_LINE} ______
-          </Typography>
-          <Typography sx={{ fontSize: 12, mt: 1.5 }}>{payload.footerNote}</Typography>
-          <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
-        </Box>
-      </Box>
-    </Box>
-  );
-}
-
 export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) {
-  const pdfRef = useRef(null);
+  const changeOrderCanvasRef = useRef(null);
+  const [isCoExportMode, setIsCoExportMode] = useState(false);
   const [loadingEstimate, setLoadingEstimate] = useState(false);
   const [estimateDoc, setEstimateDoc] = useState(null);
   const [lineItems, setLineItems] = useState([emptyRow()]);
@@ -318,7 +107,10 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
   const [footerNote, setFooterNote] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
-  const [pdfPayload, setPdfPayload] = useState(null);
+  const [coDate, setCoDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [assignedCoNumber, setAssignedCoNumber] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [customerAddress, setCustomerAddress] = useState({ street: '', city: '' });
 
   useEffect(() => {
     if (!open || !job?._id) return;
@@ -346,7 +138,15 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
   }, [open, job?._id]);
 
   useEffect(() => {
-    if (!open || !estimateDoc) return;
+    if (!open) {
+      setAssignedCoNumber('');
+      return;
+    }
+    setCoDate(new Date().toISOString().slice(0, 10));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !estimateDoc || !job) return;
     setLineItems(mapEstimateLinesToForm(estimateDoc));
     setTaxRate(Number(estimateDoc.taxRate) || 0);
     setDiscountAmount(Number(estimateDoc.discountAmount) || 0);
@@ -355,12 +155,21 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
         'Customer acknowledges paint and stain are not included.'
     );
     setNotes('');
-  }, [open, estimateDoc?._id]);
+    setAssignedCoNumber('');
+    const addr = buildCustomerAddress(job);
+    setCustomerName(String(job.customerId?.name || '').trim());
+    setCustomerAddress(addr);
+  }, [open, estimateDoc?._id, job?._id]);
 
   const previewTotals = useMemo(
     () => computePreviewTotals(lineItems, taxRate, discountAmount),
     [lineItems, taxRate, discountAmount]
   );
+
+  const coGrandDisplay = previewTotals.grandTotal.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   const updateRow = (id, field, value) => {
     setLineItems((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
@@ -370,19 +179,61 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
   const removeRow = (id) =>
     setLineItems((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.id !== id)));
 
-  const renderPdfAndDownload = async (payload) => {
-    flushSync(() => setPdfPayload(payload));
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    if (!pdfRef.current) throw new Error('PDF layout not ready');
-    const canvas = await html2canvas(pdfRef.current, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      useCORS: true,
-    });
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-    doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 612, 792, undefined, 'FAST');
-    doc.save(`Change-order-${payload.invoiceNumber || 'draft'}.pdf`);
-    flushSync(() => setPdfPayload(null));
+  const setAddressField = (field, value) => {
+    setCustomerAddress((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const renderChangeOrderPdfDoc = async () => {
+    if (!changeOrderCanvasRef.current) {
+      throw new Error('Change order canvas not ready');
+    }
+    try {
+      setIsCoExportMode(true);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const canvas = await html2canvas(changeOrderCanvasRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+        onclone: (_clonedDoc, cloned) => {
+          const table = cloned.querySelector('[data-co-line-table]');
+          if (!table) return;
+          const replaceWithWrappedText = (field) => {
+            const div = _clonedDoc.createElement('div');
+            div.textContent = field.value ?? '';
+            const isTotal = field.dataset?.coTotal === '1';
+            Object.assign(div.style, {
+              width: '100%',
+              boxSizing: 'border-box',
+              fontSize: '12.5px',
+              lineHeight: '1.35',
+              fontFamily: 'Arial, Helvetica, sans-serif',
+              color: '#000',
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+              ...(isTotal ? { textAlign: 'right' } : {}),
+            });
+            const root = field.closest('.MuiInputBase-root');
+            if (root) {
+              root.replaceChildren(div);
+            }
+          };
+          table.querySelectorAll('textarea').forEach(replaceWithWrappedText);
+          table.querySelectorAll('input').forEach((inp) => {
+            if (inp.type === 'hidden' || inp.type === 'date') return;
+            replaceWithWrappedText(inp);
+          });
+        },
+      });
+      const imageData = canvas.toDataURL('image/png');
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const pageW = 612;
+      const pageH = 792;
+      doc.addImage(imageData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+      return doc;
+    } finally {
+      setIsCoExportMode(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -406,19 +257,19 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
       const co = data?.changeOrder;
       if (!co?._id && !co?.invoiceNumber) throw new Error('Change order was not created');
 
-      const addr = buildCustomerAddress(job);
-      await renderPdfAndDownload({
-        estimateNumber: co.estimateNumber || estimateDoc.estimateNumber || '',
-        invoiceNumber: co.invoiceNumber || '',
-        invoiceDate: (co.issuedAt ? new Date(co.issuedAt) : new Date()).toISOString().slice(0, 10),
-        customerName: job.customerId?.name || '',
-        projectName: job.title || '',
-        customerAddress: addr,
-        lineItems: mapLinesForPdf(co.lineItems),
-        referencedEstimateTotal: Number(co.contractTotal) || 0,
-        grandTotal: Number(co.total) || 0,
-        footerNote: footerNote.trim(),
+      flushSync(() => {
+        setLineItems(mapEstimateLinesToForm({ lineItems: co.lineItems || [] }));
+        setTaxRate(Number(co.taxRate) || 0);
+        setDiscountAmount(Number(co.discountAmount) || 0);
+        setAssignedCoNumber(String(co.invoiceNumber || '').trim());
+        setCoDate(
+          co.issuedAt ? new Date(co.issuedAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)
+        );
       });
+
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const doc = await renderChangeOrderPdfDoc();
+      doc.save(`Change-order-${co.invoiceNumber || 'draft'}.pdf`);
 
       toast.success(`Change order ${co.invoiceNumber || ''} saved and downloaded`);
       onCreated?.();
@@ -426,7 +277,6 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
     } catch (e) {
       console.error(e);
       toast.error(e.response?.data?.error || e.message || 'Failed to create change order');
-      flushSync(() => setPdfPayload(null));
     } finally {
       setSaving(false);
     }
@@ -434,176 +284,390 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
 
   const handleClose = () => {
     if (saving) return;
-    setPdfPayload(null);
     onClose();
   };
 
   return (
-    <>
-      {pdfPayload ? (
-        <Box
-          ref={pdfRef}
-          sx={{
-            position: 'fixed',
-            left: -12000,
-            top: 0,
-            pointerEvents: 'none',
-          }}
-        >
-          <ChangeOrderPdfMarkup payload={pdfPayload} />
-        </Box>
-      ) : null}
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      maxWidth={false}
+      fullWidth
+      scroll="paper"
+      PaperProps={{ sx: { maxWidth: 920, width: '100%' } }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+        Change order
+        <IconButton size="small" onClick={handleClose} disabled={saving} aria-label="Close">
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Same layout as Finance Hub estimates — edit the letter sheet, then create the change order to download a
+          matching PDF (title and numbering are for the change order).
+        </Typography>
 
-      <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth scroll="paper">
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-          Change order
-          <IconButton size="small" onClick={handleClose} disabled={saving} aria-label="Close">
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Starts from this job&apos;s estimate lines — edit them to describe scope or pricing updates. Tax and
-            discount apply only to these change-order lines.
-          </Typography>
+        {loadingEstimate ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress size={36} />
+          </Box>
+        ) : !estimateDoc ? (
+          <Alert severity="warning">
+            No estimate found for this job. Create one in Finance Hub first, then open this dialog again.
+          </Alert>
+        ) : (
+          <>
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+              Referenced estimate #{estimateDoc.estimateNumber || '—'} · Change order # appears on the PDF after you
+              save
+            </Typography>
 
-          {loadingEstimate ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress size={36} />
-            </Box>
-          ) : !estimateDoc ? (
-            <Alert severity="warning">
-              No estimate found for this job. Create one in Finance Hub first, then open this dialog again.
-            </Alert>
-          ) : (
-            <>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Referenced estimate #{estimateDoc.estimateNumber || '—'}
-              </Typography>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                width: '100%',
+                overflowX: 'auto',
+              }}
+            >
+              <Box
+                ref={changeOrderCanvasRef}
+                sx={{
+                  width: 816,
+                  minHeight: 1056,
+                  mx: 'auto',
+                  bgcolor: '#fff',
+                  color: '#000',
+                  p: 5,
+                  border: '1px solid #d9d9d9',
+                  fontFamily: 'Arial, Helvetica, sans-serif',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  boxSizing: 'border-box',
+                  '& .MuiTypography-root': { color: '#000' },
+                  '& .MuiInputBase-root': { color: '#000' },
+                  '& .MuiInputBase-input': {
+                    color: '#000',
+                    WebkitTextFillColor: '#000',
+                  },
+                  '& .MuiInputBase-input::placeholder': {
+                    color: 'rgba(0,0,0,0.42)',
+                    opacity: 1,
+                  },
+                  '& .MuiIconButton-root': { color: '#000' },
+                }}
+              >
+                <Box sx={{ flex: '0 0 auto', width: '100%' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                      <Box
+                        component="img"
+                        src="/logo.png"
+                        alt="SCWW logo"
+                        sx={{ width: 68, height: 68, objectFit: 'contain', borderRadius: '50%' }}
+                      />
+                      <Box>
+                        <Typography sx={{ fontWeight: 700, fontSize: 24, lineHeight: 1 }}>
+                          San Clemente Woodworking
+                        </Typography>
+                        <Typography sx={{ fontSize: 14, mt: 0.8 }}>1030 Calle Sombra, Unit F</Typography>
+                        <Typography sx={{ fontSize: 14 }}>San Clemente, CA 92673</Typography>
+                        <Box sx={{ mt: 2, ml: -9 }}>
+                          <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
+                            <Typography sx={{ fontSize: 13 }}>Phone #</Typography>
+                            <Typography sx={{ fontSize: 13, minWidth: 150 }}>{COMPANY_PHONE}</Typography>
+                          </Box>
+                          <Typography sx={{ fontSize: 13, ml: 0 }}>{COMPANY_WEBSITE}</Typography>
+                          <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{COMPANY_EMAIL}</Typography>
+                        </Box>
+                      </Box>
+                    </Box>
 
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                {lineItems.map((row) => (
-                  <Box
-                    key={row.id}
-                    sx={{
-                      display: 'grid',
-                      gridTemplateColumns: { xs: '1fr', sm: '1.1fr 1.4fr 72px 96px 40px' },
-                      gap: 1,
-                      alignItems: 'flex-start',
-                    }}
-                  >
-                    <TextField
-                      size="small"
-                      label="Item"
-                      value={row.itemName}
-                      onChange={(e) => updateRow(row.id, 'itemName', e.target.value)}
-                      fullWidth
-                    />
-                    <TextField
-                      size="small"
-                      label="Description"
-                      value={row.description}
-                      onChange={(e) => updateRow(row.id, 'description', e.target.value)}
-                      fullWidth
-                    />
-                    <TextField
-                      size="small"
-                      label="Qty"
-                      type="number"
-                      value={row.quantity}
-                      onChange={(e) => updateRow(row.id, 'quantity', e.target.value)}
-                      inputProps={{ min: 0, step: 1 }}
-                    />
-                    <TextField
-                      size="small"
-                      label="Total $"
-                      type="number"
-                      value={row.total}
-                      onChange={(e) => updateRow(row.id, 'total', e.target.value)}
-                      inputProps={{ min: 0, step: 0.01 }}
-                    />
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => removeRow(row.id)}
-                      disabled={lineItems.length <= 1}
-                      sx={{ mt: 0.5 }}
-                      aria-label="Remove line"
-                    >
-                      <DeleteOutlineIcon />
-                    </IconButton>
+                    <Box sx={{ textAlign: 'right' }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: 22, mb: 1 }}>Change Order</Typography>
+                      <Box sx={{ width: 252, border: '1px solid #000' }}>
+                        <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12 }}>
+                          <Box sx={{ width: '56%', p: 1, borderRight: '1px solid #fff' }}>Date</Box>
+                          <Box sx={{ width: '44%', p: 1 }}>Change Order #</Box>
+                        </Box>
+                        <Box sx={{ display: 'flex' }}>
+                          <TextField
+                            variant="standard"
+                            type="date"
+                            value={coDate}
+                            onChange={(e) => setCoDate(e.target.value)}
+                            InputProps={{ disableUnderline: true, sx: { fontSize: 12, px: 1, py: 0.8 } }}
+                            sx={{ width: '56%', borderRight: '1px solid #000' }}
+                          />
+                          <TextField
+                            variant="standard"
+                            value={assignedCoNumber}
+                            placeholder="—"
+                            InputProps={{
+                              disableUnderline: true,
+                              readOnly: true,
+                              sx: { fontSize: 12, px: 1, py: 0.8, textAlign: 'right' },
+                            }}
+                            inputProps={{ style: { textAlign: 'right' } }}
+                            sx={{ width: '44%' }}
+                          />
+                        </Box>
+                      </Box>
+                    </Box>
                   </Box>
-                ))}
+
+                  <Box sx={{ mt: 3, width: '48%', border: '1px solid #000' }}>
+                    <Box sx={{ bgcolor: '#000', color: '#fff', p: 1, fontWeight: 700, fontSize: 12 }}>
+                      Name / Address
+                    </Box>
+                    <Box sx={{ p: 1 }}>
+                      <TextField
+                        variant="standard"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="Customer name"
+                        InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                        fullWidth
+                      />
+                      <TextField
+                        variant="standard"
+                        value={customerAddress.street}
+                        onChange={(e) => setAddressField('street', e.target.value)}
+                        placeholder="Street address"
+                        InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                        fullWidth
+                      />
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <TextField
+                          variant="standard"
+                          value={customerAddress.city}
+                          onChange={(e) => setAddressField('city', e.target.value)}
+                          placeholder="City, State ZIP"
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                          sx={{ flex: 1 }}
+                        />
+                      </Box>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ mt: 3, border: '1px solid #000' }} data-co-line-table>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '20% 48% 12% 20%', bgcolor: '#000', color: '#fff' }}>
+                      <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Item</Box>
+                      <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Description</Box>
+                      <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Qty</Box>
+                      <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Total</Box>
+                    </Box>
+                    {lineItems.map((row) => (
+                      <Box
+                        key={row.id}
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: '20% 48% 12% 20%',
+                          gridAutoRows: 'minmax(min-content, auto)',
+                          borderTop: '1px solid #000',
+                          alignItems: 'stretch',
+                          minHeight: 'min-content',
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            px: 0.75,
+                            py: 0.45,
+                            borderRight: '1px solid #000',
+                            minWidth: 0,
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                          }}
+                        >
+                          <TextField
+                            variant="standard"
+                            value={row.itemName}
+                            onChange={(e) => updateRow(row.id, 'itemName', e.target.value)}
+                            InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
+                            fullWidth
+                          />
+                        </Box>
+                        <Box
+                          sx={{
+                            px: 0.75,
+                            py: 0.45,
+                            borderRight: '1px solid #000',
+                            minWidth: 0,
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                          }}
+                        >
+                          <TextField
+                            variant="standard"
+                            multiline
+                            minRows={2}
+                            maxRows={40}
+                            value={row.description}
+                            onChange={(e) => updateRow(row.id, 'description', e.target.value)}
+                            InputProps={{
+                              disableUnderline: true,
+                              sx: {
+                                fontSize: 12.5,
+                                width: '100%',
+                                alignItems: 'flex-start',
+                                overflow: 'visible',
+                                '& .MuiInputBase-inputMultiline': {
+                                  whiteSpace: 'pre-wrap',
+                                  overflowWrap: 'anywhere',
+                                  wordBreak: 'break-word',
+                                  overflow: 'visible !important',
+                                  resize: 'none',
+                                  fieldSizing: 'content',
+                                },
+                              },
+                            }}
+                            fullWidth
+                          />
+                        </Box>
+                        <Box
+                          sx={{
+                            px: 0.75,
+                            py: 0.45,
+                            borderRight: '1px solid #000',
+                            minWidth: 0,
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                          }}
+                        >
+                          <TextField
+                            variant="standard"
+                            type="text"
+                            value={row.quantity}
+                            onChange={(e) => updateRow(row.id, 'quantity', e.target.value)}
+                            InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
+                            inputProps={{ inputMode: 'numeric' }}
+                            fullWidth
+                          />
+                        </Box>
+                        <Box
+                          sx={{
+                            px: 0.75,
+                            py: 0.45,
+                            minWidth: 0,
+                            display: 'flex',
+                            gap: 0.5,
+                            alignItems: 'flex-start',
+                          }}
+                        >
+                          <TextField
+                            variant="standard"
+                            type="text"
+                            value={row.total}
+                            onChange={(e) => updateRow(row.id, 'total', e.target.value)}
+                            InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
+                            inputProps={{ inputMode: 'decimal', 'data-co-total': '1' }}
+                            fullWidth
+                          />
+                          {!isCoExportMode && (
+                            <IconButton
+                              size="small"
+                              onClick={() => removeRow(row.id)}
+                              disabled={lineItems.length <= 1}
+                              aria-label="Remove line"
+                            >
+                              <DeleteOutlineIcon fontSize="inherit" />
+                            </IconButton>
+                          )}
+                        </Box>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+
+                <Box sx={{ flex: '1 1 auto', minHeight: 32, width: '100%' }} aria-hidden />
+
+                <Box sx={{ flex: '0 0 auto', width: '100%', mt: 'auto' }}>
+                  <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {!isCoExportMode && (
+                      <Button size="small" startIcon={<AddIcon />} onClick={addRow}>
+                        Add line
+                      </Button>
+                    )}
+                    <Box sx={{ width: 220, border: '1px solid #000', display: 'flex', ml: 'auto' }}>
+                      <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
+                        Total
+                      </Box>
+                      <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                        ${coGrandDisplay}
+                      </Box>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ mt: 1 }}>
+                    <TextField
+                      variant="standard"
+                      value={footerNote}
+                      onChange={(e) => setFooterNote(e.target.value)}
+                      InputProps={{ disableUnderline: true, sx: { fontSize: 12 } }}
+                      fullWidth
+                    />
+                    <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
+                  </Box>
+                </Box>
               </Box>
+            </Box>
 
-              <Button size="small" startIcon={<AddIcon />} onClick={addRow} sx={{ mt: 2 }}>
-                Add line
-              </Button>
+            <Divider sx={{ my: 2 }} />
 
-              <Divider sx={{ my: 2 }} />
-
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-                <TextField
-                  size="small"
-                  label="Tax rate %"
-                  type="number"
-                  value={taxRate}
-                  onChange={(e) => setTaxRate(e.target.value)}
-                  sx={{ width: 140 }}
-                  inputProps={{ step: 0.1 }}
-                />
-                <TextField
-                  size="small"
-                  label="Discount $"
-                  type="number"
-                  value={discountAmount}
-                  onChange={(e) => setDiscountAmount(e.target.value)}
-                  sx={{ width: 140 }}
-                  inputProps={{ step: 0.01 }}
-                />
-              </Box>
-
-              <Box sx={{ mt: 2, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Change order preview total
-                </Typography>
-                <Typography variant="h6">${formatMoney(previewTotals.grandTotal)}</Typography>
-              </Box>
-
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
               <TextField
-                label="Footer note (printed on PDF)"
-                value={footerNote}
-                onChange={(e) => setFooterNote(e.target.value)}
-                fullWidth
-                multiline
-                minRows={2}
-                sx={{ mt: 2 }}
+                size="small"
+                label="Tax rate %"
+                type="number"
+                value={taxRate}
+                onChange={(e) => setTaxRate(e.target.value)}
+                sx={{ width: 140 }}
+                inputProps={{ step: 0.1 }}
               />
               <TextField
-                label="Internal notes (saved on document)"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                fullWidth
-                multiline
-                minRows={2}
-                sx={{ mt: 1.5 }}
+                size="small"
+                label="Discount $"
+                type="number"
+                value={discountAmount}
+                onChange={(e) => setDiscountAmount(e.target.value)}
+                sx={{ width: 140 }}
+                inputProps={{ step: 0.01 }}
               />
-            </>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={handleClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={saving || loadingEstimate || !estimateDoc || previewTotals.grandTotal <= 0}
-          >
-            {saving ? 'Saving…' : 'Create change order & download PDF'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </>
+            </Box>
+
+            <Box sx={{ mt: 2, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+              <Typography variant="caption" color="text.secondary">
+                Change order total (lines + tax − discount)
+              </Typography>
+              <Typography variant="h6">${formatMoney(previewTotals.grandTotal)}</Typography>
+            </Box>
+
+            <TextField
+              label="Internal notes (saved on document)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              fullWidth
+              multiline
+              minRows={2}
+              sx={{ mt: 2 }}
+            />
+          </>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={handleClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={saving || loadingEstimate || !estimateDoc || previewTotals.grandTotal <= 0}
+        >
+          {saving ? 'Saving…' : 'Create change order & download PDF'}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
