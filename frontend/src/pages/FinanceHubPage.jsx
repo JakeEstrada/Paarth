@@ -7,7 +7,6 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
   Chip,
   CircularProgress,
   Container,
@@ -20,7 +19,6 @@ import {
   FormControlLabel,
   FormLabel,
   IconButton,
-  InputAdornment,
   Radio,
   RadioGroup,
   Link,
@@ -51,7 +49,6 @@ import RegisterLedgerSection from '../components/finance/RegisterLedgerSection';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const ESTIMATE_DESC_HINTS_KEY = 'financeHubEstimateDescriptionHints';
 const ESTIMATE_DESC_HINTS_MAX = 250;
-const COMMISSION_LOGS_STORAGE_KEY = 'financeHubCommissionLogsRows';
 
 const filterEstimateDescriptionOptions = createFilterOptions({
   limit: 80,
@@ -91,17 +88,6 @@ function collectDescriptionsFromEstimateSnapshot(est) {
   return est.lineItems
     .map((li) => String(li.description || '').trim())
     .filter(Boolean);
-}
-
-function readCommissionLogRows() {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(COMMISSION_LOGS_STORAGE_KEY);
-    const parsed = JSON.parse(raw || '{}');
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
 }
 
 const COMPANY_PHONE = '(951)491-1137';
@@ -152,11 +138,6 @@ const TAB_DEFS = [
     label: 'Payment Schedules',
     subtitle: 'Manage planned payment milestones and due timelines.',
   },
-  {
-    key: 'commission-logs',
-    label: 'Commission Logs',
-    subtitle: 'Spreadsheet-style payment tracking for salesperson job commissions.',
-  },
 ];
 
 const TAB_GROUPS = [
@@ -166,7 +147,7 @@ const TAB_GROUPS = [
   },
   {
     title: 'Operations',
-    tabs: ['commission-logs', 'change-orders', 'payment-schedules'],
+    tabs: ['change-orders', 'payment-schedules'],
   },
 ];
 
@@ -395,11 +376,6 @@ function FinanceHubPage() {
   const [invoicePdfPayload, setInvoicePdfPayload] = useState(null);
   const [changeOrdersList, setChangeOrdersList] = useState([]);
   const [loadingChangeOrders, setLoadingChangeOrders] = useState(false);
-  const [loadingCommissionLogs, setLoadingCommissionLogs] = useState(false);
-  const [commissionSourceJobs, setCommissionSourceJobs] = useState([]);
-  const [showJoesJobsOnly, setShowJoesJobsOnly] = useState(true);
-  const [joeFilter, setJoeFilter] = useState('joe');
-  const [commissionLogRows, setCommissionLogRows] = useState(() => readCommissionLogRows());
   /** Full job JSON (consumer context only). */
   const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
   /** First-class estimate source of truth for current job context. */
@@ -516,56 +492,6 @@ function FinanceHubPage() {
     estimateTotal > 0 &&
     Boolean(estimateForm.customerId);
 
-  const updateCommissionRow = useCallback((jobId, patch) => {
-    const key = String(jobId || '');
-    if (!key) return;
-    setCommissionLogRows((prev) => {
-      const current = prev[key] || {};
-      return {
-        ...prev,
-        [key]: {
-          ...current,
-          ...patch,
-          updatedAt: new Date().toISOString(),
-        },
-      };
-    });
-  }, []);
-
-  const commissionTableRows = useMemo(() => {
-    const needle = String(joeFilter || '').trim().toLowerCase();
-    return commissionSourceJobs
-      .filter((row) => {
-        if (!showJoesJobsOnly) return true;
-        const assignee = String(row.assignedToName || '').toLowerCase();
-        if (!needle) return assignee.includes('joe');
-        return assignee.includes(needle);
-      })
-      .map((row) => {
-        const local = commissionLogRows[String(row.jobId)] || {};
-        const payment1 = Number(local.payment1 || 0);
-        const payment2 = Number(local.payment2 || 0);
-        const paidTotal = roundMoneyClient(payment1 + payment2);
-        const balance = roundMoneyClient(Number(row.jobTotal || 0) - paidTotal);
-        const normalizedBalance = balance < 0 ? 0 : balance;
-        const markedPaid = Boolean(local.isPaid) || normalizedBalance <= 0;
-        return {
-          ...row,
-          payment1,
-          payment1Check: String(local.payment1Check || ''),
-          payment2,
-          payment2Check: String(local.payment2Check || ''),
-          notes: String(local.notes || ''),
-          isPaid: markedPaid,
-          balance: normalizedBalance,
-        };
-      })
-      .sort((a, b) => {
-        if (a.isPaid !== b.isPaid) return a.isPaid ? 1 : -1;
-        return String(a.customerName || '').localeCompare(String(b.customerName || ''));
-      });
-  }, [commissionSourceJobs, commissionLogRows, showJoesJobsOnly, joeFilter]);
-
   const hydrateJobWithEstimate = useCallback(async (job) => {
     if (!job?._id) return job;
     try {
@@ -584,11 +510,6 @@ function FinanceHubPage() {
     if (activeTab !== 'estimates' || typeof window === 'undefined') return;
     window.localStorage.removeItem(LOCAL_EST_SNAPSHOT_STACK_KEY);
   }, [activeTab]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(COMMISSION_LOGS_STORAGE_KEY, JSON.stringify(commissionLogRows || {}));
-  }, [commissionLogRows]);
 
   const goEstimateDocOlder = useCallback(() => {
     if (currentEstimateDocIndex <= 0) return;
@@ -647,62 +568,6 @@ function FinanceHubPage() {
       }
     };
     fetchCustomers();
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (activeTab !== 'commission-logs') return;
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoadingCommissionLogs(true);
-        const [{ data: jobsData }, { data: estimatesData }] = await Promise.all([
-          axios.get(`${API_URL}/jobs`, {
-            params: { limit: 1000, includeCompletedClosedOut: true },
-          }),
-          axios.get(`${API_URL}/estimates`),
-        ]);
-        const jobs = Array.isArray(jobsData?.jobs) ? jobsData.jobs : [];
-        const estimates = Array.isArray(estimatesData) ? estimatesData : [];
-        const latestEstimateByJob = new Map();
-        for (const est of estimates) {
-          const jobIdRaw = est?.jobId?._id || est?.jobId;
-          const jobId = String(jobIdRaw || '');
-          if (!jobId) continue;
-          const prev = latestEstimateByJob.get(jobId);
-          const estTime = new Date(est?.createdAt || 0).getTime();
-          const prevTime = prev ? new Date(prev?.createdAt || 0).getTime() : -1;
-          if (!prev || estTime > prevTime) latestEstimateByJob.set(jobId, est);
-        }
-        const rows = jobs.map((job) => {
-          const estimate = latestEstimateByJob.get(String(job?._id || ''));
-          const fullAmount =
-            Number(estimate?.grandTotal ?? job?.valueContracted ?? job?.valueEstimated ?? 0) || 0;
-          return {
-            jobId: String(job?._id || ''),
-            customerName:
-              (typeof job?.customerId === 'object' && job?.customerId?.name) || 'Unknown customer',
-            jobLabel: jobTitleAfterPipe(job?.title),
-            assignedToName:
-              (typeof job?.assignedTo === 'object' && job?.assignedTo?.name) ||
-              String(job?.assignedTo || ''),
-            stageLabel: ESTIMATE_STAGE_LABELS[job?.stage] || String(job?.stage || ''),
-            jobTotal: roundMoneyClient(fullAmount),
-          };
-        });
-        if (!cancelled) setCommissionSourceJobs(rows);
-      } catch (error) {
-        console.error('Error loading commission logs:', error);
-        if (!cancelled) {
-          setCommissionSourceJobs([]);
-          toast.error(error.response?.data?.error || 'Failed to load commission logs');
-        }
-      } finally {
-        if (!cancelled) setLoadingCommissionLogs(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
   }, [activeTab]);
 
   useEffect(() => {
@@ -1530,7 +1395,7 @@ function FinanceHubPage() {
         </Typography>
         <Typography variant="body1" color="text.secondary">
           One workspace for register, estimates, contracts, invoices, change orders, payment
-          schedules, and commission logs.
+          schedules.
         </Typography>
       </Box>
 
@@ -1681,176 +1546,6 @@ function FinanceHubPage() {
                       ))}
                     </TableBody>
                   </Table>
-                )}
-              </CardContent>
-            </Card>
-          ) : activeTab === 'commission-logs' ? (
-            <Card>
-              <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: 1.5,
-                    mb: 2,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <Box>
-                    <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                      Commission Logs
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Spreadsheet view of each job&apos;s full amount, payments, check numbers, and
-                      remaining balance.
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                    <Button
-                      variant={showJoesJobsOnly ? 'contained' : 'outlined'}
-                      onClick={() => setShowJoesJobsOnly(true)}
-                    >
-                      Joe&apos;s Jobs
-                    </Button>
-                    <Button
-                      variant={!showJoesJobsOnly ? 'contained' : 'outlined'}
-                      onClick={() => setShowJoesJobsOnly(false)}
-                    >
-                      All Jobs
-                    </Button>
-                  </Box>
-                </Box>
-
-                {showJoesJobsOnly && (
-                  <TextField
-                    size="small"
-                    label="Salesperson filter"
-                    value={joeFilter}
-                    onChange={(e) => setJoeFilter(e.target.value)}
-                    helperText="Leave as joe to track Joe's jobs, or type another name."
-                    sx={{ mb: 2, minWidth: 280 }}
-                  />
-                )}
-
-                {loadingCommissionLogs ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                    <CircularProgress size={32} />
-                  </Box>
-                ) : commissionTableRows.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    No jobs matched this filter.
-                  </Typography>
-                ) : (
-                  <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1.5, overflowX: 'auto' }}>
-                    <Table size="small" sx={{ minWidth: 1100 }}>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell sx={{ fontWeight: 700 }}>Customer</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Job</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Assigned</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }} align="right">
-                            Job Total
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Payment 1</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Check #</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Payment 2</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Check #</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }} align="right">
-                            Balance
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Paid</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {commissionTableRows.map((row) => (
-                          <TableRow key={row.jobId} hover>
-                            <TableCell>{row.customerName}</TableCell>
-                            <TableCell>
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {row.jobLabel || 'Untitled'}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {row.stageLabel || '—'}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>{row.assignedToName || '—'}</TableCell>
-                            <TableCell align="right">${formatInvoiceMoney(row.jobTotal)}</TableCell>
-                            <TableCell sx={{ minWidth: 130 }}>
-                              <TextField
-                                size="small"
-                                value={row.payment1 || ''}
-                                onChange={(e) =>
-                                  updateCommissionRow(row.jobId, { payment1: e.target.value })
-                                }
-                                InputProps={{
-                                  startAdornment: (
-                                    <InputAdornment position="start">$</InputAdornment>
-                                  ),
-                                  inputProps: { inputMode: 'decimal' },
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell sx={{ minWidth: 120 }}>
-                              <TextField
-                                size="small"
-                                value={row.payment1Check}
-                                onChange={(e) =>
-                                  updateCommissionRow(row.jobId, { payment1Check: e.target.value })
-                                }
-                              />
-                            </TableCell>
-                            <TableCell sx={{ minWidth: 130 }}>
-                              <TextField
-                                size="small"
-                                value={row.payment2 || ''}
-                                onChange={(e) =>
-                                  updateCommissionRow(row.jobId, { payment2: e.target.value })
-                                }
-                                InputProps={{
-                                  startAdornment: (
-                                    <InputAdornment position="start">$</InputAdornment>
-                                  ),
-                                  inputProps: { inputMode: 'decimal' },
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell sx={{ minWidth: 120 }}>
-                              <TextField
-                                size="small"
-                                value={row.payment2Check}
-                                onChange={(e) =>
-                                  updateCommissionRow(row.jobId, { payment2Check: e.target.value })
-                                }
-                              />
-                            </TableCell>
-                            <TableCell align="right">
-                              <Typography
-                                variant="body2"
-                                sx={{ fontWeight: 700, color: row.balance <= 0 ? 'success.main' : 'text.primary' }}
-                              >
-                                ${formatInvoiceMoney(row.balance)}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <FormControlLabel
-                                sx={{ mr: 0 }}
-                                control={
-                                  <Checkbox
-                                    checked={row.isPaid}
-                                    onChange={(e) =>
-                                      updateCommissionRow(row.jobId, { isPaid: e.target.checked })
-                                    }
-                                  />
-                                }
-                                label={row.isPaid ? 'Paid' : 'Open'}
-                              />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </Box>
                 )}
               </CardContent>
             </Card>

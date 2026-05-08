@@ -21,6 +21,7 @@ import TasksPage from './pages/TasksPage';
 import DeveloperTasksPage from './pages/DeveloperTasksPage';
 import CustomersPage from './pages/CustomersPage';
 import PayrollPage from './pages/PayrollPage';
+import CommissionLogsPage from './pages/CommissionLogsPage';
 import UsersPage from './pages/UsersPage';
 import BillsPage from './pages/BillsPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
@@ -122,6 +123,7 @@ function App() {
                   <Route path="/completed-tasks" element={<CompletedTasksPage />} />
                   <Route path="/developer" element={<DeveloperTasksPage />} />
                   <Route path="/payroll" element={<PayrollPage />} />
+                  <Route path="/commission-logs" element={<CommissionLogsPage />} />
                   <Route path="/bills" element={<BillsPage />} />
                   <Route path="/finance" element={<FinanceHubPage />} />
                   <Route path="/takeoff-sheet" element={<TakeoffSheetPage />} />
