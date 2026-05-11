@@ -187,6 +187,22 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
     if (!changeOrderCanvasRef.current) {
       throw new Error('Change order canvas not ready');
     }
+    /** html2canvas clones often drop controlled input `.value`; PDF text must come from React state, not the clone. */
+    const exportSnapshot = {
+      coDate,
+      assignedCoNumber,
+      customerName,
+      customerStreet: customerAddress.street,
+      customerCity: customerAddress.city,
+      footerNote,
+      lineItems: lineItems.map((r) => ({
+        id: r.id,
+        itemName: r.itemName,
+        description: r.description,
+        quantity: r.quantity,
+        total: r.total,
+      })),
+    };
     try {
       setIsCoExportMode(true);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -195,6 +211,39 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
         scale: 2,
         useCORS: true,
         onclone: (_clonedDoc, cloned) => {
+          const lineExportValue = (lineId: string, col: string) => {
+            const row = exportSnapshot.lineItems.find((r) => r.id === lineId);
+            if (!row) return '';
+            const v = row[col];
+            return v == null ? '' : String(v);
+          };
+
+          const exportTextForField = (field: Element) => {
+            if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return '';
+            const tag = field.getAttribute('data-co-export');
+            if (tag === 'line') {
+              const id = field.getAttribute('data-co-line-id') || '';
+              const col = field.getAttribute('data-co-line-field') || '';
+              return lineExportValue(id, col);
+            }
+            switch (tag) {
+              case 'co-date':
+                return exportSnapshot.coDate || '';
+              case 'co-number':
+                return String(exportSnapshot.assignedCoNumber || '').trim() || '—';
+              case 'customer-name':
+                return exportSnapshot.customerName || '';
+              case 'customer-street':
+                return exportSnapshot.customerStreet || '';
+              case 'customer-city':
+                return exportSnapshot.customerCity || '';
+              case 'footer-note':
+                return exportSnapshot.footerNote || '';
+              default:
+                return field.value ?? '';
+            }
+          };
+
           /** MUI inputs + native date fields often clip descenders when rasterized; plain divs print cleanly. */
           const replaceInputWithDiv = (
             field: Element,
@@ -202,9 +251,7 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
           ) => {
             const { rightAlign = false, minHeight = '42px', fontSize = '12.5px', lineHeight = '1.5' } = opts;
             const div = _clonedDoc.createElement('div');
-            const raw =
-              field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement ? field.value ?? '' : '';
-            div.textContent = raw;
+            div.textContent = exportTextForField(field);
             Object.assign(div.style, {
               width: '100%',
               boxSizing: 'border-box',
@@ -256,10 +303,11 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
 
           const table = cloned.querySelector('[data-co-line-table]');
           if (!table) return;
-          const replaceWithWrappedText = (field) => {
+          const replaceWithWrappedText = (field: Element) => {
             const div = _clonedDoc.createElement('div');
-            div.textContent = field.value ?? '';
-            const isTotal = field.dataset?.coTotal === '1';
+            div.textContent = exportTextForField(field);
+            const isTotal =
+              field instanceof HTMLInputElement && field.dataset && field.dataset.coTotal === '1';
             Object.assign(div.style, {
               width: '100%',
               boxSizing: 'border-box',
@@ -281,7 +329,7 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
           };
           table.querySelectorAll('textarea').forEach(replaceWithWrappedText);
           table.querySelectorAll('input').forEach((inp) => {
-            if (inp.type === 'hidden' || inp.type === 'date') return;
+            if (inp.type === 'hidden') return;
             replaceWithWrappedText(inp);
           });
         },
@@ -471,6 +519,7 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                               type="date"
                               value={coDate}
                               onChange={(e) => setCoDate(e.target.value)}
+                              inputProps={{ 'data-co-export': 'co-date' }}
                               InputProps={{
                                 disableUnderline: true,
                                 sx: {
@@ -518,7 +567,10 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                                   },
                                 },
                               }}
-                              inputProps={{ style: { textAlign: 'right' } }}
+                              inputProps={{
+                                style: { textAlign: 'right' },
+                                'data-co-export': 'co-number',
+                              }}
                               sx={{ flex: 1, overflow: 'visible' }}
                             />
                           </Box>
@@ -537,6 +589,7 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
                         placeholder="Customer name"
+                        inputProps={{ 'data-co-export': 'customer-name' }}
                         InputProps={{
                           disableUnderline: true,
                           sx: { fontSize: 13, py: 0.35, '& input': { lineHeight: 1.45, padding: '6px 0' } },
@@ -548,6 +601,7 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                         value={customerAddress.street}
                         onChange={(e) => setAddressField('street', e.target.value)}
                         placeholder="Street address"
+                        inputProps={{ 'data-co-export': 'customer-street' }}
                         InputProps={{
                           disableUnderline: true,
                           sx: { fontSize: 13, py: 0.35, '& input': { lineHeight: 1.45, padding: '6px 0' } },
@@ -560,6 +614,7 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                           value={customerAddress.city}
                           onChange={(e) => setAddressField('city', e.target.value)}
                           placeholder="City, State ZIP"
+                          inputProps={{ 'data-co-export': 'customer-city' }}
                           InputProps={{
                             disableUnderline: true,
                             sx: { fontSize: 13, py: 0.35, '& input': { lineHeight: 1.45, padding: '6px 0' } },
@@ -603,6 +658,11 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                             variant="standard"
                             value={row.itemName}
                             onChange={(e) => updateRow(row.id, 'itemName', e.target.value)}
+                            inputProps={{
+                              'data-co-export': 'line',
+                              'data-co-line-id': row.id,
+                              'data-co-line-field': 'itemName',
+                            }}
                             InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
                             fullWidth
                           />
@@ -624,6 +684,11 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                             maxRows={40}
                             value={row.description}
                             onChange={(e) => updateRow(row.id, 'description', e.target.value)}
+                            inputProps={{
+                              'data-co-export': 'line',
+                              'data-co-line-id': row.id,
+                              'data-co-line-field': 'description',
+                            }}
                             InputProps={{
                               disableUnderline: true,
                               sx: {
@@ -660,7 +725,12 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                             value={row.quantity}
                             onChange={(e) => updateRow(row.id, 'quantity', e.target.value)}
                             InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
-                            inputProps={{ inputMode: 'numeric' }}
+                            inputProps={{
+                              inputMode: 'numeric',
+                              'data-co-export': 'line',
+                              'data-co-line-id': row.id,
+                              'data-co-line-field': 'quantity',
+                            }}
                             fullWidth
                           />
                         </Box>
@@ -680,7 +750,13 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                             value={row.total}
                             onChange={(e) => updateRow(row.id, 'total', e.target.value)}
                             InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
-                            inputProps={{ inputMode: 'decimal', 'data-co-total': '1' }}
+                            inputProps={{
+                              inputMode: 'decimal',
+                              'data-co-total': '1',
+                              'data-co-export': 'line',
+                              'data-co-line-id': row.id,
+                              'data-co-line-field': 'total',
+                            }}
                             fullWidth
                           />
                           {!isCoExportMode && (
@@ -723,6 +799,7 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                       variant="standard"
                       value={footerNote}
                       onChange={(e) => setFooterNote(e.target.value)}
+                      inputProps={{ 'data-co-export': 'footer-note' }}
                       InputProps={{
                         disableUnderline: true,
                         sx: {
