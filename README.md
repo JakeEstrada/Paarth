@@ -717,8 +717,6 @@ GOOGLE_REFRESH_TOKEN=your_refresh_token
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_PHONE_NUMBER=your_twilio_phone_number
-# Optional: fixed destination for the in-app Messages page (`/messages`); E.164 e.g. +15551234567
-TWILIO_MESSAGE_PAGE_TO=+15551234567
 
 # Plaid (Optional - financial tracking integration)
 PLAID_CLIENT_ID=your_plaid_client_id

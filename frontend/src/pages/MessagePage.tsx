@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Box,
@@ -15,50 +15,25 @@ import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import api from '../utils/axios';
 
-interface MessagePageConfigResponse {
-  configured: boolean;
-  toLastFour?: string;
-}
-
 function MessagePage() {
-  const [loadingConfig, setLoadingConfig] = useState(true);
-  const [configured, setConfigured] = useState(false);
-  const [toLastFour, setToLastFour] = useState<string | undefined>();
+  const [toDisplay, setToDisplay] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
 
-  const loadConfig = useCallback(async () => {
-    setLoadingConfig(true);
-    try {
-      const { data } = await api.get<MessagePageConfigResponse>('/twilio/message-page-config');
-      setConfigured(Boolean(data?.configured));
-      setToLastFour(data?.toLastFour);
-    } catch (error) {
-      console.error(error);
-      toast.error(isAxiosError(error) ? error.response?.data?.error || 'Failed to load SMS settings' : 'Failed to load SMS settings');
-      setConfigured(false);
-    } finally {
-      setLoadingConfig(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadConfig();
-  }, [loadConfig]);
-
   const handleSend = async () => {
     const message = body.trim();
+    const to = toDisplay.trim();
+    if (!to) {
+      toast.error('Enter a phone number');
+      return;
+    }
     if (!message) {
       toast.error('Enter a message');
       return;
     }
-    if (!configured) {
-      toast.error('Server is not configured for this page yet');
-      return;
-    }
     setSending(true);
     try {
-      await api.post('/twilio/send-sms-message-page', { message });
+      await api.post('/twilio/send-sms-adhoc', { to, message });
       toast.success('Message sent');
       setBody('');
     } catch (error) {
@@ -81,55 +56,49 @@ function MessagePage() {
         </Typography>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Send an SMS from your Twilio number to the destination configured on the server (
-        <code>TWILIO_MESSAGE_PAGE_TO</code>). The recipient cannot be changed from this screen.
+        Send a plain SMS from your Twilio number. Enter any mobile number and message — no customer or job
+        required. Use international format with a leading + if outside US/Canada.
       </Typography>
 
-      {loadingConfig ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <Card variant="outlined">
-          <CardContent>
-            {!configured ? (
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                Add <code>TWILIO_MESSAGE_PAGE_TO</code> to your backend environment (E.164, e.g.{' '}
-                <code>+15551234567</code>), redeploy, and refresh. Other Twilio variables must already be set.
-              </Alert>
-            ) : (
-              <Alert severity="info" sx={{ mb: 2 }}>
-                Sending to the configured number
-                {toLastFour ? ` (ends in ${toLastFour})` : ''}.
-              </Alert>
-            )}
-            <TextField
-              label="Message"
-              multiline
-              minRows={5}
-              fullWidth
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              disabled={!configured || sending}
-              inputProps={{ maxLength: 1500 }}
-              helperText={`${body.length} / 1500 characters`}
-            />
-            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-              <Button variant="outlined" onClick={() => void loadConfig()} disabled={sending}>
-                Refresh status
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={sending ? <CircularProgress size={18} color="inherit" /> : <SmsIcon />}
-                onClick={() => void handleSend()}
-                disabled={!configured || sending || !body.trim()}
-              >
-                Send SMS
-              </Button>
-            </Box>
-          </CardContent>
-        </Card>
-      )}
+      <Card variant="outlined">
+        <CardContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Same Twilio setup as elsewhere in the app. Type any number; use a leading + for countries outside
+            US/Canada (e.g. +44…).
+          </Alert>
+          <TextField
+            label="Phone number"
+            fullWidth
+            value={toDisplay}
+            onChange={(e) => setToDisplay(e.target.value)}
+            disabled={sending}
+            placeholder="(858) 999-5544 or +44 20 7946 0958"
+            sx={{ mb: 2 }}
+            autoComplete="tel"
+          />
+          <TextField
+            label="Message"
+            multiline
+            minRows={5}
+            fullWidth
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            disabled={sending}
+            inputProps={{ maxLength: 1500 }}
+            helperText={`${body.length} / 1500 characters`}
+          />
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              variant="contained"
+              startIcon={sending ? <CircularProgress size={18} color="inherit" /> : <SmsIcon />}
+              onClick={() => void handleSend()}
+              disabled={sending || !toDisplay.trim() || !body.trim()}
+            >
+              Send SMS
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
     </Container>
   );
 }

@@ -5,8 +5,7 @@ const {
   sendSms,
   scheduleSms,
   twilioMediaDownload,
-  messagePageConfig,
-  sendSmsToMessagePageDestination,
+  sendSmsAdhoc,
 } = require('../controllers/twilioController');
 const { requireAuth } = require('../middleware/auth');
 
@@ -18,7 +17,6 @@ router.post('/voice', inboundVoice);
 router.get('/media/:id', twilioMediaDownload);
 router.post('/send-sms', requireAuth, sendSms);
 router.post('/schedule-sms', requireAuth, scheduleSms);
-router.get('/message-page-config', requireAuth, messagePageConfig);
-router.post('/send-sms-message-page', requireAuth, sendSmsToMessagePageDestination);
+router.post('/send-sms-adhoc', requireAuth, sendSmsAdhoc);
 
 module.exports = router;
