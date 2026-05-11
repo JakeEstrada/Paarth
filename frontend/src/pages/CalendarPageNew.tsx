@@ -45,7 +45,7 @@ import {
   Share as ShareIcon,
 } from '@mui/icons-material';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, startOfWeek, endOfWeek, isSameDay, addDays } from 'date-fns';
-import axios from 'axios';
+import axios, { isAxiosError } from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { useTheme as useAppTheme } from '../context/ThemeContext';
@@ -511,19 +511,40 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
           color: formData.color,
         });
 
-        toast.success('Job scheduled successfully');
-
-        // Sync to Google Calendar (optional; do not block on failure)
+        // Job (including display color) is already saved. Google sync is optional.
         try {
           await axios.post(`${API_URL}/calendar/jobs/${formData.jobId}/sync`);
-        } catch (calendarError) {
-          const status = calendarError.response?.status;
-          const data = calendarError.response?.data;
-          const msg = (data && (data.error || data.message)) || calendarError.message;
-          if (status === 503 || (typeof msg === 'string' && (msg.includes('not configured') || msg.includes('sync failed')))) {
-            toast('Saved. Google Calendar sync skipped.', { icon: 'ℹ️' });
+          toast.success('Job saved and synced to Google Calendar.');
+        } catch (calendarError: unknown) {
+          if (!isAxiosError(calendarError)) {
+            toast.success('Job saved. Google Calendar sync could not be reached.');
           } else {
-            toast('Saved. Google Calendar sync failed.', { icon: 'ℹ️' });
+            const status = calendarError.response?.status;
+            const data = calendarError.response?.data as
+              | { code?: string; error?: string; message?: string }
+              | undefined;
+            const apiCode = data?.code;
+            const msg = String(data?.error || data?.message || calendarError.message || '');
+            const notConfigured =
+              apiCode === 'GOOGLE_NOT_CONFIGURED' ||
+              (status === 503 &&
+                (msg.includes('not configured') || msg.includes('Please configure Google Calendar')));
+            if (notConfigured) {
+              toast.success(
+                'Job saved in Paarth (schedule and color). Google Calendar is not set up on the server, so nothing was sent to Google.',
+                { duration: 7000 },
+              );
+            } else if (status === 503 || msg.toLowerCase().includes('sync failed')) {
+              toast.success(
+                'Job saved in Paarth (schedule and color). Google Calendar sync failed — your changes are still stored here.',
+                { duration: 6000 },
+              );
+            } else {
+              toast.success(
+                'Job saved in Paarth. Google Calendar sync failed — your changes are still stored here.',
+                { duration: 6000 },
+              );
+            }
           }
         }
       } // end if (formData.jobId)

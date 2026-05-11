@@ -50,9 +50,10 @@ async function syncJobToCalendar(req, res) {
 
     const calendarClient = getCalendarClient();
     if (!calendarClient) {
-      return res.status(503).json({ 
+      return res.status(503).json({
+        code: 'GOOGLE_NOT_CONFIGURED',
         error: 'Google Calendar not configured',
-        message: 'Please configure Google Calendar API credentials'
+        message: 'Please configure Google Calendar API credentials',
       });
     }
 
@@ -156,9 +157,10 @@ async function syncJobToCalendar(req, res) {
     }
     
     // Always return JSON 503 so the app can show a friendly message; job is already saved
-    return res.status(503).json({ 
+    return res.status(503).json({
+      code: 'GOOGLE_SYNC_ERROR',
       error: 'Google Calendar sync failed',
-      message: String(message)
+      message: String(message),
     });
   }
 }
@@ -206,9 +208,10 @@ async function createNewCalendarEvent(job, event, calendar, res) {
   } catch (error) {
     console.error('Error creating Google Calendar event:', error);
     const message = error.message || (error.response?.data && (error.response.data.message || error.response.data.error)) || 'Google Calendar sync failed';
-    return res.status(503).json({ 
+    return res.status(503).json({
+      code: 'GOOGLE_SYNC_ERROR',
       error: 'Google Calendar sync failed',
-      message: String(message)
+      message: String(message),
     });
   }
 }
@@ -229,7 +232,10 @@ async function deleteJobFromCalendar(req, res) {
 
     const calendarClient = getCalendarClient();
     if (!calendarClient) {
-      return res.status(503).json({ error: 'Google Calendar not configured' });
+      return res.status(503).json({
+        code: 'GOOGLE_NOT_CONFIGURED',
+        error: 'Google Calendar not configured',
+      });
     }
 
     const { calendar } = calendarClient;
