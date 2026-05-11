@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import {
   attachSessionExpiryGuards,
   isAuthFlowPagePath,
@@ -11,7 +11,7 @@ import { getConnectedSocketId } from '../services/socket';
  * Default axios is used across many pages. Attach auth + tenant on every request from
  * localStorage so calls never depend on stale axios.defaults (fixes 401 after login / refresh).
  */
-axios.interceptors.request.use((config) => {
+axios.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem('accessToken');
   if (token && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -33,8 +33,8 @@ axios.interceptors.request.use((config) => {
  * If a token expires mid-session, clear auth and return user to login.
  */
 axios.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response: AxiosResponse) => response,
+  (error: AxiosError) => {
     if (error?.response?.status === 401) {
       if (isAuthFlowPagePath() || isAuthLoginOrRegisterRequest(error.config)) {
         return Promise.reject(error);

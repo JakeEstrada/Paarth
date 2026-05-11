@@ -1,4 +1,3 @@
-// @ts-nocheck — large page; tighten types incrementally
 import { useState, useEffect } from 'react';
 import {
   Typography,
@@ -11,6 +10,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  type ChipProps,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import axios from 'axios';
@@ -19,53 +19,75 @@ import { format, subDays, addDays } from 'date-fns';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+/** Appointment shape returned by GET /appointments/completed (fields actually rendered below). */
+export interface AppointmentRecord {
+  _id: string;
+  title?: string;
+  status?: string;
+  date?: string | Date;
+  time?: string;
+  reason?: string;
+  completedAt?: string | Date;
+  createdAt?: string | Date;
+  customerId?: { name?: string };
+}
+
+interface WeekRangeMeta {
+  start: Date;
+  end: Date;
+  key: string;
+  label: string;
+}
+
+interface WeekBucket {
+  weekStart: Date;
+  weekEnd: Date;
+  weekLabel: string;
+  year: number;
+  appointments: AppointmentRecord[];
+}
+
 // Helper function to get week range (Friday - Thursday)
-// Week ends on Thursday, so we adjust the start of week
-const getWeekRange = (date) => {
+const getWeekRange = (date: string | Date): WeekRangeMeta => {
   const dateObj = new Date(date);
-  const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 1 = Monday, ..., 4 = Thursday, 5 = Friday, 6 = Saturday
-  
-  // Calculate days to subtract to get to Friday
-  // If it's Friday (5), subtract 0 days
-  // If it's Saturday (6), subtract 1 day
-  // If it's Sunday (0), subtract 2 days
-  // If it's Monday (1), subtract 3 days
-  // If it's Tuesday (2), subtract 4 days
-  // If it's Wednesday (3), subtract 5 days
-  // If it's Thursday (4), subtract 6 days
-  let daysToSubtract;
-  if (dayOfWeek === 5) daysToSubtract = 0; // Friday
-  else if (dayOfWeek === 6) daysToSubtract = 1; // Saturday
-  else if (dayOfWeek === 0) daysToSubtract = 2; // Sunday
-  else if (dayOfWeek === 1) daysToSubtract = 3; // Monday
-  else if (dayOfWeek === 2) daysToSubtract = 4; // Tuesday
-  else if (dayOfWeek === 3) daysToSubtract = 5; // Wednesday
-  else daysToSubtract = 6; // Thursday
-  
+  const dayOfWeek = dateObj.getDay();
+
+  let daysToSubtract: number;
+  if (dayOfWeek === 5) daysToSubtract = 0;
+  else if (dayOfWeek === 6) daysToSubtract = 1;
+  else if (dayOfWeek === 0) daysToSubtract = 2;
+  else if (dayOfWeek === 1) daysToSubtract = 3;
+  else if (dayOfWeek === 2) daysToSubtract = 4;
+  else if (dayOfWeek === 3) daysToSubtract = 5;
+  else daysToSubtract = 6;
+
   const weekStart = subDays(dateObj, daysToSubtract);
-  const weekEnd = addDays(weekStart, 6); // Thursday (6 days after Friday)
-  
+  const weekEnd = addDays(weekStart, 6);
+
   return {
     start: weekStart,
     end: weekEnd,
     key: `${format(weekStart, 'yyyy-MM-dd')}_${format(weekEnd, 'yyyy-MM-dd')}`,
-    label: `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`
+    label: `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`,
   };
 };
 
 function CompletedAppointmentsPage() {
-  const [appointments, setAppointments] = useState([]);
+  const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchCompletedAppointments();
+    void fetchCompletedAppointments();
   }, []);
 
-  const fetchCompletedAppointments = async () => {
+  const fetchCompletedAppointments = async (): Promise<void> => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/appointments/completed`);
-      const appointmentsData = response.data.appointments || response.data;
+      const response = await axios.get<{ appointments?: AppointmentRecord[] } | AppointmentRecord[]>(
+        `${API_URL}/appointments/completed`,
+      );
+      const raw = response.data;
+      const appointmentsData = Array.isArray(raw) ? raw : raw.appointments ?? [];
       setAppointments(appointmentsData);
     } catch (error) {
       console.error('Error fetching completed appointments:', error);
@@ -75,42 +97,41 @@ function CompletedAppointmentsPage() {
     }
   };
 
-  const formatDate = (date) => {
+  const formatDate = (date: string | Date | undefined): string => {
     if (!date) return 'Not set';
     return format(new Date(date), 'MMM dd, yyyy');
   };
 
-  const formatDateTime = (date) => {
+  const formatDateTime = (date: string | Date | undefined): string => {
     if (!date) return 'Not set';
     return format(new Date(date), 'MMM dd, yyyy h:mm a');
   };
 
-  // Organize by week (Friday - Thursday)
-  const organized = {};
+  const organized: Record<string, WeekBucket> = {};
   appointments.forEach((appointment) => {
     const date = appointment.completedAt || appointment.date || appointment.createdAt;
     if (!date) return;
-    
+
     const weekRange = getWeekRange(date);
-    
+
     if (!organized[weekRange.key]) {
       organized[weekRange.key] = {
         weekStart: weekRange.start,
         weekEnd: weekRange.end,
         weekLabel: weekRange.label,
         year: weekRange.start.getFullYear(),
-        appointments: []
+        appointments: [],
       };
     }
-    
+
     organized[weekRange.key].appointments.push(appointment);
   });
 
-  const organizedArray = Object.values(organized).sort((a, b) => {
-    return b.weekStart - a.weekStart; // Most recent weeks first
-  });
+  const organizedArray = Object.values(organized).sort(
+    (a, b) => b.weekStart.getTime() - a.weekStart.getTime(),
+  );
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: string | undefined): NonNullable<ChipProps['color']> => {
     switch (status) {
       case 'completed':
         return 'success';
@@ -123,7 +144,7 @@ function CompletedAppointmentsPage() {
     }
   };
 
-  const getStatusLabel = (status) => {
+  const getStatusLabel = (status: string | undefined): string => {
     switch (status) {
       case 'completed':
         return 'Completed';
@@ -132,15 +153,13 @@ function CompletedAppointmentsPage() {
       case 'no_show':
         return 'No Show';
       default:
-        return status;
+        return status ?? 'Unknown';
     }
   };
 
   return (
     <Box>
-      {/* Main Content */}
       <Container maxWidth="xl" sx={{ py: 4 }}>
-        {/* Page Header */}
         <Box sx={{ mb: 4 }}>
           <Typography variant="h1" sx={{ mb: 1 }}>
             Completed Appointments
@@ -183,7 +202,15 @@ function CompletedAppointmentsPage() {
                     '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.02)' },
                   }}
                 >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', pr: 2 }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      width: '100%',
+                      pr: 2,
+                    }}
+                  >
                     <Box>
                       <Typography variant="h6" sx={{ fontWeight: 600 }}>
                         Week of {group.weekLabel}
@@ -202,9 +229,11 @@ function CompletedAppointmentsPage() {
                         sx={{
                           p: 2,
                           borderLeft: `4px solid ${
-                            appointment.status === 'completed' ? '#43A047' :
-                            appointment.status === 'cancelled' ? '#F57C00' :
-                            '#D32F2F'
+                            appointment.status === 'completed'
+                              ? '#43A047'
+                              : appointment.status === 'cancelled'
+                                ? '#F57C00'
+                                : '#D32F2F'
                           }`,
                         }}
                       >
@@ -255,4 +284,3 @@ function CompletedAppointmentsPage() {
 }
 
 export default CompletedAppointmentsPage;
-

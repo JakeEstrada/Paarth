@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { Box, useTheme } from '@mui/material';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
@@ -32,7 +33,7 @@ import PictureViewerPage from './pages/PictureViewerPage';
 import FinanceHubPage from './pages/FinanceHubPage';
 import TakeoffSheetPage from './pages/TakeoffSheetPage';
 
-function App() {
+function App(): JSX.Element | null {
   const { user, loading } = useAuth();
   const theme = useTheme();
 

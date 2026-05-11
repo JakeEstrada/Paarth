@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { type JSX } from 'react';
 import ReactDOM from 'react-dom/client';
 import './utils/configureAxios';
 import { ThemeProvider as MUIThemeProvider } from '@mui/material/styles';
@@ -19,7 +19,7 @@ const queryClient = new QueryClient({
   },
 });
 
-function AppWithTheme() {
+function AppWithTheme(): JSX.Element {
   const { theme } = useTheme();
   
   return (
@@ -41,7 +41,12 @@ function AppWithTheme() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+const rootEl = document.getElementById('root');
+if (!rootEl) {
+  throw new Error('Missing root element #root');
+}
+
+ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>

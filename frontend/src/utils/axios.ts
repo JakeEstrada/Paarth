@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import {
   isAuthFlowPagePath,
   isAuthLoginOrRegisterRequest,
@@ -14,7 +14,7 @@ const api = axios.create({
 
 // Add token to requests automatically
 api.interceptors.request.use(
-  (config) => {
+  (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('accessToken');
     const tenantId = localStorage.getItem('tenantId');
     if (token) {
@@ -29,15 +29,15 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
+  (error: AxiosError) => {
     return Promise.reject(error);
   }
 );
 
 // Same session-expiry behavior as default axios (configureAxios.js)
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response: AxiosResponse) => response,
+  (error: AxiosError) => {
     if (error.response?.status === 401) {
       if (!isAuthFlowPagePath() && !isAuthLoginOrRegisterRequest(error.config)) {
         redirectToLoginDueToSessionExpiry();
