@@ -197,46 +197,17 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
         scale: 2,
         useCORS: true,
         onclone: (_clonedDoc, cloned) => {
-          /**
-           * html2canvas builds a clone where controlled inputs often have empty `.value`.
-           * The real DOM under `changeOrderCanvasRef` still has the values React wrote — read from there
-           * and paint into the clone by matching fields in identical section order.
-           */
-          const liveRoot = changeOrderCanvasRef.current;
-          if (!liveRoot) return;
-
-          const formValue = (el: Element) =>
-            el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? String(el.value ?? '') : '';
-
-          const visibleFormControls = (section: Element) =>
-            [...section.querySelectorAll('input, textarea')].filter(
-              (n) =>
-                n instanceof HTMLTextAreaElement ||
-                (n instanceof HTMLInputElement && n.type !== 'hidden'),
-            );
-
-          const pairSections = (
-            selector: string,
-            onPair: (cloneField: Element, text: string) => void,
-          ) => {
-            const liveSection = liveRoot.querySelector(selector);
-            const cloneSection = cloned.querySelector(selector);
-            if (!(liveSection instanceof HTMLElement) || !(cloneSection instanceof HTMLElement)) return;
-            const liveList = visibleFormControls(liveSection);
-            const cloneList = visibleFormControls(cloneSection);
-            const n = Math.min(liveList.length, cloneList.length);
-            for (let i = 0; i < n; i += 1) {
-              onPair(cloneList[i], formValue(liveList[i]));
-            }
-          };
-
           /** MUI inputs + native date fields often clip descenders when rasterized; plain divs print cleanly. */
           const replaceInputWithDiv = (
             field: Element,
-            opts: { rightAlign?: boolean; minHeight?: string; fontSize?: string; lineHeight?: string } = {},
-            displayText: string,
+            opts: { rightAlign?: boolean; minHeight?: string; fontSize?: string; lineHeight?: string } = {}
           ) => {
             const { rightAlign = false, minHeight = '42px', fontSize = '12.5px', lineHeight = '1.5' } = opts;
+            const inputValue =
+              field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement ? field.value ?? '' : '';
+            const placeholderValue = field instanceof HTMLInputElement ? field.placeholder ?? '' : '';
+            const displayText = String(inputValue || placeholderValue || '');
+
             const div = _clonedDoc.createElement('div');
             div.textContent = displayText;
             Object.assign(div.style, {
@@ -259,32 +230,43 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
             if (root) root.replaceChildren(div);
           };
 
-          pairSections('[data-co-header-meta]', (cloneInp, text) => {
-            const right = !!cloneInp.closest('[data-co-co-number-cell]');
-            const display = right && !String(text).trim() ? '—' : text;
-            replaceInputWithDiv(cloneInp, { rightAlign: right, fontSize: '13px', minHeight: '46px' }, display);
-          });
+          const header = cloned.querySelector('[data-co-header-meta]');
+          if (header) {
+            header.querySelectorAll('input, textarea').forEach((inp) => {
+              const right = !!inp.closest('[data-co-co-number-cell]');
+              replaceInputWithDiv(inp, { rightAlign: right, fontSize: '13px', minHeight: '46px' });
+            });
+          }
 
-          pairSections('[data-co-name-address]', (cloneInp, text) => {
-            replaceInputWithDiv(cloneInp, { fontSize: '13px', minHeight: '40px' }, text);
-          });
+          const nameBox = cloned.querySelector('[data-co-name-address]');
+          if (nameBox) {
+            nameBox.querySelectorAll('input, textarea').forEach((inp) => {
+              replaceInputWithDiv(inp, { fontSize: '13px', minHeight: '40px' });
+            });
+          }
 
-          pairSections('[data-co-footer]', (cloneInp, text) => {
-            replaceInputWithDiv(cloneInp, { fontSize: '12px', minHeight: '44px', lineHeight: '1.55' }, text);
-          });
-          const initials = cloned.querySelector('[data-co-footer] [data-co-initials-line]');
-          if (initials instanceof HTMLElement) {
-            initials.style.paddingTop = '6px';
-            initials.style.paddingBottom = '14px';
-            initials.style.lineHeight = '1.65';
-            initials.style.fontSize = '12px';
+          const footer = cloned.querySelector('[data-co-footer]');
+          if (footer) {
+            footer.querySelectorAll('input, textarea').forEach((inp) => {
+              replaceInputWithDiv(inp, { fontSize: '12px', minHeight: '44px', lineHeight: '1.55' });
+            });
+            const initials = footer.querySelector('[data-co-initials-line]');
+            if (initials instanceof HTMLElement) {
+              initials.style.paddingTop = '6px';
+              initials.style.paddingBottom = '14px';
+              initials.style.lineHeight = '1.65';
+              initials.style.fontSize = '12px';
+            }
           }
 
           const table = cloned.querySelector('[data-co-line-table]');
           if (!table) return;
-          const replaceWithWrappedText = (field: Element, displayText: string) => {
+
+          const replaceWithWrappedText = (field: Element) => {
+            const fieldValue =
+              field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement ? field.value ?? '' : '';
             const div = _clonedDoc.createElement('div');
-            div.textContent = displayText;
+            div.textContent = String(fieldValue || '');
             const isTotal =
               field instanceof HTMLInputElement && field.dataset && field.dataset.coTotal === '1';
             Object.assign(div.style, {
@@ -306,8 +288,12 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
               root.replaceChildren(div);
             }
           };
-          pairSections('[data-co-line-table]', (cloneField, text) => {
-            replaceWithWrappedText(cloneField, text);
+
+          table.querySelectorAll('textarea').forEach(replaceWithWrappedText);
+          table.querySelectorAll('input').forEach((inp) => {
+            const input = inp as HTMLInputElement;
+            if (input.type === 'hidden' || input.type === 'date') return;
+            replaceWithWrappedText(inp);
           });
         },
       });
