@@ -1460,7 +1460,10 @@ function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob }) {
   );
 }
 
-/** Jobs off the active pipeline should not appear as scheduled on the calendar. */
+/**
+ * Bench + “Scheduled” sidebar + job pickers: hide closed/archived/dead jobs.
+ * Calendar grid uses `jobEligibleForCalendarGrid` instead so closed jobs stay visible for reference.
+ */
 function shouldExcludeJobFromCalendarSchedule(job) {
   if (!job || job.isArchived || job.isDeadEstimate) return true;
   if (job.stage === 'FINAL_PAYMENT_CLOSED') return true;
@@ -1472,6 +1475,12 @@ function hasCalendarSchedule(job) {
   const entries = job?.schedule?.entries;
   if (Array.isArray(entries) && entries.some((e) => e?.startDate)) return true;
   return !!job?.schedule?.startDate;
+}
+
+/** Show on calendar month grid (includes closed-out jobs that still have install dates). */
+function jobEligibleForCalendarGrid(job) {
+  if (!job || job.isArchived || job.isDeadEstimate) return false;
+  return hasCalendarSchedule(job) || job.stage === 'SCHEDULED';
 }
 
 function splitCalendarJobs(allJobs = []) {
@@ -1500,8 +1509,10 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [benchJobs, setBenchJobs] = useState([]);
   const [scheduledJobs, setScheduledJobs] = useState([]);
+  const [allJobs, setAllJobs] = useState([]);
   const benchJobsRef = useRef([]);
   const scheduledJobsRef = useRef([]);
+  const allJobsRef = useRef([]);
   const [selectedInstaller, setSelectedInstaller] = useState('');
   const [loading, setLoading] = useState(true);
   const [eventModalOpen, setEventModalOpen] = useState(false);
@@ -1580,21 +1591,26 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
     scheduledJobsRef.current = scheduledJobs;
   }, [scheduledJobs]);
 
+  useEffect(() => {
+    allJobsRef.current = allJobs;
+  }, [allJobs]);
+
   const fetchJobs = useCallback(async ({ background = false } = {}) => {
     try {
       if (!background) {
         setLoading(true);
       }
       const response = await axios.get(`${API_URL}/jobs`);
-      const allJobs = response.data.jobs || response.data || [];
-      const { bench, scheduled } = splitCalendarJobs(allJobs);
-      
+      const jobs = response.data.jobs || response.data || [];
+      setAllJobs(jobs);
+      const { bench, scheduled } = splitCalendarJobs(jobs);
+
       setBenchJobs(bench);
       setScheduledJobs(scheduled);
 
       // Update installer order based on any installers used in jobs
       const installerSet = new Set(installerBaseOrder);
-      [...bench, ...scheduled].forEach(job => {
+      jobs.forEach((job) => {
         const entries = Array.isArray(job?.schedule?.entries) ? job.schedule.entries : [];
         const installers = entries.length > 0
           ? entries.map((e) => e?.installer).filter(Boolean)
@@ -1679,8 +1695,9 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
       next[idx] = { ...next[idx], ...incoming };
       return next;
     };
-    const merged = [...applyPatch(benchJobsRef.current), ...applyPatch(scheduledJobsRef.current)];
-    const deduped = Array.from(new Map(merged.map((j) => [String(j._id), j])).values());
+    const merged = applyPatch(allJobsRef.current);
+    const deduped = Array.from(new Map(merged.map((j) => [String(j?._id), j])).values()).filter(Boolean);
+    setAllJobs(deduped);
     const { bench, scheduled } = splitCalendarJobs(deduped);
     setBenchJobs(bench);
     setScheduledJobs(scheduled);
@@ -1735,7 +1752,8 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
   // Render one calendar chip per schedule entry (installer + start/end date range).
   // Legacy support: if `schedule.entries` is missing, we fall back to the old single-range + `schedule.installers` model.
   const calendarEvents = useMemo(() => {
-    return (scheduledJobs || []).flatMap((job) => {
+    const gridJobs = (allJobs || []).filter(jobEligibleForCalendarGrid);
+    return gridJobs.flatMap((job) => {
       const schedule = job?.schedule || {};
       const entries = Array.isArray(schedule?.entries) ? schedule.entries : [];
 
@@ -1781,7 +1799,7 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
           },
         }));
     });
-  }, [scheduledJobs]);
+  }, [allJobs]);
 
   const handleDayClick = (date) => {
     if (!canModifyCalendarWithPin()) {
