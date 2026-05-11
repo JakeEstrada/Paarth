@@ -195,6 +195,60 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
         scale: 2,
         useCORS: true,
         onclone: (_clonedDoc, cloned) => {
+          /** MUI inputs + native date fields often clip descenders when rasterized; plain divs print cleanly. */
+          const replaceInputWithDiv = (field, opts = {}) => {
+            const { rightAlign = false, minHeight = '42px', fontSize = '12.5px', lineHeight = '1.5' } = opts;
+            const div = _clonedDoc.createElement('div');
+            div.textContent = field.value ?? '';
+            Object.assign(div.style, {
+              width: '100%',
+              boxSizing: 'border-box',
+              fontSize,
+              lineHeight,
+              fontFamily: 'Arial, Helvetica, sans-serif',
+              color: '#000',
+              minHeight,
+              padding: '10px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+              ...(rightAlign ? { justifyContent: 'flex-end', textAlign: 'right' } : {}),
+            });
+            const root = field.closest('.MuiInputBase-root');
+            if (root) root.replaceChildren(div);
+          };
+
+          const header = cloned.querySelector('[data-co-header-meta]');
+          if (header) {
+            header.querySelectorAll('input, textarea').forEach((inp) => {
+              const right = !!inp.closest('[data-co-co-number-cell]');
+              replaceInputWithDiv(inp, { rightAlign: right, fontSize: '13px', minHeight: '46px' });
+            });
+          }
+
+          const nameBox = cloned.querySelector('[data-co-name-address]');
+          if (nameBox) {
+            nameBox.querySelectorAll('input, textarea').forEach((inp) => {
+              replaceInputWithDiv(inp, { fontSize: '13px', minHeight: '40px' });
+            });
+          }
+
+          const footer = cloned.querySelector('[data-co-footer]');
+          if (footer) {
+            footer.querySelectorAll('input, textarea').forEach((inp) => {
+              replaceInputWithDiv(inp, { fontSize: '12px', minHeight: '44px', lineHeight: '1.55' });
+            });
+            const initials = footer.querySelector('[data-co-initials-line]');
+            if (initials instanceof HTMLElement) {
+              initials.style.paddingTop = '6px';
+              initials.style.paddingBottom = '14px';
+              initials.style.lineHeight = '1.65';
+              initials.style.fontSize = '12px';
+            }
+          }
+
           const table = cloned.querySelector('[data-co-line-table]');
           if (!table) return;
           const replaceWithWrappedText = (field) => {
@@ -205,12 +259,14 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
               width: '100%',
               boxSizing: 'border-box',
               fontSize: '12.5px',
-              lineHeight: '1.35',
+              lineHeight: '1.45',
               fontFamily: 'Arial, Helvetica, sans-serif',
               color: '#000',
               whiteSpace: 'pre-wrap',
               overflowWrap: 'anywhere',
               wordBreak: 'break-word',
+              padding: '6px 4px',
+              minHeight: '28px',
               ...(isTotal ? { textAlign: 'right' } : {}),
             });
             const root = field.closest('.MuiInputBase-root');
@@ -341,11 +397,13 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                   bgcolor: '#fff',
                   color: '#000',
                   p: 5,
+                  pb: 7,
                   border: '1px solid #d9d9d9',
                   fontFamily: 'Arial, Helvetica, sans-serif',
                   display: 'flex',
                   flexDirection: 'column',
                   boxSizing: 'border-box',
+                  overflow: 'visible',
                   '& .MuiTypography-root': { color: '#000' },
                   '& .MuiInputBase-root': { color: '#000' },
                   '& .MuiInputBase-input': {
@@ -387,32 +445,78 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
 
                     <Box sx={{ textAlign: 'right' }}>
                       <Typography sx={{ fontWeight: 700, fontSize: 22, mb: 1 }}>Change Order</Typography>
-                      <Box sx={{ width: 252, border: '1px solid #000' }}>
+                      <Box sx={{ width: 252, border: '1px solid #000' }} data-co-header-meta>
                         <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12 }}>
                           <Box sx={{ width: '56%', p: 1, borderRight: '1px solid #fff' }}>Date</Box>
                           <Box sx={{ width: '44%', p: 1 }}>Change Order #</Box>
                         </Box>
-                        <Box sx={{ display: 'flex' }}>
-                          <TextField
-                            variant="standard"
-                            type="date"
-                            value={coDate}
-                            onChange={(e) => setCoDate(e.target.value)}
-                            InputProps={{ disableUnderline: true, sx: { fontSize: 12, px: 1, py: 0.8 } }}
-                            sx={{ width: '56%', borderRight: '1px solid #000' }}
-                          />
-                          <TextField
-                            variant="standard"
-                            value={assignedCoNumber}
-                            placeholder="—"
-                            InputProps={{
-                              disableUnderline: true,
-                              readOnly: true,
-                              sx: { fontSize: 12, px: 1, py: 0.8, textAlign: 'right' },
+                        <Box sx={{ display: 'flex', alignItems: 'stretch', minHeight: 50 }}>
+                          <Box
+                            data-co-date-cell
+                            sx={{
+                              width: '56%',
+                              borderRight: '1px solid #000',
+                              display: 'flex',
+                              alignItems: 'stretch',
+                              overflow: 'visible',
                             }}
-                            inputProps={{ style: { textAlign: 'right' } }}
-                            sx={{ width: '44%' }}
-                          />
+                          >
+                            <TextField
+                              variant="standard"
+                              type="date"
+                              value={coDate}
+                              onChange={(e) => setCoDate(e.target.value)}
+                              InputProps={{
+                                disableUnderline: true,
+                                sx: {
+                                  fontSize: 13,
+                                  px: 1.25,
+                                  py: 1.25,
+                                  minHeight: 48,
+                                  overflow: 'visible',
+                                  alignItems: 'center',
+                                  '& input': { lineHeight: 1.45, padding: '6px 0', overflow: 'visible' },
+                                },
+                              }}
+                              sx={{ flex: 1, overflow: 'visible' }}
+                            />
+                          </Box>
+                          <Box
+                            data-co-co-number-cell
+                            sx={{
+                              width: '44%',
+                              display: 'flex',
+                              alignItems: 'stretch',
+                              overflow: 'visible',
+                            }}
+                          >
+                            <TextField
+                              variant="standard"
+                              value={assignedCoNumber}
+                              placeholder="—"
+                              InputProps={{
+                                disableUnderline: true,
+                                readOnly: true,
+                                sx: {
+                                  fontSize: 13,
+                                  px: 1.25,
+                                  py: 1.25,
+                                  minHeight: 48,
+                                  overflow: 'visible',
+                                  alignItems: 'center',
+                                  textAlign: 'right',
+                                  '& input': {
+                                    lineHeight: 1.45,
+                                    padding: '6px 0',
+                                    overflow: 'visible',
+                                    textAlign: 'right',
+                                  },
+                                },
+                              }}
+                              inputProps={{ style: { textAlign: 'right' } }}
+                              sx={{ flex: 1, overflow: 'visible' }}
+                            />
+                          </Box>
                         </Box>
                       </Box>
                     </Box>
@@ -422,13 +526,16 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                     <Box sx={{ bgcolor: '#000', color: '#fff', p: 1, fontWeight: 700, fontSize: 12 }}>
                       Name / Address
                     </Box>
-                    <Box sx={{ p: 1 }}>
+                    <Box data-co-name-address sx={{ p: 1.25 }}>
                       <TextField
                         variant="standard"
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
                         placeholder="Customer name"
-                        InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                        InputProps={{
+                          disableUnderline: true,
+                          sx: { fontSize: 13, py: 0.35, '& input': { lineHeight: 1.45, padding: '6px 0' } },
+                        }}
                         fullWidth
                       />
                       <TextField
@@ -436,7 +543,10 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                         value={customerAddress.street}
                         onChange={(e) => setAddressField('street', e.target.value)}
                         placeholder="Street address"
-                        InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                        InputProps={{
+                          disableUnderline: true,
+                          sx: { fontSize: 13, py: 0.35, '& input': { lineHeight: 1.45, padding: '6px 0' } },
+                        }}
                         fullWidth
                       />
                       <Box sx={{ display: 'flex', gap: 1 }}>
@@ -445,7 +555,10 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                           value={customerAddress.city}
                           onChange={(e) => setAddressField('city', e.target.value)}
                           placeholder="City, State ZIP"
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                          InputProps={{
+                            disableUnderline: true,
+                            sx: { fontSize: 13, py: 0.35, '& input': { lineHeight: 1.45, padding: '6px 0' } },
+                          }}
                           sx={{ flex: 1 }}
                         />
                       </Box>
@@ -600,15 +713,30 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                     </Box>
                   </Box>
 
-                  <Box sx={{ mt: 1 }}>
+                  <Box data-co-footer sx={{ mt: 1.5, pt: 0.5, pb: 1, overflow: 'visible' }}>
                     <TextField
                       variant="standard"
                       value={footerNote}
                       onChange={(e) => setFooterNote(e.target.value)}
-                      InputProps={{ disableUnderline: true, sx: { fontSize: 12 } }}
+                      InputProps={{
+                        disableUnderline: true,
+                        sx: {
+                          fontSize: 12,
+                          py: 0.75,
+                          alignItems: 'flex-start',
+                          overflow: 'visible',
+                          '& input': { lineHeight: 1.55, padding: '8px 0', overflow: 'visible' },
+                        },
+                      }}
                       fullWidth
                     />
-                    <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
+                    <Typography
+                      data-co-initials-line
+                      component="div"
+                      sx={{ fontSize: 12, mt: 1.25, lineHeight: 1.65, pb: 1.5, overflow: 'visible' }}
+                    >
+                      Initials ____
+                    </Typography>
                   </Box>
                 </Box>
               </Box>
