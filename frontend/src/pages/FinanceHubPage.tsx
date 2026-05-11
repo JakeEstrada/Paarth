@@ -1,0 +1,2548 @@
+// @ts-nocheck — large page; tighten types incrementally
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
+import {
+  Autocomplete,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Container,
+  Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
+  IconButton,
+  Radio,
+  RadioGroup,
+  Link,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+} from '@mui/material';
+import { createFilterOptions } from '@mui/material/Autocomplete';
+import {
+  Add as AddIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
+  Delete as DeleteIcon,
+  PictureAsPdf as PictureAsPdfIcon,
+  Print as PrintIcon,
+  ReceiptLong as ReceiptLongIcon,
+} from '@mui/icons-material';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
+import axios from 'axios';
+import toast from 'react-hot-toast';
+import RegisterLedgerSection from '../components/finance/RegisterLedgerSection';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const ESTIMATE_DESC_HINTS_KEY = 'financeHubEstimateDescriptionHints';
+const ESTIMATE_DESC_HINTS_MAX = 250;
+
+const filterEstimateDescriptionOptions = createFilterOptions({
+  limit: 80,
+  stringify: (option) => option,
+});
+
+function readEstimateDescriptionHints() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(ESTIMATE_DESC_HINTS_KEY);
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string' && x.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Remember descriptions from saved estimates for autocomplete on this browser. */
+function mergeEstimateDescriptionHints(newDescriptions) {
+  if (typeof window === 'undefined') return;
+  const incoming = newDescriptions.map((d) => String(d || '').trim()).filter(Boolean);
+  if (incoming.length === 0) return;
+  const prev = readEstimateDescriptionHints();
+  const seen = new Set();
+  const merged = [];
+  for (const s of [...incoming, ...prev]) {
+    if (seen.has(s)) continue;
+    seen.add(s);
+    merged.push(s);
+    if (merged.length >= ESTIMATE_DESC_HINTS_MAX) break;
+  }
+  window.localStorage.setItem(ESTIMATE_DESC_HINTS_KEY, JSON.stringify(merged));
+}
+
+function collectDescriptionsFromEstimateSnapshot(est) {
+  if (!est?.lineItems || !Array.isArray(est.lineItems)) return [];
+  return est.lineItems
+    .map((li) => String(li.description || '').trim())
+    .filter(Boolean);
+}
+
+const COMPANY_PHONE = '(951)491-1137';
+const COMPANY_EMAIL = 'office@sanclementewoodworking.com';
+const COMPANY_WEBSITE = 'www.sanclementewoodworking.com';
+
+/** Two-draw schedule from estimate: deposit 40%, final 60%. */
+const INVOICE_DEPOSIT_FRACTION = 0.4;
+const INVOICE_FINAL_FRACTION = 0.6;
+
+const INVOICE_PERMITS_ACK_LINE =
+  'Any city permits or engineer fees are either not included or are provided by the customer';
+
+function roundMoneyClient(value) {
+  const x = Number(value);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round((x + Number.EPSILON) * 100) / 100;
+}
+
+const TAB_DEFS = [
+  {
+    key: 'register',
+    label: 'Register (Balance Sheet)',
+    subtitle: 'Track cash movement, balances, and account-level snapshots.',
+  },
+  {
+    key: 'estimates',
+    label: 'Estimates',
+    subtitle: 'Create and review estimate documents before contract execution.',
+  },
+  {
+    key: 'contracts',
+    label: 'Contracts',
+    subtitle: 'Manage signed agreements and contract status history.',
+  },
+  {
+    key: 'invoices',
+    label: 'Invoices',
+    subtitle: 'View billing activity and outstanding customer invoices.',
+  },
+  {
+    key: 'change-orders',
+    label: 'Change Orders',
+    subtitle: 'Track project scope changes and associated financial impact.',
+  },
+  {
+    key: 'payment-schedules',
+    label: 'Payment Schedules',
+    subtitle: 'Manage planned payment milestones and due timelines.',
+  },
+];
+
+const TAB_GROUPS = [
+  {
+    title: 'Core workflow',
+    tabs: ['register', 'estimates', 'contracts', 'invoices'],
+  },
+  {
+    title: 'Operations',
+    tabs: ['change-orders', 'payment-schedules'],
+  },
+];
+
+/** Legacy browser snapshot key kept for one-time cleanup migration. */
+const LOCAL_EST_SNAPSHOT_STACK_KEY = 'financeHubSavedEstimateSnapshots';
+
+function cloneEstimateForm(f) {
+  return JSON.parse(JSON.stringify(f));
+}
+
+/** Shown after colon in job picker: `Customer: Project · Stage` */
+const ESTIMATE_STAGE_LABELS = {
+  APPOINTMENT_SCHEDULED: 'Appointment',
+  ESTIMATE_IN_PROGRESS: 'Estimate current',
+  ESTIMATE_SENT: 'Estimate sent',
+  ENGAGED_DESIGN_REVIEW: 'Design review',
+  CONTRACT_OUT: 'Contract out',
+  CONTRACT_SIGNED: 'Contract signed',
+  DEPOSIT_PENDING: 'Deposit pending',
+  JOB_PREP: 'Job prep',
+  TAKEOFF_COMPLETE: 'Fabrication',
+  READY_TO_SCHEDULE: 'Ready to schedule',
+  SCHEDULED: 'Scheduled',
+  IN_PRODUCTION: 'In production',
+  INSTALLED: 'Installed',
+  FINAL_PAYMENT_CLOSED: 'Final payment closed',
+};
+
+/** Sentinel: save estimate as a new pipeline card even when other jobs exist. */
+const ESTIMATE_NEW_JOB_ID = '__estimate_new_job__';
+const ESTIMATE_NEW_JOB_OPTION = { _id: ESTIMATE_NEW_JOB_ID, __isNewJobOption: true };
+
+/** Text after first "|" in job title (e.g. site line); otherwise full title. */
+function jobTitleAfterPipe(rawTitle) {
+  const t = String(rawTitle || '').trim();
+  if (!t) return 'Untitled';
+  const i = t.indexOf('|');
+  if (i >= 0) {
+    const tail = t.slice(i + 1).trim();
+    return tail || t;
+  }
+  return t;
+}
+
+/**
+ * Picker line: Customer: <after | in title> | <description> · <stage> · ID <last 8 of _id>
+ * Trailing ID disambiguates duplicate titles/descriptions (worst case).
+ */
+function formatEstimateJobPickLabel(customerName, job) {
+  if (job?.__isNewJobOption) {
+    return `${(customerName || 'Customer').trim()}: (New job — separate pipeline card)`;
+  }
+  const cn = (customerName || 'Customer').trim();
+  const siteOrProject = jobTitleAfterPipe(job?.title);
+  const desc = String(job?.description || '').trim();
+  const stageLabel = ESTIMATE_STAGE_LABELS[job?.stage] || job?.stage || '';
+  const core = desc ? `${siteOrProject} | ${desc}` : siteOrProject;
+  const stagePart = stageLabel ? ` · ${stageLabel}` : '';
+  const idRaw = job?._id != null ? String(job._id) : '';
+  const idSuffix =
+    idRaw.length >= 8 ? ` · ID ${idRaw.slice(-8)}` : idRaw.length >= 1 ? ` · ID ${idRaw}` : '';
+  return `${cn}: ${core}${stagePart}${idSuffix}`;
+}
+
+const DEFAULT_LINE_ITEMS = () => [
+  { itemName: 'Staircase', description: '', quantity: 1, total: '' },
+  { itemName: 'Wall Rail', description: '', quantity: 1, total: '' },
+  { itemName: 'Additional', description: '', quantity: 1, total: '' },
+];
+
+function hasMeaningfulJobSiteAddress(addr) {
+  if (!addr || typeof addr !== 'object') return false;
+  return !!(String(addr.street || '').trim() || String(addr.city || '').trim());
+}
+
+function mapEstimateDocToLegacySnapshots(estimateDoc) {
+  if (!estimateDoc) return { history: [], current: null };
+  return {
+    history: [],
+    current: {
+    number: estimateDoc.estimateNumber || '',
+    amount: Number(estimateDoc?.grandTotal || 0),
+    sentAt: estimateDoc?.sentAt || null,
+    estimateDate: estimateDoc?.estimateDate ? new Date(estimateDoc.estimateDate).toISOString().slice(0, 10) : '',
+    projectName: estimateDoc?.projectName || '',
+    footerNote: estimateDoc?.footerNote || '',
+    lineItems: Array.isArray(estimateDoc?.lineItems) ? estimateDoc.lineItems : [],
+    __estimateId: estimateDoc._id || null,
+    },
+  };
+}
+
+function estimateNumberSortValue(estimateNumber) {
+  const raw = String(estimateNumber || '').trim();
+  const m = raw.match(/^(\d+)-(\d+)$/);
+  if (!m) return Number.MAX_SAFE_INTEGER;
+  const prefix = Number(m[1]) || 0;
+  const seq = Number(m[2]) || 0;
+  return prefix * 100000 + seq;
+}
+
+function computeEstimateFormFromJobSnapshot(job, snapshot) {
+  const cust = job.customerId;
+  const est = snapshot || {};
+  const sent = est.sentAt ? new Date(est.sentAt) : null;
+  const lineItems =
+    snapshot && Array.isArray(est.lineItems) && est.lineItems.length > 0
+      ? est.lineItems.map(mapEstimateLineFromJob)
+      : DEFAULT_LINE_ITEMS();
+  return {
+    estimateNumber: snapshot && est.number ? est.number : '',
+    estimateDate:
+      est.estimateDate ||
+      (sent ? sent.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
+    customerId: typeof cust === 'object' && cust?._id ? cust._id : cust || null,
+    customerName: typeof cust === 'object' ? cust.name || '' : '',
+    customerAddress: hasMeaningfulJobSiteAddress(job.jobAddress)
+      ? {
+          street: job.jobAddress.street || '',
+          city: job.jobAddress.city || '',
+        }
+      : typeof cust === 'object' && cust.address
+        ? {
+            street: cust.address.street || '',
+            city: cust.address.city || '',
+          }
+        : { street: '', city: '' },
+    projectName: est.projectName || job.title || '',
+    lineItems,
+    footerNote:
+      est.footerNote || 'Customer acknowledges paint and stain are not included.',
+  };
+}
+
+function mapEstimateLineFromJob(row) {
+  if (!row) return { itemName: '', description: '', quantity: 1, total: '' };
+  const qty = row.quantity != null && row.quantity !== '' ? row.quantity : 1;
+  const tot = row.total != null && row.total !== '' ? String(row.total) : '';
+  if (row.itemName != null && String(row.itemName).trim() !== '') {
+    return {
+      itemName: String(row.itemName),
+      description: row.description != null ? String(row.description) : '',
+      quantity: qty,
+      total: tot,
+    };
+  }
+  const desc = String(row.description || '');
+  const sep = ' - ';
+  const idx = desc.indexOf(sep);
+  if (idx > 0) {
+    return {
+      itemName: desc.slice(0, idx).trim(),
+      description: desc.slice(idx + sep.length).trim(),
+      quantity: qty,
+      total: tot,
+    };
+  }
+  return { itemName: desc, description: '', quantity: qty, total: tot };
+}
+
+function normalizeEstimateFormForCompare(form) {
+  if (!form || typeof form !== 'object') return {};
+  return {
+    estimateNumber: String(form.estimateNumber || ''),
+    estimateDate: String(form.estimateDate || ''),
+    customerId:
+      form.customerId != null && typeof form.customerId === 'object'
+        ? String(form.customerId?._id || '')
+        : String(form.customerId || ''),
+    customerName: String(form.customerName || ''),
+    customerAddress: {
+      street: String(form.customerAddress?.street || ''),
+      city: String(form.customerAddress?.city || ''),
+    },
+    projectName: String(form.projectName || ''),
+    lineItems: Array.isArray(form.lineItems)
+      ? form.lineItems.map((row) => ({
+          itemName: String(row?.itemName || ''),
+          description: String(row?.description || ''),
+          quantity: Number(row?.quantity) || 0,
+          total: String(row?.total || ''),
+        }))
+      : [],
+    footerNote: String(form.footerNote || ''),
+  };
+}
+
+function buildFreshEstimateDraftForJob(job) {
+  const base = computeEstimateFormFromJobSnapshot(job, null);
+  return {
+    ...base,
+    estimateNumber: '',
+    estimateDate: new Date().toISOString().slice(0, 10),
+    projectName: '',
+    lineItems: DEFAULT_LINE_ITEMS(),
+    footerNote: 'Customer acknowledges paint and stain are not included.',
+  };
+}
+
+function FinanceHubPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const estimateJobId = searchParams.get('jobId');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === 'undefined') return TAB_DEFS[0].key;
+    const t = new URLSearchParams(window.location.search).get('tab');
+    return t && TAB_DEFS.some((x) => x.key === t) ? t : TAB_DEFS[0].key;
+  });
+  const [customers, setCustomers] = useState([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [loadingJobEstimate, setLoadingJobEstimate] = useState(false);
+  const [savingEstimate, setSavingEstimate] = useState(false);
+  const [editingJobSummary, setEditingJobSummary] = useState(null);
+  const [estimateBrowserRows, setEstimateBrowserRows] = useState([]);
+  const [loadingEstimateBrowser, setLoadingEstimateBrowser] = useState(false);
+  const [estimateJumpNumber, setEstimateJumpNumber] = useState('');
+  const [showEstimateBrowserList, setShowEstimateBrowserList] = useState(false);
+  const [customerPipelineJobs, setCustomerPipelineJobs] = useState([]);
+  const [loadingCustomerJobs, setLoadingCustomerJobs] = useState(false);
+  const [estimateSaveTargetId, setEstimateSaveTargetId] = useState(null);
+  const [isEstimateExportMode, setIsEstimateExportMode] = useState(false);
+  const estimateCanvasRef = useRef(null);
+  const invoicePdfRef = useRef(null);
+  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
+  const [createInvoiceKind, setCreateInvoiceKind] = useState('deposit');
+  const [savingInvoice, setSavingInvoice] = useState(false);
+  const [invoicePdfPayload, setInvoicePdfPayload] = useState(null);
+  const [changeOrdersList, setChangeOrdersList] = useState([]);
+  const [loadingChangeOrders, setLoadingChangeOrders] = useState(false);
+  /** Full job JSON (consumer context only). */
+  const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
+  /** First-class estimate source of truth for current job context. */
+  const [loadedEstimateDoc, setLoadedEstimateDoc] = useState(null);
+  /** True when user clicked "New estimate" and is editing a fresh unsaved estimate draft. */
+  const [isNewEstimateDraft, setIsNewEstimateDraft] = useState(false);
+  const [newEstimatePromptOpen, setNewEstimatePromptOpen] = useState(false);
+  const [estimateForm, setEstimateForm] = useState(() => ({
+    estimateNumber: '',
+    estimateDate: new Date().toISOString().slice(0, 10),
+    customerId: null,
+    customerName: '',
+    customerAddress: {
+      street: '',
+      city: '',
+    },
+    projectName: '',
+    lineItems: DEFAULT_LINE_ITEMS(),
+    footerNote: 'Customer acknowledges paint and stain are not included.',
+  }));
+
+  const activeSection = useMemo(
+    () => TAB_DEFS.find((tab) => tab.key === activeTab) || TAB_DEFS[0],
+    [activeTab]
+  );
+
+  const estimateTotal = useMemo(
+    () =>
+      estimateForm.lineItems.reduce((sum, row) => {
+        const n = Number(row.total);
+        return sum + (Number.isFinite(n) ? n : 0);
+      }, 0),
+    [estimateForm.lineItems]
+  );
+
+  /** Bumps when localStorage description hints change so the list refreshes. */
+  const [estimateDescHintsRev, setEstimateDescHintsRev] = useState(0);
+
+  const estimateFormRef = useRef(estimateForm);
+  const [lastSyncedEstimateForm, setLastSyncedEstimateForm] = useState(() =>
+    normalizeEstimateFormForCompare(estimateForm)
+  );
+
+  useEffect(() => {
+    estimateFormRef.current = estimateForm;
+  }, [estimateForm]);
+
+  const loadEstimateBrowser = useCallback(async (search = '') => {
+    try {
+      setLoadingEstimateBrowser(true);
+      const params = {};
+      const s = String(search || '').trim();
+      if (s) params.search = s;
+      const { data } = await axios.get(`${API_URL}/estimates`, { params });
+      const list = Array.isArray(data) ? data : data?.estimates || [];
+      setEstimateBrowserRows(list);
+      return list;
+    } catch (error) {
+      console.error('Error loading estimates browser:', error);
+      toast.error(error.response?.data?.error || 'Failed to load estimates browser');
+      setEstimateBrowserRows([]);
+      return [];
+    } finally {
+      setLoadingEstimateBrowser(false);
+    }
+  }, []);
+
+  const openEstimateFromBrowser = useCallback(
+    (row) => {
+      const jobId = row?.jobId?._id || row?.jobId || null;
+      if (!jobId) {
+        toast.error('This estimate has no linked job');
+        return;
+      }
+      setSearchParams({ tab: 'estimates', jobId: String(jobId) });
+    },
+    [setSearchParams]
+  );
+
+  const selectedEstimateSnapshot = useMemo(() => {
+    if (!loadedEstimateDoc) return null;
+    return mapEstimateDocToLegacySnapshots(loadedEstimateDoc).current || null;
+  }, [loadedEstimateDoc]);
+  const orderedEstimateBrowserRows = useMemo(() => {
+    return [...estimateBrowserRows].sort((a, b) => {
+      const av = estimateNumberSortValue(a?.estimateNumber);
+      const bv = estimateNumberSortValue(b?.estimateNumber);
+      if (av !== bv) return av - bv;
+      const ad = new Date(a?.createdAt || 0).getTime();
+      const bd = new Date(b?.createdAt || 0).getTime();
+      return ad - bd;
+    });
+  }, [estimateBrowserRows]);
+  const currentEstimateDocIndex = useMemo(() => {
+    if (!loadedEstimateDoc?._id) return -1;
+    return orderedEstimateBrowserRows.findIndex(
+      (r) => String(r?._id || '') === String(loadedEstimateDoc._id)
+    );
+  }, [orderedEstimateBrowserRows, loadedEstimateDoc]);
+
+  const invoiceEstimateNumber = useMemo(() => {
+    if (isNewEstimateDraft) return estimateForm.estimateNumber || 'TBD';
+    return selectedEstimateSnapshot?.number || estimateForm.estimateNumber || 'TBD';
+  }, [
+    isNewEstimateDraft,
+    estimateForm.estimateNumber,
+    selectedEstimateSnapshot,
+  ]);
+
+  const canCreateInvoice =
+    Boolean(estimateJobId) &&
+    !loadingJobEstimate &&
+    !isNewEstimateDraft &&
+    estimateTotal > 0 &&
+    Boolean(estimateForm.customerId);
+
+  const hydrateJobWithEstimate = useCallback(async (job) => {
+    if (!job?._id) return job;
+    try {
+      const { data } = await axios.get(`${API_URL}/estimates`, { params: { jobId: job._id } });
+      const list = Array.isArray(data) ? data : data?.estimates || [];
+      const estimateDoc = list[0];
+      if (!estimateDoc) return { job, estimateDoc: null };
+      return { job, estimateDoc };
+    } catch {
+      return { job, estimateDoc: null };
+    }
+  }, []);
+
+  /** Clear legacy browser-only estimate snapshots. */
+  useEffect(() => {
+    if (activeTab !== 'estimates' || typeof window === 'undefined') return;
+    window.localStorage.removeItem(LOCAL_EST_SNAPSHOT_STACK_KEY);
+  }, [activeTab]);
+
+  const goEstimateDocOlder = useCallback(() => {
+    if (currentEstimateDocIndex <= 0) return;
+    const target = orderedEstimateBrowserRows[currentEstimateDocIndex - 1];
+    if (target) openEstimateFromBrowser(target);
+  }, [currentEstimateDocIndex, orderedEstimateBrowserRows, openEstimateFromBrowser]);
+
+  const goEstimateDocNewer = useCallback(() => {
+    if (currentEstimateDocIndex < 0 || currentEstimateDocIndex >= orderedEstimateBrowserRows.length - 1) return;
+    const target = orderedEstimateBrowserRows[currentEstimateDocIndex + 1];
+    if (target) openEstimateFromBrowser(target);
+  }, [currentEstimateDocIndex, orderedEstimateBrowserRows, openEstimateFromBrowser]);
+
+  const descriptionAutocompleteOptions = useMemo(() => {
+    const out = [];
+    const seen = new Set();
+    const push = (s) => {
+      const t = String(s || '').trim();
+      if (!t || seen.has(t)) return;
+      seen.add(t);
+      out.push(t);
+    };
+    for (const row of estimateForm.lineItems) {
+      push(row.description);
+    }
+    if (selectedEstimateSnapshot) {
+      for (const d of collectDescriptionsFromEstimateSnapshot(selectedEstimateSnapshot)) {
+        push(d);
+      }
+    }
+    for (const d of readEstimateDescriptionHints()) {
+      push(d);
+    }
+    return out;
+  }, [estimateForm.lineItems, selectedEstimateSnapshot, estimateDescHintsRev]);
+
+  const tabParam = searchParams.get('tab');
+  const jobIdParam = searchParams.get('jobId');
+  useEffect(() => {
+    if (tabParam && TAB_DEFS.some((t) => t.key === tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam, jobIdParam]);
+
+  useEffect(() => {
+    if (activeTab !== 'estimates') return;
+    const fetchCustomers = async () => {
+      try {
+        setLoadingCustomers(true);
+        const response = await axios.get(`${API_URL}/customers?limit=1000`);
+        setCustomers(response.data.customers || response.data || []);
+      } catch (error) {
+        console.error('Error fetching customers for estimate form:', error);
+      } finally {
+        setLoadingCustomers(false);
+      }
+    };
+    fetchCustomers();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'estimates') return;
+    loadEstimateBrowser();
+  }, [activeTab, loadEstimateBrowser]);
+
+  useEffect(() => {
+    if (activeTab !== 'estimates' || !estimateJobId) {
+      setLoadedEstimateJob(null);
+      setLoadedEstimateDoc(null);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingJobEstimate(true);
+        const { data: job } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+        if (cancelled) return;
+        const hydrated = await hydrateJobWithEstimate(job);
+        if (cancelled) return;
+        const cust = job.customerId;
+        if (cust && typeof cust === 'object' && cust._id) {
+          setCustomers((prev) =>
+            prev.some((c) => String(c._id) === String(cust._id)) ? prev : [cust, ...prev]
+          );
+        }
+        setLoadedEstimateJob(hydrated.job);
+        setLoadedEstimateDoc(hydrated.estimateDoc || null);
+        setIsNewEstimateDraft(false);
+        setNewEstimatePromptOpen(false);
+        setEditingJobSummary({
+          _id: hydrated.job._id,
+          title: hydrated.job.title || '',
+          stage: hydrated.job.stage || '',
+          description: hydrated.job.description || '',
+        });
+      } catch (error) {
+        console.error('Error loading job for estimate:', error);
+        setLoadedEstimateJob(null);
+        setLoadedEstimateDoc(null);
+        setEditingJobSummary(null);
+        toast.error(error.response?.data?.error || 'Could not load estimate from job');
+      } finally {
+        if (!cancelled) setLoadingJobEstimate(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, estimateJobId, hydrateJobWithEstimate]);
+
+  useEffect(() => {
+    if (activeTab !== 'estimates' || !estimateJobId || !loadedEstimateJob) return;
+    if (String(loadedEstimateJob._id) !== String(estimateJobId)) return;
+    const nextForm = computeEstimateFormFromJobSnapshot(loadedEstimateJob, selectedEstimateSnapshot);
+    setEstimateForm(nextForm);
+    setLastSyncedEstimateForm(normalizeEstimateFormForCompare(nextForm));
+    setIsNewEstimateDraft(false);
+  }, [activeTab, estimateJobId, loadedEstimateJob, selectedEstimateSnapshot]);
+
+  useEffect(() => {
+    if (activeTab !== 'estimates' || !estimateForm.customerId) {
+      setCustomerPipelineJobs([]);
+      setEstimateSaveTargetId(null);
+      return undefined;
+    }
+    if (estimateJobId) {
+      setCustomerPipelineJobs([]);
+      setEstimateSaveTargetId(estimateJobId);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingCustomerJobs(true);
+        const { data } = await axios.get(`${API_URL}/jobs`, {
+          params: { customerId: estimateForm.customerId, limit: 100 },
+        });
+        const jobs = data.jobs || [];
+        if (cancelled) return;
+        setCustomerPipelineJobs(jobs);
+        if (jobs.length === 0) {
+          setEstimateSaveTargetId(null);
+        } else if (jobs.length === 1) {
+          setEstimateSaveTargetId(String(jobs[0]._id));
+        } else {
+          setEstimateSaveTargetId(null);
+        }
+      } catch (error) {
+        console.error('Error loading jobs for estimate target:', error);
+        if (!cancelled) {
+          setCustomerPipelineJobs([]);
+          setEstimateSaveTargetId(null);
+        }
+      } finally {
+        if (!cancelled) setLoadingCustomerJobs(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, estimateForm.customerId, estimateJobId]);
+
+  const estimateSaveTargetOption = useMemo(() => {
+    if (!estimateSaveTargetId) return null;
+    if (estimateSaveTargetId === ESTIMATE_NEW_JOB_ID) return ESTIMATE_NEW_JOB_OPTION;
+    return customerPipelineJobs.find((j) => String(j._id) === String(estimateSaveTargetId)) || null;
+  }, [estimateSaveTargetId, customerPipelineJobs]);
+
+  const estimateJobPickerOptions = useMemo(() => {
+    if (!estimateForm.customerId || estimateJobId) return [];
+    if (customerPipelineJobs.length <= 1) return [];
+    return [...customerPipelineJobs, ESTIMATE_NEW_JOB_OPTION];
+  }, [customerPipelineJobs, estimateForm.customerId, estimateJobId]);
+
+  const setEstimateField = (field, value) => {
+    setEstimateForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const setEstimateAddressField = (field, value) => {
+    setEstimateForm((prev) => ({
+      ...prev,
+      customerAddress: { ...prev.customerAddress, [field]: value },
+    }));
+  };
+
+  const setLineItem = (index, field, value) => {
+    setEstimateForm((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
+    }));
+  };
+
+  const addLineItem = () => {
+    setEstimateForm((prev) => ({
+      ...prev,
+      lineItems: [...prev.lineItems, { itemName: '', description: '', quantity: 1, total: '' }],
+    }));
+  };
+
+  const removeLineItem = (index) => {
+    setEstimateForm((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleEstimateCustomerChange = (_, newValue, reason) => {
+    if (reason === 'selectOption' && newValue) {
+      const jobCustId =
+        loadedEstimateJob?.customerId != null
+          ? typeof loadedEstimateJob.customerId === 'object'
+            ? loadedEstimateJob.customerId?._id
+            : loadedEstimateJob.customerId
+          : null;
+      const sameJobCustomer =
+        estimateJobId &&
+        loadedEstimateJob &&
+        jobCustId != null &&
+        String(newValue._id) === String(jobCustId);
+      const jobSite =
+        sameJobCustomer && hasMeaningfulJobSiteAddress(loadedEstimateJob.jobAddress)
+          ? {
+              street: loadedEstimateJob.jobAddress.street || '',
+              city: loadedEstimateJob.jobAddress.city || '',
+            }
+          : null;
+      setEstimateForm((prev) => ({
+        ...prev,
+        customerId: newValue._id,
+        customerName: newValue.name || '',
+        customerAddress:
+          jobSite ||
+          {
+            street: newValue?.address?.street || '',
+            city: newValue?.address?.city || '',
+          },
+      }));
+    } else if (reason === 'clear') {
+      setEstimateForm((prev) => ({
+        ...prev,
+        customerId: null,
+        customerName: '',
+        customerAddress: { street: '', city: '' },
+      }));
+      setCustomerPipelineJobs([]);
+      setEstimateSaveTargetId(null);
+      setEditingJobSummary(null);
+    }
+  };
+
+  const buildNormalizedEstimateRows = () =>
+    estimateForm.lineItems
+      .filter((r) => r.itemName.trim() || r.description.trim())
+      .map((r) => ({
+        itemName: (r.itemName || 'Item').trim(),
+        description: (r.description || '').trim(),
+        quantity: Number(r.quantity) || 0,
+        unitPrice: 0,
+        total: Number(r.total) || 0,
+      }));
+
+  const buildEstimateApiPayload = (opts = {}) => {
+    const lineItems = buildNormalizedEstimateRows();
+    const taxRate = Number(opts.taxRate ?? 0) || 0;
+    const discountAmount = Number(opts.discountAmount ?? 0) || 0;
+    const subtotal = lineItems.reduce((sum, li) => sum + (Number(li.total) || 0), 0);
+    const taxAmount = subtotal * (taxRate / 100);
+    const grandTotal = subtotal + taxAmount - discountAmount;
+    return {
+      estimateDate: estimateForm.estimateDate ? new Date(`${estimateForm.estimateDate}T12:00:00.000Z`).toISOString() : null,
+      sentAt: estimateForm.estimateDate ? new Date(`${estimateForm.estimateDate}T12:00:00.000Z`).toISOString() : null,
+      projectName: estimateForm.projectName || '',
+      footerNote: estimateForm.footerNote || '',
+      lineItems,
+      taxRate,
+      discountAmount,
+      notes: '',
+      subtotal,
+      taxAmount,
+      grandTotal,
+    };
+  };
+
+  const renderEstimatePdfDoc = async () => {
+    if (!estimateCanvasRef.current) {
+      throw new Error('Estimate canvas not ready');
+    }
+    try {
+      setIsEstimateExportMode(true);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const canvas = await html2canvas(estimateCanvasRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+        onclone: (_clonedDoc, cloned) => {
+          const table = cloned.querySelector('[data-estimate-line-table]');
+          if (!table) return;
+          const replaceWithWrappedText = (field) => {
+            const div = _clonedDoc.createElement('div');
+            div.textContent = field.value ?? '';
+            const isTotal = field.dataset?.estimateTotal === '1';
+            Object.assign(div.style, {
+              width: '100%',
+              boxSizing: 'border-box',
+              fontSize: '12.5px',
+              lineHeight: '1.35',
+              fontFamily: 'Arial, Helvetica, sans-serif',
+              color: '#000',
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+              ...(isTotal ? { textAlign: 'right' } : {}),
+            });
+            const root = field.closest('.MuiInputBase-root');
+            if (root) {
+              root.replaceChildren(div);
+            }
+          };
+          table.querySelectorAll('textarea').forEach(replaceWithWrappedText);
+          table.querySelectorAll('input').forEach((inp) => {
+            if (inp.type === 'hidden' || inp.type === 'date') return;
+            replaceWithWrappedText(inp);
+          });
+        },
+      });
+      const imageData = canvas.toDataURL('image/png');
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const pageW = 612;
+      const pageH = 792;
+      doc.addImage(imageData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+      return doc;
+    } finally {
+      setIsEstimateExportMode(false);
+    }
+  };
+
+  const downloadEstimatePdf = async () => {
+    if (!estimateForm.customerId) {
+      toast.error('Select an existing customer first');
+      return;
+    }
+
+    try {
+      const doc = await renderEstimatePdfDoc();
+      await persistEstimatePdfArtifact(doc, 'download');
+      doc.save(`Estimate-${invoiceEstimateNumber || 'Draft'}.pdf`);
+      toast.success('Estimate PDF downloaded');
+    } catch (error) {
+      console.error('Error generating estimate PDF:', error);
+      const message = error?.message === 'Estimate canvas not ready' ? error.message : 'Failed to generate estimate PDF';
+      toast.error(message);
+    }
+  };
+
+  const printEstimatePdf = async () => {
+    if (!estimateForm.customerId) {
+      toast.error('Select an existing customer first');
+      return;
+    }
+
+    try {
+      const doc = await renderEstimatePdfDoc();
+      await persistEstimatePdfArtifact(doc, 'print');
+      const blobUrl = doc.output('bloburl');
+      const win = window.open(blobUrl, '_blank');
+      if (win) {
+        const trigger = () => {
+          try {
+            win.focus();
+            win.print();
+          } catch (e) {
+            console.warn('Print trigger failed:', e);
+          }
+        };
+        win.onload = trigger;
+        setTimeout(trigger, 700);
+      }
+      toast.success('Print view opened');
+    } catch (error) {
+      console.error('Error creating printable estimate:', error);
+      const message = error?.message === 'Estimate canvas not ready' ? error.message : 'Failed to open print view';
+      toast.error(message);
+    }
+  };
+
+  const formatInvoiceMoney = (value) =>
+    Number(value || 0).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  const persistEstimatePdfArtifact = async (doc, exportKind) => {
+    if (!doc || !loadedEstimateDoc?._id || !estimateForm.customerId) return;
+    try {
+      const estimateNumber = invoiceEstimateNumber || loadedEstimateDoc?.estimateNumber || 'Draft';
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const safeKind = String(exportKind || 'export').toLowerCase();
+      const filename = `Estimate-${estimateNumber}-${safeKind}-${stamp}.pdf`;
+      const blob = doc.output('blob');
+      const formData = new FormData();
+      formData.append('file', new File([blob], filename, { type: 'application/pdf' }));
+      formData.append('customerId', String(estimateForm.customerId));
+      formData.append('fileType', 'estimate');
+      formData.append(
+        'description',
+        `Immutable estimate PDF artifact (${safeKind}) for estimate ${estimateNumber} [estimateId=${loadedEstimateDoc._id}]`
+      );
+      await axios.post(`${API_URL}/files/upload-document`, formData);
+    } catch (error) {
+      console.warn('Failed to persist immutable estimate PDF artifact:', error);
+    }
+  };
+
+  const persistBillingPdfArtifact = async (doc, { filename, description, fileType }) => {
+    if (!doc || !estimateForm.customerId) return;
+    try {
+      const blob = doc.output('blob');
+      const formData = new FormData();
+      formData.append('file', new File([blob], filename, { type: 'application/pdf' }));
+      formData.append('customerId', String(estimateForm.customerId));
+      formData.append('fileType', fileType || 'invoice');
+      if (description) formData.append('description', String(description));
+      await axios.post(`${API_URL}/files/upload-document`, formData);
+    } catch (error) {
+      console.warn('Failed to persist billing PDF artifact:', error);
+    }
+  };
+
+  const renderInvoicePdfDoc = async () => {
+    if (!invoicePdfRef.current) {
+      throw new Error('Billing document layout not ready');
+    }
+    const canvas = await html2canvas(invoicePdfRef.current, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+    });
+    const imageData = canvas.toDataURL('image/png');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const pageW = 612;
+    const pageH = 792;
+    doc.addImage(imageData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+    return doc;
+  };
+
+  /** Same PDF used by Create invoice / Generate contract (deposit or final). */
+  const downloadBillingInvoicePdf = async (inv, kind, contractTotalHint) => {
+    if (!inv?._id && !inv?.invoiceNumber) throw new Error('Invalid invoice record');
+    let contractTotal;
+    if (contractTotalHint != null && Number.isFinite(Number(contractTotalHint))) {
+      contractTotal = Number(contractTotalHint);
+    } else if (inv.contractTotal != null && Number.isFinite(Number(inv.contractTotal))) {
+      contractTotal = Number(inv.contractTotal);
+    } else {
+      contractTotal = Number(estimateTotal) || 0;
+    }
+    const dueToday = roundMoneyClient(Number(inv?.total ?? 0));
+    const payload = {
+      docKind: 'invoice',
+      kind,
+      contractTotal,
+      dueToday,
+      estimateNumber: inv.estimateNumber || invoiceEstimateNumber,
+      invoiceNumber: inv.invoiceNumber || '',
+      invoiceDate: (inv.issuedAt ? new Date(inv.issuedAt) : new Date()).toISOString().slice(0, 10),
+      customerName: estimateForm.customerName,
+      projectName: estimateForm.projectName,
+      customerAddress: estimateForm.customerAddress,
+      lineItems: Array.isArray(estimateForm.lineItems) ? estimateForm.lineItems : [],
+      footerNote: String(estimateForm.footerNote || '').trim(),
+    };
+
+    flushSync(() => {
+      setInvoicePdfPayload(payload);
+    });
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const doc = await renderInvoicePdfDoc();
+    const kindSlug = kind === 'final' ? 'final' : 'deposit';
+    const invoiceIdentifier = inv.invoiceNumber || inv._id || invoiceEstimateNumber || 'draft';
+    const artifactFilename = `Invoice-${kindSlug}-${invoiceIdentifier}.pdf`;
+    await persistBillingPdfArtifact(doc, {
+      filename: artifactFilename,
+      fileType: 'invoice',
+      description: `Immutable invoice PDF artifact (${kindSlug}) for invoice ${inv.invoiceNumber || invoiceIdentifier}`,
+    });
+    doc.save(artifactFilename);
+    flushSync(() => {
+      setInvoicePdfPayload(null);
+    });
+  };
+
+  const handleConfirmCreateInvoice = async () => {
+    if (!estimateJobId || !canCreateInvoice || !loadedEstimateDoc?._id) return;
+    try {
+      setSavingInvoice(true);
+      const { data } = await axios.post(
+        `${API_URL}/estimates/${loadedEstimateDoc._id}/generate-invoice`,
+        { kind: createInvoiceKind }
+      );
+
+      const inv = data?.invoice || data;
+      if (!inv?._id && !inv?.invoiceNumber) throw new Error('Invoice was not created');
+      const kind = data?.kind || createInvoiceKind;
+      const contractTotal = Number(
+        data?.contractTotal ?? inv?.contractTotal ?? estimateTotal ?? 0
+      );
+      await downloadBillingInvoicePdf(inv, kind, contractTotal);
+      setCreateInvoiceOpen(false);
+      toast.success(`Invoice ${inv.invoiceNumber || ''} created and downloaded`);
+
+      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+      const hydrated = await hydrateJobWithEstimate(refreshed);
+      setLoadedEstimateJob(hydrated.job);
+      setLoadedEstimateDoc(hydrated.estimateDoc || null);
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to create invoice');
+      flushSync(() => {
+        setInvoicePdfPayload(null);
+      });
+    } finally {
+      setSavingInvoice(false);
+    }
+  };
+
+  const handleGenerateContract = async () => {
+    if (!estimateJobId || !loadedEstimateDoc?._id) return;
+    const estimateDirty =
+      JSON.stringify(normalizeEstimateFormForCompare(estimateForm)) !==
+      JSON.stringify(lastSyncedEstimateForm);
+    if (estimateDirty) {
+      toast.error('Save your estimate first so the contract and deposit invoice use your latest line items.');
+      return;
+    }
+    try {
+      setSavingInvoice(true);
+      const { data } = await axios.post(
+        `${API_URL}/estimates/${loadedEstimateDoc._id}/generate-contract`,
+        {}
+      );
+      const contractNumber = data?.contract?.contractNumber || '';
+      const depositInv = data?.depositInvoice;
+      const syncedGrandTotal = Number(data?.estimate?.grandTotal ?? 0);
+
+      if (depositInv && (depositInv.invoiceNumber || depositInv._id)) {
+        const contractTotalForPdf = Number(
+          depositInv.contractTotal ?? syncedGrandTotal ?? estimateTotal ?? 0
+        );
+        await downloadBillingInvoicePdf(depositInv, 'deposit', contractTotalForPdf);
+        toast.success(
+          `Contract ${contractNumber} created and deposit invoice ${depositInv.invoiceNumber || ''} downloaded`
+        );
+      } else {
+        toast.success(
+          contractNumber
+            ? `Contract ${contractNumber} created. No deposit invoice — contract total is $0 (check estimate line totals are saved).`
+            : 'Contract created'
+        );
+      }
+
+      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+      const hydrated = await hydrateJobWithEstimate(refreshed);
+      setLoadedEstimateJob(hydrated.job);
+      setLoadedEstimateDoc(hydrated.estimateDoc || null);
+    } catch (error) {
+      console.error('Error creating contract:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to create contract');
+    } finally {
+      setSavingInvoice(false);
+    }
+  };
+
+  const estimatePrevJobIdRef = useRef(undefined);
+  useEffect(() => {
+    const prev = estimatePrevJobIdRef.current;
+    estimatePrevJobIdRef.current = estimateJobId;
+    if (activeTab !== 'estimates') return;
+    if (!estimateJobId && prev) {
+      setLoadedEstimateJob(null);
+      setLoadedEstimateDoc(null);
+      const fresh = {
+        estimateNumber: '',
+        estimateDate: new Date().toISOString().slice(0, 10),
+        customerId: null,
+        customerName: '',
+        customerAddress: { street: '', city: '' },
+        projectName: '',
+        lineItems: DEFAULT_LINE_ITEMS(),
+        footerNote: 'Customer acknowledges paint and stain are not included.',
+      };
+      setEstimateForm(fresh);
+      setLastSyncedEstimateForm(normalizeEstimateFormForCompare(fresh));
+      setIsNewEstimateDraft(false);
+      setNewEstimatePromptOpen(false);
+      setEditingJobSummary(null);
+      setCustomerPipelineJobs([]);
+      setEstimateSaveTargetId(null);
+    }
+  }, [estimateJobId, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'change-orders') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingChangeOrders(true);
+        const { data } = await axios.get(`${API_URL}/invoices`, {
+          params: { invoiceKind: 'change_order' },
+        });
+        if (!cancelled) setChangeOrdersList(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Error loading change orders:', error);
+        if (!cancelled) {
+          setChangeOrdersList([]);
+          toast.error(error.response?.data?.error || 'Failed to load change orders');
+        }
+      } finally {
+        if (!cancelled) setLoadingChangeOrders(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
+  const estimateFormIsDirty = useMemo(() => {
+    return (
+      JSON.stringify(normalizeEstimateFormForCompare(estimateForm)) !==
+      JSON.stringify(lastSyncedEstimateForm)
+    );
+  }, [estimateForm, lastSyncedEstimateForm]);
+
+  const startNewEstimateDraft = useCallback(() => {
+    if (!loadedEstimateJob || !estimateJobId) return;
+    const draft = buildFreshEstimateDraftForJob(loadedEstimateJob);
+    setEstimateForm(draft);
+    setLastSyncedEstimateForm(normalizeEstimateFormForCompare(draft));
+    setIsNewEstimateDraft(true);
+  }, [loadedEstimateJob, estimateJobId]);
+
+  const saveEstimateOnCurrentContext = async () => {
+    if (!estimateForm.customerId) {
+      toast.error('Select an existing customer');
+      return false;
+    }
+    if (!estimateForm.estimateDate) {
+      toast.error('Estimate date is required');
+      return false;
+    }
+
+    if (estimateJobId) {
+      const estimateDocId = loadedEstimateDoc?._id || null;
+      const estimatePayload = buildEstimateApiPayload({});
+
+      if (!estimateDocId) {
+        const { data: createdEstimate } = await axios.post(`${API_URL}/estimates`, {
+          customerId: estimateForm.customerId,
+          jobId: estimateJobId,
+          status: 'draft',
+          ...estimatePayload,
+        });
+        toast.success(`Estimate ${createdEstimate?.estimateNumber || ''} saved on this job`);
+      } else if (!isNewEstimateDraft) {
+        const { data: updatedEstimate } = await axios.patch(`${API_URL}/estimates/${estimateDocId}`, estimatePayload);
+        toast.success(`Estimate ${updatedEstimate?.estimateNumber || ''} updated`);
+      } else {
+        const { data: createdEstimate } = await axios.post(`${API_URL}/estimates`, {
+          customerId: estimateForm.customerId,
+          jobId: estimateJobId,
+          status: 'draft',
+          ...estimatePayload,
+        });
+        toast.success(`Estimate ${createdEstimate?.estimateNumber || ''} saved on this job`);
+      }
+
+      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+      const hydrated = await hydrateJobWithEstimate(refreshed);
+      setLoadedEstimateJob(hydrated.job);
+      setLoadedEstimateDoc(hydrated.estimateDoc || null);
+      setIsNewEstimateDraft(false);
+      mergeEstimateDescriptionHints(
+        estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+      );
+      setEstimateDescHintsRev((n) => n + 1);
+      return true;
+    }
+
+    const useNewCard = customerPipelineJobs.length === 0 || estimateSaveTargetId === ESTIMATE_NEW_JOB_ID;
+    const existingId =
+      estimateSaveTargetId &&
+      estimateSaveTargetId !== ESTIMATE_NEW_JOB_ID &&
+      customerPipelineJobs.some((j) => String(j._id) === String(estimateSaveTargetId))
+        ? estimateSaveTargetId
+        : null;
+
+    if (!useNewCard && !existingId) {
+      toast.error(
+        'Select which job this estimate belongs to (list uses: Customer: project · stage).'
+      );
+      return false;
+    }
+
+    if (useNewCard) {
+      const { data: created } = await axios.post(`${API_URL}/jobs`, {
+        title: `${estimateForm.customerName || 'Customer'} Estimate`,
+        customerId: estimateForm.customerId,
+        stage: 'ESTIMATE_IN_PROGRESS',
+        valueEstimated: estimateTotal || 0,
+      });
+      const newId = created?._id;
+      if (newId) {
+        await axios.post(`${API_URL}/estimates`, {
+          customerId: estimateForm.customerId,
+          jobId: newId,
+          status: 'draft',
+          ...buildEstimateApiPayload({}),
+        });
+      }
+      mergeEstimateDescriptionHints(
+        estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+      );
+      setEstimateDescHintsRev((n) => n + 1);
+      if (newId) {
+        setSearchParams({ tab: 'estimates', jobId: String(newId) });
+      }
+      toast.success('Estimate saved to new job');
+      return true;
+    }
+
+    const { data: existingEstimateList } = await axios.get(`${API_URL}/estimates`, {
+      params: { jobId: existingId },
+    });
+    const existingEstimate =
+      (Array.isArray(existingEstimateList) ? existingEstimateList : existingEstimateList?.estimates || [])[0] || null;
+    if (!existingEstimate?._id) {
+      await axios.post(`${API_URL}/estimates`, {
+        customerId: estimateForm.customerId,
+        jobId: existingId,
+        status: 'draft',
+        ...buildEstimateApiPayload({}),
+      });
+    } else {
+      await axios.patch(`${API_URL}/estimates/${existingEstimate._id}`, buildEstimateApiPayload({}));
+    }
+    mergeEstimateDescriptionHints(
+      estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+    );
+    setEstimateDescHintsRev((n) => n + 1);
+    setSearchParams({ tab: 'estimates', jobId: String(existingId) });
+    const picked = customerPipelineJobs.find((j) => String(j._id) === String(existingId));
+    toast.success(
+      `Estimate saved on ${formatEstimateJobPickLabel(estimateForm.customerName, picked)}`
+    );
+    return true;
+  };
+
+  const handleSaveEstimate = async () => {
+    try {
+      setSavingEstimate(true);
+      await saveEstimateOnCurrentContext();
+    } catch (error) {
+      console.error('Error saving estimate:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to save estimate');
+    } finally {
+      setSavingEstimate(false);
+    }
+  };
+
+  const handleDeleteEstimate = async () => {
+    if (!estimateJobId) return;
+    if (!loadedEstimateDoc?._id) {
+      toast.error('No estimate to delete');
+      return;
+    }
+    const ok = window.confirm('Delete this estimate? This cannot be undone.');
+    if (!ok) return;
+    try {
+      setSavingEstimate(true);
+      const estimateDocId = loadedEstimateDoc?._id || null;
+      if (estimateDocId) {
+        await axios.delete(`${API_URL}/estimates/${estimateDocId}`);
+      }
+      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
+      const hydrated = await hydrateJobWithEstimate(refreshed);
+      setLoadedEstimateJob(hydrated.job);
+      setLoadedEstimateDoc(hydrated.estimateDoc || null);
+      setIsNewEstimateDraft(false);
+      toast.success('Estimate deleted');
+    } catch (error) {
+      console.error('Error deleting estimate:', error);
+      toast.error(error.response?.data?.error || 'Failed to delete estimate');
+    } finally {
+      setSavingEstimate(false);
+    }
+  };
+
+  const handleStartNewEstimate = async () => {
+    if (!estimateJobId || !loadedEstimateJob) return;
+    if (estimateFormIsDirty) {
+      setNewEstimatePromptOpen(true);
+      return;
+    }
+    startNewEstimateDraft();
+  };
+
+  const handleCreateNewAfterSave = async () => {
+    setNewEstimatePromptOpen(false);
+    try {
+      setSavingEstimate(true);
+      const saved = await saveEstimateOnCurrentContext();
+      if (saved) startNewEstimateDraft();
+    } catch (error) {
+      console.error('Error saving before new estimate:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to save estimate');
+    } finally {
+      setSavingEstimate(false);
+    }
+  };
+
+  const handleCreateNewDiscardCurrent = () => {
+    setNewEstimatePromptOpen(false);
+    startNewEstimateDraft();
+  };
+
+  const estimateRevisionRailSx = {
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    py: 1,
+    px: 0.5,
+    borderRadius: 2,
+    bgcolor: (t) =>
+      t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    border: 1,
+    borderColor: 'divider',
+  };
+
+  const docOlderDisabled =
+    !estimateJobId ||
+    isNewEstimateDraft ||
+    loadingJobEstimate ||
+    savingEstimate ||
+    currentEstimateDocIndex <= 0;
+
+  const docNewerDisabled =
+    !estimateJobId ||
+    isNewEstimateDraft ||
+    loadingJobEstimate ||
+    savingEstimate ||
+    currentEstimateDocIndex < 0 ||
+    currentEstimateDocIndex >= orderedEstimateBrowserRows.length - 1;
+
+  const showArrowHint = estimateJobId && !isNewEstimateDraft && !loadingJobEstimate;
+
+  const handleJumpToEstimateNumber = async () => {
+    const q = String(estimateJumpNumber || '').trim();
+    if (!q) return;
+    const hitInLocal = estimateBrowserRows.find(
+      (r) => String(r?.estimateNumber || '').toLowerCase() === q.toLowerCase()
+    );
+    if (hitInLocal) {
+      openEstimateFromBrowser(hitInLocal);
+      return;
+    }
+    const list = await loadEstimateBrowser(q);
+    const exact = list.find(
+      (r) => String(r?.estimateNumber || '').toLowerCase() === q.toLowerCase()
+    );
+    if (exact) {
+      openEstimateFromBrowser(exact);
+      return;
+    }
+    toast.error(`Estimate ${q} not found`);
+  };
+
+  return (
+    <Container maxWidth="xl" sx={{ py: 2 }}>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h1" sx={{ mb: 1 }}>
+          Finance Hub
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          One workspace for register, estimates, contracts, invoices, change orders, payment
+          schedules.
+        </Typography>
+      </Box>
+
+      <Box
+        sx={{
+          display: 'flex',
+          gap: 2,
+          alignItems: 'flex-start',
+          flexDirection: { xs: 'column', md: 'row' },
+        }}
+      >
+        <Box sx={{ width: { xs: '100%', md: 300 }, flexShrink: 0 }}>
+          <Card
+            sx={{
+              position: { md: 'sticky' },
+              top: { md: 16 },
+            }}
+          >
+            <CardContent sx={{ p: 1.25 }}>
+              {TAB_GROUPS.map((group, groupIdx) => (
+                <Box key={group.title}>
+                  {groupIdx > 0 && <Divider sx={{ my: 1 }} />}
+                  <Typography
+                    variant="overline"
+                    color="text.secondary"
+                    sx={{ px: 1.25, letterSpacing: 0.6 }}
+                  >
+                    {group.title}
+                  </Typography>
+                  <Box sx={{ mt: 0.5, display: 'grid', gap: 0.5 }}>
+                    {group.tabs.map((key) => {
+                      const tab = TAB_DEFS.find((item) => item.key === key);
+                      if (!tab) return null;
+                      const selected = activeTab === tab.key;
+                      return (
+                        <Button
+                          key={tab.key}
+                          fullWidth
+                          onClick={() => setActiveTab(tab.key)}
+                          sx={{
+                            textTransform: 'none',
+                            justifyContent: 'flex-start',
+                            alignItems: 'flex-start',
+                            borderRadius: 1.25,
+                            px: 1.25,
+                            py: 1,
+                            borderLeft: 4,
+                            borderColor: selected ? 'primary.main' : 'transparent',
+                            bgcolor: selected ? 'action.selected' : 'transparent',
+                            '&:hover': {
+                              bgcolor: selected ? 'action.selected' : 'action.hover',
+                            },
+                          }}
+                        >
+                          <Box sx={{ textAlign: 'left' }}>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontWeight: selected ? 700 : 500,
+                                color: selected ? 'text.primary' : 'text.secondary',
+                              }}
+                            >
+                              {tab.label}
+                            </Typography>
+                            {selected && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block', mt: 0.2 }}
+                              >
+                                {tab.subtitle}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Button>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              ))}
+            </CardContent>
+          </Card>
+        </Box>
+
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          {activeTab === 'register' ? (
+            <Card>
+              <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+                <RegisterLedgerSection
+                  active
+                  headerTitle={activeSection.label}
+                  headerSubtitle={activeSection.subtitle}
+                />
+              </CardContent>
+            </Card>
+          ) : activeTab === 'change-orders' ? (
+            <Card>
+              <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+                  Change Orders
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Same PDF layout as an invoice, titled Change Order, numbered as CO (not INV). Create change orders from a
+                  job&apos;s Files tab — estimate-style lines you edit — then find them listed here.
+                </Typography>
+                {loadingChangeOrders ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress size={32} />
+                  </Box>
+                ) : changeOrdersList.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No change orders yet. Create one from the Estimates tab while editing an estimate on a job.
+                  </Typography>
+                ) : (
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 700 }}>Change Order #</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Estimate #</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Customer</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Job</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">
+                          Amount
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Issued</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {changeOrdersList.map((row) => (
+                        <TableRow key={row._id}>
+                          <TableCell>{row.invoiceNumber}</TableCell>
+                          <TableCell>{row.estimateNumber || '—'}</TableCell>
+                          <TableCell>
+                            {typeof row.customerId === 'object' && row.customerId?.name
+                              ? row.customerId.name
+                              : '—'}
+                          </TableCell>
+                          <TableCell>
+                            {typeof row.jobId === 'object' && row.jobId?.title ? row.jobId.title : '—'}
+                          </TableCell>
+                          <TableCell align="right">${formatInvoiceMoney(row.total)}</TableCell>
+                          <TableCell>
+                            {row.issuedAt
+                              ? new Date(row.issuedAt).toLocaleDateString('en-US')
+                              : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          ) : activeTab !== 'estimates' ? (
+            <Card>
+              <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                    {activeSection.label}
+                  </Typography>
+                  <Chip size="small" color="primary" label="New" />
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  {activeSection.subtitle}
+                </Typography>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb: 2,
+                flexWrap: 'wrap',
+                gap: 1,
+              }}
+            >
+              <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                {estimateJobId ? 'Edit estimate' : 'New estimate'}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Chip size="small" color="primary" label={invoiceEstimateNumber || 'Pending number'} />
+              </Box>
+            </Box>
+
+            {!estimateJobId && !loadingJobEstimate && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Estimates are saved to the database and shared across devices. Use a specific job to
+                view and browse estimate documents for that job.
+              </Typography>
+            )}
+
+
+            {estimateJobId && isNewEstimateDraft && (
+              <Typography variant="body2" color="warning.main" sx={{ mb: 1 }}>
+                New estimate draft. Save to generate the next estimate number.
+              </Typography>
+            )}
+
+            <Box
+              sx={{
+                mb: 2,
+                p: 1.5,
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1.5,
+                bgcolor: (t) =>
+                  t.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Estimate Browser
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', mb: 1 }}>
+                <TextField
+                  size="small"
+                  label="Jump to estimate number"
+                  placeholder="1102-0001"
+                  value={estimateJumpNumber}
+                  onChange={(e) => setEstimateJumpNumber(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleJumpToEstimateNumber();
+                  }}
+                  sx={{ minWidth: 220 }}
+                />
+                <Button variant="outlined" onClick={handleJumpToEstimateNumber}>
+                  Jump
+                </Button>
+                <Button variant="text" onClick={() => loadEstimateBrowser()}>
+                  Refresh list
+                </Button>
+                <Button variant="text" onClick={() => setShowEstimateBrowserList((v) => !v)}>
+                  {showEstimateBrowserList ? 'Hide list' : 'Show list'}
+                </Button>
+              </Box>
+              {showEstimateBrowserList && (
+              <Box sx={{ maxHeight: 180, overflowY: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                {loadingEstimateBrowser ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                    Loading estimates...
+                  </Typography>
+                ) : estimateBrowserRows.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                    No estimates found.
+                  </Typography>
+                ) : (
+                  estimateBrowserRows.slice(0, 120).map((row) => {
+                    const jobLabel = row?.jobId?.title || row?.jobId || 'No job';
+                    const customerLabel = row?.customerId?.name || row?.customerId || 'Unknown customer';
+                    const updated = row?.updatedAt
+                      ? new Date(row.updatedAt).toLocaleString()
+                      : row?.createdAt
+                        ? new Date(row.createdAt).toLocaleString()
+                        : '-';
+                    return (
+                      <Box
+                        key={row._id}
+                        sx={{
+                          p: 1,
+                          borderTop: 1,
+                          borderColor: 'divider',
+                          cursor: 'pointer',
+                          '&:first-of-type': { borderTop: 'none' },
+                          '&:hover': {
+                            bgcolor: (t) =>
+                              t.palette.mode === 'dark'
+                                ? 'rgba(255,255,255,0.06)'
+                                : 'rgba(0,0,0,0.04)',
+                          },
+                        }}
+                        onClick={() => openEstimateFromBrowser(row)}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {row?.estimateNumber || 'No number'} · {row?.status || '-'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          {customerLabel} · {jobLabel}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          Updated: {updated}
+                        </Typography>
+                      </Box>
+                    );
+                  })
+                )}
+              </Box>
+              )}
+            </Box>
+
+            <Autocomplete
+              options={customers}
+              loading={loadingCustomers || loadingJobEstimate}
+              value={
+                estimateForm.customerId
+                  ? customers.find((c) => String(c._id) === String(estimateForm.customerId)) || null
+                  : null
+              }
+              onChange={handleEstimateCustomerChange}
+              isOptionEqualToValue={(option, value) => String(option?._id) === String(value?._id)}
+              getOptionLabel={(option) => option?.name || ''}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Customer"
+                  helperText="Pick the contractor, then the job. Labels use the text after | in the job title, then the job description, then stage (e.g. Customer: 223 Marfield Dr | Treads · Fabrication)."
+                  fullWidth
+                />
+              )}
+            />
+
+            {estimateJobId && editingJobSummary && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Editing estimate on{' '}
+                <strong>
+                  {formatEstimateJobPickLabel(estimateForm.customerName, {
+                    _id: editingJobSummary._id,
+                    title: editingJobSummary.title,
+                    stage: editingJobSummary.stage,
+                    description: editingJobSummary.description,
+                  })}
+                </strong>
+              </Typography>
+            )}
+
+            {!estimateJobId &&
+              estimateForm.customerId &&
+              loadingCustomerJobs && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Loading jobs for this customer…
+                </Typography>
+              )}
+
+            {!estimateJobId &&
+              estimateForm.customerId &&
+              !loadingCustomerJobs &&
+              customerPipelineJobs.length === 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  No active pipeline jobs for this customer—save will create a new card.
+                </Typography>
+              )}
+
+            {!estimateJobId &&
+              estimateForm.customerId &&
+              !loadingCustomerJobs &&
+              customerPipelineJobs.length === 1 && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Save to:{' '}
+                    <strong>
+                      {formatEstimateJobPickLabel(estimateForm.customerName, customerPipelineJobs[0])}
+                    </strong>
+                  </Typography>
+                  {estimateSaveTargetId === ESTIMATE_NEW_JOB_ID ? (
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      <Link
+                        component="button"
+                        type="button"
+                        variant="body2"
+                        onClick={() => setEstimateSaveTargetId(String(customerPipelineJobs[0]._id))}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        Use the existing job instead
+                      </Link>
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      <Link
+                        component="button"
+                        type="button"
+                        variant="body2"
+                        onClick={() => setEstimateSaveTargetId(ESTIMATE_NEW_JOB_ID)}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        Use a new pipeline card instead
+                      </Link>
+                    </Typography>
+                  )}
+                </Box>
+              )}
+
+            {!estimateJobId && estimateForm.customerId && estimateJobPickerOptions.length > 1 && (
+              <Autocomplete
+                sx={{ mt: 1.5 }}
+                options={estimateJobPickerOptions}
+                loading={loadingCustomerJobs}
+                value={estimateSaveTargetOption}
+                onChange={(_, opt) => {
+                  if (!opt) setEstimateSaveTargetId(null);
+                  else setEstimateSaveTargetId(String(opt._id));
+                }}
+                getOptionLabel={(opt) => formatEstimateJobPickLabel(estimateForm.customerName, opt)}
+                isOptionEqualToValue={(a, b) => Boolean(a && b && String(a._id) === String(b._id))}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Which job?"
+                    helperText="Same site can be two contracts—use description to tell them apart. If still unclear, match the ID suffix to the job in Mongo or the job URL."
+                    required
+                  />
+                )}
+              />
+            )}
+
+            <Divider sx={{ my: 2 }} />
+
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                width: '100%',
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: { xs: 0.75, sm: 1.25, md: 2 },
+                  width: '100%',
+                  maxWidth: '100%',
+                  overflowX: 'auto',
+                }}
+              >
+                <Box sx={estimateRevisionRailSx}>
+                  <IconButton
+                    size="large"
+                    aria-label="Older estimate"
+                    title="Previous estimate number"
+                    disabled={docOlderDisabled}
+                    onClick={goEstimateDocOlder}
+                    sx={{
+                      color: 'text.secondary',
+                      '&.Mui-disabled': { color: 'action.disabled' },
+                    }}
+                  >
+                    <ChevronLeftIcon fontSize="large" />
+                  </IconButton>
+                </Box>
+
+              <Box sx={{ overflowX: 'auto', width: { xs: '100%', md: 'auto' }, flex: '0 1 auto', minWidth: 0 }}>
+              <Box
+                ref={estimateCanvasRef}
+                sx={{
+                  width: 816,
+                  minHeight: 1056,
+                  mx: 'auto',
+                  bgcolor: '#fff',
+                  color: '#000',
+                  p: 5,
+                  border: '1px solid #d9d9d9',
+                  fontFamily: 'Arial, Helvetica, sans-serif',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  boxSizing: 'border-box',
+                  // Keep estimate sheet typography print-like in dark mode.
+                  '& .MuiTypography-root': { color: '#000' },
+                  '& .MuiInputBase-root': { color: '#000' },
+                  '& .MuiInputBase-input': {
+                    color: '#000',
+                    WebkitTextFillColor: '#000',
+                  },
+                  '& .MuiInputBase-input::placeholder': {
+                    color: 'rgba(0,0,0,0.42)',
+                    opacity: 1,
+                  },
+                  '& .MuiIconButton-root': { color: '#000' },
+                }}
+              >
+                <Box sx={{ flex: '0 0 auto', width: '100%' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Box
+                      component="img"
+                      src="/logo.png"
+                      alt="SCWW logo"
+                      sx={{ width: 68, height: 68, objectFit: 'contain', borderRadius: '50%' }}
+                    />
+                    <Box>
+                      <Typography sx={{ fontWeight: 700, fontSize: 24, lineHeight: 1 }}>
+                        San Clemente Woodworking
+                      </Typography>
+                      <Typography sx={{ fontSize: 14, mt: 0.8 }}>1030 Calle Sombra, Unit F</Typography>
+                      <Typography sx={{ fontSize: 14 }}>San Clemente, CA 92673</Typography>
+                      <Box sx={{ mt: 2, ml: -9 }}>
+                        <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
+                          <Typography sx={{ fontSize: 13 }}>Phone #</Typography>
+                          <Typography sx={{ fontSize: 13, minWidth: 150 }}>{COMPANY_PHONE}</Typography>
+                        </Box>
+                        <Typography sx={{ fontSize: 13, ml: 0 }}>{COMPANY_WEBSITE}</Typography>
+                        <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{COMPANY_EMAIL}</Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: 22, mb: 1 }}>Estimate</Typography>
+                    <Box sx={{ width: 252, border: '1px solid #000' }}>
+                      <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12 }}>
+                        <Box sx={{ width: '56%', p: 1, borderRight: '1px solid #fff' }}>Date</Box>
+                        <Box sx={{ width: '44%', p: 1 }}>Estimate #</Box>
+                      </Box>
+                      <Box sx={{ display: 'flex' }}>
+                        <TextField
+                          variant="standard"
+                          type="date"
+                          value={estimateForm.estimateDate}
+                          onChange={(e) => setEstimateField('estimateDate', e.target.value)}
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 12, px: 1, py: 0.8 } }}
+                          sx={{ width: '56%', borderRight: '1px solid #000' }}
+                        />
+                        <TextField
+                          variant="standard"
+                          value={invoiceEstimateNumber}
+                          InputProps={{
+                            disableUnderline: true,
+                            readOnly: true,
+                            sx: { fontSize: 12, px: 1, py: 0.8, textAlign: 'right' },
+                          }}
+                          inputProps={{ style: { textAlign: 'right' } }}
+                          sx={{ width: '44%' }}
+                        />
+                      </Box>
+                    </Box>
+                  </Box>
+                </Box>
+
+                <Box sx={{ mt: 3, width: '48%', border: '1px solid #000' }}>
+                  <Box sx={{ bgcolor: '#000', color: '#fff', p: 1, fontWeight: 700, fontSize: 12 }}>
+                    Name / Address
+                  </Box>
+                  <Box sx={{ p: 1 }}>
+                    <TextField
+                      variant="standard"
+                      value={estimateForm.customerName}
+                      onChange={(e) => setEstimateField('customerName', e.target.value)}
+                      placeholder="Customer name"
+                      InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                      fullWidth
+                    />
+                    <TextField
+                      variant="standard"
+                      value={estimateForm.customerAddress.street}
+                      onChange={(e) => setEstimateAddressField('street', e.target.value)}
+                      placeholder="Street address"
+                      InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                      fullWidth
+                    />
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <TextField
+                        variant="standard"
+                        value={estimateForm.customerAddress.city}
+                        onChange={(e) => setEstimateAddressField('city', e.target.value)}
+                        placeholder="City"
+                        InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                        sx={{ flex: 1 }}
+                      />
+                    </Box>
+                  </Box>
+                </Box>
+
+                <Box sx={{ mt: 3, border: '1px solid #000' }} data-estimate-line-table>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '20% 48% 12% 20%', bgcolor: '#000', color: '#fff' }}>
+                    <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Item</Box>
+                    <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Description</Box>
+                    <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Qty</Box>
+                    <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Total</Box>
+                  </Box>
+                  {estimateForm.lineItems.map((row, index) => (
+                    <Box
+                      key={`line-${index}`}
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: '20% 48% 12% 20%',
+                        gridAutoRows: 'minmax(min-content, auto)',
+                        borderTop: '1px solid #000',
+                        alignItems: 'stretch',
+                        minHeight: 'min-content',
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          px: 0.75,
+                          py: 0.45,
+                          borderRight: '1px solid #000',
+                          minWidth: 0,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        <TextField
+                          variant="standard"
+                          value={row.itemName}
+                          onChange={(e) => setLineItem(index, 'itemName', e.target.value)}
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
+                          fullWidth
+                        />
+                      </Box>
+                      <Box
+                        sx={{
+                          px: 0.75,
+                          py: 0.45,
+                          borderRight: '1px solid #000',
+                          minWidth: 0,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        <Autocomplete
+                          freeSolo
+                          options={descriptionAutocompleteOptions}
+                          inputValue={row.description}
+                          onInputChange={(_, newInputValue, reason) => {
+                            if (reason === 'input' || reason === 'clear' || reason === 'reset') {
+                              setLineItem(index, 'description', newInputValue);
+                            }
+                          }}
+                          onChange={(_, newValue) => {
+                            if (typeof newValue === 'string') {
+                              setLineItem(index, 'description', newValue);
+                            }
+                          }}
+                          filterOptions={filterEstimateDescriptionOptions}
+                          sx={{ width: '100%' }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              variant="standard"
+                              multiline
+                              minRows={2}
+                              maxRows={40}
+                              InputProps={{
+                                ...params.InputProps,
+                                disableUnderline: true,
+                                sx: {
+                                  fontSize: 12.5,
+                                  width: '100%',
+                                  alignItems: 'flex-start',
+                                  overflow: 'visible',
+                                  '& .MuiInputBase-root': {
+                                    overflow: 'visible',
+                                  },
+                                  '& .MuiInputBase-inputMultiline': {
+                                    whiteSpace: 'pre-wrap',
+                                    overflowWrap: 'anywhere',
+                                    wordBreak: 'break-word',
+                                    overflow: 'visible !important',
+                                    resize: 'none',
+                                    fieldSizing: 'content',
+                                  },
+                                },
+                              }}
+                              fullWidth
+                            />
+                          )}
+                        />
+                      </Box>
+                      <Box
+                        sx={{
+                          px: 0.75,
+                          py: 0.45,
+                          borderRight: '1px solid #000',
+                          minWidth: 0,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        <TextField
+                          variant="standard"
+                          type="text"
+                          value={row.quantity}
+                          onChange={(e) => setLineItem(index, 'quantity', e.target.value)}
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
+                          inputProps={{ inputMode: 'numeric' }}
+                          fullWidth
+                        />
+                      </Box>
+                      <Box
+                        sx={{
+                          px: 0.75,
+                          py: 0.45,
+                          minWidth: 0,
+                          display: 'flex',
+                          gap: 0.5,
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        <TextField
+                          variant="standard"
+                          type="text"
+                          value={row.total}
+                          onChange={(e) => setLineItem(index, 'total', e.target.value)}
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 12.5 } }}
+                          inputProps={{ inputMode: 'decimal', 'data-estimate-total': '1' }}
+                          fullWidth
+                        />
+                        {!isEstimateExportMode && (
+                          <IconButton
+                            size="small"
+                            onClick={() => removeLineItem(index)}
+                            disabled={estimateForm.lineItems.length <= 1}
+                          >
+                            <DeleteIcon fontSize="inherit" />
+                          </IconButton>
+                        )}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+                </Box>
+
+                <Box sx={{ flex: '1 1 auto', minHeight: 32, width: '100%' }} aria-hidden />
+
+                <Box sx={{ flex: '0 0 auto', width: '100%', mt: 'auto' }}>
+                  <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {!isEstimateExportMode && (
+                      <Button size="small" startIcon={<AddIcon />} onClick={addLineItem}>
+                        Add line
+                      </Button>
+                    )}
+                    <Box sx={{ width: 220, border: '1px solid #000', display: 'flex', ml: 'auto' }}>
+                      <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
+                        Total
+                      </Box>
+                      <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                        ${estimateTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Box>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ mt: 1 }}>
+                    <TextField
+                      variant="standard"
+                      value={estimateForm.footerNote}
+                      onChange={(e) => setEstimateField('footerNote', e.target.value)}
+                      InputProps={{ disableUnderline: true, sx: { fontSize: 12 } }}
+                      fullWidth
+                    />
+                    <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
+                  </Box>
+                </Box>
+              </Box>
+              </Box>
+
+                <Box sx={estimateRevisionRailSx}>
+                  <IconButton
+                    size="large"
+                    aria-label="Newer estimate"
+                    title="Next estimate number"
+                    disabled={docNewerDisabled}
+                    onClick={goEstimateDocNewer}
+                    sx={{
+                      color: 'text.secondary',
+                      '&.Mui-disabled': { color: 'action.disabled' },
+                    }}
+                  >
+                    <ChevronRightIcon fontSize="large" />
+                  </IconButton>
+                </Box>
+              </Box>
+
+              {showArrowHint && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
+                >
+                  Arrows navigate estimate numbers across documents.
+                </Typography>
+              )}
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'flex-end', mt: 3, flexWrap: 'wrap' }}>
+              <Button
+                variant="outlined"
+                startIcon={<PictureAsPdfIcon />}
+                onClick={downloadEstimatePdf}
+              >
+                Download PDF
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<ReceiptLongIcon />}
+                onClick={() => {
+                  setCreateInvoiceKind('deposit');
+                  setCreateInvoiceOpen(true);
+                }}
+                disabled={!canCreateInvoice || savingInvoice}
+              >
+                Create invoice
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={handleGenerateContract}
+                disabled={!canCreateInvoice || savingInvoice}
+              >
+                Generate contract
+              </Button>
+              <Button variant="outlined" startIcon={<PrintIcon />} onClick={printEstimatePdf}>
+                Print estimate
+              </Button>
+              {estimateJobId && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={handleDeleteEstimate}
+                  disabled={savingEstimate || loadingJobEstimate || !loadedEstimateDoc?._id}
+                >
+                  Delete estimate
+                </Button>
+              )}
+              {estimateJobId && (
+                <Button
+                  variant="outlined"
+                  onClick={handleStartNewEstimate}
+                  disabled={savingEstimate || loadingJobEstimate}
+                >
+                  New estimate
+                </Button>
+              )}
+              <Button
+                variant="contained"
+                onClick={handleSaveEstimate}
+                disabled={
+                  savingEstimate ||
+                  loadingJobEstimate ||
+                  loadingCustomerJobs ||
+                  (!estimateJobId &&
+                    estimateForm.customerId &&
+                    customerPipelineJobs.length > 1 &&
+                    !estimateSaveTargetId)
+                }
+              >
+                {savingEstimate ? 'Saving...' : isNewEstimateDraft ? 'Create estimate' : 'Save estimate'}
+              </Button>
+            </Box>
+              </CardContent>
+            </Card>
+          )}
+        </Box>
+      </Box>
+
+      {invoicePdfPayload && (
+        <Box
+          ref={invoicePdfRef}
+          sx={{
+            position: 'fixed',
+            left: -12000,
+            top: 0,
+            width: 816,
+            minHeight: 1056,
+            bgcolor: '#fff',
+            color: '#000',
+            p: 5,
+            boxSizing: 'border-box',
+            border: '1px solid #d9d9d9',
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            display: 'flex',
+            flexDirection: 'column',
+            '& .MuiTypography-root': { color: '#000' },
+          }}
+        >
+          <Box sx={{ flex: '0 0 auto', width: '100%' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <Box
+                component="img"
+                src="/logo.png"
+                alt="SCWW logo"
+                sx={{ width: 68, height: 68, objectFit: 'contain', borderRadius: '50%' }}
+              />
+              <Box>
+                <Typography sx={{ fontWeight: 700, fontSize: 24, lineHeight: 1 }}>
+                  San Clemente Woodworking
+                </Typography>
+                <Typography sx={{ fontSize: 14, mt: 0.8 }}>1030 Calle Sombra, Unit F</Typography>
+                <Typography sx={{ fontSize: 14 }}>San Clemente, CA 92673</Typography>
+                <Box sx={{ mt: 2, ml: -9 }}>
+                  <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
+                    <Typography sx={{ fontSize: 13 }}>Phone #</Typography>
+                    <Typography sx={{ fontSize: 13, minWidth: 150 }}>{COMPANY_PHONE}</Typography>
+                  </Box>
+                  <Typography sx={{ fontSize: 13, ml: 0 }}>{COMPANY_WEBSITE}</Typography>
+                  <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{COMPANY_EMAIL}</Typography>
+                </Box>
+              </Box>
+            </Box>
+
+            <Box sx={{ textAlign: 'right' }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 22, mb: 1 }}>
+                {invoicePdfPayload.docKind === 'change_order' ? 'Change Order' : 'Invoice'}
+              </Typography>
+              <Box sx={{ width: 280, border: '1px solid #000', ml: 'auto' }}>
+                <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12 }}>
+                  <Box sx={{ width: '34%', p: 1, borderRight: '1px solid #fff' }}>Date</Box>
+                  <Box sx={{ width: '33%', p: 1, borderRight: '1px solid #fff' }}>Estimate #</Box>
+                  <Box sx={{ width: '33%', p: 1 }}>
+                    {invoicePdfPayload.docKind === 'change_order' ? 'Change Order #' : 'Invoice #'}
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex' }}>
+                  <Typography sx={{ width: '34%', fontSize: 12, px: 1, py: 0.8, borderRight: '1px solid #000' }}>
+                    {invoicePdfPayload.invoiceDate}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      width: '33%',
+                      fontSize: 12,
+                      px: 1,
+                      py: 0.8,
+                      borderRight: '1px solid #000',
+                      textAlign: 'right',
+                    }}
+                  >
+                    {invoicePdfPayload.estimateNumber}
+                  </Typography>
+                  <Typography sx={{ width: '33%', fontSize: 12, px: 1, py: 0.8, textAlign: 'right' }}>
+                    {invoicePdfPayload.invoiceNumber}
+                  </Typography>
+                </Box>
+              </Box>
+              {invoicePdfPayload.docKind === 'change_order' ? (
+                <Typography
+                  sx={{
+                    fontSize: 11,
+                    mt: 1,
+                    maxWidth: 280,
+                    ml: 'auto',
+                    textAlign: 'right',
+                    lineHeight: 1.35,
+                  }}
+                >
+                  References estimate #{invoicePdfPayload.estimateNumber}. Stored estimate total at generation: $
+                  {formatInvoiceMoney(invoicePdfPayload.referencedEstimateTotal)}
+                </Typography>
+              ) : null}
+            </Box>
+          </Box>
+
+          <Box sx={{ mt: 3, width: '48%', border: '1px solid #000' }}>
+            <Box sx={{ bgcolor: '#000', color: '#fff', p: 1, fontWeight: 700, fontSize: 12 }}>Name / Address</Box>
+            <Box sx={{ p: 1 }}>
+              <Typography sx={{ fontSize: 13 }}>{invoicePdfPayload.customerName}</Typography>
+              <Typography sx={{ fontSize: 13 }}>{invoicePdfPayload.customerAddress?.street}</Typography>
+              <Typography sx={{ fontSize: 13 }}>{invoicePdfPayload.customerAddress?.city}</Typography>
+              {invoicePdfPayload.projectName ? (
+                <Typography sx={{ fontSize: 12, mt: 0.5 }}>Project: {invoicePdfPayload.projectName}</Typography>
+              ) : null}
+            </Box>
+          </Box>
+
+          <Box sx={{ mt: 3, border: '1px solid #000' }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '20% 48% 12% 20%', bgcolor: '#000', color: '#fff' }}>
+              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Item</Box>
+              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Description</Box>
+              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Qty</Box>
+              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Total</Box>
+            </Box>
+            {invoicePdfPayload.lineItems.map((row, index) => {
+              const qty = row.quantity != null && row.quantity !== '' ? row.quantity : '';
+              const tot = Number(row.total);
+              const totalStr = Number.isFinite(tot)
+                ? tot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                : String(row.total ?? '').trim() || '—';
+              return (
+                <Box
+                  key={`inv-line-${index}`}
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '20% 48% 12% 20%',
+                    borderTop: '1px solid #000',
+                    alignItems: 'stretch',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      px: 0.75,
+                      py: 0.45,
+                      borderRight: '1px solid #000',
+                      fontSize: 12.5,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {row.itemName}
+                  </Box>
+                  <Box
+                    sx={{
+                      px: 0.75,
+                      py: 0.45,
+                      borderRight: '1px solid #000',
+                      fontSize: 12.5,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {row.description}
+                  </Box>
+                  <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000', fontSize: 12.5 }}>{qty}</Box>
+                  <Box sx={{ px: 0.75, py: 0.45, fontSize: 12.5, textAlign: 'right' }}>${totalStr}</Box>
+                </Box>
+              );
+            })}
+          </Box>
+          </Box>
+
+          <Box sx={{ flex: '1 1 auto', minHeight: 32, width: '100%' }} aria-hidden />
+
+          <Box sx={{ flex: '0 0 auto', width: '100%', mt: 'auto' }}>
+            <Box
+              sx={{
+                mt: 1.5,
+                display: 'flex',
+                justifyContent: 'flex-end',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                gap: 1,
+              }}
+            >
+              {invoicePdfPayload.docKind === 'change_order' ? (
+                <>
+                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+                    <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
+                      Estimate reference total
+                    </Box>
+                    <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 14 }}>
+                      ${formatInvoiceMoney(invoicePdfPayload.referencedEstimateTotal)}
+                    </Box>
+                  </Box>
+                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+                    <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
+                      Change order total
+                    </Box>
+                    <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                      ${formatInvoiceMoney(invoicePdfPayload.grandTotal)}
+                    </Box>
+                  </Box>
+                </>
+              ) : (
+                <>
+                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+                    <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
+                      Total
+                    </Box>
+                    <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                      $
+                      {formatInvoiceMoney(invoicePdfPayload.contractTotal)}
+                    </Box>
+                  </Box>
+                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
+                    <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
+                      {invoicePdfPayload.kind === 'final' ? 'Final due today' : 'Deposit due today'}
+                    </Box>
+                    <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                      ${formatInvoiceMoney(invoicePdfPayload.dueToday)}
+                    </Box>
+                  </Box>
+                </>
+              )}
+            </Box>
+
+            <Box sx={{ mt: 2 }}>
+              <Typography sx={{ fontSize: 12, lineHeight: 1.5 }}>
+                {INVOICE_PERMITS_ACK_LINE} ______
+              </Typography>
+              <Typography sx={{ fontSize: 12, mt: 1.5 }}>{invoicePdfPayload.footerNote}</Typography>
+              <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
+            </Box>
+          </Box>
+        </Box>
+      )}
+
+      <Dialog
+        open={createInvoiceOpen}
+        onClose={() => {
+          if (!savingInvoice) setCreateInvoiceOpen(false);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Create invoice from estimate</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            The PDF matches your estimate layout (line items and totals). Choose whether this bill is for the
+            deposit (40% of the contract total) or the final draw (60%).
+          </Typography>
+          <FormControl component="fieldset" variant="standard" sx={{ mb: 1 }}>
+            <FormLabel component="legend">Invoice type</FormLabel>
+            <RadioGroup
+              row
+              value={createInvoiceKind}
+              onChange={(e) => setCreateInvoiceKind(e.target.value)}
+            >
+              <FormControlLabel value="deposit" control={<Radio />} label="Deposit" />
+              <FormControlLabel value="final" control={<Radio />} label="Final" />
+            </RadioGroup>
+          </FormControl>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Contract total (from line items):{' '}
+            <strong>${formatInvoiceMoney(estimateTotal)}</strong>
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Deposit today (40%): <strong>${formatInvoiceMoney(roundMoneyClient(estimateTotal * INVOICE_DEPOSIT_FRACTION))}</strong>
+            {' · '}
+            Final (60%): <strong>${formatInvoiceMoney(roundMoneyClient(estimateTotal * INVOICE_FINAL_FRACTION))}</strong>
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+            Estimate # {invoiceEstimateNumber}
+            {estimateJobId ? ` · Job ${String(estimateJobId).slice(-8)}` : ''}. Save any estimate edits before
+            creating an invoice so totals match.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setCreateInvoiceOpen(false)} disabled={savingInvoice}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleConfirmCreateInvoice} disabled={savingInvoice}>
+            {savingInvoice ? 'Working…' : 'Create & download PDF'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={newEstimatePromptOpen} onClose={() => setNewEstimatePromptOpen(false)}>
+        <DialogTitle>Unsaved estimate changes</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            You have unsaved edits. Save this estimate first, or discard these changes and start a
+            fresh estimate draft.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNewEstimatePromptOpen(false)}>Cancel</Button>
+          <Button color="warning" onClick={handleCreateNewDiscardCurrent}>
+            Discard & start new
+          </Button>
+          <Button variant="contained" onClick={handleCreateNewAfterSave} disabled={savingEstimate}>
+            Save & start new
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
+  );
+}
+
+export default FinanceHubPage;
