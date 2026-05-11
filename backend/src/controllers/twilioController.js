@@ -300,6 +300,53 @@ async function sendSmsViaTwilio({ to, message, mediaUrl }) {
   };
 }
 
+/** E.164 from `TWILIO_MESSAGE_PAGE_TO` — used only by the in-app “Messages” page (destination never comes from the client). */
+function getMessagePageDestinationE164() {
+  const raw = String(process.env.TWILIO_MESSAGE_PAGE_TO || '').trim();
+  return normalizeToE164(raw);
+}
+
+function lastFourDigitsForHint(e164) {
+  const d = String(e164 || '').replace(/\D/g, '');
+  return d.length >= 4 ? d.slice(-4) : '';
+}
+
+async function messagePageConfig(req, res) {
+  try {
+    const to = getMessagePageDestinationE164();
+    return res.status(200).json({
+      configured: Boolean(to),
+      toLastFour: to ? lastFourDigitsForHint(to) : undefined,
+    });
+  } catch (error) {
+    console.error('Twilio messagePageConfig error:', error?.message || error);
+    return res.status(500).json({ error: 'Failed to read message page configuration' });
+  }
+}
+
+async function sendSmsToMessagePageDestination(req, res) {
+  try {
+    const to = getMessagePageDestinationE164();
+    if (!to) {
+      return res.status(503).json({
+        error:
+          'TWILIO_MESSAGE_PAGE_TO is not configured on the server. Set it in the environment to enable this page.',
+      });
+    }
+    const mediaUrls = await resolveMediaUrls(req);
+    const data = await sendSmsViaTwilio({
+      to,
+      message: req.body?.message,
+      mediaUrl: mediaUrls,
+    });
+    return res.status(200).json({ success: true, ...data });
+  } catch (error) {
+    console.error('Twilio sendSmsToMessagePageDestination error:', error?.message || error);
+    const status = /invalid|required|not configured/i.test(String(error?.message)) ? 400 : 500;
+    return res.status(status).json({ error: error?.message || 'Failed to send SMS' });
+  }
+}
+
 async function sendSms(req, res) {
   try {
     const to = await resolveOutgoingSmsTo(req);
@@ -421,4 +468,6 @@ module.exports = {
   startSmsScheduler,
   sendSmsViaTwilio,
   twilioMediaDownload,
+  messagePageConfig,
+  sendSmsToMessagePageDestination,
 };

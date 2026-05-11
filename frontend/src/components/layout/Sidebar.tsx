@@ -30,6 +30,7 @@ import {
   ViewWeek as PipelineViewKioskIcon,
   AccountBalanceWallet as FinanceHubIcon,
   TableRows as TakeoffIcon,
+  Sms as SmsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
@@ -42,6 +43,7 @@ const workspaceItems = [
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
   { text: 'Projects & Tasks', icon: <TasksIcon />, path: '/tasks' },
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
+  { text: 'Messages', icon: <SmsIcon />, path: '/messages' },
 ];
 
 const financeItems = [

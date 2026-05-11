@@ -196,10 +196,15 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
         useCORS: true,
         onclone: (_clonedDoc, cloned) => {
           /** MUI inputs + native date fields often clip descenders when rasterized; plain divs print cleanly. */
-          const replaceInputWithDiv = (field, opts = {}) => {
+          const replaceInputWithDiv = (
+            field: Element,
+            opts: { rightAlign?: boolean; minHeight?: string; fontSize?: string; lineHeight?: string } = {},
+          ) => {
             const { rightAlign = false, minHeight = '42px', fontSize = '12.5px', lineHeight = '1.5' } = opts;
             const div = _clonedDoc.createElement('div');
-            div.textContent = field.value ?? '';
+            const raw =
+              field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement ? field.value ?? '' : '';
+            div.textContent = raw;
             Object.assign(div.style, {
               width: '100%',
               boxSizing: 'border-box',

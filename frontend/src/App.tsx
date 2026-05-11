@@ -32,6 +32,7 @@ import PdfViewerPage from './pages/PdfViewerPage';
 import PictureViewerPage from './pages/PictureViewerPage';
 import FinanceHubPage from './pages/FinanceHubPage';
 import TakeoffSheetPage from './pages/TakeoffSheetPage';
+import MessagePage from './pages/MessagePage';
 
 function App(): JSX.Element | null {
   const { user, loading } = useAuth();
@@ -117,6 +118,7 @@ function App(): JSX.Element | null {
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/tasks" element={<TasksPage />} />
                   <Route path="/documents" element={<DocumentsPage />} />
+                  <Route path="/messages" element={<MessagePage />} />
                   <Route path="/dead-estimates" element={<JobArchivePage />} />
                   <Route path="/archive" element={<JobArchivePage />} />
                   <Route path="/completed-appointments" element={<CompletedAppointmentsPage />} />
