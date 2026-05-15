@@ -837,7 +837,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
         >
           <Table sx={{ minWidth: 650 }}>
             <TableHead>
-              <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
+              <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5' }}>
                 <TableCell>
                   <TableSortLabel
                     active={sortField === 'name'}

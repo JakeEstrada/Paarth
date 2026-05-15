@@ -556,14 +556,14 @@ function CalendarDay({ date, scheduledJobs, onDrop, onJobMove, onJobResize, isCu
         borderBottom: `1px solid ${theme.palette.divider}`,
         backgroundColor: isDragOver 
           ? (theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.2)' : '#E3F2FD')
-          : (isCurrentMonth ? theme.palette.background.paper : (theme.palette.mode === 'dark' ? '#141414' : '#f7f7f7')),
+          : (isCurrentMonth ? theme.palette.background.paper : (theme.palette.mode === 'dark' ? '#1e222a' : '#f7f7f7')),
         opacity: isCurrentMonth ? 1 : 0.14,
         transition: 'background-color 0.2s, opacity 0.15s',
         position: 'relative',
         '&:hover': {
           backgroundColor: isCurrentMonth 
-            ? (theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5')
-            : (theme.palette.mode === 'dark' ? '#1E1E1E' : '#f0f0f0'),
+            ? (theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5')
+            : (theme.palette.mode === 'dark' ? '#252a33' : '#f0f0f0'),
           opacity: isCurrentMonth ? 1 : 0.38,
         },
       }}
@@ -1002,7 +1002,7 @@ function CalendarPage() {
                       sx={{
                         p: 1.5,
                         textAlign: 'center',
-                        backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
+                        backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5',
                         borderRight: `1px solid ${theme.palette.divider}`,
                         '&:last-child': { borderRight: 'none' },
                         borderBottom: `1px solid ${theme.palette.divider}`,

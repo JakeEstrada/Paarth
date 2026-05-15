@@ -375,7 +375,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             boxSizing: 'border-box',
             width: DRAWER_WIDTH,
             borderRight: `1px solid ${theme.palette.divider}`,
-            backgroundColor: theme.palette.mode === 'dark' ? '#1E1E1E' : '#FAFAFA',
+            backgroundColor: theme.palette.mode === 'dark' ? theme.palette.background.paper : '#FAFAFA',
           },
         }}
       >
@@ -393,7 +393,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             width: DRAWER_WIDTH,
             boxSizing: 'border-box',
             borderRight: `1px solid ${theme.palette.divider}`,
-            backgroundColor: theme.palette.mode === 'dark' ? '#1E1E1E' : '#FAFAFA',
+            backgroundColor: theme.palette.mode === 'dark' ? theme.palette.background.paper : '#FAFAFA',
           },
         }}
       >

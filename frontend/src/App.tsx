@@ -47,7 +47,7 @@ function App(): JSX.Element | null {
       sx={{
         minHeight: '100vh',
         background: theme.palette.mode === 'dark'
-          ? '#121212'
+          ? `linear-gradient(135deg, ${theme.palette.background.default} 0%, ${theme.palette.background.paper} 100%)`
           : 'linear-gradient(135deg, #E9EEF3 0%, #DEE7F0 100%)',
       }}
     >

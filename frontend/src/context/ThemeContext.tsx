@@ -41,14 +41,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           },
           ...(mode === 'dark'
             ? {
-                // Dark mode palette
+                // Slightly brighter than Material “true black” (#121212 / #1E1E1E) — easier on the eyes
                 background: {
-                  default: '#121212',
-                  paper: '#1E1E1E',
+                  default: '#1b1f27',
+                  paper: '#252b36',
                 },
+                divider: 'rgba(255, 255, 255, 0.09)',
                 text: {
-                  primary: '#FFFFFF',
-                  secondary: 'rgba(255, 255, 255, 0.7)',
+                  primary: '#eceff4',
+                  secondary: 'rgba(236, 239, 244, 0.72)',
+                },
+                action: {
+                  active: 'rgba(236, 239, 244, 0.65)',
+                  hover: 'rgba(255, 255, 255, 0.06)',
+                  selected: 'rgba(25, 118, 210, 0.22)',
+                  disabledBackground: 'rgba(255, 255, 255, 0.09)',
                 },
               }
             : {
@@ -150,12 +157,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             styleOverrides: {
               root: {
                 background: mode === 'dark'
-                  ? 'linear-gradient(135deg, #1E1E1E 0%, #2A2A2A 100%)'
+                  ? 'linear-gradient(135deg, #252b36 0%, #2e3542 100%)'
                   : 'linear-gradient(135deg, #F2F5F9 0%, #E7EDF4 100%)',
                 boxShadow: mode === 'dark'
                   ? '0 2px 8px rgba(0, 0, 0, 0.3)'
                   : '0 2px 8px rgba(63, 81, 181, 0.06)',
-                color: mode === 'dark' ? '#FFFFFF' : '#22303A',
+                color: mode === 'dark' ? '#eceff4' : '#22303A',
               },
             },
           },

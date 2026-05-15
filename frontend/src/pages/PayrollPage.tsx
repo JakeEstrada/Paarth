@@ -906,7 +906,7 @@ function PayrollPage() {
           border: '1px solid #e0e0e0',
           borderRadius: 2,
           p: { xs: 1.5, sm: 2, md: 3 },
-          backgroundColor: theme.palette.mode === 'dark' ? '#1E1E1E' : '#fafafa'
+          backgroundColor: theme.palette.mode === 'dark' ? '#252a33' : '#fafafa'
         }}>
           {/* Flexbox container for all widgets */}
           <Box sx={{ 
@@ -940,7 +940,7 @@ function PayrollPage() {
 
               <Table size="small" sx={{ mb: 4, width: '100%' }}>
                 <TableHead>
-                  <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
+                  <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5' }}>
                     <TableCell sx={{ fontWeight: 700, width: '20%' }}>Day</TableCell>
                     <TableCell sx={{ fontWeight: 700, width: '20%' }}>In</TableCell>
                     <TableCell sx={{ fontWeight: 700, width: '20%' }}>Out</TableCell>
@@ -1064,7 +1064,7 @@ function PayrollPage() {
 
               <Table size="small" sx={{ mb: 3, width: '100%' }}>
                 <TableHead>
-                  <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
+                  <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5' }}>
                     <TableCell sx={{ fontWeight: 700, width: '50%' }}>Day</TableCell>
                     <TableCell sx={{ fontWeight: 700, width: '50%' }} align="right">Miles</TableCell>
                   </TableRow>
@@ -1114,7 +1114,7 @@ function PayrollPage() {
               </Table>
 
               <Box sx={{ mt: 3 }}>
-                <Paper sx={{ p: 2.5, backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
+                <Paper sx={{ p: 2.5, backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5' }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.95rem' }}>
                       Price per mile
@@ -1241,7 +1241,7 @@ function PayrollPage() {
               <Card sx={{ 
                 flex: 1,
                 boxShadow: 3,
-                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f8f9fa',
+                backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f8f9fa',
                 display: 'flex',
                 flexDirection: 'column'
               }}>

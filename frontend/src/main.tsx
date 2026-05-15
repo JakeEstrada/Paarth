@@ -31,8 +31,8 @@ function AppWithTheme(): JSX.Element {
           position="top-right"
           toastOptions={{
             style: {
-              background: theme.palette.mode === 'dark' ? '#1E1E1E' : '#FFFFFF',
-              color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#263238',
+              background: theme.palette.mode === 'dark' ? theme.palette.background.paper : '#FFFFFF',
+              color: theme.palette.mode === 'dark' ? theme.palette.text.primary : '#263238',
             },
           }}
         />

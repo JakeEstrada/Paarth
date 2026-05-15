@@ -232,7 +232,7 @@ function BillsPage() {
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
-            <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
+            <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5' }}>
               <TableCell sx={{ fontWeight: 700 }}>Title</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Vendor</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Due Day</TableCell>
