@@ -1,4 +1,6 @@
 const express = require('express');
+const upload = require('../middleware/upload');
+const { uploadTwilioMmsStaging } = require('../controllers/fileController');
 const {
   inboundSms,
   inboundVoice,
@@ -18,5 +20,6 @@ router.get('/media/:id', twilioMediaDownload);
 router.post('/send-sms', requireAuth, sendSms);
 router.post('/schedule-sms', requireAuth, scheduleSms);
 router.post('/send-sms-adhoc', requireAuth, sendSmsAdhoc);
+router.post('/mms-upload', requireAuth, upload.single('file'), uploadTwilioMmsStaging);
 
 module.exports = router;

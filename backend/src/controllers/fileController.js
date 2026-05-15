@@ -668,6 +668,78 @@ async function uploadFile(req, res) {
   }
 }
 
+/**
+ * Temporary upload for Twilio MMS: no job/task required; file is referenced by `_id`
+ * when calling `/twilio/send-sms` or `/twilio/send-sms-adhoc` with `mediaFileId`.
+ */
+async function uploadTwilioMmsStaging(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const createdBy = req.user?._id;
+    if (!createdBy) {
+      if (req.file.path && !req.file.location && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (_) {}
+      } else if (isS3Configured() && req.file.key) {
+        const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+        try {
+          await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: req.file.key }));
+        } catch (_) {}
+      }
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    let filePath;
+    let s3Key;
+
+    if (isS3Configured() && (req.file.location || req.file.key)) {
+      s3Key = req.file.key || (req.file.location ? req.file.location.split('/').slice(-2).join('/') : null);
+      filePath = s3Key;
+    } else {
+      let absolutePath = req.file.path;
+      if (!path.isAbsolute(absolutePath)) {
+        absolutePath = path.resolve(UPLOADS_DIR, req.file.filename);
+      }
+      if (!fs.existsSync(absolutePath) && req.file.path && fs.existsSync(req.file.path)) {
+        absolutePath = path.resolve(req.file.path);
+      }
+      filePath = absolutePath;
+    }
+
+    const filename = req.file.filename || (req.file.key ? req.file.key.split('/').pop() : 'unknown');
+
+    const file = new File({
+      filename,
+      originalName: req.file.originalname,
+      mimetype: req.file.mimetype || req.file.contentType,
+      size: req.file.size,
+      path: filePath,
+      s3Key: s3Key || undefined,
+      fileType: 'photo',
+      uploadedBy: createdBy,
+    });
+
+    await file.save();
+    return res.status(201).json({ fileId: file._id });
+  } catch (error) {
+    if (req.file?.path && !req.file?.location && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (_) {}
+    } else if (isS3Configured() && req.file?.key) {
+      const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+      try {
+        await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: req.file.key }));
+      } catch (_) {}
+    }
+    console.error('uploadTwilioMmsStaging error:', error?.message || error);
+    return res.status(500).json({ error: error.message });
+  }
+}
+
 // Get files for a job
 async function getJobFiles(req, res) {
   try {
@@ -1219,6 +1291,7 @@ async function deleteFile(req, res) {
 
 module.exports = {
   uploadFile,
+  uploadTwilioMmsStaging,
   getJobFiles,
   getTaskFiles,
   uploadDocument,
