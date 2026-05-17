@@ -24,13 +24,19 @@ The Pi runs a small Python loop; each successful read **POSTs** the UID to the P
 │ rfid_to_paarth  │  { uid, scannedAt, ... }     │ MongoDB          │
 └─────────────────┘ ────────────────────────────► └────────┬─────────┘
                                                            │
+                                                           │ Socket.IO
+                                                           │ tenant:<id>
+                                                           │ rfid.scan.created
+                                                           ▼
 ┌─────────────────┐     GET /rfid/tags, /rfid/scans      │
-│ Paarth web app  │ ◄────────────────────────────────────┘
-│ /rfid page      │     (JWT Bearer + x-tenant-id)
-└─────────────────┘
+│ Paarth web app  │ ◄──── REST (initial load) ───────────┘
+│ /rfid page      │ ◄──── WebSocket (live updates)
+└─────────────────┘     (JWT + subscribe tenant room)
 ```
 
 **Multi-tenant:** Every RFID record is scoped to a **tenant** (your shop). The Pi must send `x-tenant-id` with your tenant’s MongoDB ObjectId (24 hex characters).
+
+**Real-time UI:** When a scan is saved, the backend emits `rfid.scan.created` on Socket.IO room `tenant:<tenantId>`. The **RFID scans** page subscribes to that room and prepends new rows without a manual refresh. Tag registry changes emit `rfid.tag.upserted` and `rfid.tag.deleted` for the same room.
 
 ---
 
@@ -41,10 +47,14 @@ The Pi runs a small Python loop; each successful read **POSTs** the UID to the P
 | `scripts/raspberry-pi/rfid_to_paarth.py` | Pi script: read MFRC522, POST scans to API |
 | `backend/src/models/RfidTag.js` | MongoDB: UID → displayName mapping |
 | `backend/src/models/RfidScan.js` | MongoDB: individual scan events |
-| `backend/src/controllers/rfidController.js` | Business logic for tags and scans |
+| `backend/src/controllers/rfidController.js` | Business logic; publishes Socket.IO events after writes |
+| `backend/src/services/eventBus.js` | `publishRfidScanCreated`, `publishRfidTagUpserted`, `publishRfidTagDeleted` |
 | `backend/src/middleware/rfidDeviceAuth.js` | Auth: device API key **or** user JWT |
 | `backend/src/routes/rfid.js` | Express routes |
-| `frontend/src/pages/RfidPage.tsx` | UI: register tags, view scan log |
+| `backend/src/services/socketServer.js` | Socket.IO server (rooms, subscribe/unsubscribe) |
+| `frontend/src/pages/RfidPage.tsx` | UI: register tags, live scan log, **Live** badge |
+| `frontend/src/hooks/useSocketSubscription.js` | React hook: subscribe to tenant room + event |
+| `frontend/src/services/socket.ts` | Socket.IO client singleton |
 | `frontend/src/App.tsx` | Route: `/rfid` |
 | `frontend/src/components/layout/Sidebar.tsx` | Nav: **RFID scans** |
 
@@ -122,7 +132,7 @@ RFID_DEVICE_API_KEY=your_long_random_secret_here
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `PAARTH_API_URL` | Yes | Base URL, no trailing slash. e.g. `https://your-app.onrender.com` or `http://192.168.1.50:4000` |
+| `PAARTH_API_URL` | Yes | Base URL, no trailing slash — see **§5.2.1** for which host to use |
 | `PAARTH_TENANT_ID` | Yes | 24-char Mongo ObjectId for your tenant |
 | `RFID_DEVICE_API_KEY` | Yes | Same value as server `RFID_DEVICE_API_KEY` |
 | `RFID_DEVICE_LABEL` | No | Default `raspberry-pi`; stored on each scan |
@@ -141,8 +151,36 @@ Run:
 
 ```bash
 source ~/.paarth-rfid.env
-python3 /path/to/Paarth/scripts/raspberry-pi/rfid_to_paarth.py
+sudo -E python3 /path/to/Paarth/scripts/raspberry-pi/rfid_to_paarth.py
 ```
+
+Use **`sudo -E`** when the script needs root for GPIO/SPI: `-E` preserves your `export`ed variables (plain `sudo` drops them).
+
+#### 5.2.1 Choosing `PAARTH_API_URL`
+
+| Where the backend runs | Set `PAARTH_API_URL` to |
+|------------------------|-------------------------|
+| **Deployed** (Render, Railway, VPS, etc.) | `https://your-production-api-host` (same base URL as production Paarth API) |
+| **Dev laptop** on Wi‑Fi, Pi on same network | `http://<laptop-LAN-IP>:4000` — **not** `localhost` |
+| **Same machine as the Pi** (unusual) | `http://localhost:4000` |
+
+**Important:** On the Pi, `localhost` always means the Pi itself, not your laptop and not a cloud host. If the backend is deployed, use the public HTTPS URL.
+
+Find the production URL: open live Paarth → DevTools → **Network** → inspect any API request host, or your hosting dashboard (e.g. Render web service URL).
+
+**Deployed backend:** `RFID_DEVICE_API_KEY` must be set in the **hosting provider’s environment** (not only in local `backend/.env`). Redeploy after adding or changing it.
+
+Test from the Pi before running the reader:
+
+```bash
+curl -X POST "https://YOUR_DEPLOYED_API/rfid/scans" \
+  -H "Content-Type: application/json" \
+  -H "x-rfid-api-key: YOUR_SECRET" \
+  -H "x-tenant-id: YOUR_TENANT_ID" \
+  -d '{"uid":"test-from-pi","source":"test","deviceLabel":"curl"}'
+```
+
+Expect `201` and `{"success":true,"scan":{...}}`.
 
 ### 5.3 How to find `PAARTH_TENANT_ID`
 
@@ -152,9 +190,13 @@ python3 /path/to/Paarth/scripts/raspberry-pi/rfid_to_paarth.py
 
 Alternatively, ask your Paarth admin / database for the `Tenant` document `_id` for your shop.
 
-### 5.4 Frontend (unchanged)
+### 5.4 Frontend
 
-`VITE_API_URL` must point at the same backend the Pi uses (for the web UI only).
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_API_URL` | Yes | Same backend base URL as `PAARTH_API_URL` (REST **and** Socket.IO client connect here) |
+
+Redeploy the frontend after changing `VITE_API_URL`. Real-time updates require the browser to reach the same API host that emits Socket.IO events.
 
 ---
 
@@ -162,11 +204,87 @@ Alternatively, ask your Paarth admin / database for the `Tenant` document `_id` 
 
 1. Log in to Paarth.
 2. Sidebar → **RFID scans** (`/rfid`).
-3. **Register tag**
+3. Confirm the green **Live** badge next to the title (means the page subscribed to `tenant:<yourTenantId>`).
+4. **Register tag**
    - Scan a tag on the Pi once.
    - Copy the UID from the Pi console **or** from **Recent scans** (may show as `Unknown tag (142-1-4-...)`).
    - Enter **Tag UID** + **Name** → **Save mapping**.
-4. **Recent scans** lists timestamp, name, UID, source/device.
+5. **Recent scans** lists timestamp, name, UID, source/device.
+6. Leave the tab open: new Pi scans appear in the table within about a second (no refresh). Use the refresh icon to reload everything from the API.
+
+**Note:** Registering a tag updates the registry live, but **older** scan rows that already say `Unknown tag (...)` keep that label until you refresh or a **new** scan occurs (names are stored on the scan at read time).
+
+---
+
+## 6.1 Real-time updates (Socket.IO)
+
+Implemented using the same pattern as Pipeline and Calendar (`documents/socketio.md`).
+
+### Flow
+
+1. Pi (or curl) `POST /rfid/scans` → scan saved in MongoDB.
+2. `rfidController.recordScan` calls `publishRfidScanCreated(io, scan, { knownTag })`.
+3. Event `rfid.scan.created` is emitted to room `tenant:<tenantId>`.
+4. `RfidPage` uses `useSocketSubscription(tenantRoom, 'rfid.scan.created', handler)` and prepends the scan (max 200 rows, deduped by `_id`).
+
+Tag registry changes from the UI emit:
+
+| Event | When |
+|-------|------|
+| `rfid.tag.upserted` | `POST` / `PUT` `/rfid/tags` |
+| `rfid.tag.deleted` | `DELETE` `/rfid/tags/:id` |
+
+### Event payloads
+
+**`rfid.scan.created`**
+
+```json
+{
+  "type": "rfid.scan.created",
+  "tenantId": "507f1f77bcf86cd799439011",
+  "scan": {
+    "_id": "...",
+    "uid": "142-1-4-200-91",
+    "displayName": "Jake",
+    "scannedAt": "2026-05-11T18:30:00.000Z",
+    "source": "raspberry-pi",
+    "deviceLabel": "shop-front-desk",
+    "knownTag": true
+  },
+  "sourceSocketId": null
+}
+```
+
+**`rfid.tag.upserted`**
+
+```json
+{
+  "type": "rfid.tag.upserted",
+  "tenantId": "...",
+  "tag": { "_id": "...", "uid": "142-1-4-200-91", "displayName": "Jake", "notes": "" },
+  "sourceSocketId": "..."
+}
+```
+
+**`rfid.tag.deleted`**
+
+```json
+{
+  "type": "rfid.tag.deleted",
+  "tenantId": "...",
+  "tagId": "...",
+  "sourceSocketId": "..."
+}
+```
+
+Pi posts do not send `x-socket-id`; browser edits may, so other tabs still receive updates.
+
+### Requirements for live UI
+
+- Backend and frontend **deployed** with the RFID Socket.IO changes.
+- User logged in; `tenantId` in localStorage matches `PAARTH_TENANT_ID` on the Pi.
+- `VITE_API_URL` points at the deployed API (Socket.IO uses that host).
+- **RFID scans** page open (subscription is per-page).
 
 ---
 
@@ -223,6 +341,8 @@ x-tenant-id: <PAARTH_TENANT_ID>
 1. Body `displayName` / `name` if provided  
 2. Else active `RfidTag` for this `uid` in the tenant  
 3. Else `Unknown tag (<uid>)`
+
+**Side effect:** On success, the server emits Socket.IO `rfid.scan.created` to `tenant:<tenantId>` (see §6.1).
 
 **Common errors:**
 
@@ -293,7 +413,7 @@ export PAARTH_API_URL="https://your-api-host"
 export PAARTH_TENANT_ID="your_tenant_id"
 export RFID_DEVICE_API_KEY="your_secret"
 
-python3 scripts/raspberry-pi/rfid_to_paarth.py
+sudo -E python3 scripts/raspberry-pi/rfid_to_paarth.py
 ```
 
 Expected console output:
@@ -349,6 +469,10 @@ WantedBy=multi-user.target
 | Scans show **Unknown tag** | Register UID in **RFID scans** → **Register tag** (exact UID string) |
 | Duplicate scans | Increase `RFID_DEBOUNCE_SECONDS` |
 | No scans in UI but Pi says OK | Wrong `PAARTH_TENANT_ID` (different tenant than logged-in user) |
+| Pi OK but UI never updates live | Redeploy frontend; check **Live** badge; `VITE_API_URL` must match API; tenant id mismatch |
+| `localhost` from Pi fails | Use deployed HTTPS URL or laptop LAN IP — see §5.2.1 |
+| `401` on Pi but `curl` works on laptop | Key set locally only — add `RFID_DEVICE_API_KEY` on host and redeploy |
+| API key typo | No extra `=` or spaces; must match server exactly |
 | `Database connection unavailable` | Backend MongoDB down or still connecting |
 
 **Verify tenant:** Logged-in user’s `tenantId` in browser must match `PAARTH_TENANT_ID` on the Pi.
@@ -381,38 +505,48 @@ WantedBy=multi-user.target
 
 ## 12. Extending the system (ideas for ChatGPT)
 
-Possible follow-ups not implemented unless requested:
+Already implemented:
+
+- **Socket.IO** — `rfid.scan.created`, `rfid.tag.upserted`, `rfid.tag.deleted` on `tenant:<tenantId>` (see §6.1).
+
+Possible follow-ups:
 
 - Clock-in / clock-out: interpret alternating scans as in/out and write to payroll.
 - Link `employeeUserId` on `RfidTag` to Users page.
-- Webhook or Socket.io event when a scan arrives.
+- Toast or sound on each live scan.
+- Rename historical scan rows when a tag is registered.
+- Webhook to external systems when a scan arrives.
 - Gate access: reject unknown UIDs at the door.
 - Attach `jobId` or `customerId` on scan via a second UI step.
 
 When implementing extensions, start from:
 
 - `backend/src/controllers/rfidController.js` → `recordScan`
-- `frontend/src/pages/RfidPage.tsx`
+- `backend/src/services/eventBus.js` → add publishers / events
+- `frontend/src/pages/RfidPage.tsx` → `useSocketSubscription` handlers
 
 ---
 
 ## 13. Quick checklist (deployment)
 
-- [ ] `RFID_DEVICE_API_KEY` set on backend; redeployed  
-- [ ] Pi env: `PAARTH_API_URL`, `PAARTH_TENANT_ID`, `RFID_DEVICE_API_KEY`  
-- [ ] `curl` test returns `201`  
-- [ ] Pi script runs; console shows `Logged in Paarth`  
-- [ ] Paarth UI **RFID scans** shows rows  
+- [ ] `RFID_DEVICE_API_KEY` set on **deployed** backend env; backend redeployed  
+- [ ] Frontend `VITE_API_URL` points at same API; frontend redeployed  
+- [ ] Pi env: `PAARTH_API_URL` (HTTPS production URL if backend is deployed), `PAARTH_TENANT_ID`, `RFID_DEVICE_API_KEY`  
+- [ ] `curl` test from Pi (or laptop) returns `201`  
+- [ ] Pi script runs with `sudo -E`; console shows `Logged in Paarth`  
+- [ ] Paarth UI **RFID scans** shows rows; **Live** badge visible  
+- [ ] Scan on Pi → new row appears without refresh  
 - [ ] Each physical tag registered with correct UID string  
 
 ---
 
 ## 14. Related Paarth context
 
-- **Stack:** React (Vite) frontend, Express backend, MongoDB, multi-tenant via `x-tenant-id` / user `tenantId`.
+- **Stack:** React (Vite) frontend, Express backend, MongoDB, Socket.IO, multi-tenant via `x-tenant-id` / user `tenantId`.
 - **Auth:** JWT in `Authorization: Bearer` for users; RFID device uses `x-rfid-api-key`.
+- **Real-time:** `tenant:<tenantId>` rooms; see `documents/socketio.md`.
 - **Twilio / calendar / pipeline** are separate features; RFID does not auto-link to jobs unless you build that.
 
 ---
 
-*Last updated to match the Paarth codebase: RFID routes, models, `rfid_to_paarth.py`, and `/rfid` UI page.*
+*Last updated: RFID routes/models, `rfid_to_paarth.py`, `/rfid` UI with live Socket.IO updates, deployment URL guidance, and `eventBus` RFID publishers.*
