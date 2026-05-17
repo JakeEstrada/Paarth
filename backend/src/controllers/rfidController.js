@@ -1,5 +1,10 @@
 const RfidTag = require('../models/RfidTag');
 const RfidScan = require('../models/RfidScan');
+const {
+  publishRfidScanCreated,
+  publishRfidTagUpserted,
+  publishRfidTagDeleted,
+} = require('../services/eventBus');
 
 function normalizeUid(raw) {
   const s = String(raw || '').trim();
@@ -32,6 +37,13 @@ async function recordScan(req, res) {
       scannedAt,
       source: String(req.body?.source || 'device').trim() || 'device',
       deviceLabel: String(req.body?.deviceLabel || req.body?.device || '').trim(),
+    });
+
+    const io = req.app.get('io');
+    const scanDoc = scan.toObject ? scan.toObject() : scan;
+    publishRfidScanCreated(io, scanDoc, {
+      knownTag: Boolean(tag),
+      sourceSocketId: req.headers['x-socket-id'] || null,
     });
 
     return res.status(201).json({
@@ -110,6 +122,12 @@ async function upsertTag(req, res) {
       { upsert: true, new: true, runValidators: true }
     );
 
+    const io = req.app.get('io');
+    const tagDoc = tag.toObject ? tag.toObject() : tag;
+    publishRfidTagUpserted(io, tagDoc, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
     return res.status(200).json({ tag });
   } catch (error) {
     if (error?.code === 11000) {
@@ -123,6 +141,13 @@ async function deleteTag(req, res) {
   try {
     const tag = await RfidTag.findByIdAndDelete(req.params.id);
     if (!tag) return res.status(404).json({ error: 'Tag not found' });
+
+    const io = req.app.get('io');
+    const tagDoc = tag.toObject ? tag.toObject() : tag;
+    publishRfidTagDeleted(io, tagDoc, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
     return res.json({ success: true });
   } catch (error) {
     return res.status(500).json({ error: error.message });

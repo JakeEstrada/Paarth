@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -21,6 +21,8 @@ import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import api from '../utils/axios';
 import { format } from 'date-fns';
+import { useAuth } from '../context/AuthContext';
+import { useSocketSubscription } from '../hooks/useSocketSubscription';
 
 interface RfidTagRow {
   _id: string;
@@ -38,7 +40,10 @@ interface RfidScanRow {
   deviceLabel?: string;
 }
 
+const SCAN_LIST_LIMIT = 200;
+
 function RfidPage() {
+  const { tenantIdForBranding } = useAuth();
   const [loading, setLoading] = useState(true);
   const [tags, setTags] = useState<RfidTagRow[]>([]);
   const [scans, setScans] = useState<RfidScanRow[]>([]);
@@ -46,12 +51,14 @@ function RfidPage() {
   const [tagName, setTagName] = useState('');
   const [savingTag, setSavingTag] = useState(false);
 
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [tagsRes, scansRes] = await Promise.all([
         api.get<{ tags: RfidTagRow[] }>('/rfid/tags'),
-        api.get<{ scans: RfidScanRow[] }>('/rfid/scans', { params: { limit: 200 } }),
+        api.get<{ scans: RfidScanRow[] }>('/rfid/scans', { params: { limit: SCAN_LIST_LIMIT } }),
       ]);
       setTags(tagsRes.data.tags || []);
       setScans(scansRes.data.scans || []);
@@ -66,6 +73,49 @@ function RfidPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleRealtimeScan = useCallback((payload: { scan?: RfidScanRow }) => {
+    const incoming = payload?.scan;
+    if (!incoming?._id) return;
+
+    setScans((prev) => {
+      const id = String(incoming._id);
+      if (prev.some((s) => String(s._id) === id)) return prev;
+      const scannedAt =
+        typeof incoming.scannedAt === 'string'
+          ? incoming.scannedAt
+          : new Date(incoming.scannedAt).toISOString();
+      return [{ ...incoming, scannedAt }, ...prev].slice(0, SCAN_LIST_LIMIT);
+    });
+  }, []);
+
+  const handleRealtimeTagUpsert = useCallback((payload: { tag?: RfidTagRow }) => {
+    const incoming = payload?.tag;
+    if (!incoming?._id || !incoming.uid) return;
+
+    setTags((prev) => {
+      const id = String(incoming._id);
+      const idx = prev.findIndex((t) => String(t._id) === id);
+      if (idx === -1) {
+        return [...prev, incoming].sort((a, b) => a.displayName.localeCompare(b.displayName));
+      }
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...incoming };
+      return next.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    });
+  }, []);
+
+  const handleRealtimeTagDeleted = useCallback((payload: { tagId?: string }) => {
+    const tagId = String(payload?.tagId || '').trim();
+    if (!tagId) return;
+    setTags((prev) => prev.filter((t) => String(t._id) !== tagId));
+  }, []);
+
+  useSocketSubscription(tenantRoom, 'rfid.scan.created', handleRealtimeScan);
+  useSocketSubscription(tenantRoom, 'rfid.tag.upserted', handleRealtimeTagUpsert);
+  useSocketSubscription(tenantRoom, 'rfid.tag.deleted', handleRealtimeTagDeleted);
+
+  const liveLabel = useMemo(() => (tenantRoom ? 'Live' : ''), [tenantRoom]);
 
   const handleSaveTag = async () => {
     const uid = tagUid.trim();
@@ -102,9 +152,27 @@ function RfidPage() {
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5" component="h1">
-          RFID scans
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Typography variant="h5" component="h1">
+            RFID scans
+          </Typography>
+          {liveLabel ? (
+            <Typography
+              variant="caption"
+              sx={{
+                px: 1,
+                py: 0.25,
+                borderRadius: 1,
+                bgcolor: 'success.main',
+                color: 'success.contrastText',
+                fontWeight: 600,
+                letterSpacing: 0.5,
+              }}
+            >
+              {liveLabel}
+            </Typography>
+          ) : null}
+        </Box>
         <IconButton onClick={() => void load()} disabled={loading} aria-label="Refresh">
           <RefreshIcon />
         </IconButton>

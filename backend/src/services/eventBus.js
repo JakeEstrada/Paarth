@@ -55,9 +55,67 @@ function publishTaskUpdated(io, task, opts = {}) {
   }
 }
 
+function publishRfidScanCreated(io, scan, opts = {}) {
+  if (!scan?._id) return;
+  const tenantId = scan.tenantId ? String(scan.tenantId) : null;
+  const data = {
+    type: 'rfid.scan.created',
+    tenantId,
+    scan: {
+      _id: String(scan._id),
+      uid: scan.uid,
+      displayName: scan.displayName,
+      scannedAt: scan.scannedAt,
+      source: scan.source,
+      deviceLabel: scan.deviceLabel,
+      knownTag: opts.knownTag === true,
+    },
+    sourceSocketId: opts.sourceSocketId || null,
+  };
+  if (tenantId) {
+    safeEmit(io, `tenant:${tenantId}`, 'rfid.scan.created', data);
+  }
+}
+
+function publishRfidTagUpserted(io, tag, opts = {}) {
+  if (!tag?._id) return;
+  const tenantId = tag.tenantId ? String(tag.tenantId) : null;
+  const data = {
+    type: 'rfid.tag.upserted',
+    tenantId,
+    tag: {
+      _id: String(tag._id),
+      uid: tag.uid,
+      displayName: tag.displayName,
+      notes: tag.notes,
+    },
+    sourceSocketId: opts.sourceSocketId || null,
+  };
+  if (tenantId) {
+    safeEmit(io, `tenant:${tenantId}`, 'rfid.tag.upserted', data);
+  }
+}
+
+function publishRfidTagDeleted(io, tag, opts = {}) {
+  if (!tag?._id) return;
+  const tenantId = tag.tenantId ? String(tag.tenantId) : null;
+  const data = {
+    type: 'rfid.tag.deleted',
+    tenantId,
+    tagId: String(tag._id),
+    sourceSocketId: opts.sourceSocketId || null,
+  };
+  if (tenantId) {
+    safeEmit(io, `tenant:${tenantId}`, 'rfid.tag.deleted', data);
+  }
+}
+
 module.exports = {
   publishProjectCreated,
   publishProjectUpdated,
   publishTaskCreated,
   publishTaskUpdated,
+  publishRfidScanCreated,
+  publishRfidTagUpserted,
+  publishRfidTagDeleted,
 };
