@@ -718,6 +718,10 @@ TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_PHONE_NUMBER=your_twilio_phone_number
 
+# RFID (Optional - Raspberry Pi MFRC522 scan logging)
+RFID_DEVICE_API_KEY=generate_a_long_random_secret
+# Pi also needs PAARTH_TENANT_ID (Mongo tenant _id) — see scripts/raspberry-pi/rfid_to_paarth.py
+
 # Plaid (Optional - financial tracking integration)
 PLAID_CLIENT_ID=your_plaid_client_id
 PLAID_SECRET=your_plaid_secret
