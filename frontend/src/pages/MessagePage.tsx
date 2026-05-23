@@ -19,15 +19,26 @@ import {
   Typography,
   Paper,
 } from '@mui/material';
-import { Refresh as RefreshIcon, Sms as SmsIcon } from '@mui/icons-material';
+import { Refresh as RefreshIcon, Schedule as ScheduleIcon, Sms as SmsIcon } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import api from '../utils/axios';
 import { formatPhoneForDisplay } from '../utils/phoneFormat';
-import { fetchSmsLists, type SmsLists, type SmsRow } from '../utils/twilioApi';
+import { fetchSmsLists, scheduleSmsAdhoc, type SmsLists, type SmsRow } from '../utils/twilioApi';
 
 const EMPTY_LISTS: SmsLists = { scheduled: [], sent: [], received: [] };
+
+function toDatetimeLocalValue(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function defaultScheduleAtValue() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() + 60);
+  return toDatetimeLocalValue(d);
+}
 
 function formatWhen(value: string | null | undefined) {
   if (!value) return '—';
@@ -128,7 +139,9 @@ function MessageTable({
 function MessagePage() {
   const [toDisplay, setToDisplay] = useState('');
   const [body, setBody] = useState('');
+  const [sendAtLocal, setSendAtLocal] = useState(defaultScheduleAtValue);
   const [sending, setSending] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   const [tab, setTab] = useState(0);
   const [lists, setLists] = useState<SmsLists>(EMPTY_LISTS);
   const [loadingLists, setLoadingLists] = useState(true);
@@ -157,6 +170,9 @@ function MessagePage() {
   useEffect(() => {
     void fetchMessages();
   }, [fetchMessages]);
+
+  const busy = sending || scheduling;
+  const minScheduleAt = toDatetimeLocalValue(new Date());
 
   const handleSend = async () => {
     const message = body.trim();
@@ -190,7 +206,54 @@ function MessagePage() {
     }
   };
 
-  const canSend = toDisplay.trim() && body.trim() && !sending;
+  const handleSchedule = async () => {
+    const message = body.trim();
+    const to = toDisplay.trim();
+    if (!to) {
+      toast.error('Enter a phone number');
+      return;
+    }
+    if (!message) {
+      toast.error('Enter a message');
+      return;
+    }
+    if (!sendAtLocal) {
+      toast.error('Choose a send date and time');
+      return;
+    }
+    const sendAt = new Date(sendAtLocal);
+    if (Number.isNaN(sendAt.getTime())) {
+      toast.error('Invalid send date and time');
+      return;
+    }
+    if (sendAt.getTime() <= Date.now()) {
+      toast.error('Send time must be in the future');
+      return;
+    }
+
+    setScheduling(true);
+    try {
+      await scheduleSmsAdhoc({ to, message, sendAt: sendAt.toISOString() });
+      toast.success(`SMS scheduled for ${format(sendAt, 'MMM d, yyyy h:mm a')}`);
+      setBody('');
+      setSendAtLocal(defaultScheduleAtValue());
+      setTab(0);
+      await fetchMessages();
+    } catch (error) {
+      console.error(error);
+      const msg = isAxiosError(error)
+        ? error.response?.data?.error || error.message || 'Failed to schedule'
+        : error instanceof Error
+          ? error.message
+          : 'Failed to schedule';
+      toast.error(msg);
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  const canSend = toDisplay.trim() && body.trim() && !busy;
+  const canSchedule = canSend && Boolean(sendAtLocal) && !busy;
   const tabKeys: Array<'scheduled' | 'sent' | 'received'> = ['scheduled', 'sent', 'received'];
   const activeKey = tabKeys[tab] || 'scheduled';
   const activeRows = lists[activeKey];
@@ -214,7 +277,7 @@ function MessagePage() {
         </Button>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Send SMS from your Twilio number. View scheduled, sent, and received messages below.
+        Send or schedule SMS from your Twilio number. View scheduled, sent, and received messages below.
       </Typography>
 
       <Card variant="outlined" sx={{ mb: 3 }}>
@@ -224,7 +287,7 @@ function MessagePage() {
             fullWidth
             value={toDisplay}
             onChange={(e) => setToDisplay(e.target.value)}
-            disabled={sending}
+            disabled={busy}
             placeholder="(858) 999-5544 or +44 20 7946 0958"
             sx={{ mb: 2 }}
             autoComplete="tel"
@@ -236,19 +299,39 @@ function MessagePage() {
             fullWidth
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            disabled={sending}
+            disabled={busy}
             inputProps={{ maxLength: 1500 }}
             placeholder="Your message"
             helperText={`${body.length} / 1500 characters`}
+            sx={{ mb: 2 }}
           />
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+          <TextField
+            label="Send at"
+            type="datetime-local"
+            fullWidth
+            value={sendAtLocal}
+            onChange={(e) => setSendAtLocal(e.target.value)}
+            disabled={busy}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: minScheduleAt }}
+            helperText="Used when scheduling; must be in the future"
+          />
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              startIcon={scheduling ? <CircularProgress size={18} /> : <ScheduleIcon />}
+              onClick={() => void handleSchedule()}
+              disabled={!canSchedule}
+            >
+              Schedule SMS
+            </Button>
             <Button
               variant="contained"
               startIcon={sending ? <CircularProgress size={18} color="inherit" /> : <SmsIcon />}
               onClick={() => void handleSend()}
               disabled={!canSend}
             >
-              Send SMS
+              Send now
             </Button>
           </Box>
         </CardContent>

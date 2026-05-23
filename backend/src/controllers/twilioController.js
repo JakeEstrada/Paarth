@@ -408,6 +408,46 @@ async function sendSms(req, res) {
   }
 }
 
+async function scheduleSmsToNumber(res, { to, message, sendAtInput, createdBy, customerId, appointmentId }) {
+  const body = String(message || '').trim();
+
+  if (!to) {
+    return res.status(400).json({ error: 'Recipient phone number is required' });
+  }
+  if (!body) {
+    return res.status(400).json({ error: 'Message is required' });
+  }
+  if (!sendAtInput) {
+    return res.status(400).json({ error: 'Send date and time are required' });
+  }
+
+  const sendAt = new Date(sendAtInput);
+  if (Number.isNaN(sendAt.getTime())) {
+    return res.status(400).json({ error: 'Invalid send date/time' });
+  }
+  if (sendAt.getTime() <= Date.now()) {
+    return res.status(400).json({ error: 'Send time must be in the future' });
+  }
+
+  const sms = await ScheduledSms.create({
+    to,
+    message: body,
+    sendAt,
+    createdBy: createdBy || undefined,
+    customerId: customerId || undefined,
+    appointmentId: appointmentId || undefined,
+    status: 'scheduled',
+  });
+
+  return res.status(201).json({
+    success: true,
+    mode: 'scheduled',
+    id: sms._id,
+    sendAt: sms.sendAt,
+    to: sms.to,
+  });
+}
+
 async function scheduleSms(req, res) {
   try {
     let to;
@@ -416,23 +456,17 @@ async function scheduleSms(req, res) {
     } catch (e) {
       return res.status(400).json({ error: e?.message || 'Invalid recipient' });
     }
-    const message = String(req.body?.message || '').trim();
+
     const sendAtInput = req.body?.sendAt;
-
-    if (!to) {
-      return res.status(400).json({ error: 'Recipient phone number is required' });
-    }
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
-    const sendAt = sendAtInput ? new Date(sendAtInput) : new Date();
-    if (Number.isNaN(sendAt.getTime())) {
-      return res.status(400).json({ error: 'Invalid send date/time' });
-    }
-
-    // If sendAt is now/past, send immediately.
-    if (sendAt.getTime() <= Date.now()) {
+    if (!sendAtInput) {
+      const message = String(req.body?.message || '').trim();
+      const sendAt = new Date();
+      if (!to) {
+        return res.status(400).json({ error: 'Recipient phone number is required' });
+      }
+      if (!message) {
+        return res.status(400).json({ error: 'Message is required' });
+      }
       const data = await sendSmsViaTwilio({ to, message });
       try {
         await logOutboundSms({
@@ -449,26 +483,39 @@ async function scheduleSms(req, res) {
       return res.status(200).json({ success: true, mode: 'sent', ...data });
     }
 
-    const sms = await ScheduledSms.create({
+    return scheduleSmsToNumber(res, {
       to,
-      message,
-      sendAt,
-      createdBy: req.user?._id || undefined,
-      customerId: req.body?.customerId || undefined,
-      appointmentId: req.body?.appointmentId || undefined,
-      status: 'scheduled',
-    });
-
-    return res.status(201).json({
-      success: true,
-      mode: 'scheduled',
-      id: sms._id,
-      sendAt: sms.sendAt,
-      to: sms.to,
+      message: req.body?.message,
+      sendAtInput,
+      createdBy: req.user?._id,
+      customerId: req.body?.customerId,
+      appointmentId: req.body?.appointmentId,
     });
   } catch (error) {
     console.error('Twilio scheduleSms error:', error?.message || error);
     return res.status(500).json({ error: error?.message || 'Failed to schedule SMS' });
+  }
+}
+
+/** Messages page: schedule to any number the user types (same as send-sms-adhoc). */
+async function scheduleSmsAdhoc(req, res) {
+  try {
+    const rawTo = String(req.body?.to ?? '').trim();
+    const normalized = normalizeToE164(rawTo);
+    if (!normalized) {
+      return res.status(400).json({ error: 'Enter a valid phone number' });
+    }
+
+    return scheduleSmsToNumber(res, {
+      to: normalized,
+      message: req.body?.message,
+      sendAtInput: req.body?.sendAt,
+      createdBy: req.user?._id,
+    });
+  } catch (error) {
+    console.error('Twilio scheduleSmsAdhoc error:', error?.message || error);
+    const status = /invalid|required|future|phone/i.test(String(error?.message)) ? 400 : 500;
+    return res.status(status).json({ error: error?.message || 'Failed to schedule SMS' });
   }
 }
 
@@ -599,4 +646,5 @@ module.exports = {
   sendSmsViaTwilio,
   twilioMediaDownload,
   sendSmsAdhoc,
+  scheduleSmsAdhoc,
 };

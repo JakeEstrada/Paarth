@@ -16,8 +16,11 @@ function twilioRelativePaths(suffix: string): string[] {
   return [primary, `/api/twilio${path}`];
 }
 
-async function withTwilioPathFallback<T>(request: (url: string) => Promise<{ data: T }>): Promise<T> {
-  const paths = twilioRelativePaths('/messages');
+async function withTwilioPathFallback<T>(
+  suffix: string,
+  request: (url: string) => Promise<{ data: T }>
+): Promise<T> {
+  const paths = twilioRelativePaths(suffix);
   let lastError: unknown;
   for (let i = 0; i < paths.length; i += 1) {
     try {
@@ -54,10 +57,23 @@ export type SmsLists = {
 };
 
 export async function fetchSmsLists(): Promise<SmsLists> {
-  const data = await withTwilioPathFallback<SmsLists>((url) => api.get(url));
+  const data = await withTwilioPathFallback<SmsLists>('/messages', (url) => api.get(url));
   return {
     scheduled: data.scheduled || [],
     sent: data.sent || [],
     received: data.received || [],
   };
+}
+
+export type ScheduleSmsPayload = {
+  to: string;
+  message: string;
+  sendAt: string;
+};
+
+export async function scheduleSmsAdhoc(payload: ScheduleSmsPayload) {
+  return withTwilioPathFallback<{ success: boolean; mode: string; sendAt?: string }>(
+    '/schedule-sms-adhoc',
+    (url) => api.post(url, payload)
+  );
 }

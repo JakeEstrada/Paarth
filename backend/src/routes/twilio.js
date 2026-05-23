@@ -8,6 +8,7 @@ const {
   scheduleSms,
   twilioMediaDownload,
   sendSmsAdhoc,
+  scheduleSmsAdhoc,
   listSms,
 } = require('../controllers/twilioController');
 const { requireAuth } = require('../middleware/auth');
@@ -21,6 +22,7 @@ router.get('/media/:id', twilioMediaDownload);
 router.post('/send-sms', requireAuth, sendSms);
 router.post('/schedule-sms', requireAuth, scheduleSms);
 router.post('/send-sms-adhoc', requireAuth, sendSmsAdhoc);
+router.post('/schedule-sms-adhoc', requireAuth, scheduleSmsAdhoc);
 router.get('/messages', requireAuth, listSms);
 router.post('/mms-upload', requireAuth, upload.single('file'), uploadTwilioMmsStaging);
 
