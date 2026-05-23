@@ -1,0 +1,47 @@
+const mongoose = require('mongoose');
+const tenantScopePlugin = require('./plugins/tenantScopePlugin');
+
+const smsMessageSchema = new mongoose.Schema(
+  {
+    direction: {
+      type: String,
+      enum: ['inbound', 'outbound'],
+      required: true,
+    },
+    from: {
+      type: String,
+      trim: true,
+    },
+    to: {
+      type: String,
+      trim: true,
+    },
+    body: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    twilioSid: {
+      type: String,
+      trim: true,
+    },
+    source: {
+      type: String,
+      enum: ['adhoc', 'employee', 'appointment', 'inbound', 'other'],
+      default: 'other',
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+smsMessageSchema.plugin(tenantScopePlugin);
+
+smsMessageSchema.index({ direction: 1, createdAt: -1 });
+
+module.exports = mongoose.model('SmsMessage', smsMessageSchema);

@@ -1,7 +1,10 @@
 const ScheduledSms = require('../models/ScheduledSms');
+const SmsMessage = require('../models/SmsMessage');
 const File = require('../models/File');
 const crypto = require('crypto');
 const { getFileStream } = require('./fileController');
+const { ensureDefaultTenant } = require('../utils/tenantService');
+const { runWithTenantContext } = require('../middleware/tenantContext');
 
 /**
  * Basic Twilio webhook handlers.
@@ -21,12 +24,46 @@ function normalizeToE164(value) {
   return hasPlus ? `+${digits}` : `+1${digits}`;
 }
 
+async function logInboundSms({ from, to, body, twilioSid }) {
+  const defaultTenant = await ensureDefaultTenant();
+  await runWithTenantContext({ tenantId: String(defaultTenant._id), bypassTenant: false }, async () => {
+    await SmsMessage.create({
+      direction: 'inbound',
+      from: normalizeToE164(from) || String(from || '').trim(),
+      to: normalizeToE164(to) || String(to || '').trim(),
+      body: String(body || '').trim(),
+      twilioSid: twilioSid || undefined,
+      source: 'inbound',
+      tenantId: defaultTenant._id,
+    });
+  });
+}
+
+async function logOutboundSms({ from, to, body, twilioSid, source, createdBy }) {
+  await SmsMessage.create({
+    direction: 'outbound',
+    from: from || undefined,
+    to: normalizeToE164(to) || String(to || '').trim(),
+    body: String(body || '').trim(),
+    twilioSid: twilioSid || undefined,
+    source: source || 'other',
+    createdBy: createdBy || undefined,
+  });
+}
+
 async function inboundSms(req, res) {
   try {
     const from = req.body?.From || 'unknown';
     const to = req.body?.To || 'unknown';
     const body = req.body?.Body || '';
+    const messageSid = req.body?.MessageSid || undefined;
     console.log('[Twilio SMS] from=%s to=%s body=%s', from, to, body);
+
+    try {
+      await logInboundSms({ from, to, body, twilioSid: messageSid });
+    } catch (logError) {
+      console.error('Failed to log inbound SMS:', logError?.message || logError);
+    }
 
     // Minimal TwiML response so Twilio marks webhook as successful.
     return xmlResponse(
@@ -297,6 +334,7 @@ async function sendSmsViaTwilio({ to, message, mediaUrl }) {
     sid: data.sid,
     status: data.status,
     to: data.to || normalizedTo,
+    from: data.from || from,
   };
 }
 
@@ -317,6 +355,18 @@ async function sendSmsAdhoc(req, res) {
       message: req.body?.message,
       mediaUrl: mediaUrls,
     });
+    try {
+      await logOutboundSms({
+        from: data.from,
+        to: data.to,
+        body: req.body?.message,
+        twilioSid: data.sid,
+        source: 'adhoc',
+        createdBy: req.user?._id,
+      });
+    } catch (logError) {
+      console.error('Failed to log outbound SMS:', logError?.message || logError);
+    }
     return res.status(200).json({ success: true, ...data });
   } catch (error) {
     console.error('Twilio sendSmsAdhoc error:', error?.message || error);
@@ -334,6 +384,18 @@ async function sendSms(req, res) {
       message: req.body?.message,
       mediaUrl: mediaUrls,
     });
+    try {
+      await logOutboundSms({
+        from: data.from,
+        to: data.to,
+        body: req.body?.message,
+        twilioSid: data.sid,
+        source: 'employee',
+        createdBy: req.user?._id,
+      });
+    } catch (logError) {
+      console.error('Failed to log outbound SMS:', logError?.message || logError);
+    }
     return res.status(200).json({ success: true, ...data });
   } catch (error) {
     console.error('Twilio sendSms error:', error?.message || error);
@@ -372,6 +434,18 @@ async function scheduleSms(req, res) {
     // If sendAt is now/past, send immediately.
     if (sendAt.getTime() <= Date.now()) {
       const data = await sendSmsViaTwilio({ to, message });
+      try {
+        await logOutboundSms({
+          from: data.from,
+          to: data.to,
+          body: message,
+          twilioSid: data.sid,
+          source: 'other',
+          createdBy: req.user?._id,
+        });
+      } catch (logError) {
+        console.error('Failed to log outbound SMS:', logError?.message || logError);
+      }
       return res.status(200).json({ success: true, mode: 'sent', ...data });
     }
 
@@ -395,6 +469,83 @@ async function scheduleSms(req, res) {
   } catch (error) {
     console.error('Twilio scheduleSms error:', error?.message || error);
     return res.status(500).json({ error: error?.message || 'Failed to schedule SMS' });
+  }
+}
+
+function mapScheduledRow(doc) {
+  return {
+    id: String(doc._id),
+    kind: 'scheduled',
+    to: doc.to,
+    from: null,
+    body: doc.message,
+    status: doc.status,
+    sendAt: doc.sendAt,
+    sentAt: doc.sentAt || null,
+    createdAt: doc.createdAt,
+    lastError: doc.lastError || null,
+  };
+}
+
+function mapOutboundRow(doc) {
+  return {
+    id: String(doc._id),
+    kind: 'sent',
+    to: doc.to,
+    from: doc.from || null,
+    body: doc.body,
+    status: 'sent',
+    sendAt: null,
+    sentAt: doc.createdAt,
+    createdAt: doc.createdAt,
+    lastError: null,
+  };
+}
+
+function mapInboundRow(doc) {
+  return {
+    id: String(doc._id),
+    kind: 'received',
+    to: doc.to,
+    from: doc.from || null,
+    body: doc.body,
+    status: 'received',
+    sendAt: null,
+    sentAt: doc.createdAt,
+    createdAt: doc.createdAt,
+    lastError: null,
+  };
+}
+
+async function listSms(req, res) {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 100, 1), 200);
+
+    const [scheduledRows, sentScheduledRows, outboundRows, inboundRows] = await Promise.all([
+      ScheduledSms.find({ status: 'scheduled' }).sort({ sendAt: 1 }).limit(limit).lean(),
+      ScheduledSms.find({ status: { $in: ['sent', 'failed'] } })
+        .sort({ sentAt: -1, updatedAt: -1 })
+        .limit(limit)
+        .lean(),
+      SmsMessage.find({ direction: 'outbound' }).sort({ createdAt: -1 }).limit(limit).lean(),
+      SmsMessage.find({ direction: 'inbound' }).sort({ createdAt: -1 }).limit(limit).lean(),
+    ]);
+
+    const sent = [
+      ...outboundRows.map(mapOutboundRow),
+      ...sentScheduledRows.map(mapScheduledRow),
+    ]
+      .sort((a, b) => new Date(b.sentAt || b.createdAt) - new Date(a.sentAt || a.createdAt))
+      .slice(0, limit);
+
+    return res.status(200).json({
+      scheduled: scheduledRows.map(mapScheduledRow),
+      sent,
+      received: inboundRows.map(mapInboundRow),
+    });
+  } catch (error) {
+    console.error('listSms error:', error?.message || error);
+    return res.status(500).json({ error: error?.message || 'Failed to load messages' });
   }
 }
 
@@ -443,6 +594,7 @@ module.exports = {
   inboundVoice,
   sendSms,
   scheduleSms,
+  listSms,
   startSmsScheduler,
   sendSmsViaTwilio,
   twilioMediaDownload,
