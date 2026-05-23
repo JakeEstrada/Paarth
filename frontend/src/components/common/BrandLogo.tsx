@@ -25,10 +25,21 @@ export function BrandLogo({
   const remote = tenantBrandingLogoUrl(srcTenant, undefined, resolvedThemeMode);
   const fallback = fallbackSrc || DEFAULT_APP_LOGO;
   const [src, setSrc] = useState(remote || fallback);
+  const [retriedRemote, setRetriedRemote] = useState(false);
 
   useEffect(() => {
+    setRetriedRemote(false);
     setSrc(remote || fallback);
   }, [remote, srcTenant, fallback]);
+
+  const handleError = () => {
+    if (remote && !retriedRemote) {
+      setRetriedRemote(true);
+      setSrc(tenantBrandingLogoUrl(srcTenant, Date.now(), resolvedThemeMode) || fallback);
+      return;
+    }
+    setSrc(fallback);
+  };
 
   return (
     <Box
@@ -36,7 +47,7 @@ export function BrandLogo({
       src={src}
       alt={alt}
       sx={sx}
-      onError={() => setSrc(fallback)}
+      onError={handleError}
     />
   );
 }
