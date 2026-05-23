@@ -39,8 +39,8 @@ async function logInboundSms({ from, to, body, twilioSid }) {
   });
 }
 
-async function logOutboundSms({ from, to, body, twilioSid, source, createdBy }) {
-  await SmsMessage.create({
+async function logOutboundSms({ from, to, body, twilioSid, source, createdBy, tenantId }) {
+  const payload = {
     direction: 'outbound',
     from: from || undefined,
     to: normalizeToE164(to) || String(to || '').trim(),
@@ -48,7 +48,11 @@ async function logOutboundSms({ from, to, body, twilioSid, source, createdBy }) 
     twilioSid: twilioSid || undefined,
     source: source || 'other',
     createdBy: createdBy || undefined,
-  });
+  };
+  if (tenantId) {
+    payload.tenantId = tenantId;
+  }
+  await SmsMessage.create(payload);
 }
 
 async function inboundSms(req, res) {
@@ -363,6 +367,7 @@ async function sendSmsAdhoc(req, res) {
         twilioSid: data.sid,
         source: 'adhoc',
         createdBy: req.user?._id,
+        tenantId: req.user?.tenantId,
       });
     } catch (logError) {
       console.error('Failed to log outbound SMS:', logError?.message || logError);
@@ -392,6 +397,7 @@ async function sendSms(req, res) {
         twilioSid: data.sid,
         source: 'employee',
         createdBy: req.user?._id,
+        tenantId: req.user?.tenantId,
       });
     } catch (logError) {
       console.error('Failed to log outbound SMS:', logError?.message || logError);
@@ -476,6 +482,7 @@ async function scheduleSms(req, res) {
           twilioSid: data.sid,
           source: 'other',
           createdBy: req.user?._id,
+          tenantId: req.user?.tenantId,
         });
       } catch (logError) {
         console.error('Failed to log outbound SMS:', logError?.message || logError);
@@ -520,6 +527,7 @@ async function scheduleSmsAdhoc(req, res) {
 }
 
 function mapScheduledRow(doc) {
+  const sentAt = doc.sentAt || doc.updatedAt || doc.sendAt || doc.createdAt || null;
   return {
     id: String(doc._id),
     kind: 'scheduled',
@@ -528,9 +536,10 @@ function mapScheduledRow(doc) {
     body: doc.message,
     status: doc.status,
     sendAt: doc.sendAt,
-    sentAt: doc.sentAt || null,
+    sentAt,
     createdAt: doc.createdAt,
     lastError: doc.lastError || null,
+    twilioSid: doc.twilioSid || null,
   };
 }
 
@@ -546,7 +555,39 @@ function mapOutboundRow(doc) {
     sentAt: doc.createdAt,
     createdAt: doc.createdAt,
     lastError: null,
+    twilioSid: doc.twilioSid || null,
   };
+}
+
+function sentRowSortTime(row) {
+  return new Date(row.sentAt || row.createdAt).getTime();
+}
+
+function sentRowDedupeKey(row) {
+  if (row.twilioSid) return `sid:${row.twilioSid}`;
+  const bucket = Math.floor(sentRowSortTime(row) / 120000);
+  const bodyKey = String(row.body || '').slice(0, 120);
+  return `${row.to || ''}|${bodyKey}|${bucket}`;
+}
+
+/** Merge adhoc + scheduled sent rows without dropping the newest from either source. */
+function mergeSentRows(outboundDocs, scheduledSentDocs, limit) {
+  const byKey = new Map();
+
+  const add = (row) => {
+    const key = sentRowDedupeKey(row);
+    const existing = byKey.get(key);
+    if (!existing || sentRowSortTime(row) >= sentRowSortTime(existing)) {
+      byKey.set(key, row);
+    }
+  };
+
+  outboundDocs.map(mapOutboundRow).forEach(add);
+  scheduledSentDocs.map(mapScheduledRow).forEach(add);
+
+  return Array.from(byKey.values())
+    .sort((a, b) => sentRowSortTime(b) - sentRowSortTime(a))
+    .slice(0, limit);
 }
 
 function mapInboundRow(doc) {
@@ -567,23 +608,46 @@ function mapInboundRow(doc) {
 async function listSms(req, res) {
   try {
     const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 100, 1), 200);
+    const fetchCap = Math.min(Math.max(limit * 3, 150), 500);
+    const userId = req.user?._id;
+    const tenantId = req.user?.tenantId;
 
-    const [scheduledRows, sentScheduledRows, outboundRows, inboundRows] = await Promise.all([
-      ScheduledSms.find({ status: 'scheduled' }).sort({ sendAt: 1 }).limit(limit).lean(),
-      ScheduledSms.find({ status: { $in: ['sent', 'failed'] } })
-        .sort({ sentAt: -1, updatedAt: -1 })
-        .limit(limit)
-        .lean(),
-      SmsMessage.find({ direction: 'outbound' }).sort({ createdAt: -1 }).limit(limit).lean(),
-      SmsMessage.find({ direction: 'inbound' }).sort({ createdAt: -1 }).limit(limit).lean(),
-    ]);
+    const orphanOutboundQuery =
+      userId && tenantId
+        ? SmsMessage.find({
+            direction: 'outbound',
+            createdBy: userId,
+            $or: [{ tenantId: null }, { tenantId: { $exists: false } }],
+          })
+            .setOptions({ bypassTenant: true })
+            .sort({ createdAt: -1 })
+            .limit(fetchCap)
+            .lean()
+        : Promise.resolve([]);
 
-    const sent = [
-      ...outboundRows.map(mapOutboundRow),
-      ...sentScheduledRows.map(mapScheduledRow),
-    ]
-      .sort((a, b) => new Date(b.sentAt || b.createdAt) - new Date(a.sentAt || a.createdAt))
-      .slice(0, limit);
+    const [scheduledRows, sentScheduledRows, outboundRows, outboundOrphans, inboundRows] =
+      await Promise.all([
+        ScheduledSms.find({ status: 'scheduled' }).sort({ sendAt: 1 }).limit(limit).lean(),
+        ScheduledSms.find({ status: { $in: ['sent', 'failed'] } })
+          .sort({ sentAt: -1, updatedAt: -1 })
+          .limit(fetchCap)
+          .lean(),
+        SmsMessage.find({ direction: 'outbound' }).sort({ createdAt: -1 }).limit(fetchCap).lean(),
+        orphanOutboundQuery,
+        SmsMessage.find({ direction: 'inbound' }).sort({ createdAt: -1 }).limit(limit).lean(),
+      ]);
+
+    const outboundCombined = [...outboundRows];
+    const seenOutboundIds = new Set(outboundRows.map((d) => String(d._id)));
+    for (const doc of outboundOrphans) {
+      const id = String(doc._id);
+      if (!seenOutboundIds.has(id)) {
+        seenOutboundIds.add(id);
+        outboundCombined.push(doc);
+      }
+    }
+
+    const sent = mergeSentRows(outboundCombined, sentScheduledRows, limit);
 
     return res.status(200).json({
       scheduled: scheduledRows.map(mapScheduledRow),
