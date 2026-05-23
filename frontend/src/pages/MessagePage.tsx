@@ -140,6 +140,7 @@ function MessagePage() {
   const [toDisplay, setToDisplay] = useState('');
   const [body, setBody] = useState('');
   const [sendAtLocal, setSendAtLocal] = useState(defaultScheduleAtValue);
+  const [scheduleMode, setScheduleMode] = useState(false);
   const [sending, setSending] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [tab, setTab] = useState(0);
@@ -237,6 +238,7 @@ function MessagePage() {
       toast.success(`SMS scheduled for ${format(sendAt, 'MMM d, yyyy h:mm a')}`);
       setBody('');
       setSendAtLocal(defaultScheduleAtValue());
+      setScheduleMode(false);
       setTab(0);
       await fetchMessages();
     } catch (error) {
@@ -253,7 +255,20 @@ function MessagePage() {
   };
 
   const canSend = toDisplay.trim() && body.trim() && !busy;
-  const canSchedule = canSend && Boolean(sendAtLocal) && !busy;
+  const canSchedule = scheduleMode ? canSend && Boolean(sendAtLocal) && !busy : canSend;
+
+  const handleScheduleClick = () => {
+    if (!scheduleMode) {
+      setScheduleMode(true);
+      return;
+    }
+    void handleSchedule();
+  };
+
+  const handleCancelSchedule = () => {
+    setScheduleMode(false);
+    setSendAtLocal(defaultScheduleAtValue());
+  };
   const tabKeys: Array<'scheduled' | 'sent' | 'received'> = ['scheduled', 'sent', 'received'];
   const activeKey = tabKeys[tab] || 'scheduled';
   const activeRows = lists[activeKey];
@@ -305,25 +320,34 @@ function MessagePage() {
             helperText={`${body.length} / 1500 characters`}
             sx={{ mb: 2 }}
           />
-          <TextField
-            label="Send at"
-            type="datetime-local"
-            fullWidth
-            value={sendAtLocal}
-            onChange={(e) => setSendAtLocal(e.target.value)}
-            disabled={busy}
-            InputLabelProps={{ shrink: true }}
-            inputProps={{ min: minScheduleAt }}
-            helperText="Used when scheduling; must be in the future"
-          />
+          {scheduleMode && (
+            <TextField
+              label="Send at"
+              type="datetime-local"
+              fullWidth
+              value={sendAtLocal}
+              onChange={(e) => setSendAtLocal(e.target.value)}
+              disabled={busy}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ min: minScheduleAt }}
+              helperText="Must be in the future"
+              sx={{ mb: 2 }}
+              autoFocus
+            />
+          )}
           <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
+            {scheduleMode && (
+              <Button variant="text" onClick={handleCancelSchedule} disabled={busy}>
+                Cancel
+              </Button>
+            )}
             <Button
               variant="outlined"
               startIcon={scheduling ? <CircularProgress size={18} /> : <ScheduleIcon />}
-              onClick={() => void handleSchedule()}
+              onClick={handleScheduleClick}
               disabled={!canSchedule}
             >
-              Schedule SMS
+              {scheduleMode ? 'Confirm schedule' : 'Schedule SMS'}
             </Button>
             <Button
               variant="contained"
