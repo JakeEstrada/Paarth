@@ -28,6 +28,8 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  Tab,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
@@ -138,17 +140,6 @@ const TAB_DEFS = [
     key: 'payment-schedules',
     label: 'Payment Schedules',
     subtitle: 'Manage planned payment milestones and due timelines.',
-  },
-];
-
-const TAB_GROUPS = [
-  {
-    title: 'Core workflow',
-    tabs: ['register', 'estimates', 'contracts', 'invoices'],
-  },
-  {
-    title: 'Operations',
-    tabs: ['change-orders', 'payment-schedules'],
   },
 ];
 
@@ -1400,89 +1391,22 @@ function FinanceHubPage() {
         </Typography>
       </Box>
 
-      <Box
-        sx={{
-          display: 'flex',
-          gap: 2,
-          alignItems: 'flex-start',
-          flexDirection: { xs: 'column', md: 'row' },
-        }}
-      >
-        <Box sx={{ width: { xs: '100%', md: 300 }, flexShrink: 0 }}>
-          <Card
-            sx={{
-              position: { md: 'sticky' },
-              top: { md: 16 },
-            }}
-          >
-            <CardContent sx={{ p: 1.25 }}>
-              {TAB_GROUPS.map((group, groupIdx) => (
-                <Box key={group.title}>
-                  {groupIdx > 0 && <Divider sx={{ my: 1 }} />}
-                  <Typography
-                    variant="overline"
-                    color="text.secondary"
-                    sx={{ px: 1.25, letterSpacing: 0.6 }}
-                  >
-                    {group.title}
-                  </Typography>
-                  <Box sx={{ mt: 0.5, display: 'grid', gap: 0.5 }}>
-                    {group.tabs.map((key) => {
-                      const tab = TAB_DEFS.find((item) => item.key === key);
-                      if (!tab) return null;
-                      const selected = activeTab === tab.key;
-                      return (
-                        <Button
-                          key={tab.key}
-                          fullWidth
-                          onClick={() => setActiveTab(tab.key)}
-                          sx={{
-                            textTransform: 'none',
-                            justifyContent: 'flex-start',
-                            alignItems: 'flex-start',
-                            borderRadius: 1.25,
-                            px: 1.25,
-                            py: 1,
-                            borderLeft: 4,
-                            borderColor: selected ? 'primary.main' : 'transparent',
-                            bgcolor: selected ? 'action.selected' : 'transparent',
-                            '&:hover': {
-                              bgcolor: selected ? 'action.selected' : 'action.hover',
-                            },
-                          }}
-                        >
-                          <Box sx={{ textAlign: 'left' }}>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontWeight: selected ? 700 : 500,
-                                color: selected ? 'text.primary' : 'text.secondary',
-                              }}
-                            >
-                              {tab.label}
-                            </Typography>
-                            {selected && (
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ display: 'block', mt: 0.2 }}
-                              >
-                                {tab.subtitle}
-                              </Typography>
-                            )}
-                          </Box>
-                        </Button>
-                      );
-                    })}
-                  </Box>
-                </Box>
-              ))}
-            </CardContent>
-          </Card>
-        </Box>
+      <Card sx={{ mb: 2 }}>
+        <Tabs
+          value={activeTab}
+          onChange={(_, value) => setActiveTab(value)}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          sx={{ px: { xs: 1, sm: 2 }, pt: 1 }}
+        >
+          {TAB_DEFS.map((tab) => (
+            <Tab key={tab.key} value={tab.key} label={tab.label} sx={{ textTransform: 'none' }} />
+          ))}
+        </Tabs>
+      </Card>
 
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          {activeTab === 'register' ? (
+      {activeTab === 'register' ? (
             <Card>
               <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
                 <RegisterLedgerSection
@@ -2240,8 +2164,6 @@ function FinanceHubPage() {
               </CardContent>
             </Card>
           )}
-        </Box>
-      </Box>
 
       {invoicePdfPayload && (
         <Box
