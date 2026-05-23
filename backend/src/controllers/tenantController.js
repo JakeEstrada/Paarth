@@ -122,6 +122,82 @@ async function uploadTenantLogoDark(req, res) {
   return uploadTenantThemeLogo(req, res, 'dark');
 }
 
+function setBrandingCorsHeaders(res) {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+}
+
+/** Tenant has no logo on file — return a tiny PNG so <img> does not error cross-origin. */
+function sendTransparentLogo(res, maxAge = 300) {
+  if (res.headersSent) return;
+  setBrandingCorsHeaders(res);
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', `public, max-age=${maxAge}`);
+  res.status(200).end(TRANSPARENT_PNG);
+}
+
+/** Logo record exists but binary is missing — 404 lets the UI fall back to /logo.png via onError. */
+function sendLogoNotFound(res) {
+  if (res.headersSent) return;
+  setBrandingCorsHeaders(res);
+  res.status(404).end();
+}
+
+function setBrandingLogoHeaders(res, mimetype, maxAge = 86400) {
+  setBrandingCorsHeaders(res);
+  res.setHeader('Content-Type', mimetype || 'image/png');
+  res.setHeader('Cache-Control', `public, max-age=${maxAge}`);
+}
+
+function hasLogoBinary(logo) {
+  return Boolean(logo && (logo.path || logo.s3Key || logo.filename));
+}
+
+/** Ordered fallbacks when the preferred theme asset is missing or unreadable. */
+function brandingLogoCandidates(tenant, themeMode) {
+  const seen = new Set();
+  const list = [];
+  const add = (logo) => {
+    if (!hasLogoBinary(logo)) return;
+    const key = `${logo.s3Key || ''}|${logo.path || ''}|${logo.filename || ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push(logo);
+  };
+
+  const primary = resolveLogoObject(tenant, themeMode);
+  add(primary.logo);
+  if (themeMode === 'dark') {
+    add(tenant?.logoLight);
+    add(tenant?.logo);
+  } else {
+    add(tenant?.logo);
+    add(tenant?.logoLight);
+  }
+  add(tenant?.logoDark);
+  return list;
+}
+
+function streamLogoFile(res, logo) {
+  const pseudoFile = {
+    filename: logo.filename,
+    path: logo.path,
+    s3Key: logo.s3Key,
+    mimetype: logo.mimetype,
+  };
+
+  return new Promise((resolve, reject) => {
+    getFileStream(pseudoFile)
+      .then((stream) => {
+        stream.on('error', reject);
+        res.on('error', reject);
+        res.on('finish', resolve);
+        stream.pipe(res);
+      })
+      .catch(reject);
+  });
+}
+
 /** Public: stream logo for img tags (login sidebar, etc.) */
 async function getTenantBrandingLogo(req, res) {
   try {
@@ -129,41 +205,40 @@ async function getTenantBrandingLogo(req, res) {
     const themeMode = String(req.query.mode || 'light').toLowerCase() === 'dark' ? 'dark' : 'light';
 
     const tenant = await Tenant.findById(tenantId).select('logo logoLight logoDark');
-    const resolved = resolveLogoObject(tenant, themeMode);
-    if (!resolved.logo) {
-      res.setHeader('Content-Type', 'image/png');
-      res.setHeader('Cache-Control', 'public, max-age=300');
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      return res.status(200).end(TRANSPARENT_PNG);
+    if (!tenant) {
+      return sendTransparentLogo(res);
     }
 
-    const pseudoFile = {
-      filename: resolved.logo.filename,
-      path: resolved.logo.path,
-      s3Key: resolved.logo.s3Key,
-      mimetype: resolved.logo.mimetype,
-    };
+    const candidates = brandingLogoCandidates(tenant, themeMode);
+    if (candidates.length === 0) {
+      return sendTransparentLogo(res);
+    }
 
-    res.setHeader('Content-Type', resolved.logo.mimetype || 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    // Allow cross-origin <img> / fetch from Vite dev server (Firefox ORB / canvas use)
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-
-    const stream = await getFileStream(pseudoFile);
-    stream.on('error', (err) => {
-      console.error('getTenantBrandingLogo stream:', err);
-      if (!res.headersSent) {
-        res.status(500).end();
-      } else {
-        res.destroy();
+    for (const logo of candidates) {
+      if (res.headersSent) break;
+      try {
+        setBrandingLogoHeaders(res, logo.mimetype);
+        await streamLogoFile(res, logo);
+        return;
+      } catch (err) {
+        console.error('getTenantBrandingLogo: failed to stream logo candidate', {
+          tenantId,
+          themeMode,
+          path: logo.path,
+          s3Key: logo.s3Key,
+          error: err?.message || err,
+        });
+        if (res.headersSent) {
+          res.destroy();
+          break;
+        }
       }
-    });
-    stream.pipe(res);
+    }
+
+    sendLogoNotFound(res);
   } catch (error) {
     console.error('getTenantBrandingLogo:', error);
-    res.status(500).end();
+    sendLogoNotFound(res);
   }
 }
 

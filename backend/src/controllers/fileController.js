@@ -343,8 +343,10 @@ async function ensureCustomerDocumentLibrary(createdBy) {
 
 // Helper function to check if file is stored in S3
 function isS3File(file) {
-  // Check if file has s3Key or if path looks like an S3 key (starts with 'uploads/')
-  return file.s3Key || (file.path && file.path.startsWith('uploads/') && !path.isAbsolute(file.path));
+  if (file.s3Key) return true;
+  const storedPath = file.path && String(file.path);
+  if (!storedPath || path.isAbsolute(storedPath)) return false;
+  return storedPath.startsWith('uploads/') || storedPath.startsWith('tenant-logos/');
 }
 
 // Helper function to get file stream from S3 or local filesystem
@@ -392,13 +394,19 @@ function findLocalFilePath(file) {
     }
   }
   
-  // 2. Try in uploads directory with filename (most reliable)
+  // 2. Tenant logos stored as tenant-logos/<tenantId>/logo-*.ext
+  if (file.path && String(file.path).startsWith('tenant-logos/')) {
+    pathsToTry.push(path.join(UPLOADS_DIR, file.path));
+    pathsToTry.push(path.resolve(process.cwd(), 'uploads', file.path));
+  }
+
+  // 3. Try in uploads directory with filename (most reliable)
   pathsToTry.push(path.join(UPLOADS_DIR, file.filename));
   
-  // 3. Try resolving from current working directory
+  // 4. Try resolving from current working directory
   pathsToTry.push(path.resolve(process.cwd(), 'uploads', file.filename));
   
-  // 4. Try relative to backend directory
+  // 5. Try relative to backend directory
   pathsToTry.push(path.resolve(__dirname, '../../uploads', file.filename));
   
   // Try each path
