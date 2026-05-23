@@ -25,25 +25,7 @@ import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import api from '../utils/axios';
 import { formatPhoneForDisplay } from '../utils/phoneFormat';
-
-type SmsRow = {
-  id: string;
-  kind: string;
-  to: string | null;
-  from: string | null;
-  body: string;
-  status: string;
-  sendAt: string | null;
-  sentAt: string | null;
-  createdAt: string;
-  lastError: string | null;
-};
-
-type SmsLists = {
-  scheduled: SmsRow[];
-  sent: SmsRow[];
-  received: SmsRow[];
-};
+import { fetchSmsLists, type SmsLists, type SmsRow } from '../utils/twilioApi';
 
 const EMPTY_LISTS: SmsLists = { scheduled: [], sent: [], received: [] };
 
@@ -154,19 +136,18 @@ function MessagePage() {
   const fetchMessages = useCallback(async () => {
     setLoadingLists(true);
     try {
-      const { data } = await api.get<SmsLists>('/twilio/messages');
-      setLists({
-        scheduled: data.scheduled || [],
-        sent: data.sent || [],
-        received: data.received || [],
-      });
+      setLists(await fetchSmsLists());
     } catch (error) {
       console.error(error);
-      const msg = isAxiosError(error)
+      let msg = isAxiosError(error)
         ? error.response?.data?.error || error.message || 'Failed to load messages'
         : error instanceof Error
           ? error.message
           : 'Failed to load messages';
+      if (isAxiosError(error) && error.response?.status === 404) {
+        msg =
+          'Messages API is not available on the server yet. Deploy or restart the backend with the latest code.';
+      }
       toast.error(msg);
     } finally {
       setLoadingLists(false);
