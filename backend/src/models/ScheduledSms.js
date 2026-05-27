@@ -44,6 +44,19 @@ const scheduledSmsSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Appointment',
     },
+    twilioSid: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    deliveryStatus: {
+      type: String,
+      trim: true,
+    },
+    deliveredAt: Date,
+    statusUpdatedAt: Date,
+    errorCode: String,
+    errorMessage: String,
   },
   {
     timestamps: true,

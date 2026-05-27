@@ -39,13 +39,15 @@ async function logInboundSms({ from, to, body, twilioSid }) {
   });
 }
 
-async function logOutboundSms({ from, to, body, twilioSid, source, createdBy, tenantId }) {
+async function logOutboundSms({ from, to, body, twilioSid, source, createdBy, tenantId, deliveryStatus }) {
   const payload = {
     direction: 'outbound',
     from: from || undefined,
     to: normalizeToE164(to) || String(to || '').trim(),
     body: String(body || '').trim(),
     twilioSid: twilioSid || undefined,
+    deliveryStatus: normalizeDeliveryStatus(deliveryStatus) || 'queued',
+    statusUpdatedAt: new Date(),
     source: source || 'other',
     createdBy: createdBy || undefined,
   };
@@ -116,6 +118,72 @@ function getTwilioConfig() {
     authToken: String(process.env.TWILIO_AUTH_TOKEN || '').trim(),
     from: String(process.env.TWILIO_PHONE_NUMBER || '').trim(),
   };
+}
+
+function getPublicApiBaseUrl(req) {
+  const envBase = String(process.env.PUBLIC_API_BASE_URL || '').trim();
+  if (envBase) return envBase.replace(/\/$/, '');
+  if (req) return getApiBaseUrl(req);
+  return '';
+}
+
+function buildSmsStatusCallbackUrl(req) {
+  const base = getPublicApiBaseUrl(req);
+  if (!base) return undefined;
+  return `${base}/twilio/sms-status`;
+}
+
+function normalizeDeliveryStatus(status) {
+  return String(status || '').trim().toLowerCase() || undefined;
+}
+
+function deliveryPatchFromTwilioStatus(status, errorCode, errorMessage) {
+  const normalized = normalizeDeliveryStatus(status);
+  const patch = {
+    deliveryStatus: normalized || undefined,
+    statusUpdatedAt: new Date(),
+  };
+  if (normalized === 'delivered') {
+    patch.deliveredAt = new Date();
+  }
+  if (errorCode != null && String(errorCode).trim() !== '') {
+    patch.errorCode = String(errorCode);
+  }
+  if (errorMessage != null && String(errorMessage).trim() !== '') {
+    patch.errorMessage = String(errorMessage);
+  }
+  return patch;
+}
+
+async function applyDeliveryUpdateBySid(twilioSid, status, errorCode, errorMessage) {
+  if (!twilioSid) return;
+  const patch = deliveryPatchFromTwilioStatus(status, errorCode, errorMessage);
+  await SmsMessage.updateMany({ twilioSid }, { $set: patch }).setOptions({ bypassTenant: true });
+  await ScheduledSms.updateMany({ twilioSid }, { $set: patch }).setOptions({ bypassTenant: true });
+}
+
+async function fetchTwilioMessageBySid(sid) {
+  const { accountSid, authToken } = getTwilioConfig();
+  if (!accountSid || !authToken || !sid) return null;
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages/${encodeURIComponent(sid)}.json`,
+    {
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+      },
+    }
+  );
+  if (!response.ok) return null;
+  return response.json().catch(() => null);
+}
+
+async function syncDocDeliveryFromTwilio(doc, Model) {
+  if (!doc?.twilioSid) return doc;
+  const remote = await fetchTwilioMessageBySid(doc.twilioSid);
+  if (!remote?.status) return doc;
+  const patch = deliveryPatchFromTwilioStatus(remote.status, remote.error_code, remote.error_message);
+  await Model.findByIdAndUpdate(doc._id, { $set: patch });
+  return { ...doc, ...patch };
 }
 
 function normalizeMediaUrls(input) {
@@ -290,7 +358,7 @@ async function resolveOutgoingSmsTo(req) {
   throw new Error('Select an employee to send the message to');
 }
 
-async function sendSmsViaTwilio({ to, message, mediaUrl }) {
+async function sendSmsViaTwilio({ to, message, mediaUrl, statusCallbackUrl }) {
   const { accountSid, authToken, from } = getTwilioConfig();
   const normalizedTo = normalizeToE164(to);
   const body = String(message || '').trim();
@@ -316,6 +384,9 @@ async function sendSmsViaTwilio({ to, message, mediaUrl }) {
     form.set('Body', body);
   }
   mediaUrls.forEach((url) => form.append('MediaUrl', url));
+  if (statusCallbackUrl) {
+    form.set('StatusCallback', statusCallbackUrl);
+  }
 
   const response = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
@@ -354,10 +425,12 @@ async function sendSmsAdhoc(req, res) {
       return res.status(400).json({ error: 'Enter a valid phone number' });
     }
     const mediaUrls = await resolveMediaUrls(req);
+    const statusCallbackUrl = buildSmsStatusCallbackUrl(req);
     const data = await sendSmsViaTwilio({
       to: normalized,
       message: req.body?.message,
       mediaUrl: mediaUrls,
+      statusCallbackUrl,
     });
     try {
       await logOutboundSms({
@@ -365,6 +438,7 @@ async function sendSmsAdhoc(req, res) {
         to: data.to,
         body: req.body?.message,
         twilioSid: data.sid,
+        deliveryStatus: data.status,
         source: 'adhoc',
         createdBy: req.user?._id,
         tenantId: req.user?.tenantId,
@@ -384,10 +458,12 @@ async function sendSms(req, res) {
   try {
     const to = await resolveOutgoingSmsTo(req);
     const mediaUrls = await resolveMediaUrls(req);
+    const statusCallbackUrl = buildSmsStatusCallbackUrl(req);
     const data = await sendSmsViaTwilio({
       to,
       message: req.body?.message,
       mediaUrl: mediaUrls,
+      statusCallbackUrl,
     });
     try {
       await logOutboundSms({
@@ -395,6 +471,7 @@ async function sendSms(req, res) {
         to: data.to,
         body: req.body?.message,
         twilioSid: data.sid,
+        deliveryStatus: data.status,
         source: 'employee',
         createdBy: req.user?._id,
         tenantId: req.user?.tenantId,
@@ -473,13 +550,15 @@ async function scheduleSms(req, res) {
       if (!message) {
         return res.status(400).json({ error: 'Message is required' });
       }
-      const data = await sendSmsViaTwilio({ to, message });
+      const statusCallbackUrl = buildSmsStatusCallbackUrl(req);
+      const data = await sendSmsViaTwilio({ to, message, statusCallbackUrl });
       try {
         await logOutboundSms({
           from: data.from,
           to: data.to,
           body: message,
           twilioSid: data.sid,
+          deliveryStatus: data.status,
           source: 'other',
           createdBy: req.user?._id,
           tenantId: req.user?.tenantId,
@@ -526,36 +605,64 @@ async function scheduleSmsAdhoc(req, res) {
   }
 }
 
+function mapDeliveryFields(doc) {
+  return {
+    deliveryStatus: doc.deliveryStatus || null,
+    deliveredAt: doc.deliveredAt || null,
+    readAt: doc.readAt || null,
+    statusUpdatedAt: doc.statusUpdatedAt || null,
+    errorCode: doc.errorCode || null,
+    errorMessage: doc.errorMessage || doc.lastError || null,
+  };
+}
+
 function mapScheduledRow(doc) {
   const sentAt = doc.sentAt || doc.updatedAt || doc.sendAt || doc.createdAt || null;
+  const listStatus =
+    doc.status === 'scheduled'
+      ? 'scheduled'
+      : doc.status === 'failed'
+        ? 'failed'
+        : doc.deliveryStatus || doc.status || 'sent';
   return {
     id: String(doc._id),
-    kind: 'scheduled',
+    recordType: 'scheduled',
+    kind: doc.status === 'scheduled' ? 'scheduled' : 'sent',
     to: doc.to,
     from: null,
     body: doc.message,
-    status: doc.status,
+    status: listStatus,
     sendAt: doc.sendAt,
     sentAt,
     createdAt: doc.createdAt,
     lastError: doc.lastError || null,
     twilioSid: doc.twilioSid || null,
+    ...mapDeliveryFields(doc),
   };
 }
 
 function mapOutboundRow(doc) {
+  const delivery = normalizeDeliveryStatus(doc.deliveryStatus);
+  const listStatus =
+    delivery === 'delivered'
+      ? 'delivered'
+      : delivery === 'failed' || delivery === 'undelivered'
+        ? 'failed'
+        : delivery || 'sent';
   return {
     id: String(doc._id),
+    recordType: 'message',
     kind: 'sent',
     to: doc.to,
     from: doc.from || null,
     body: doc.body,
-    status: 'sent',
+    status: listStatus,
     sendAt: null,
     sentAt: doc.createdAt,
     createdAt: doc.createdAt,
-    lastError: null,
+    lastError: doc.errorMessage || null,
     twilioSid: doc.twilioSid || null,
+    ...mapDeliveryFields(doc),
   };
 }
 
@@ -591,18 +698,116 @@ function mergeSentRows(outboundDocs, scheduledSentDocs, limit) {
 }
 
 function mapInboundRow(doc) {
+  const listStatus = doc.readAt ? 'read' : 'unread';
   return {
     id: String(doc._id),
+    recordType: 'message',
     kind: 'received',
     to: doc.to,
     from: doc.from || null,
     body: doc.body,
-    status: 'received',
+    status: listStatus,
     sendAt: null,
     sentAt: doc.createdAt,
     createdAt: doc.createdAt,
     lastError: null,
+    twilioSid: doc.twilioSid || null,
+    ...mapDeliveryFields(doc),
   };
+}
+
+function buildMessageDetailPayload(doc, recordType) {
+  const row =
+    recordType === 'scheduled'
+      ? mapScheduledRow(doc)
+      : doc.direction === 'inbound'
+        ? mapInboundRow(doc)
+        : mapOutboundRow(doc);
+
+  const isInbound = doc.direction === 'inbound' || row.kind === 'received';
+  const isOutbound = !isInbound && row.kind !== 'scheduled';
+
+  return {
+    ...row,
+    direction: isInbound ? 'inbound' : 'outbound',
+    fullBody: row.body,
+    receiptsNote: isOutbound
+      ? 'Standard SMS does not support read receipts from the recipient’s phone. Delivery status comes from your carrier via Twilio.'
+      : 'Read status is tracked when you open a received message in this app.',
+    canMarkRead: isInbound && !row.readAt,
+  };
+}
+
+async function smsStatusCallback(req, res) {
+  try {
+    const sid = req.body?.MessageSid || req.body?.SmsSid;
+    const status = req.body?.MessageStatus || req.body?.SmsStatus;
+    const errorCode = req.body?.ErrorCode;
+    const errorMessage = req.body?.ErrorMessage;
+    if (sid && status) {
+      await applyDeliveryUpdateBySid(sid, status, errorCode, errorMessage);
+      console.log('[Twilio SMS status] sid=%s status=%s', sid, status);
+    }
+    return res.status(200).end();
+  } catch (error) {
+    console.error('smsStatusCallback error:', error?.message || error);
+    return res.status(200).end();
+  }
+}
+
+async function getSmsDetail(req, res) {
+  try {
+    const { recordType, id } = req.params;
+    if (!id || !['message', 'scheduled'].includes(recordType)) {
+      return res.status(400).json({ error: 'Invalid message reference' });
+    }
+
+    let doc;
+    if (recordType === 'scheduled') {
+      doc = await ScheduledSms.findById(id).lean();
+    } else {
+      doc = await SmsMessage.findById(id).lean();
+    }
+
+    if (!doc) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (doc.twilioSid) {
+      if (recordType === 'scheduled') {
+        await syncDocDeliveryFromTwilio(doc, ScheduledSms);
+      } else {
+        await syncDocDeliveryFromTwilio(doc, SmsMessage);
+      }
+      doc =
+        recordType === 'scheduled'
+          ? await ScheduledSms.findById(id).lean()
+          : await SmsMessage.findById(id).lean();
+    }
+
+    return res.status(200).json(buildMessageDetailPayload(doc, recordType));
+  } catch (error) {
+    console.error('getSmsDetail error:', error?.message || error);
+    return res.status(500).json({ error: error?.message || 'Failed to load message' });
+  }
+}
+
+async function markSmsRead(req, res) {
+  try {
+    const { id } = req.params;
+    const doc = await SmsMessage.findOne({ _id: id, direction: 'inbound' });
+    if (!doc) {
+      return res.status(404).json({ error: 'Received message not found' });
+    }
+    if (!doc.readAt) {
+      doc.readAt = new Date();
+      await doc.save();
+    }
+    return res.status(200).json(buildMessageDetailPayload(doc.toObject(), 'message'));
+  } catch (error) {
+    console.error('markSmsRead error:', error?.message || error);
+    return res.status(500).json({ error: error?.message || 'Failed to mark message read' });
+  }
 }
 
 async function listSms(req, res) {
@@ -676,9 +881,17 @@ function startSmsScheduler() {
 
       for (const sms of due) {
         try {
-          const result = await sendSmsViaTwilio({ to: sms.to, message: sms.message });
+          const statusCallbackUrl = buildSmsStatusCallbackUrl();
+          const result = await sendSmsViaTwilio({
+            to: sms.to,
+            message: sms.message,
+            statusCallbackUrl,
+          });
           sms.status = 'sent';
           sms.sentAt = new Date();
+          sms.twilioSid = result.sid;
+          sms.deliveryStatus = normalizeDeliveryStatus(result.status) || 'queued';
+          sms.statusUpdatedAt = new Date();
           sms.lastError = undefined;
           sms.attempts = (sms.attempts || 0) + 1;
           await sms.save();
@@ -703,9 +916,12 @@ function startSmsScheduler() {
 module.exports = {
   inboundSms,
   inboundVoice,
+  smsStatusCallback,
   sendSms,
   scheduleSms,
   listSms,
+  getSmsDetail,
+  markSmsRead,
   startSmsScheduler,
   sendSmsViaTwilio,
   twilioMediaDownload,

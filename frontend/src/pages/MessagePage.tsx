@@ -7,6 +7,11 @@ import {
   Chip,
   CircularProgress,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   Tab,
   Tabs,
   Table,
@@ -25,7 +30,16 @@ import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import api from '../utils/axios';
 import { formatPhoneForDisplay } from '../utils/phoneFormat';
-import { fetchSmsLists, scheduleSmsAdhoc, type SmsLists, type SmsRow } from '../utils/twilioApi';
+import {
+  fetchSmsDetail,
+  fetchSmsLists,
+  markSmsRead,
+  scheduleSmsAdhoc,
+  type SmsDetail,
+  type SmsLists,
+  type SmsRecordType,
+  type SmsRow,
+} from '../utils/twilioApi';
 
 const EMPTY_LISTS: SmsLists = { scheduled: [], sent: [], received: [] };
 
@@ -52,24 +66,164 @@ function formatPhone(value: string | null | undefined) {
   return formatPhoneForDisplay(value) || value;
 }
 
+function rowRecordType(row: SmsRow, tab: 'sent' | 'scheduled' | 'received'): SmsRecordType {
+  if (row.recordType) return row.recordType;
+  return tab === 'scheduled' ? 'scheduled' : 'message';
+}
+
 function statusChip(status: string) {
   const normalized = String(status || '').toLowerCase();
-  let color: 'default' | 'primary' | 'success' | 'error' | 'warning' = 'default';
+  let color: 'default' | 'primary' | 'success' | 'error' | 'warning' | 'info' = 'default';
   if (normalized === 'scheduled') color = 'primary';
-  else if (normalized === 'sent' || normalized === 'received') color = 'success';
-  else if (normalized === 'failed') color = 'error';
+  else if (normalized === 'delivered' || normalized === 'sent' || normalized === 'read') color = 'success';
+  else if (normalized === 'received') color = 'success';
+  else if (normalized === 'failed' || normalized === 'undelivered') color = 'error';
   else if (normalized === 'cancelled') color = 'warning';
-  return <Chip label={status} size="small" color={color} sx={{ textTransform: 'capitalize' }} />;
+  else if (normalized === 'unread') color = 'info';
+  else if (normalized === 'queued' || normalized === 'sending') color = 'default';
+  const label =
+    normalized === 'undelivered'
+      ? 'Undelivered'
+      : normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  return <Chip label={label} size="small" color={color} sx={{ textTransform: 'capitalize' }} />;
+}
+
+function ReceiptTimeline({ detail }: { detail: SmsDetail }) {
+  const items: { label: string; at: string | null | undefined }[] = [];
+
+  if (detail.kind === 'scheduled' && detail.status === 'scheduled') {
+    items.push({ label: 'Scheduled to send', at: detail.sendAt });
+  } else {
+    if (detail.sentAt) items.push({ label: 'Sent', at: detail.sentAt });
+    if (detail.deliveredAt) items.push({ label: 'Delivered to handset', at: detail.deliveredAt });
+    if (detail.readAt) items.push({ label: 'Read in app', at: detail.readAt });
+    if (detail.statusUpdatedAt && !detail.deliveredAt && !detail.readAt) {
+      items.push({ label: 'Status updated', at: detail.statusUpdatedAt });
+    }
+  }
+
+  if (items.length === 0) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        No delivery timestamps yet.
+      </Typography>
+    );
+  }
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {items.map((item) => (
+        <Box key={item.label}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            {item.label}
+          </Typography>
+          <Typography variant="body2">{formatWhen(item.at)}</Typography>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
+function MessageDetailDialog({
+  open,
+  detail,
+  loading,
+  onClose,
+}: {
+  open: boolean;
+  detail: SmsDetail | null;
+  loading: boolean;
+  onClose: () => void;
+}) {
+  const isReceived = detail?.direction === 'inbound';
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{isReceived ? 'Received message' : 'Message details'}</DialogTitle>
+      <DialogContent dividers>
+        {loading || !detail ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress size={28} />
+          </Box>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+              {statusChip(detail.status)}
+              {detail.deliveryStatus && detail.deliveryStatus !== detail.status && (
+                <Chip
+                  label={`Carrier: ${detail.deliveryStatus}`}
+                  size="small"
+                  variant="outlined"
+                />
+              )}
+            </Box>
+
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                {isReceived ? 'From' : 'To'}
+              </Typography>
+              <Typography variant="body1">
+                {isReceived ? formatPhone(detail.from) : formatPhone(detail.to)}
+              </Typography>
+            </Box>
+
+            {!isReceived && detail.from && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">
+                  From (your number)
+                </Typography>
+                <Typography variant="body1">{formatPhone(detail.from)}</Typography>
+              </Box>
+            )}
+
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Message
+              </Typography>
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'action.hover' }}>
+                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {detail.fullBody || detail.body || '—'}
+                </Typography>
+              </Paper>
+            </Box>
+
+            <Divider />
+
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Delivery & read status
+              </Typography>
+              <ReceiptTimeline detail={detail} />
+              {(detail.errorMessage || detail.lastError) && (
+                <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                  {detail.errorMessage || detail.lastError}
+                </Typography>
+              )}
+            </Box>
+
+            <Typography variant="caption" color="text.secondary">
+              {detail.receiptsNote}
+            </Typography>
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
 }
 
 function MessageTable({
   rows,
   tab,
   loading,
+  onOpenRow,
 }: {
   rows: SmsRow[];
   tab: 'sent' | 'scheduled' | 'received';
   loading: boolean;
+  onOpenRow: (row: SmsRow) => void;
 }) {
   if (loading) {
     return (
@@ -110,12 +264,17 @@ function MessageTable({
         </TableHead>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={row.id} hover>
+            <TableRow
+              key={`${rowRecordType(row, tab)}-${row.id}`}
+              hover
+              onClick={() => onOpenRow(row)}
+              sx={{ cursor: 'pointer' }}
+            >
               <TableCell sx={{ whiteSpace: 'nowrap' }}>
                 {tab === 'received' ? formatPhone(row.from) : formatPhone(row.to)}
               </TableCell>
               <TableCell sx={{ maxWidth: 360 }}>
-                <Typography variant="body2" noWrap title={row.body}>
+                <Typography variant="body2" noWrap>
                   {row.body || '—'}
                 </Typography>
                 {row.lastError && (
@@ -146,6 +305,9 @@ function MessagePage() {
   const [tab, setTab] = useState(0);
   const [lists, setLists] = useState<SmsLists>(EMPTY_LISTS);
   const [loadingLists, setLoadingLists] = useState(true);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedDetail, setSelectedDetail] = useState<SmsDetail | null>(null);
 
   const fetchMessages = useCallback(async () => {
     setLoadingLists(true);
@@ -171,6 +333,39 @@ function MessagePage() {
   useEffect(() => {
     void fetchMessages();
   }, [fetchMessages]);
+
+  const handleOpenMessage = async (row: SmsRow, tabKey: 'sent' | 'scheduled' | 'received') => {
+    const recordType = rowRecordType(row, tabKey);
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setSelectedDetail(null);
+    try {
+      const detail = await fetchSmsDetail(recordType, row.id);
+      if (tabKey === 'received' && detail.canMarkRead) {
+        const updated = await markSmsRead(row.id);
+        setSelectedDetail(updated);
+        void fetchMessages();
+      } else {
+        setSelectedDetail(detail);
+      }
+    } catch (error) {
+      console.error(error);
+      const msg = isAxiosError(error)
+        ? error.response?.data?.error || error.message || 'Failed to load message'
+        : error instanceof Error
+          ? error.message
+          : 'Failed to load message';
+      toast.error(msg);
+      setDetailOpen(false);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleCloseDetail = () => {
+    setDetailOpen(false);
+    setSelectedDetail(null);
+  };
 
   const busy = sending || scheduling;
   const minScheduleAt = toDatetimeLocalValue(new Date());
@@ -269,6 +464,7 @@ function MessagePage() {
     setScheduleMode(false);
     setSendAtLocal(defaultScheduleAtValue());
   };
+
   const tabKeys: Array<'scheduled' | 'sent' | 'received'> = ['scheduled', 'sent', 'received'];
   const activeKey = tabKeys[tab] || 'scheduled';
   const activeRows = lists[activeKey];
@@ -292,7 +488,7 @@ function MessagePage() {
         </Button>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Send or schedule SMS from your Twilio number. View scheduled, sent, and received messages below.
+        Send or schedule SMS from your Twilio number. Tap a message to open it and view delivery status.
       </Typography>
 
       <Card variant="outlined" sx={{ mb: 3 }}>
@@ -369,7 +565,19 @@ function MessagePage() {
         </Tabs>
       </Box>
 
-      <MessageTable rows={activeRows} tab={activeKey} loading={loadingLists} />
+      <MessageTable
+        rows={activeRows}
+        tab={activeKey}
+        loading={loadingLists}
+        onOpenRow={(row) => void handleOpenMessage(row, activeKey)}
+      />
+
+      <MessageDetailDialog
+        open={detailOpen}
+        detail={selectedDetail}
+        loading={detailLoading}
+        onClose={handleCloseDetail}
+      />
     </Container>
   );
 }

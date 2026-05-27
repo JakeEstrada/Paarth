@@ -24,7 +24,17 @@ const smsMessageSchema = new mongoose.Schema(
     twilioSid: {
       type: String,
       trim: true,
+      index: true,
     },
+    deliveryStatus: {
+      type: String,
+      trim: true,
+    },
+    deliveredAt: Date,
+    readAt: Date,
+    statusUpdatedAt: Date,
+    errorCode: String,
+    errorMessage: String,
     source: {
       type: String,
       enum: ['adhoc', 'employee', 'appointment', 'inbound', 'other'],

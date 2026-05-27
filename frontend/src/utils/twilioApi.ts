@@ -37,8 +37,11 @@ async function withTwilioPathFallback<T>(
   throw lastError;
 }
 
+export type SmsRecordType = 'message' | 'scheduled';
+
 export type SmsRow = {
   id: string;
+  recordType: SmsRecordType;
   kind: string;
   to: string | null;
   from: string | null;
@@ -48,6 +51,20 @@ export type SmsRow = {
   sentAt: string | null;
   createdAt: string;
   lastError: string | null;
+  twilioSid?: string | null;
+  deliveryStatus?: string | null;
+  deliveredAt?: string | null;
+  readAt?: string | null;
+  statusUpdatedAt?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+};
+
+export type SmsDetail = SmsRow & {
+  direction: 'inbound' | 'outbound';
+  fullBody: string;
+  receiptsNote: string;
+  canMarkRead: boolean;
 };
 
 export type SmsLists = {
@@ -63,6 +80,14 @@ export async function fetchSmsLists(): Promise<SmsLists> {
     sent: data.sent || [],
     received: data.received || [],
   };
+}
+
+export async function fetchSmsDetail(recordType: SmsRecordType, id: string): Promise<SmsDetail> {
+  return withTwilioPathFallback<SmsDetail>(`/messages/${recordType}/${id}`, (url) => api.get(url));
+}
+
+export async function markSmsRead(id: string): Promise<SmsDetail> {
+  return withTwilioPathFallback<SmsDetail>(`/messages/message/${id}/read`, (url) => api.post(url));
 }
 
 export type ScheduleSmsPayload = {
