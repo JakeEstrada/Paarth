@@ -1,17 +1,13 @@
 import { Box, Button, Stack, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export default function PictureViewerPage() {
   const { fileId } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const pin = searchParams.get('pin') || '';
-  const imageUrl = pin
-    ? `${API_URL}/files/${fileId}?pin=${encodeURIComponent(pin)}`
-    : `${API_URL}/files/${fileId}`;
+  const imageUrl = `${API_URL}/files/${fileId}`;
 
   const handleClose = () => {
     window.close();

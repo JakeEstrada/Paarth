@@ -7,8 +7,6 @@ const fs = require('fs');
 const path = require('path');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const { s3Client, BUCKET_NAME, isS3Configured } = require('../config/s3');
-const FILE_LOCK_PIN = '7212';
-
 // Get uploads directory - same as in upload.js middleware
 // Use environment variable if set, otherwise use relative path
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
@@ -753,6 +751,8 @@ async function getJobFiles(req, res) {
   try {
     const { jobId } = req.params;
 
+    await File.updateMany({ jobId, isLocked: true }, { $set: { isLocked: false, lockedAt: null } });
+
     const files = await File.find({ jobId })
       .populate('uploadedBy', 'name email')
       .sort({ createdAt: -1 });
@@ -1161,10 +1161,6 @@ async function downloadFile(req, res) {
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
     }
-    if (file.isLocked && String(req.query?.pin || '').trim() !== FILE_LOCK_PIN) {
-      return res.status(423).json({ error: 'File is locked. Valid PIN is required.' });
-    }
-
     res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
     res.setHeader('Content-Type', file.mimetype);
 
@@ -1184,10 +1180,6 @@ async function getFile(req, res) {
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
     }
-    if (file.isLocked && String(req.query?.pin || '').trim() !== FILE_LOCK_PIN) {
-      return res.status(423).json({ error: 'File is locked. Valid PIN is required.' });
-    }
-
     res.setHeader('Content-Type', file.mimetype);
     res.setHeader('Content-Disposition', `inline; filename="${file.originalName}"`);
 
@@ -1232,12 +1224,6 @@ async function updateFile(req, res) {
       }
       update.originalName = next;
     }
-    if (req.body.isLocked !== undefined) {
-      const lockState = !!req.body.isLocked;
-      update.isLocked = lockState;
-      update.lockedAt = lockState ? new Date() : null;
-    }
-
     const file = await File.findByIdAndUpdate(req.params.id, update, {
       new: true,
       runValidators: true,
