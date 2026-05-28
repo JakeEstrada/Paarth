@@ -65,6 +65,7 @@ export default function FileExplorer() {
   const [searchTerm, setSearchTerm] = useState('');
   const [gridSelection, setGridSelection] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [osFileDragActive, setOsFileDragActive] = useState(false);
   const [dropCrumbId, setDropCrumbId] = useState(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isDraggingFolder, setIsDraggingFolder] = useState(false);
@@ -302,24 +303,45 @@ export default function FileExplorer() {
     [folders, refresh]
   );
 
+  const isOsFileDrag = useCallback((e) => {
+    const types = [...e.dataTransfer.types];
+    return (
+      types.includes('Files') &&
+      !types.includes(FILE_DRAG_MIME) &&
+      !types.includes(FOLDER_DRAG_MIME)
+    );
+  }, []);
+
   const handleUploadFiles = useCallback(
     async (fileList) => {
       if (!fileList?.length) return;
       setUploading(true);
+      let succeeded = 0;
+      let failed = 0;
       try {
         for (const file of fileList) {
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('fileType', 'other');
-          if (selectedFolderId) formData.append('folderId', selectedFolderId);
-          await axios.post(`${API_URL}/files/upload-document`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          });
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('fileType', 'other');
+            if (selectedFolderId) formData.append('folderId', selectedFolderId);
+            await axios.post(`${API_URL}/files/upload-document`, formData, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            succeeded += 1;
+          } catch (error) {
+            failed += 1;
+            console.error('Error uploading file:', file.name, error);
+          }
         }
-        toast.success('Upload complete');
         await refresh();
-      } catch (error) {
-        toast.error(error.response?.data?.error || 'Upload failed');
+        if (succeeded && !failed) {
+          toast.success(succeeded === 1 ? 'Upload complete' : `Uploaded ${succeeded} files`);
+        } else if (succeeded && failed) {
+          toast.error(`Uploaded ${succeeded} of ${fileList.length} files`);
+        } else {
+          toast.error('Upload failed');
+        }
       } finally {
         setUploading(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -485,8 +507,48 @@ export default function FileExplorer() {
 
   return (
     <Box
-      sx={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0, flex: 1 }}
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        minHeight: 0,
+        flex: 1,
+        position: 'relative',
+        ...(osFileDragActive
+          ? {
+              outline: '2px dashed',
+              outlineColor: 'primary.main',
+              outlineOffset: 4,
+              borderRadius: 1,
+            }
+          : {}),
+      }}
       onContextMenu={(e) => openContextMenu(e, null)}
+      onDragEnter={(e) => {
+        if (!isOsFileDrag(e)) return;
+        e.preventDefault();
+        setOsFileDragActive(true);
+      }}
+      onDragOver={(e) => {
+        if (!isOsFileDrag(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      }}
+      onDragLeave={(e) => {
+        if (!isOsFileDrag(e)) return;
+        const rt = e.relatedTarget;
+        if (!(rt instanceof Node) || !e.currentTarget.contains(rt)) {
+          setOsFileDragActive(false);
+        }
+      }}
+      onDrop={(e) => {
+        if (!isOsFileDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setOsFileDragActive(false);
+        const list = e.dataTransfer.files;
+        if (list?.length) handleUploadFiles([...list]);
+      }}
     >
       <Alert severity="info" sx={{ fontWeight: 700 }}>
         DRAG AND DROP ENABLED

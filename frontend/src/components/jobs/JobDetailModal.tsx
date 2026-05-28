@@ -15,6 +15,7 @@ import {
   Tab,
   Paper,
   Button,
+  CircularProgress,
   TextField,
   MenuItem,
   Select,
@@ -225,44 +226,70 @@ function JobDetailModal({
     }
   };
 
-  const handleFileUpload = async (file, resetInput = null) => {
-    if (!file) return;
-
-    // Validate file type
+  const validateUploadFile = (file) => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
     if (!allowedTypes.includes(file.type)) {
-      toast.error('Invalid file type. Only images and PDFs are allowed.');
-      return;
+      return 'Only images and PDFs are allowed';
     }
-
-    // Validate file size (10MB)
     if (file.size > 10 * 1024 * 1024) {
-      toast.error('File size must be less than 10MB');
-      return;
+      return 'File must be less than 10MB';
+    }
+    return null;
+  };
+
+  const uploadOneFile = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('jobId', jobId);
+    formData.append('fileType', fileType);
+    await axios.post(`${API_URL}/files/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  };
+
+  const handleUploadFiles = async (fileList, resetInput = null) => {
+    const files = [...(fileList || [])].filter(Boolean);
+    if (!files.length) return;
+
+    const valid = [];
+    const skipped = [];
+    for (const file of files) {
+      const reason = validateUploadFile(file);
+      if (reason) skipped.push({ name: file.name, reason });
+      else valid.push(file);
     }
 
+    if (skipped.length) {
+      const first = skipped[0];
+      const more = skipped.length > 1 ? ` (+${skipped.length - 1} more skipped)` : '';
+      toast.error(`${first.name}: ${first.reason}${more}`);
+    }
+    if (!valid.length) return;
+
+    setUploading(true);
+    let succeeded = 0;
+    let failed = 0;
     try {
-      setUploading(true);
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('jobId', jobId);
-      formData.append('fileType', fileType);
-
-      await axios.post(`${API_URL}/files/upload`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      toast.success('File uploaded successfully');
-      await fetchFiles();
-      setFileType('other'); // Reset file type
-      if (resetInput) {
-        resetInput.value = ''; // Reset file input
+      for (let i = 0; i < valid.length; i += 1) {
+        const file = valid[i];
+        try {
+          await uploadOneFile(file);
+          succeeded += 1;
+        } catch (error) {
+          failed += 1;
+          console.error('Error uploading file:', file.name, error);
+        }
       }
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      toast.error(error.response?.data?.error || 'Failed to upload file');
+      await fetchFiles();
+      setFileType('other');
+      if (resetInput) resetInput.value = '';
+      if (succeeded && !failed) {
+        toast.success(succeeded === 1 ? 'File uploaded successfully' : `Uploaded ${succeeded} files`);
+      } else if (succeeded && failed) {
+        toast.error(`Uploaded ${succeeded} of ${valid.length} files`);
+      } else {
+        toast.error('Failed to upload files');
+      }
     } finally {
       setUploading(false);
     }
@@ -283,14 +310,14 @@ function JobDetailModal({
     e.stopPropagation();
     setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files?.length) {
+      handleUploadFiles(e.dataTransfer.files);
     }
   };
 
   const handleFileInputChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFileUpload(e.target.files[0], e.target);
+    if (e.target.files?.length) {
+      handleUploadFiles(e.target.files, e.target);
     }
   };
 
@@ -1449,6 +1476,7 @@ function JobDetailModal({
               onDragLeave={handleDrag}
               onDragOver={handleDrag}
               onDrop={handleDrop}
+              onClick={() => document.getElementById('file-upload')?.click()}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                 <CloudUploadIcon
@@ -1464,10 +1492,10 @@ function JobDetailModal({
                     {dragActive ? 'Drop files here' : 'Upload Files'}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Drag & drop or click to browse • Images and PDFs • Max 10MB
+                    Drag & drop multiple files or click to browse • Images and PDFs • Max 10MB each
                   </Typography>
                 </Box>
-                <FormControl size="small" sx={{ minWidth: 120 }}>
+                <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
                   <InputLabel>File Type</InputLabel>
                   <Select
                     value={fileType}
@@ -1485,21 +1513,24 @@ function JobDetailModal({
                   style={{ display: 'none' }}
                   id="file-upload"
                   type="file"
+                  multiple
+                  accept="image/*,application/pdf"
                   onChange={handleFileInputChange}
                   disabled={uploading}
                 />
-                <label htmlFor="file-upload">
-                  <Button
-                    variant="outlined"
-                    component="span"
-                    size="small"
-                    startIcon={<CloudUploadIcon />}
-                    disabled={uploading}
-                    sx={{ textTransform: 'none' }}
-                  >
-                    {uploading ? 'Uploading...' : 'Browse'}
-                  </Button>
-                </label>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={uploading ? <CircularProgress size={16} /> : <CloudUploadIcon />}
+                  disabled={uploading}
+                  sx={{ textTransform: 'none' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    document.getElementById('file-upload')?.click();
+                  }}
+                >
+                  {uploading ? 'Uploading...' : 'Browse'}
+                </Button>
               </Box>
             </Paper>
             </>

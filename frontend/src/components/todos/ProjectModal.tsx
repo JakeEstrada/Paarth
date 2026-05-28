@@ -247,49 +247,70 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
     }
   };
 
-  const handleFileUpload = async (file, resetInput = null) => {
-    if (!file) return;
-
-    // Validate file type - allow PDFs and images
+  const validateUploadFile = (file) => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
     if (!allowedTypes.includes(file.type)) {
-      toast.error('Invalid file type. Only images and PDFs are allowed.');
-      return;
+      return 'Only images and PDFs are allowed';
     }
-
-    // Validate file size (10MB)
     if (file.size > 10 * 1024 * 1024) {
-      toast.error('File size must be less than 10MB');
-      return;
+      return 'File must be less than 10MB';
+    }
+    return null;
+  };
+
+  const uploadOneFile = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('taskId', projectId);
+    formData.append('fileType', 'other');
+    await axios.post(`${API_URL}/files/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  };
+
+  const handleUploadFiles = async (fileList, resetInput = null) => {
+    const files = [...(fileList || [])].filter(Boolean);
+    if (!files.length) return;
+
+    const valid = [];
+    const skipped = [];
+    for (const file of files) {
+      const reason = validateUploadFile(file);
+      if (reason) skipped.push({ name: file.name, reason });
+      else valid.push(file);
     }
 
+    if (skipped.length) {
+      const first = skipped[0];
+      const more = skipped.length > 1 ? ` (+${skipped.length - 1} more skipped)` : '';
+      toast.error(`${first.name}: ${first.reason}${more}`);
+    }
+    if (!valid.length) return;
+
+    setUploading(true);
+    let succeeded = 0;
+    let failed = 0;
     try {
-      setUploading(true);
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('taskId', projectId);
-      formData.append('fileType', 'other');
-
-      await axios.post(`${API_URL}/files/upload`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      toast.success('File uploaded successfully');
-      await fetchFiles();
-      if (resetInput) {
-        resetInput.value = '';
+      for (const file of valid) {
+        try {
+          await uploadOneFile(file);
+          succeeded += 1;
+        } catch (error) {
+          failed += 1;
+          console.error('Error uploading file:', file.name, error);
+          if (error.response?.status === 500) {
+            await fetchFiles();
+          }
+        }
       }
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      // Check if file was actually uploaded despite the error
-      if (error.response?.status === 500) {
-        // File might have been uploaded, try refreshing the file list
-        await fetchFiles();
-        toast.error('File may have been uploaded, but an error occurred. Please refresh if needed.');
+      await fetchFiles();
+      if (resetInput) resetInput.value = '';
+      if (succeeded && !failed) {
+        toast.success(succeeded === 1 ? 'File uploaded successfully' : `Uploaded ${succeeded} files`);
+      } else if (succeeded && failed) {
+        toast.error(`Uploaded ${succeeded} of ${valid.length} files`);
       } else {
-        toast.error(error.response?.data?.error || 'Failed to upload file');
+        toast.error('Failed to upload files');
       }
     } finally {
       setUploading(false);
@@ -311,8 +332,8 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
     e.stopPropagation();
     setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files?.length) {
+      handleUploadFiles(e.dataTransfer.files);
     }
   };
 
@@ -952,16 +973,18 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                       {dragActive ? 'Drop files here' : 'Upload Files'}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Drag & drop or click to browse • Images and PDFs • Max 10MB
+                      Drag & drop multiple files or click to browse • Images and PDFs • Max 10MB each
                     </Typography>
                   </Box>
                   <input
                     style={{ display: 'none' }}
                     id="project-file-upload"
                     type="file"
+                    multiple
+                    accept="image/*,application/pdf"
                     onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleFileUpload(e.target.files[0], e.target);
+                      if (e.target.files?.length) {
+                        handleUploadFiles(e.target.files, e.target);
                       }
                     }}
                     disabled={uploading}
