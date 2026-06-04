@@ -516,7 +516,7 @@ function UsersPage() {
       <TableContainer component={Paper} sx={{ mb: 4 }}>
         <Table>
           <TableHead>
-            <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5' }}>
+            <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
               <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Mobile</TableCell>
@@ -590,7 +590,7 @@ function UsersPage() {
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
-            <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5' }}>
+            <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
               <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Mobile</TableCell>

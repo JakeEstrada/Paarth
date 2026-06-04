@@ -1118,7 +1118,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           border: `1px solid ${theme.palette.divider}`,
           backgroundColor: isCurrentMonth 
             ? theme.palette.background.paper 
-            : (theme.palette.mode === 'dark' ? '#1e222a' : '#f7f7f7'),
+            : (theme.palette.mode === 'dark' ? '#141414' : '#f7f7f7'),
           // Adjacent-month padding days: keep grid alignment but make jobs nearly invisible
           opacity: isCurrentMonth ? 1 : 0.14,
           cursor: 'pointer',
@@ -1130,8 +1130,8 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           transition: 'background-color 0.15s ease, opacity 0.15s ease',
           '&:hover': {
             backgroundColor: isCurrentMonth 
-              ? (theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5')
-              : (theme.palette.mode === 'dark' ? '#252a33' : '#f0f0f0'),
+              ? (theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5')
+              : (theme.palette.mode === 'dark' ? '#1E1E1E' : '#f0f0f0'),
             opacity: isCurrentMonth ? 1 : 0.38,
           },
         }}
@@ -2030,7 +2030,7 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
               sx={{
                 p: tvMode ? 0.25 : 0.5,
                 textAlign: 'center',
-                backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5',
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
                 border: `1px solid ${theme.palette.divider}`,
                 fontWeight: 600,
               }}
@@ -2130,7 +2130,7 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
               backgroundColor: theme.palette.background.paper,
               border: `1px solid ${theme.palette.divider}`,
               '&:hover': {
-                backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5',
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
               },
             }}
             title={isBenchMinimized ? 'Expand Bench' : 'Minimize Bench'}
@@ -2246,7 +2246,7 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
               height: '100%',
               cursor: 'pointer',
               '&:hover': {
-                backgroundColor: theme.palette.mode === 'dark' ? '#313746' : '#f5f5f5',
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
               },
             }}
             onClick={() => setIsBenchMinimized(false)}

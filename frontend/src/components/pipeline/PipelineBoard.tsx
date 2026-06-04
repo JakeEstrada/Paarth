@@ -307,7 +307,7 @@ function PipelineBoard({
         <Card
           sx={{
             background: theme.palette.mode === 'dark'
-              ? 'linear-gradient(135deg, #313746 0%, #252a33 100%)'
+              ? 'linear-gradient(135deg, #2A2A2A 0%, #1E1E1E 100%)'
               : 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
             borderRadius: '12px',
             mb: 1.5,
@@ -469,7 +469,7 @@ function PipelineBoard({
               height: 6,
             },
             '&::-webkit-scrollbar-track': {
-              background: theme.palette.mode === 'dark' ? '#313746' : '#F5F7FA',
+              background: theme.palette.mode === 'dark' ? '#2A2A2A' : '#F5F7FA',
             },
             '&::-webkit-scrollbar-thumb': {
               background: theme.palette.mode === 'dark' ? '#616161' : '#CFD8DC',
