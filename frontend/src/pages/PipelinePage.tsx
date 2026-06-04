@@ -176,6 +176,15 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
 
   // Check for jobId in URL query params and open that job's modal
   useEffect(() => {
+    const q = searchParams.get('search');
+    if (!q) return;
+    setPipelineSearch(q);
+    const next = new URLSearchParams(searchParams);
+    next.delete('search');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
     const jobIdFromUrl = searchParams.get('jobId');
     if (jobIdFromUrl && jobs.length > 0) {
       // Verify the job exists in the current jobs list (normalize ids — API may return string or object)
@@ -196,13 +205,25 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
       if (!background) {
         setLoading(true);
       }
-      
-      // For now, we'll fetch without auth token to test
-      // Later we'll add authentication
-      const response = await axios.get(`${API_URL}/jobs`);
-      
-      const jobsData = response.data.jobs || response.data;
-      setJobs(jobsData);
+
+      const pageSize = 200;
+      let page = 1;
+      let totalPages = 1;
+      const allJobs = [];
+
+      do {
+        const response = await axios.get(`${API_URL}/jobs`, {
+          params: { page, limit: pageSize },
+        });
+        const batch = response.data.jobs || response.data || [];
+        if (Array.isArray(batch)) {
+          allJobs.push(...batch);
+        }
+        totalPages = Number(response.data.totalPages) || 1;
+        page += 1;
+      } while (page <= totalPages);
+
+      setJobs(allJobs);
     } catch (error) {
       console.error('Error fetching jobs:', error);
       console.error('Error response:', error.response?.data);
@@ -322,8 +343,9 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
 
   const filteredJobs = useMemo(() => {
     const term = pipelineSearch.trim().toLowerCase();
-    if (!term) return layoutFilteredJobs;
-    return layoutFilteredJobs.filter((job) => {
+    const pool = term ? jobs : layoutFilteredJobs;
+    if (!term) return pool;
+    return pool.filter((job) => {
       const title = job.title || '';
       const customerName = job.customerId?.name || '';
       const stage = job.stage || '';
@@ -333,7 +355,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
         stage.toLowerCase().includes(term)
       );
     });
-  }, [layoutFilteredJobs, pipelineSearch]);
+  }, [jobs, layoutFilteredJobs, pipelineSearch]);
 
   const pipelineOptions = useMemo(
     () => [

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Typography,
   Container,
@@ -33,6 +33,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function JobArchivePage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const theme = useTheme();
   const { user } = useAuth();
   const { hideSensitive } = useShopViewSensitive(user?.role);
@@ -151,10 +152,18 @@ function JobArchivePage() {
     if (!contextMenuJob) return;
     
     try {
-      await axios.post(`${API_URL}/jobs/${contextMenuJob._id}/unarchive`);
-      toast.success('Job restored from archive');
+      const response = await axios.post(`${API_URL}/jobs/${contextMenuJob._id}/unarchive`);
+      const restored = response.data;
+      const jobTitle = contextMenuJob.title || restored?.title || '';
+      const stageLabel = restored?.stage ? restored.stage.replace(/_/g, ' ') : 'pipeline';
+      toast.success(`Job restored — opening pipeline (${stageLabel})`);
       handleCloseContextMenu();
-      await fetchArchivedJobs(); // Refresh the list
+      await fetchArchivedJobs();
+      if (jobTitle.trim()) {
+        navigate(`/pipeline?search=${encodeURIComponent(jobTitle.trim())}`);
+      } else {
+        navigate('/pipeline');
+      }
     } catch (error) {
       console.error('Error unarchiving job:', error);
       const message =

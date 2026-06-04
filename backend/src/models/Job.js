@@ -252,6 +252,9 @@ const jobSchema = new mongoose.Schema({
   },
   movedToDeadEstimateAt: Date,
 
+  /** Set when a user restores a job from archive; auto-archive skips these for a grace period */
+  restoredFromArchiveAt: Date,
+
   /** When set, job belongs to a tenant-defined custom pipeline layout (not the default board) */
   pipelineLayoutId: {
     type: mongoose.Schema.Types.ObjectId,

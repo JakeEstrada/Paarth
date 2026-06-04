@@ -12,6 +12,25 @@ const path = require('path');
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
 const DOCUMENT_TEXT_DIR = path.join(UPLOADS_DIR, 'documents-text');
 
+/** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
+const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
+
+function normalizeStageForPipelineRestore(stage) {
+  const { ALL_STAGES } = require('../utils/stageConfig');
+  const valid = new Set(ALL_STAGES);
+  if (!stage || stage === 'APPOINTMENT_SCHEDULED') return 'ESTIMATE_SENT';
+  if (stage === 'CONTRACT_SIGNED') return 'DEPOSIT_PENDING';
+  if (valid.has(stage)) return stage;
+  return 'ESTIMATE_SENT';
+}
+
+function isWithinRestoreGracePeriod(job, nowMs = Date.now()) {
+  if (!job?.restoredFromArchiveAt) return false;
+  const restoredMs = new Date(job.restoredFromArchiveAt).getTime();
+  if (Number.isNaN(restoredMs)) return false;
+  return nowMs - restoredMs < RESTORE_FROM_ARCHIVE_GRACE_DAYS * 24 * 60 * 60 * 1000;
+}
+
 function warnLegacyEstimateUsage(context, details = {}) {
   console.warn('[estimate-deprecated]', context, details);
 }
@@ -1092,6 +1111,7 @@ async function autoMoveDeadEstimates(req, res) {
     });
     const sentEstimateMap = await getLatestEstimateMapByJobIds(sentStageJobs.map((j) => j._id));
     const jobsToArchive = sentStageJobs.filter((job) => {
+      if (isWithinRestoreGracePeriod(job)) return false;
       const est = sentEstimateMap.get(String(job._id));
       return est?.status === 'sent' && est?.sentAt && new Date(est.sentAt) <= fiveDaysAgo;
     });
@@ -1369,12 +1389,14 @@ async function unarchiveJob(req, res) {
       job.isDeadEstimate = false;
       job.movedToDeadEstimateAt = undefined;
     }
-    
-    // If job doesn't have a stage or is in a bad state, set it to ESTIMATE_SENT
-    // This ensures it appears in the pipeline
-    if (!job.stage || job.stage === 'APPOINTMENT_SCHEDULED') {
-      job.stage = 'ESTIMATE_SENT';
-    }
+
+    // Completed close-out hides jobs from the active pipeline even when not archived
+    job.isCompletedClosedOut = false;
+    job.completedClosedOutAt = undefined;
+    job.completedClosedOutBy = undefined;
+
+    job.restoredFromArchiveAt = unarchiveDate;
+    job.stage = normalizeStageForPipelineRestore(job.stage);
     
     // Handle createdBy for note and activity
     let createdBy = req.user?._id || job.createdBy;
@@ -1419,6 +1441,11 @@ async function unarchiveJob(req, res) {
     
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
+
+    const io = req.app.get('io');
+    publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
     
     res.json(job);
   } catch (error) {
