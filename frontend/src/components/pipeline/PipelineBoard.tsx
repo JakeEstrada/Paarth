@@ -48,8 +48,6 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-const ORPHAN_STAGE_KEY = '__ORPHAN__';
-
 const STAGE_LABELS = {
   APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
   ESTIMATE_IN_PROGRESS: 'Estimate Current, first 5 days',
@@ -192,7 +190,7 @@ function PipelineBoard({
     };
   }, [user, pipelineStageConfigKey]);
 
-  const { jobsByStage, stageTotals, hasOrphanJobs } = useMemo(() => {
+  const { jobsByStage, stageTotals } = useMemo(() => {
     const byStage = {};
     const totals = {};
     let stageIds = [];
@@ -213,12 +211,6 @@ function PipelineBoard({
       stageIds = [...APPOINTMENTS_PHASE, ...SALES_PHASE, ...JOB_READINESS_PHASE, ...EXECUTION_PHASE];
     }
 
-    const displayedStageIds = new Set(
-      pipelineMode === 'custom' && activeCustomLayout?.levels?.length
-        ? stageIds
-        : [...SALES_PHASE, ...JOB_READINESS_PHASE, ...EXECUTION_PHASE]
-    );
-
     stageIds.forEach((stageId) => {
       const stageJobs = jobs.filter((job) => job.stage === stageId && !job.isArchived);
       byStage[stageId] = stageJobs;
@@ -228,29 +220,13 @@ function PipelineBoard({
       };
     });
 
-    const orphans = jobs.filter((job) => {
-      if (job.isArchived || job.isDeadEstimate) return false;
-      const stage = job.stage;
-      if (!stage || !displayedStageIds.has(stage)) return true;
-      return false;
-    });
-
-    if (orphans.length) {
-      byStage[ORPHAN_STAGE_KEY] = orphans;
-      totals[ORPHAN_STAGE_KEY] = {
-        count: orphans.length,
-        value: orphans.reduce((sum, job) => sum + (job.valueEstimated || 0), 0),
-      };
-    }
-
-    return { jobsByStage: byStage, stageTotals: totals, hasOrphanJobs: orphans.length > 0 };
+    return { jobsByStage: byStage, stageTotals: totals };
   }, [jobs, pipelineMode, activeCustomLayout]);
 
   const shownStages = useMemo(() => [...SALES_PHASE, ...JOB_READINESS_PHASE, ...EXECUTION_PHASE], []);
   const getStageOverride = (stageId) => stageOverrides?.[stageId] || {};
   const isStageHidden = (stageId) => !!getStageOverride(stageId)?.hidden;
   const getStageLabel = (stageId) => {
-    if (stageId === ORPHAN_STAGE_KEY) return 'Other stages';
     const override = getStageOverride(stageId);
     if (override?.label && String(override.label).trim()) return String(override.label).trim();
     return STAGE_LABELS[stageId] || stageId;
@@ -762,7 +738,6 @@ function PipelineBoard({
           {renderPhase('Sales Phase', SALES_PHASE)}
           {renderPhase('Job Readiness', JOB_READINESS_PHASE)}
           {renderPhase('Execution Phase', EXECUTION_PHASE)}
-          {hasOrphanJobs && renderPhase('Needs attention', [ORPHAN_STAGE_KEY])}
         </>
       )}
 
