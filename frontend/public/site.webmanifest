@@ -1,0 +1,19 @@
+{
+  "name": "Liminnality",
+  "short_name": "Liminnality",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#121212",
+  "background_color": "#121212",
+  "display": "standalone"
+}

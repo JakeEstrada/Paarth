@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import { useEffect } from 'react';
 import { Box, useTheme } from '@mui/material';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
@@ -38,6 +39,10 @@ import RfidPage from './pages/RfidPage';
 function App(): JSX.Element | null {
   const { user, loading } = useAuth();
   const theme = useTheme();
+
+  useEffect(() => {
+    document.title = 'Liminnality';
+  }, []);
 
   if (loading) {
     return null; // Loading handled by ProtectedRoute

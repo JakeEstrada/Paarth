@@ -156,10 +156,11 @@ function Sidebar({ mobileOpen, onMobileClose }) {
       >
         <BrandLogo
           tenant={tenantForBranding}
-          alt="Organization logo"
+          alt="Liminnality"
           sx={{
-            height: 80,
-            width: 80,
+            height: 96,
+            width: 'auto',
+            maxWidth: '100%',
             objectFit: 'contain',
           }}
         />

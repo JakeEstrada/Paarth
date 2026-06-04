@@ -70,10 +70,10 @@ function LoginPage() {
         >
           <Box sx={{ mb: 4, textAlign: 'center' }}>
             <BrandLogo
-              alt="San Clemente Woodworking"
+              alt="Liminnality"
               sx={{
-                height: 112,
-                width: 112,
+                height: 168,
+                width: 'auto',
                 maxWidth: '100%',
                 objectFit: 'contain',
                 mb: 2,
