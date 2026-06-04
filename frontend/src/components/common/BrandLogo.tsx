@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Box } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material/styles';
 import { useTheme } from '@mui/material/styles';
-import { tenantBrandingLogoUrl, DEFAULT_APP_LOGO } from '../../utils/tenantBranding';
+import { tenantBrandingLogoUrl, defaultAppLogoForMode } from '../../utils/tenantBranding';
 
 export function BrandLogo({
   tenant,
@@ -11,6 +11,7 @@ export function BrandLogo({
   sx,
   themeMode,
   fallbackSrc,
+  preferTenantLogo = false,
 }: {
   tenant?: unknown;
   tenantId?: unknown;
@@ -18,19 +19,23 @@ export function BrandLogo({
   sx?: SxProps<Theme>;
   themeMode?: string;
   fallbackSrc?: string;
+  /** When true (e.g. Account Settings preview), show uploaded tenant logo instead of static /public files */
+  preferTenantLogo?: boolean;
 }) {
   const muiTheme = useTheme();
   const resolvedThemeMode = themeMode || muiTheme.palette.mode || 'light';
   const srcTenant = tenant || tenantId;
-  const remote = tenantBrandingLogoUrl(srcTenant, undefined, resolvedThemeMode);
-  const fallback = fallbackSrc || DEFAULT_APP_LOGO;
+  const remote = preferTenantLogo
+    ? tenantBrandingLogoUrl(srcTenant, undefined, resolvedThemeMode)
+    : null;
+  const fallback = fallbackSrc || defaultAppLogoForMode(resolvedThemeMode);
   const [src, setSrc] = useState(remote || fallback);
   const [retriedRemote, setRetriedRemote] = useState(false);
 
   useEffect(() => {
     setRetriedRemote(false);
     setSrc(remote || fallback);
-  }, [remote, srcTenant, fallback]);
+  }, [remote, srcTenant, fallback, resolvedThemeMode]);
 
   const handleError = () => {
     if (remote && !retriedRemote) {

@@ -11,8 +11,25 @@ function publicApiBaseUrl() {
 }
 
 /**
+ * Static app logos in /public (used when no tenant upload is configured, or as fallback).
+ * Light UI → dark/black logo; dark UI → white logo.
+ */
+export const APP_LOGO_LIGHT = '/LogoBlk.png';
+export const APP_LOGO_DARK = '/LogoWht.png';
+
+/** @deprecated Use defaultAppLogoForMode(mode) */
+export const DEFAULT_APP_LOGO = APP_LOGO_LIGHT;
+
+/** Default logo on login / public pages */
+export const DEFAULT_SCWW_LOGIN_LOGO = APP_LOGO_LIGHT;
+
+export function defaultAppLogoForMode(mode = 'light') {
+  return mode === 'dark' ? APP_LOGO_DARK : APP_LOGO_LIGHT;
+}
+
+/**
  * Absolute URL to the tenant's organization logo (or null if no tenant id).
- * Backed by GET /tenants/branding/:tenantId/logo?mode=light|dark — falls back via onError to /logo.png in the UI.
+ * Backed by GET /tenants/branding/:tenantId/logo?mode=light|dark — falls back to theme static logos in the UI.
  */
 export function tenantBrandingLogoUrl(tenantId, cacheBust, mode = 'light') {
   if (!tenantId) return null;
@@ -27,11 +44,6 @@ export function tenantBrandingLogoUrl(tenantId, cacheBust, mode = 'light') {
   const q = params.toString() ? `?${params.toString()}` : '';
   return `${publicApiBaseUrl()}/tenants/branding/${id}/logo${q}`;
 }
-
-export const DEFAULT_APP_LOGO = '/logo.png';
-
-/** Default logo on the main login page until a tenant uploads their own (via Account Settings). */
-export const DEFAULT_SCWW_LOGIN_LOGO = '/logo.png';
 
 /**
  * Merge optional cache-bust for branding URL (e.g. after logo upload).

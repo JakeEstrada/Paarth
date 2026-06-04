@@ -20,6 +20,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import BrandLogo from '../components/common/BrandLogo';
 
 function LoginPage() {
   const theme = useTheme();
@@ -68,9 +69,7 @@ function LoginPage() {
           }}
         >
           <Box sx={{ mb: 4, textAlign: 'center' }}>
-            <Box
-              component="img"
-              src="/logo.png"
+            <BrandLogo
               alt="San Clemente Woodworking"
               sx={{
                 height: 112,

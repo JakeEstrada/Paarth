@@ -1,5 +1,6 @@
 import { Box, Container, Paper, Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
+import BrandLogo from '../components/common/BrandLogo';
 
 export default function PrivacyPolicy() {
   return (
@@ -7,11 +8,9 @@ export default function PrivacyPolicy() {
       <Container maxWidth="md">
         <Paper elevation={0} sx={{ p: { xs: 2, sm: 4 }, borderRadius: 2 }}>
           <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <Box
-              component="img"
-              src="/logo.png"
+            <BrandLogo
               alt="Logo"
-              sx={{ height: 56, width: 'auto', objectFit: 'contain' }}
+              sx={{ height: 56, width: 'auto', objectFit: 'contain', mx: 'auto' }}
             />
           </Box>
           <Typography variant="h4" component="h1" sx={{ fontWeight: 600, mb: 1 }}>

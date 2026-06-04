@@ -13,6 +13,7 @@ import { PictureAsPdf as PictureAsPdfIcon, Print as PrintIcon, Close as CloseIco
 import { format } from 'date-fns';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { APP_LOGO_LIGHT } from '../../utils/tenantBranding';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 
@@ -375,7 +376,7 @@ function JobContractPacketDialog({ open, onClose, job }) {
             <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
               <Box
                 component="img"
-                src="/logo.png"
+                src={APP_LOGO_LIGHT}
                 alt=""
                 sx={{ width: 120, height: 120, objectFit: 'contain', borderRadius: '50%' }}
               />

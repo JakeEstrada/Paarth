@@ -46,7 +46,7 @@ import toast from 'react-hot-toast';
 import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
-import { tenantBrandingLogoUrl } from '../utils/tenantBranding';
+import { tenantBrandingLogoUrl, APP_LOGO_LIGHT } from '../utils/tenantBranding';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -642,7 +642,7 @@ function DashboardPage() {
   const handlePrint = () => {
     setPrintDialogOpen(false);
     const reportLogoSrc =
-      tenantBrandingLogoUrl(tenantIdForBranding) || `${window.location.origin}/logo.png`;
+      tenantBrandingLogoUrl(tenantIdForBranding) || `${window.location.origin}${APP_LOGO_LIGHT}`;
 
     // Filter activities for selected date (handle timezone correctly)
     // Parse the date string and create date in local timezone

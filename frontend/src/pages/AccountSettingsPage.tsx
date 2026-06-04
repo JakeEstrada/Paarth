@@ -551,6 +551,7 @@ function AccountSettingsPage() {
               <Typography variant="body2" color="text.secondary">Light logo</Typography>
               <BrandLogo
                 tenant={tenantForBranding}
+                preferTenantLogo
                 themeMode="light"
                 alt="Light theme organization logo"
                 sx={{
@@ -583,6 +584,7 @@ function AccountSettingsPage() {
               <Typography variant="body2" color="text.secondary">Dark logo</Typography>
               <BrandLogo
                 tenant={tenantForBranding}
+                preferTenantLogo
                 themeMode="dark"
                 alt="Dark theme organization logo"
                 sx={{

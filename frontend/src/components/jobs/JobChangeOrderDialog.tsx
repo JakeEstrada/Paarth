@@ -19,6 +19,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { APP_LOGO_LIGHT } from '../../utils/tenantBranding';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -438,7 +439,7 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
                     <Box sx={{ display: 'flex', gap: 2 }}>
                       <Box
                         component="img"
-                        src="/logo.png"
+                        src={APP_LOGO_LIGHT}
                         alt="SCWW logo"
                         sx={{ width: 68, height: 68, objectFit: 'contain', borderRadius: '50%' }}
                       />

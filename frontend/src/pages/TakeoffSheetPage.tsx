@@ -24,6 +24,7 @@ import { jsPDF } from 'jspdf';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { formatPhoneForDisplay } from '../utils/phoneFormat';
+import BrandLogo from '../components/common/BrandLogo';
 
 const DEFAULT_ROWS = 12;
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -607,9 +608,8 @@ function TakeoffSheetPage() {
                 >
                   Take Off Sheet
                 </Typography>
-                <Box
-                  component="img"
-                  src="/logo.png"
+                <BrandLogo
+                  themeMode="light"
                   alt="Logo"
                   sx={{
                     position: 'absolute',
