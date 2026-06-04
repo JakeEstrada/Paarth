@@ -1340,7 +1340,7 @@ async function archiveJob(req, res) {
   }
 }
 
-// Unarchive a job (restore from archive)
+// Unarchive a job (restore from archive — manually archived and/or dead estimate)
 async function unarchiveJob(req, res) {
   try {
     const User = require('../models/User');
@@ -1349,15 +1349,26 @@ async function unarchiveJob(req, res) {
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
-    
-    if (!job.isArchived) {
-      return res.status(400).json({ error: 'Job is not archived' });
+
+    const wasArchived = !!job.isArchived;
+    const wasDeadEstimate = !!job.isDeadEstimate;
+
+    if (!wasArchived && !wasDeadEstimate) {
+      return res.status(400).json({ error: 'Job is not in the archive' });
     }
     
     const unarchiveDate = new Date();
-    job.isArchived = false;
-    job.archivedAt = undefined;
-    job.archivedBy = undefined;
+
+    if (wasArchived) {
+      job.isArchived = false;
+      job.archivedAt = undefined;
+      job.archivedBy = undefined;
+    }
+
+    if (wasDeadEstimate) {
+      job.isDeadEstimate = false;
+      job.movedToDeadEstimateAt = undefined;
+    }
     
     // If job doesn't have a stage or is in a bad state, set it to ESTIMATE_SENT
     // This ensures it appears in the pipeline

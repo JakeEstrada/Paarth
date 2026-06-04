@@ -157,7 +157,9 @@ function JobArchivePage() {
       await fetchArchivedJobs(); // Refresh the list
     } catch (error) {
       console.error('Error unarchiving job:', error);
-      toast.error('Failed to restore job from archive');
+      const message =
+        error?.response?.data?.error || 'Failed to restore job from archive';
+      toast.error(message);
     }
   };
 

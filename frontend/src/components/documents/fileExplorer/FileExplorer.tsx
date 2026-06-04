@@ -30,6 +30,7 @@ import { useDocumentsApi } from './useDocumentsApi';
 import FolderTree from './FolderTree';
 import FileTable, { formatBytes, typeLabel } from './FileTable';
 import Toolbar from './Toolbar';
+import MoveToFolderMenuItems from './MoveToFolderMenuItems';
 
 function parentFolderKey(folder) {
   if (!folder?.parentId) return null;
@@ -81,10 +82,6 @@ export default function FileExplorer() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTargets, setDeleteTargets] = useState([]);
   const [menuState, setMenuState] = useState(null);
-  const [moveOpen, setMoveOpen] = useState(false);
-  const [moveTarget, setMoveTarget] = useState(null);
-  const [moveDestination, setMoveDestination] = useState('');
-
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -426,40 +423,26 @@ export default function FileExplorer() {
     }
   }, [newFolderName, selectedFolderId, createFolder]);
 
-  const openMoveForRow = useCallback((row) => {
-    if (!row) return;
-    setMoveTarget(row);
-    if (row.kind === 'file') {
-      const source = files.find((f) => String(f._id) === String(row.entityId));
-      const currentFolder = source ? fileFolderKey(source) || '' : '';
-      setMoveDestination(currentFolder);
-    } else {
-      const source = folders.find((f) => String(f._id) === String(row.entityId));
-      const currentParent = source ? parentFolderKey(source) || '' : '';
-      setMoveDestination(currentParent);
-    }
-    setMoveOpen(true);
-  }, [files, folders]);
-
-  const submitMove = useCallback(async () => {
-    if (!moveTarget) return;
-    try {
-      const nextFolderId = moveDestination || null;
-      if (moveTarget.kind === 'file') {
-        await moveFile(moveTarget.entityId, nextFolderId);
-      } else {
-        await axios.patch(`${API_URL}/files/documents/folders/${moveTarget.entityId}`, { parentId: nextFolderId });
-        toast.success('Folder moved');
+  const executeMoveTo = useCallback(
+    async (row, destinationFolderId) => {
+      if (!row) return;
+      try {
+        if (row.kind === 'file') {
+          await moveFile(row.entityId, destinationFolderId);
+        } else {
+          await axios.patch(`${API_URL}/files/documents/folders/${row.entityId}`, {
+            parentId: destinationFolderId,
+          });
+        }
+        toast.success('Moved');
+        setGridSelection([]);
         await refresh();
+      } catch (error) {
+        toast.error(error.response?.data?.error || 'Move failed');
       }
-      setMoveOpen(false);
-      setMoveTarget(null);
-      setMoveDestination('');
-      setGridSelection([]);
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Move failed');
-    }
-  }, [moveTarget, moveDestination, moveFile, refresh]);
+    },
+    [moveFile, refresh]
+  );
 
   const openContextMenu = useCallback((event, row = null) => {
     event.preventDefault();
@@ -827,14 +810,14 @@ export default function FileExplorer() {
           </MenuItem>
         ) : null}
         {menuRow ? (
-          <MenuItem
-            onClick={() => {
-              openMoveForRow(menuRow);
-              closeContextMenu();
-            }}
-          >
-            Move to folder...
-          </MenuItem>
+          <MoveToFolderMenuItems
+            row={menuRow}
+            folders={folders}
+            folderPathById={folderPathById}
+            contextMenuOpen={Boolean(menuState)}
+            onMove={(destinationFolderId) => executeMoveTo(menuRow, destinationFolderId)}
+            onCloseParent={closeContextMenu}
+          />
         ) : null}
         {menuRow ? (
           <MenuItem
@@ -874,39 +857,6 @@ export default function FileExplorer() {
         </MenuItem>
       </Menu>
 
-      <Dialog open={moveOpen} onClose={() => setMoveOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Move {moveTarget?.kind === 'folder' ? 'folder' : 'file'}</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            Destination for <strong>{moveTarget?.name}</strong>
-          </Typography>
-          <TextField
-            select
-            fullWidth
-            label="Destination folder"
-            value={moveDestination}
-            onChange={(e) => setMoveDestination(e.target.value)}
-          >
-            <MenuItem value="">Root</MenuItem>
-            {folders
-              .filter((f) => !(moveTarget?.kind === 'folder' && String(f._id) === String(moveTarget?.entityId)))
-              .map((folder) => {
-                const id = String(folder._id);
-                return (
-                  <MenuItem key={id} value={id}>
-                    {folderPathById.get(id) || folder.name || 'Folder'}
-                  </MenuItem>
-                );
-              })}
-          </TextField>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setMoveOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={submitMove}>
-            Move
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }
