@@ -19,8 +19,7 @@ import {
   Add as AddIcon,
   CheckCircle as CheckCircleIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
+  Close as CloseIcon,
   Folder as FolderIcon,
   FolderOpen as FolderOpenIcon,
   Transform as TransformIcon,
@@ -135,9 +134,24 @@ function TasksPage() {
     }
   };
 
-  const handleEditClick = (todoId, todo) => {
-    setEditingTodo(todo);
+  const handleItemClick = (item) => {
+    if (item.isProject) {
+      handleProjectClick(item._id);
+      return;
+    }
+    setEditingTodo(item);
     setEditTodoOpen(true);
+  };
+
+  const dismissButtonSx = {
+    color: 'text.disabled',
+    opacity: 0.45,
+    p: 0.5,
+    '&:hover': {
+      opacity: 0.85,
+      color: 'text.secondary',
+      backgroundColor: 'action.hover',
+    },
   };
 
   const handleAddClick = () => {
@@ -298,14 +312,14 @@ function TasksPage() {
                 gap: 2,
                 borderLeft: isUrgent ? '3px solid #D32F2F' : (item.isProject ? '3px solid #9C27B0' : '3px solid #1976D2'),
                 backgroundColor: isUrgent ? 'rgba(211, 47, 47, 0.05)' : 'inherit',
-                cursor: item.isProject ? 'pointer' : 'default',
+                cursor: 'pointer',
                 '&:hover': {
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
                   transform: 'translateY(-2px)',
                   transition: 'all 0.2s',
                 },
               }}
-              onClick={() => item.isProject && handleProjectClick(item._id)}
+              onClick={() => handleItemClick(item)}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 {item.isProject && (
@@ -418,24 +432,11 @@ function TasksPage() {
                 )}
                 <IconButton
                   size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEditClick(item._id, item);
-                  }}
-                  sx={{ color: item.isProject ? '#9C27B0' : 'primary.main' }}
-                  title={item.isProject ? 'Edit Project' : 'Edit Task'}
+                  onClick={(e) => handleDelete(item._id, e)}
+                  sx={dismissButtonSx}
+                  title="Remove"
                 >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(item._id, e);
-                  }}
-                >
-                  <DeleteIcon fontSize="small" />
+                  <CloseIcon sx={{ fontSize: 16 }} />
                 </IconButton>
               </Box>
             </Card>

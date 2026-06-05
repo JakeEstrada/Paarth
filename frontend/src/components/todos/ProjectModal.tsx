@@ -25,6 +25,7 @@ import {
   Note as NoteIcon,
   Update as UpdateIcon,
   AttachFile as AttachFileIcon,
+  Close as CloseIcon,
   Delete as DeleteIcon,
   Download as DownloadIcon,
   OpenInNew as OpenInNewIcon,
@@ -784,8 +785,22 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                         </Box>
                       </Box>
                       {!task.completedAt && (
-                        <IconButton size="small" onClick={(e) => handleDeleteProjectTask(task._id, e)} sx={{ color: 'error.main' }}>
-                          <DeleteIcon fontSize="small" />
+                        <IconButton
+                          size="small"
+                          onClick={(e) => handleDeleteProjectTask(task._id, e)}
+                          title="Remove"
+                          sx={{
+                            color: 'text.disabled',
+                            opacity: 0.45,
+                            p: 0.5,
+                            '&:hover': {
+                              opacity: 0.85,
+                              color: 'text.secondary',
+                              backgroundColor: 'action.hover',
+                            },
+                          }}
+                        >
+                          <CloseIcon sx={{ fontSize: 16 }} />
                         </IconButton>
                       )}
                     </Paper>

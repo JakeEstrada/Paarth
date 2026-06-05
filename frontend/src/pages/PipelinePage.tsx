@@ -557,18 +557,20 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
                   }}
                 >
                   <TodoList
-                    onTodoClick={(id) => {
-                      // TODO: Open todo detail modal
-                      console.log('Todo clicked:', id);
+                    onTodoClick={(id, taskData) => {
+                      setEditingTodo({
+                        id,
+                        data: {
+                          title: taskData.title,
+                          description: taskData.description,
+                        },
+                      });
+                      setEditTodoOpen(true);
                     }}
                     onTodoComplete={() => {
                       setTodoRefreshTrigger(prev => prev + 1);
                     }}
                     onAddClick={() => setAddTodoOpen(true)}
-                    onEditClick={(id, taskData) => {
-                      setEditingTodo({ id, data: taskData });
-                      setEditTodoOpen(true);
-                    }}
                     onCountChange={setTasksCount}
                     refreshTrigger={todoRefreshTrigger}
                   />

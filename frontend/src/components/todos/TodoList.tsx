@@ -12,8 +12,7 @@ import {
 import {
   CheckCircle as CheckCircleIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
+  Close as CloseIcon,
   Add as AddIcon,
   PriorityHigh as PriorityHighIcon,
 } from '@mui/icons-material';
@@ -22,7 +21,18 @@ import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCountChange, refreshTrigger }) {
+const dismissButtonSx = {
+  color: 'text.disabled',
+  opacity: 0.45,
+  p: 0.5,
+  '&:hover': {
+    opacity: 0.85,
+    color: 'text.secondary',
+    backgroundColor: 'action.hover',
+  },
+};
+
+function TodoList({ onTodoClick, onTodoComplete, onAddClick, onCountChange, refreshTrigger }) {
   const [todos, setTodos] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -127,7 +137,7 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCoun
             return (
             <Paper
               key={todo._id}
-              onClick={() => onTodoClick && onTodoClick(todo._id)}
+              onClick={() => onTodoClick && onTodoClick(todo._id, todo)}
               sx={{
                 p: 2,
                 display: 'flex',
@@ -173,27 +183,14 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onEditClick, onCoun
                 )}
               </Box>
 
-              <Box sx={{ display: 'flex', gap: 0.5 }}>
-                {onEditClick && (
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEditClick(todo._id, todo);
-                    }}
-                    sx={{ color: 'primary.main' }}
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                )}
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={(e) => handleDelete(todo._id, e)}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Box>
+              <IconButton
+                size="small"
+                onClick={(e) => handleDelete(todo._id, e)}
+                sx={dismissButtonSx}
+                title="Remove"
+              >
+                <CloseIcon sx={{ fontSize: 16 }} />
+              </IconButton>
             </Paper>
             );
           })}
