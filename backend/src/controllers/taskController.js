@@ -38,7 +38,7 @@ async function getUserTasks(req, res) {
     }
     
     const tasks = await Task.find(query)
-      .populate('jobId', 'title stage')
+      .populate('jobId', 'title stage schedule isArchived isDeadEstimate')
       .populate('customerId', 'name')
       .populate('createdBy', 'name email')
       .sort({ dueDate: 1 });
@@ -224,7 +224,7 @@ async function createTask(req, res) {
     await task.populate('assignedTo', 'name email');
     await task.populate('createdBy', 'name email');
     if (task.jobId) {
-      await task.populate('jobId', 'title stage');
+      await task.populate('jobId', 'title stage schedule isArchived isDeadEstimate');
     }
     if (task.customerId) {
       await task.populate('customerId', 'name');
@@ -514,7 +514,7 @@ async function getOverdueTasks(req, res) {
       completedAt: null,
       dueDate: { $lt: new Date() }
     })
-      .populate('jobId', 'title stage')
+      .populate('jobId', 'title stage schedule isArchived isDeadEstimate')
       .populate('customerId', 'name')
       .populate('assignedTo', 'name email')
       .sort({ dueDate: 1 });
@@ -553,7 +553,7 @@ async function getAllIncompleteTasks(req, res) {
     const tasks = await Task.find(query)
       .populate({
         path: 'jobId',
-        select: 'title stage',
+        select: 'title stage schedule isArchived isDeadEstimate',
         strictPopulate: false
       })
       .populate({
@@ -607,7 +607,7 @@ async function getCompletedTasks(req, res) {
     const tasks = await Task.find({ 
       completedAt: { $ne: null }
     })
-      .populate('jobId', 'title stage')
+      .populate('jobId', 'title stage schedule isArchived isDeadEstimate')
       .populate('customerId', 'name')
       .populate('assignedTo', 'name email')
       .populate('completedBy', 'name email')
@@ -702,7 +702,7 @@ async function getProjectDetails(req, res) {
       .populate('assignedTo', 'name email')
       .populate('createdBy', 'name email')
       .populate('completedBy', 'name email')
-      .populate('jobId', 'title stage')
+      .populate('jobId', 'title stage schedule isArchived isDeadEstimate')
       .populate('customerId', 'name')
       .populate('notes.createdBy', 'name email')
       .populate('updates.createdBy', 'name email');

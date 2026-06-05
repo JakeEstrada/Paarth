@@ -8,6 +8,7 @@ import {
   CircularProgress,
   Button,
   Chip,
+  useTheme,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -18,6 +19,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { formatTaskDisplayLabel, getTaskCardStyle } from '../../utils/taskDisplay';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -33,6 +35,7 @@ const dismissButtonSx = {
 };
 
 function TodoList({ onTodoClick, onTodoComplete, onAddClick, onCountChange, refreshTrigger }) {
+  const theme = useTheme();
   const [todos, setTodos] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -145,8 +148,7 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onCountChange, refr
                 gap: 2,
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                borderLeft: isUrgent ? '3px solid #D32F2F' : '3px solid #1976D2',
-                backgroundColor: isUrgent ? 'rgba(211, 47, 47, 0.05)' : 'inherit',
+                ...getTaskCardStyle(todo, theme),
                 '&:hover': {
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
                   transform: 'translateY(-2px)',
@@ -163,10 +165,7 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onCountChange, refr
               
               <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="body1" sx={{ fontWeight: isUrgent ? 600 : 400 }}>
-                  {todo.customerId?.name 
-                    ? `${todo.title} - ${todo.description} | ${todo.customerId.name}`
-                    : `${todo.title} - ${todo.description}`
-                  }
+                  {formatTaskDisplayLabel(todo)}
                 </Typography>
                 {isUrgent && (
                   <Chip

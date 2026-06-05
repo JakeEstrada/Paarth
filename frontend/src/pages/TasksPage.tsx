@@ -14,6 +14,7 @@ import {
   Tabs,
   Tab,
   Chip,
+  useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -30,10 +31,12 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import AddTodoModal from '../components/todos/AddTodoModal';
 import ProjectModal from '../components/todos/ProjectModal';
+import { formatTaskDisplayLabel, getTaskCardStyle } from '../utils/taskDisplay';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function TasksPage() {
+  const theme = useTheme();
   const [todos, setTodos] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -310,8 +313,7 @@ function TasksPage() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 2,
-                borderLeft: isUrgent ? '3px solid #D32F2F' : (item.isProject ? '3px solid #9C27B0' : '3px solid #1976D2'),
-                backgroundColor: isUrgent ? 'rgba(211, 47, 47, 0.05)' : 'inherit',
+                ...getTaskCardStyle(item, theme, { isProject: item.isProject }),
                 cursor: 'pointer',
                 '&:hover': {
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
@@ -341,53 +343,73 @@ function TasksPage() {
               </Box>
               
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      fontWeight: isUrgent ? 600 : 500, 
-                      color: (theme) => theme.palette.mode === 'dark' ? '#ECEFF1' : '#263238',
-                      textDecoration: item.completedAt ? 'line-through' : 'none',
-                      opacity: item.completedAt ? 0.7 : 1,
-                    }}
-                  >
-                    {item.title}
-                  </Typography>
-                  {isUrgent && (
-                    <Chip
-                      icon={<PriorityHighIcon />}
-                      label="Urgent"
-                      size="small"
-                      color="error"
+                {item.isProject ? (
+                  <>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                      <Typography
+                        variant="body1"
+                        sx={{
+                          fontWeight: isUrgent ? 600 : 500,
+                          color: (t) => (t.palette.mode === 'dark' ? '#ECEFF1' : '#263238'),
+                          textDecoration: item.completedAt ? 'line-through' : 'none',
+                          opacity: item.completedAt ? 0.7 : 1,
+                        }}
+                      >
+                        {item.title}
+                      </Typography>
+                      {isUrgent && (
+                        <Chip
+                          icon={<PriorityHighIcon />}
+                          label="Urgent"
+                          size="small"
+                          color="error"
+                          sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600 }}
+                        />
+                      )}
+                      <Chip
+                        label="Project"
+                        size="small"
+                        sx={{ height: 20, fontSize: '0.7rem' }}
+                        color="secondary"
+                      />
+                    </Box>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
                       sx={{
-                        height: 20,
-                        fontSize: '0.65rem',
-                        fontWeight: 600,
+                        textDecoration: item.completedAt ? 'line-through' : 'none',
+                        opacity: item.completedAt ? 0.6 : 1,
                       }}
-                    />
-                  )}
-                  {item.isProject && (
-                    <Chip 
-                      label="Project" 
-                      size="small" 
-                      sx={{ height: 20, fontSize: '0.7rem' }}
-                      color="secondary"
-                    />
-                  )}
-                </Box>
-                <Typography 
-                  variant="body2" 
-                  color="text.secondary"
-                  sx={{
-                    textDecoration: item.completedAt ? 'line-through' : 'none',
-                    opacity: item.completedAt ? 0.6 : 1,
-                  }}
-                >
-                  {item.customerId?.name 
-                    ? `${item.description || 'No description'} | ${item.customerId.name}`
-                    : item.description || 'No description'
-                  }
-                </Typography>
+                    >
+                      {item.customerId?.name
+                        ? `${item.description || 'No description'} | ${item.customerId.name}`
+                        : item.description || 'No description'}
+                    </Typography>
+                  </>
+                ) : (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography
+                      variant="body1"
+                      sx={{
+                        fontWeight: isUrgent ? 600 : 500,
+                        color: (t) => (t.palette.mode === 'dark' ? '#ECEFF1' : '#263238'),
+                        textDecoration: item.completedAt ? 'line-through' : 'none',
+                        opacity: item.completedAt ? 0.7 : 1,
+                      }}
+                    >
+                      {formatTaskDisplayLabel(item)}
+                    </Typography>
+                    {isUrgent && (
+                      <Chip
+                        icon={<PriorityHighIcon />}
+                        label="Urgent"
+                        size="small"
+                        color="error"
+                        sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600 }}
+                      />
+                    )}
+                  </Box>
+                )}
                 {item.isProject && (
                   <Box sx={{ display: 'flex', gap: 1, mt: 1, alignItems: 'center' }}>
                     <Typography variant="caption" color="text.secondary">
