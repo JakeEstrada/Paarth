@@ -332,6 +332,7 @@ function TasksPage() {
                   icon={<RadioButtonUncheckedIcon />}
                   checkedIcon={<CheckCircleIcon />}
                   checked={!!item.completedAt}
+                  onClick={(e) => e.stopPropagation()}
                   onChange={(e) => {
                     if (item.completedAt) {
                       handleUncomplete(item._id, e);

@@ -160,6 +160,7 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onCountChange, refr
                 icon={<RadioButtonUncheckedIcon />}
                 checkedIcon={<CheckCircleIcon />}
                 checked={false}
+                onClick={(e) => e.stopPropagation()}
                 onChange={(e) => handleComplete(todo._id, e)}
                 sx={{
                   color: 'text.primary',
