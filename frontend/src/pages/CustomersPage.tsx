@@ -206,23 +206,20 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
   };
 
   const isInactiveCustomerJob = (job) =>
-    Boolean(job?.isArchived || job?.isDeadEstimate || job?.isCompletedClosedOut);
+    Boolean(
+      job?.isArchived ||
+      job?.isDeadEstimate ||
+      job?.isCompletedClosedOut ||
+      job?.stage === 'FINAL_PAYMENT_CLOSED'
+    );
 
-  // Fetch jobs for a customer (include archived, dead estimates, and closed-out jobs)
+  // Fetch all jobs for a customer (active, archived, dead estimates, and closed/completed)
   const fetchCustomerJobs = async (customerId) => {
     if (!customerId) return;
     try {
       setLoadingJobs(true);
-      const response = await axios.get(`${API_URL}/jobs`, {
-        params: {
-          customerId,
-          includeArchived: true,
-          includeDeadEstimates: true,
-          includeCompletedClosedOut: true,
-          limit: 500,
-        },
-      });
-      const jobs = (response.data.jobs || response.data || [])
+      const response = await axios.get(`${API_URL}/customers/${customerId}/jobs`);
+      const jobs = (Array.isArray(response.data) ? response.data : response.data.jobs || [])
         .sort((a, b) => {
           const aInactive = isInactiveCustomerJob(a);
           const bInactive = isInactiveCustomerJob(b);
@@ -1456,9 +1453,9 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                                       sx={{ height: 20, fontSize: '0.7rem' }}
                                     />
                                   )}
-                                  {job.isCompletedClosedOut && (
+                                  {(job.isCompletedClosedOut || job.stage === 'FINAL_PAYMENT_CLOSED') && (
                                     <Chip
-                                      label="Closed Out"
+                                      label={job.isCompletedClosedOut ? 'Closed Out' : 'Completed'}
                                       size="small"
                                       color="success"
                                       sx={{ height: 20, fontSize: '0.7rem' }}

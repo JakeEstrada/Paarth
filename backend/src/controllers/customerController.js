@@ -194,6 +194,7 @@ async function getCustomerJobs(req, res) {
   try {
     const Job = require('../models/Job');
     
+    // Return every job for this customer — active, archived, dead estimates, and closed/completed.
     const jobs = await Job.find({ customerId: req.params.id })
       .populate('assignedTo', 'name email')
       .sort({ createdAt: -1 });
