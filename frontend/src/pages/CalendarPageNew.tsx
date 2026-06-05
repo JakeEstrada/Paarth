@@ -1213,7 +1213,9 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                 justifyContent: 'flex-start',
               }}
             >
-              {event && (
+              {event && (() => {
+                const historical = isHistoricalClosedJob(event.job);
+                return (
                 <Chip
                   label={[event.schedule?.title || event.title, event.schedule?.installer].filter(Boolean).join(' | ')}
                   size="small"
@@ -1232,6 +1234,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                     flexShrink: 1,
                     minWidth: 0,
                     overflow: 'hidden',
+                    opacity: historical ? 0.72 : 1,
                     '&.MuiChip-root': { py: 0, px: 0 },
                     '& .MuiChip-label': {
                       px: 0.75,
@@ -1242,10 +1245,11 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
                     },
-                    '&:hover': { opacity: 0.8 },
+                    '&:hover': { opacity: historical ? 0.85 : 0.8 },
                   }}
                 />
-              )}
+                );
+              })()}
               {index === laneEvents.length - 1 && extraOtherEventsCount > 0 && (
                 <Typography variant="caption" color="text.secondary" sx={{ ml: 0.25, fontSize: '0.6rem', flexShrink: 0 }}>
                   +{extraOtherEventsCount} more
@@ -1282,11 +1286,15 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
               <ListItemText>View job</ListItemText>
             </MenuItem>
           )}
-          <MenuItem onClick={handleDelete}>
+          <MenuItem onClick={handleDelete} disabled={isHistoricalClosedJob(contextMenuEvent?.job)}>
             <ListItemIcon>
               <DeleteIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Remove from Calendar</ListItemText>
+            <ListItemText>
+              {isHistoricalClosedJob(contextMenuEvent?.job)
+                ? 'Closed out (reference only)'
+                : 'Remove from Calendar'}
+            </ListItemText>
           </MenuItem>
         </Menu>
       )}
@@ -1466,10 +1474,17 @@ function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob }) {
  * Bench + “Scheduled” sidebar + job pickers: hide closed/archived/dead jobs.
  * Calendar grid uses `jobEligibleForCalendarGrid` instead so closed jobs stay visible for reference.
  */
+/** Closed-out / completed jobs: hide from bench & scheduled sidebar, keep on calendar grid. */
+function isHistoricalClosedJob(job) {
+  return !!(
+    job?.isCompletedClosedOut ||
+    job?.stage === 'FINAL_PAYMENT_CLOSED'
+  );
+}
+
 function shouldExcludeJobFromCalendarSchedule(job) {
   if (!job || job.isArchived || job.isDeadEstimate) return true;
-  if (job.stage === 'FINAL_PAYMENT_CLOSED') return true;
-  if (job.isCompletedClosedOut) return true;
+  if (isHistoricalClosedJob(job)) return true;
   return false;
 }
 
@@ -1602,7 +1617,9 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
       if (!background) {
         setLoading(true);
       }
-      const response = await axios.get(`${API_URL}/jobs`);
+      const response = await axios.get(`${API_URL}/jobs`, {
+        params: { includeCompletedClosedOut: true, limit: 500 },
+      });
       const jobs = response.data.jobs || response.data || [];
       setAllJobs(jobs);
       const { bench, scheduled } = splitCalendarJobs(jobs);
@@ -1815,11 +1832,15 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
   };
 
   const handleEventClick = (eventOrJob) => {
+    const job = eventOrJob?.job || eventOrJob;
+    if (isHistoricalClosedJob(job)) {
+      setJobIdForDetailModal(job._id);
+      return;
+    }
     if (!canModifyCalendarWithPin()) {
       toast.error('You do not have permission to modify calendar events');
       return;
     }
-    const job = eventOrJob?.job || eventOrJob;
     setSelectedJob(job);
     setSelectedInstaller(
       eventOrJob?.schedule?.installer ||
@@ -1834,6 +1855,10 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
 
   const handleEventDelete = async (eventOrJob) => {
     const job = eventOrJob?.job || eventOrJob;
+    if (isHistoricalClosedJob(job)) {
+      toast('This job is closed out — schedule is kept for reference only.');
+      return;
+    }
     const isCalendarChipEvent = !!eventOrJob?.job && !!eventOrJob?.jobId;
     const eventType = eventOrJob?.eventType;
     const entryIndex = typeof eventOrJob?.entryIndex === 'number' ? eventOrJob.entryIndex : null;
