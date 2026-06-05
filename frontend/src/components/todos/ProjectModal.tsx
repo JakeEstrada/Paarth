@@ -25,7 +25,6 @@ import {
   Note as NoteIcon,
   Update as UpdateIcon,
   AttachFile as AttachFileIcon,
-  Close as CloseIcon,
   Delete as DeleteIcon,
   Download as DownloadIcon,
   OpenInNew as OpenInNewIcon,
