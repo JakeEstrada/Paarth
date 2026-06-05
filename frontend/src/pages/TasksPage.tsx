@@ -339,7 +339,10 @@ function TasksPage() {
                       handleComplete(item._id, e);
                     }
                   }}
-                  sx={{ color: item.isProject ? '#9C27B0' : 'primary.main' }}
+                  sx={{
+                    color: 'text.primary',
+                    '&.Mui-checked': { color: 'text.primary' },
+                  }}
                 />
               </Box>
               

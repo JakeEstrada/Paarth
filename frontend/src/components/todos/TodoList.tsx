@@ -161,7 +161,10 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onCountChange, refr
                 checkedIcon={<CheckCircleIcon />}
                 checked={false}
                 onChange={(e) => handleComplete(todo._id, e)}
-                sx={{ color: 'primary.main' }}
+                sx={{
+                  color: 'text.primary',
+                  '&.Mui-checked': { color: 'text.primary' },
+                }}
               />
               
               <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
