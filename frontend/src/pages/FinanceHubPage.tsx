@@ -48,7 +48,7 @@ import { jsPDF } from 'jspdf';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import RegisterLedgerSection from '../components/finance/RegisterLedgerSection';
-import { APP_LOGO_LIGHT } from '../utils/tenantBranding';
+import { APP_LOGO_LIGHT, ESTIMATE_DOCUMENT_LOGO } from '../utils/tenantBranding';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const ESTIMATE_DESC_HINTS_KEY = 'financeHubEstimateDescriptionHints';
@@ -1800,9 +1800,9 @@ function FinanceHubPage() {
                   <Box sx={{ display: 'flex', gap: 2 }}>
                     <Box
                       component="img"
-                      src={APP_LOGO_LIGHT}
+                      src={ESTIMATE_DOCUMENT_LOGO}
                       alt="SCWW logo"
-                      sx={{ width: 68, height: 68, objectFit: 'contain', borderRadius: '50%' }}
+                      sx={{ width: 68, height: 68, objectFit: 'contain' }}
                     />
                     <Box>
                       <Typography sx={{ fontWeight: 700, fontSize: 24, lineHeight: 1 }}>

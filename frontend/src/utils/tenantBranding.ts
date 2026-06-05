@@ -17,6 +17,9 @@ function publicApiBaseUrl() {
 export const APP_LOGO_LIGHT = '/LogoBlk.png';
 export const APP_LOGO_DARK = '/LogoWht.png';
 
+/** Logo on estimate documents (Finance Hub). */
+export const ESTIMATE_DOCUMENT_LOGO = '/scww.png';
+
 /** @deprecated Use defaultAppLogoForMode(mode) */
 export const DEFAULT_APP_LOGO = APP_LOGO_LIGHT;
 
