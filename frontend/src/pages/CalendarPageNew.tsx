@@ -1195,6 +1195,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           display: 'flex', 
           flexDirection: 'column', 
           flex: 1,
+          width: '100%',
           overflow: 'hidden',
           minHeight: 0,
           gap: 0,
@@ -1205,12 +1206,14 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
               key={event?._id || `lane-${index}`}
               sx={{
                 flex: '1 1 0',
+                width: '100%',
                 minHeight: 0,
                 minWidth: 0,
                 display: 'flex',
-                alignItems: 'center',
+                flexDirection: 'column',
+                justifyContent: 'center',
                 overflow: 'hidden',
-                justifyContent: 'flex-start',
+                gap: 0.25,
               }}
             >
               {event && (() => {
@@ -1225,18 +1228,24 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                   }}
                   onContextMenu={(e) => handleContextMenu(e, event)}
                   sx={{
+                    width: '100%',
+                    maxWidth: '100%',
                     fontSize: { xs: '0.8rem', sm: '0.85rem' },
                     height: 24,
                     maxHeight: '100%',
-                    maxWidth: '100%',
                     backgroundColor: event.color || '#1976D2',
                     color: theme.palette.getContrastText(event.color || '#1976D2'),
-                    flexShrink: 1,
-                    minWidth: 0,
+                    borderRadius: '4px',
                     overflow: 'hidden',
                     opacity: historical ? 0.72 : 1,
-                    '&.MuiChip-root': { py: 0, px: 0 },
+                    '&.MuiChip-root': {
+                      py: 0,
+                      px: 0,
+                      display: 'flex',
+                      justifyContent: 'flex-start',
+                    },
                     '& .MuiChip-label': {
+                      width: '100%',
                       px: 0.75,
                       py: 0,
                       lineHeight: 1.25,
@@ -1244,6 +1253,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
+                      textAlign: 'left',
                     },
                     '&:hover': { opacity: historical ? 0.85 : 0.8 },
                   }}
@@ -1251,7 +1261,11 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
                 );
               })()}
               {index === laneEvents.length - 1 && extraOtherEventsCount > 0 && (
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 0.25, fontSize: '0.6rem', flexShrink: 0 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontSize: '0.6rem', textAlign: 'right', px: 0.25, lineHeight: 1 }}
+                >
                   +{extraOtherEventsCount} more
                 </Typography>
               )}
