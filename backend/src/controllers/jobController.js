@@ -15,6 +15,10 @@ const DOCUMENT_TEXT_DIR = path.join(UPLOADS_DIR, 'documents-text');
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
 
+function parseTruthyQuery(value) {
+  return value === true || value === 'true' || value === '1' || value === 1;
+}
+
 function normalizeStageForPipelineRestore(stage) {
   const { ALL_STAGES } = require('../utils/stageConfig');
   const valid = new Set(ALL_STAGES);
@@ -199,17 +203,28 @@ async function syncTakeoffToDocuments(job, actorId) {
 // Get all jobs
 async function getJobs(req, res) {
   try {
-    const { stage, assignedTo, search, customerId, page = 1, limit = 100, includeCompletedClosedOut } = req.query;
-    const includeClosedOut =
-      includeCompletedClosedOut === true ||
-      includeCompletedClosedOut === 'true' ||
-      includeCompletedClosedOut === '1' ||
-      includeCompletedClosedOut === 1;
+    const {
+      stage,
+      assignedTo,
+      search,
+      customerId,
+      page = 1,
+      limit = 100,
+      includeCompletedClosedOut,
+      includeArchived,
+      includeDeadEstimates,
+    } = req.query;
+    const includeClosedOut = parseTruthyQuery(includeCompletedClosedOut);
+    const includeArchivedJobs = parseTruthyQuery(includeArchived);
+    const includeDeadEstimateJobs = parseTruthyQuery(includeDeadEstimates);
     
-    let query = {
-      isArchived: { $ne: true }, // Matches false, null, or missing field
-      isDeadEstimate: { $ne: true }, // Matches false, null, or missing field
-    };
+    let query = {};
+    if (!includeArchivedJobs) {
+      query.isArchived = { $ne: true }; // Matches false, null, or missing field
+    }
+    if (!includeDeadEstimateJobs) {
+      query.isDeadEstimate = { $ne: true }; // Matches false, null, or missing field
+    }
     if (!includeClosedOut) {
       query.isCompletedClosedOut = { $ne: true }; // Keep closed-out completed jobs off active pipeline by default
     }

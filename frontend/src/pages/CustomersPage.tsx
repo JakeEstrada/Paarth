@@ -205,21 +205,30 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     }
   };
 
-  // Fetch jobs for a customer
+  const isInactiveCustomerJob = (job) =>
+    Boolean(job?.isArchived || job?.isDeadEstimate || job?.isCompletedClosedOut);
+
+  // Fetch jobs for a customer (include archived, dead estimates, and closed-out jobs)
   const fetchCustomerJobs = async (customerId) => {
     if (!customerId) return;
     try {
       setLoadingJobs(true);
-      const response = await axios.get(`${API_URL}/jobs`);
-      const allJobs = response.data.jobs || response.data || [];
-      // Filter jobs for this customer - handle both string and ObjectId comparisons
-      const customerIdStr = String(customerId);
-      const jobs = allJobs
-        .filter(job => {
-          const jobCustomerId = job.customerId?._id || job.customerId;
-          return String(jobCustomerId) === customerIdStr;
-        })
-        .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      const response = await axios.get(`${API_URL}/jobs`, {
+        params: {
+          customerId,
+          includeArchived: true,
+          includeDeadEstimates: true,
+          includeCompletedClosedOut: true,
+          limit: 500,
+        },
+      });
+      const jobs = (response.data.jobs || response.data || [])
+        .sort((a, b) => {
+          const aInactive = isInactiveCustomerJob(a);
+          const bInactive = isInactiveCustomerJob(b);
+          if (aInactive !== bInactive) return aInactive ? 1 : -1;
+          return (a.title || '').localeCompare(b.title || '');
+        });
       setCustomerJobs(jobs);
     } catch (error) {
       console.error('Error fetching customer jobs:', error);
@@ -1431,6 +1440,30 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                                     size="small"
                                     sx={{ height: 20, fontSize: '0.7rem' }}
                                   />
+                                  {job.isArchived && (
+                                    <Chip
+                                      label="Archived"
+                                      size="small"
+                                      color="default"
+                                      sx={{ height: 20, fontSize: '0.7rem' }}
+                                    />
+                                  )}
+                                  {job.isDeadEstimate && (
+                                    <Chip
+                                      label="Dead Estimate"
+                                      size="small"
+                                      color="warning"
+                                      sx={{ height: 20, fontSize: '0.7rem' }}
+                                    />
+                                  )}
+                                  {job.isCompletedClosedOut && (
+                                    <Chip
+                                      label="Closed Out"
+                                      size="small"
+                                      color="success"
+                                      sx={{ height: 20, fontSize: '0.7rem' }}
+                                    />
+                                  )}
                                   {!hideSensitive && (job.valueEstimated || job.valueContracted) && (
                                     <Typography variant="caption" color="text.secondary">
                                       ${((job.valueContracted || job.valueEstimated) / 1000).toFixed(0)}K
