@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Card, CardContent, Typography, Box, Tooltip, useTheme } from '@mui/material';
+import { Card, CardContent, Typography, Box, Tooltip, useTheme, alpha } from '@mui/material';
 import { DEFAULT_JOB_CARD_MIN_HEIGHT_PX } from '../../utils/pipelineViewSettings';
 
 function JobCard(props: Record<string, unknown>) {
@@ -120,12 +120,12 @@ function JobCard(props: Record<string, unknown>) {
           : '0 1px 4px rgba(0, 0, 0, 0.06)',
         cursor: canModify ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
         transition: 'all 0.2s ease',
-        borderLeft: `3px solid ${theme.palette.primary.main}`,
+        borderLeft: `3px solid ${statusColor}`,
         opacity: isDragging ? 0.5 : 1,
         '&:hover': {
           boxShadow: theme.palette.mode === 'dark'
-            ? '0 4px 12px rgba(25, 118, 210, 0.3)'
-            : '0 4px 12px rgba(25, 118, 210, 0.12)',
+            ? `0 4px 12px ${alpha(statusColor, 0.45)}`
+            : `0 4px 12px ${alpha(statusColor, 0.28)}`,
           transform: isDragging ? 'none' : 'translateY(-2px)',
         },
       }}
