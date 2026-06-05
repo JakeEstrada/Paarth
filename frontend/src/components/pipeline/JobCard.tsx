@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Card, CardContent, Typography, Box, Tooltip, useTheme, alpha } from '@mui/material';
 import { DEFAULT_JOB_CARD_MIN_HEIGHT_PX } from '../../utils/pipelineViewSettings';
+import { getJobCardAccent } from '../../utils/taskDisplay';
 
 function JobCard(props: Record<string, unknown>) {
   const {
@@ -66,31 +67,24 @@ function JobCard(props: Record<string, unknown>) {
     setIsDragging(false);
   };
 
-  // Determine status dot color: scheduled (green) beats bench (orange) when calendar exists
+  const { color: statusColor } = getJobCardAccent(job, theme);
   const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
-  const isArchived = !!job.isArchived;
-  const isDeadEstimate = !!job.isDeadEstimate;
   const hasSchedule =
     !!(job.schedule?.startDate) ||
     (Array.isArray(job.schedule?.entries) && job.schedule.entries.some((e) => e?.startDate));
-
   const isScheduledJob =
-    (hasSchedule || job.stage === 'SCHEDULED') && !isArchived && !isDeadEstimate;
+    (hasSchedule || job.stage === 'SCHEDULED') && !job.isArchived && !job.isDeadEstimate;
   const isBenchJob =
     readinessStages.includes(job.stage) &&
-    !isArchived &&
-    !isDeadEstimate &&
+    !job.isArchived &&
+    !job.isDeadEstimate &&
     !hasSchedule;
 
-  let statusColor = theme.palette.info.main; // default blue
   let statusLabel = 'Open: not on bench or scheduled yet';
-
   if (isScheduledJob) {
-    statusColor = theme.palette.success.main; // green
     statusLabel =
       'Scheduled: job has scheduled dates or is in the Scheduled stage.';
   } else if (isBenchJob) {
-    statusColor = '#F57C00'; // orange
     statusLabel =
       'On bench: job is in a readiness stage and not yet scheduled on the calendar.';
   }

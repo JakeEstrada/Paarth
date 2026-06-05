@@ -19,7 +19,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { formatTaskDisplayLabel, getTaskCardStyle } from '../../utils/taskDisplay';
+import { buildJobsById, formatTaskDisplayLabel, getTaskCardStyle } from '../../utils/taskDisplay';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -34,8 +34,9 @@ const dismissButtonSx = {
   },
 };
 
-function TodoList({ onTodoClick, onTodoComplete, onAddClick, onCountChange, refreshTrigger }) {
+function TodoList({ onTodoClick, onTodoComplete, onAddClick, onCountChange, refreshTrigger, jobs = [] }) {
   const theme = useTheme();
+  const jobsById = buildJobsById(jobs);
   const [todos, setTodos] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -148,7 +149,7 @@ function TodoList({ onTodoClick, onTodoComplete, onAddClick, onCountChange, refr
                 gap: 2,
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                ...getTaskCardStyle(todo, theme),
+                ...getTaskCardStyle(todo, theme, { jobsById }),
                 '&:hover': {
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
                   transform: 'translateY(-2px)',

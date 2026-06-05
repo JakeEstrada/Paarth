@@ -1,5 +1,5 @@
 // @ts-nocheck — large page; tighten types incrementally
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -31,7 +31,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import AddTodoModal from '../components/todos/AddTodoModal';
 import ProjectModal from '../components/todos/ProjectModal';
-import { formatTaskDisplayLabel, getTaskCardStyle } from '../utils/taskDisplay';
+import { buildJobsById, formatTaskDisplayLabel, getTaskCardStyle } from '../utils/taskDisplay';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -49,6 +49,8 @@ function TasksPage() {
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
+  const [pipelineJobs, setPipelineJobs] = useState([]);
+  const jobsById = useMemo(() => buildJobsById(pipelineJobs), [pipelineJobs]);
 
   useEffect(() => {
     fetchTodos();
@@ -57,15 +59,14 @@ function TasksPage() {
   const fetchTodos = async () => {
     try {
       setLoading(true);
-      // Fetch incomplete tasks (excludes projects by default)
-      const incompleteTasksResponse = await axios.get(`${API_URL}/tasks`);
+      const [incompleteTasksResponse, incompleteAllResponse, jobsResponse] = await Promise.all([
+        axios.get(`${API_URL}/tasks`),
+        axios.get(`${API_URL}/tasks`, { params: { includeProjects: 'true' } }),
+        axios.get(`${API_URL}/jobs`, { params: { limit: 500 } }),
+      ]);
       const incompleteTasks = incompleteTasksResponse.data || [];
-      
-      // Fetch incomplete projects separately (include projects)
-      const incompleteAllResponse = await axios.get(`${API_URL}/tasks`, {
-        params: { includeProjects: 'true' }
-      });
       const allIncompleteItems = incompleteAllResponse.data || [];
+      setPipelineJobs(jobsResponse.data?.jobs || jobsResponse.data || []);
       
       // Extract incomplete projects from the full list
       const incompleteProjects = allIncompleteItems.filter(item => item.isProject);
@@ -313,7 +314,7 @@ function TasksPage() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 2,
-                ...getTaskCardStyle(item, theme, { isProject: item.isProject }),
+                ...getTaskCardStyle(item, theme, { isProject: item.isProject, jobsById }),
                 cursor: 'pointer',
                 '&:hover': {
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',

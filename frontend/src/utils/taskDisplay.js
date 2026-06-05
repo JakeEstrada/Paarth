@@ -7,6 +7,28 @@ export function jobHasCalendarSchedule(job) {
   return false;
 }
 
+export function getTaskJobId(task) {
+  if (!task?.jobId) return null;
+  if (typeof task.jobId === 'object') {
+    return task.jobId._id || task.jobId.id || null;
+  }
+  return task.jobId;
+}
+
+/** Prefer a full pipeline job (has schedule/stage) over a lightly populated task.jobId. */
+export function resolveTaskJob(task, jobsById = null) {
+  const jobId = getTaskJobId(task);
+  if (!jobId) return null;
+
+  const fromPipeline = jobsById?.[String(jobId)];
+  if (fromPipeline) return fromPipeline;
+
+  if (task?.jobId && typeof task.jobId === 'object') {
+    return task.jobId;
+  }
+  return null;
+}
+
 /** Same left-border accent logic as pipeline JobCard. */
 export function getJobCardAccent(job, theme) {
   const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
@@ -49,7 +71,15 @@ export function formatTaskDisplayLabel(task) {
   return label;
 }
 
-export function getTaskCardStyle(task, theme, { isProject = false } = {}) {
+export function buildJobsById(jobs = []) {
+  const map = {};
+  jobs.forEach((job) => {
+    if (job?._id) map[String(job._id)] = job;
+  });
+  return map;
+}
+
+export function getTaskCardStyle(task, theme, { isProject = false, jobsById = null } = {}) {
   if (task?.isUrgent) {
     return {
       borderLeft: '3px solid #D32F2F',
@@ -62,8 +92,9 @@ export function getTaskCardStyle(task, theme, { isProject = false } = {}) {
       backgroundColor: 'inherit',
     };
   }
-  if (task?.jobId) {
-    const { color } = getJobCardAccent(task.jobId, theme);
+  const linkedJob = resolveTaskJob(task, jobsById);
+  if (linkedJob) {
+    const { color } = getJobCardAccent(linkedJob, theme);
     return {
       borderLeft: `3px solid ${color}`,
       backgroundColor: 'inherit',

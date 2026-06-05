@@ -557,6 +557,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
                   }}
                 >
                   <TodoList
+                    jobs={jobs}
                     onTodoClick={(id, taskData) => {
                       setEditingTodo({
                         id,
