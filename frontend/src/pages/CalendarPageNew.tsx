@@ -63,6 +63,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
 const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
+const DEFAULT_BENCH_JOB_COLOR = '#1976D2';
 const CALENDAR_INSTALLER_ORDER_KEY = 'calendarInstallerOrder';
 
 // Default installer order used for calendar lanes and suggestions
@@ -967,6 +968,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                     entries: [],
                   },
                   stage: 'READY_TO_SCHEDULE',
+                  color: DEFAULT_BENCH_JOB_COLOR,
                 });
 
                 // Remove from Google Calendar if synced
@@ -1301,7 +1303,7 @@ function BenchJobCard({ job, onJobClick, onViewJob, onRemoveFromBench }) {
     <Card
       sx={{
         cursor: 'pointer',
-        borderLeft: `4px solid ${job.color || '#1976D2'}`,
+        borderLeft: `4px solid ${DEFAULT_BENCH_JOB_COLOR}`,
         minWidth: 150,
         maxWidth: 180,
         position: 'relative',
@@ -1862,6 +1864,7 @@ function CalendarPageNew({ tvMode = false, externalViewControls = false }) {
             entries: [],
           },
           stage: 'READY_TO_SCHEDULE',
+          color: DEFAULT_BENCH_JOB_COLOR,
         });
 
         // Remove from Google Calendar if synced

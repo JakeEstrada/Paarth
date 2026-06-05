@@ -836,6 +836,7 @@ function CalendarPage() {
           endDate: null
         },
         stage: 'READY_TO_SCHEDULE',
+        color: '#1976D2',
       });
 
       // Remove from Google Calendar if synced
