@@ -23,6 +23,122 @@ import { formatNanpTyping } from '../../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+type AddressLike = {
+  street?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+};
+
+type CustomerLike = {
+  _id?: string;
+  name?: string;
+  notes?: string;
+  primaryEmail?: string;
+  primaryPhone?: string;
+  address?: AddressLike;
+};
+
+type JobLike = {
+  _id?: string;
+  title?: string;
+  customerId?: string | CustomerLike | null;
+  jobAddress?: AddressLike;
+  jobContact?: { phone?: string; email?: string };
+};
+
+function formatAddressLine(address?: AddressLike | null): string {
+  if (!address) return '';
+  return [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+}
+
+function formatAppointmentTimeLine(date: string, time: string): string {
+  if (!date || !time) return '';
+  const dateTime = new Date(`${date}T${time}:00`);
+  if (Number.isNaN(dateTime.getTime())) return '';
+
+  const [hours, minutes] = time.split(':');
+  const hour24 = parseInt(hours, 10);
+  const hour12 = hour24 % 12 || 12;
+  const ampm = hour24 >= 12 ? 'PM' : 'AM';
+  const timeFormatted = `${hour12}:${minutes} ${ampm}`;
+
+  return `${format(dateTime, 'EEEE, MMMM d, yyyy')} at ${timeFormatted}`;
+}
+
+function buildAppointmentCustomerDescription(
+  customer: CustomerLike | null,
+  job: JobLike | null | undefined,
+  date: string,
+  time: string,
+): string {
+  if (!customer) return '';
+
+  const email = job?.jobContact?.email || customer.primaryEmail || '';
+  const address = job?.jobAddress ? formatAddressLine(job.jobAddress) : formatAddressLine(customer.address);
+  const customerNote = (customer.notes || '').trim();
+  const name = (customer.name || '').trim();
+  const timeLine = formatAppointmentTimeLine(date, time);
+
+  const lines: string[] = [];
+
+  lines.push('Customer note');
+  lines.push(customerNote || '—');
+  lines.push('');
+
+  if (name) lines.push(name);
+  if (email) lines.push(email);
+  if (address) lines.push(address);
+  if (timeLine) lines.push(`Time of appointment: ${timeLine}`);
+
+  return lines.join('\n').trim();
+}
+
+async function resolveCustomerFromJob(job: JobLike | null | undefined): Promise<CustomerLike | null> {
+  const cid = job?.customerId;
+  if (!cid) return null;
+
+  if (typeof cid === 'object' && (cid.name || cid.notes || cid.primaryEmail)) {
+    return cid;
+  }
+
+  const customerId = typeof cid === 'string' ? cid : cid._id;
+  if (!customerId) return null;
+
+  try {
+    const response = await axios.get(`${API_URL}/customers/${customerId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching customer for appointment:', error);
+    return null;
+  }
+}
+
+async function resolveJobContext(job: JobLike | null | undefined): Promise<{ job: JobLike | null; customer: CustomerLike | null }> {
+  if (!job?._id) {
+    return { job: job ?? null, customer: await resolveCustomerFromJob(job) };
+  }
+
+  const customerPopulated =
+    job.customerId && typeof job.customerId === 'object' && (job.customerId.name || job.customerId.notes);
+  const hasJobSiteInfo = Boolean(job.jobAddress || job.jobContact);
+
+  if (customerPopulated && hasJobSiteInfo) {
+    return { job, customer: job.customerId as CustomerLike };
+  }
+
+  try {
+    const response = await axios.get(`${API_URL}/jobs/${job._id}`);
+    const fullJob = response.data as JobLike;
+    const customer = await resolveCustomerFromJob(fullJob);
+    return { job: fullJob, customer };
+  } catch (error) {
+    console.error('Error fetching job for appointment:', error);
+    const customer = await resolveCustomerFromJob(job);
+    return { job, customer };
+  }
+}
+
 function AddAppointmentModal({
   open,
   onClose,
@@ -33,11 +149,7 @@ function AddAppointmentModal({
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
-  job?: {
-    _id?: string;
-    title?: string;
-    customerId?: string | { _id?: string } | null;
-  } | null;
+  job?: JobLike | null;
   appointmentId?: string | null;
 }) {
   const isEditMode = Boolean(appointmentId);
@@ -71,6 +183,31 @@ function AddAppointmentModal({
   const [reminderTime, setReminderTime] = useState('');
   const [reminderPhone, setReminderPhone] = useState('');
   const [reminderMessage, setReminderMessage] = useState('');
+  const [location, setLocation] = useState('');
+  const [linkedCustomer, setLinkedCustomer] = useState<CustomerLike | null>(null);
+  const [linkedJob, setLinkedJob] = useState<JobLike | null>(null);
+  const [descriptionAutoFilled, setDescriptionAutoFilled] = useState(false);
+
+  const applyCustomerAutoFill = (customer: CustomerLike | null, jobContext: JobLike | null, nextDate: string, nextTime: string) => {
+    if (!customer) return;
+
+    setLinkedCustomer(customer);
+    setLinkedJob(jobContext);
+    setDescription(buildAppointmentCustomerDescription(customer, jobContext, nextDate, nextTime));
+    setDescriptionAutoFilled(true);
+
+    const addressLine = jobContext?.jobAddress
+      ? formatAddressLine(jobContext.jobAddress)
+      : formatAddressLine(customer.address);
+    if (addressLine) {
+      setLocation(addressLine);
+    }
+
+    const phone = jobContext?.jobContact?.phone || customer.primaryPhone;
+    if (phone) {
+      setReminderPhone(formatNanpTyping(phone));
+    }
+  };
 
   // Fetch customers
   const fetchCustomers = async () => {
@@ -130,7 +267,11 @@ function AddAppointmentModal({
       const appt = response.data;
 
       setTitle(appt.title || '');
-      setDescription(appt.reason || '');
+      setDescription(appt.notes || appt.reason || '');
+      setLocation(appt.location || '');
+      setDescriptionAutoFilled(false);
+      setLinkedCustomer(null);
+      setLinkedJob(null);
 
       // Set customer and job if they exist
       const customerId = appt.customerId?._id || appt.customerId || '';
@@ -241,6 +382,8 @@ function AddAppointmentModal({
       const appointmentData: {
         title: string;
         reason: string | undefined;
+        notes: string | undefined;
+        location: string | undefined;
         date: Date;
         time: string;
         reminderAt?: string | null;
@@ -252,6 +395,8 @@ function AddAppointmentModal({
       } = {
         title: title.trim(),
         reason: description.trim() || undefined,
+        notes: description.trim() || undefined,
+        location: location.trim() || undefined,
         date: dateTime,
         time: timeFormatted,
       };
@@ -331,6 +476,10 @@ function AddAppointmentModal({
       setReminderTime('');
       setReminderPhone('');
       setReminderMessage('');
+      setLocation('');
+      setLinkedCustomer(null);
+      setLinkedJob(null);
+      setDescriptionAutoFilled(false);
       
       onSuccess?.();
       onClose();
@@ -365,26 +514,46 @@ function AddAppointmentModal({
       setReminderTime('');
       setReminderPhone('');
       setReminderMessage('');
+      setLocation('');
+      setLinkedCustomer(null);
+      setLinkedJob(null);
+      setDescriptionAutoFilled(false);
 
-      // If job prop is provided, set it as default
       if (job && job._id) {
-        const cid = job.customerId;
-        const customerId =
-          cid == null || cid === ''
-            ? ''
-            : typeof cid === 'string'
-              ? cid
-              : String((cid as { _id?: string })._id ?? '');
-        if (customerId) {
-          setSelectedCustomerId(customerId);
-          fetchJobsForCustomer(customerId).then(() => {
-            setSelectedJobId(job._id);
-          });
+        const defaultDate = getDefaultDate();
+        const defaultTime = getDefaultTime();
+
+        if (job.title) {
+          setTitle(job.title);
         }
+
+        resolveJobContext(job).then(({ job: jobContext, customer }) => {
+          const cid = jobContext?.customerId ?? job.customerId;
+          const customerId =
+            cid == null || cid === ''
+              ? ''
+              : typeof cid === 'string'
+                ? cid
+                : String((cid as CustomerLike)._id ?? '');
+
+          if (customerId) {
+            setSelectedCustomerId(customerId);
+            fetchJobsForCustomer(customerId).then(() => {
+              setSelectedJobId(jobContext?._id || job._id || '');
+            });
+          }
+
+          applyCustomerAutoFill(customer, jobContext, defaultDate, defaultTime);
+        });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, appointmentId]);
+
+  useEffect(() => {
+    if (!descriptionAutoFilled || !linkedCustomer) return;
+    setDescription(buildAppointmentCustomerDescription(linkedCustomer, linkedJob, date, time));
+  }, [date, time, descriptionAutoFilled, linkedCustomer, linkedJob]);
 
   const handleClose = () => {
     if (!loading) {
@@ -400,6 +569,10 @@ function AddAppointmentModal({
       setReminderTime('');
       setReminderPhone('');
       setReminderMessage('');
+      setLocation('');
+      setLinkedCustomer(null);
+      setLinkedJob(null);
+      setDescriptionAutoFilled(false);
       onClose();
     }
   };
@@ -426,11 +599,19 @@ function AddAppointmentModal({
             <TextField
               label="Description"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescriptionAutoFilled(false);
+                setDescription(e.target.value);
+              }}
               fullWidth
               multiline
-              rows={3}
+              rows={6}
               placeholder="Optional description or reason for the appointment"
+              helperText={
+                job && descriptionAutoFilled
+                  ? 'Customer details were added automatically — edit anytime.'
+                  : undefined
+              }
             />
             
             <Grid container spacing={2}>
