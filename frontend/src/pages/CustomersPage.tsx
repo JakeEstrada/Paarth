@@ -547,6 +547,10 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
       await axios.delete(`${API_URL}/customers/${customerToDelete._id}`);
       toast.success('Customer deleted successfully');
       setDeleteDialogOpen(false);
+      if (selectedCustomer?._id === customerToDelete?._id) {
+        handleCloseContactModal();
+        setSelectedCustomer(null);
+      }
       setCustomerToDelete(null);
       fetchCustomers();
     } catch (error) {
@@ -844,13 +848,12 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                 </TableCell>
                 <TableCell>Source</TableCell>
                 <TableCell>Notes</TableCell>
-                <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredAndSortedCustomers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       {searchTerm ? 'No customers found matching your search' : 'No customers found'}
                     </Typography>
@@ -897,19 +900,6 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                       >
                         {truncateNotes(customer.notes)}
                       </Typography>
-                    </TableCell>
-                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                      {!isReadonlyView && (
-                        <Tooltip title="Delete">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleDeleteClick(customer)}
-                            color="error"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </Tooltip>
-                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -1498,13 +1488,24 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={isEditingCustomer ? { justifyContent: 'space-between', px: 3, pb: 2 } : undefined}>
           {isEditingCustomer ? (
             <>
-              <Button onClick={handleCancelEditCustomer}>Cancel</Button>
-              <Button onClick={handleSaveCustomerEdit} variant="contained" startIcon={<SaveIcon />}>
-                Save
-              </Button>
+              {!isReadonlyView && (
+                <Button
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => handleDeleteClick(selectedCustomer)}
+                >
+                  Delete
+                </Button>
+              )}
+              <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
+                <Button onClick={handleCancelEditCustomer}>Cancel</Button>
+                <Button onClick={handleSaveCustomerEdit} variant="contained" startIcon={<SaveIcon />}>
+                  Save
+                </Button>
+              </Box>
             </>
           ) : (
             <Button onClick={handleCloseContactModal}>Close</Button>
