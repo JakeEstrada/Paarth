@@ -1226,14 +1226,14 @@ function DashboardPage() {
       </Box>
 
       {/* Main panels */}
-      <Grid container spacing={2} sx={{ mb: 3, alignItems: 'stretch' }}>
-        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={7}>
           <Paper elevation={0} sx={dashboardPanelSx(theme)}>
             <DashboardPanelHeader title="Jobs by stage" actionLabel="Pipeline" onAction={() => navigate('/pipeline')} />
             {stageEntries.length === 0 ? (
               <DashboardEmptyState message="No active jobs in the pipeline right now." />
             ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75, flex: 1, minHeight: 0, overflow: 'auto' }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75 }}>
                 {stageEntries.map(([stage, count]) => (
                   <Box key={stage}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5, gap: 1 }}>
@@ -1261,13 +1261,13 @@ function DashboardPage() {
           </Paper>
         </Grid>
 
-        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-          <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), overflow: 'hidden' }}>
+        <Grid item xs={12} md={5} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), height: 'auto' }}>
             <DashboardPanelHeader title="Pending tasks" actionLabel="View all" onAction={() => navigate('/tasks')} />
             {stats.pendingTasks.length === 0 ? (
               <DashboardEmptyState message="You're caught up — no pending tasks." />
             ) : (
-              <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {stats.pendingTasks.map((task) => (
                   <Box
                     key={task._id}
@@ -1302,10 +1302,8 @@ function DashboardPage() {
               </Box>
             )}
           </Paper>
-        </Grid>
 
-        <Grid item xs={12} sx={{ display: 'flex' }}>
-          <Paper elevation={0} sx={dashboardPanelSx(theme)}>
+          <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), height: 'auto' }}>
             <DashboardPanelHeader title="Upcoming appointments" actionLabel="Calendar" onAction={() => navigate('/calendar')} />
             {stats.upcomingAppointments.length === 0 ? (
               <DashboardEmptyState message="Nothing scheduled ahead — check the calendar to book time." />
