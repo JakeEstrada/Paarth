@@ -242,6 +242,10 @@ function estimateNumberSortValue(estimateNumber) {
   return prefix * 100000 + seq;
 }
 
+function isPopulatedDocRef(value) {
+  return value != null && typeof value === 'object';
+}
+
 function computeEstimateFormFromJobSnapshot(job, snapshot) {
   const cust = job.customerId;
   const est = snapshot || {};
@@ -255,14 +259,14 @@ function computeEstimateFormFromJobSnapshot(job, snapshot) {
     estimateDate:
       est.estimateDate ||
       (sent ? sent.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
-    customerId: typeof cust === 'object' && cust?._id ? cust._id : cust || null,
-    customerName: typeof cust === 'object' ? cust.name || '' : '',
+    customerId: isPopulatedDocRef(cust) && cust._id ? cust._id : cust || null,
+    customerName: isPopulatedDocRef(cust) ? cust.name || '' : '',
     customerAddress: hasMeaningfulJobSiteAddress(job.jobAddress)
       ? {
           street: job.jobAddress.street || '',
           city: job.jobAddress.city || '',
         }
-      : typeof cust === 'object' && cust.address
+      : isPopulatedDocRef(cust) && cust.address
         ? {
             street: cust.address.street || '',
             city: cust.address.city || '',
@@ -583,7 +587,7 @@ function FinanceHubPage() {
         const hydrated = await hydrateJobWithEstimate(job);
         if (cancelled) return;
         const cust = job.customerId;
-        if (cust && typeof cust === 'object' && cust._id) {
+        if (isPopulatedDocRef(cust) && cust._id) {
           setCustomers((prev) =>
             prev.some((c) => String(c._id) === String(cust._id)) ? prev : [cust, ...prev]
           );
@@ -713,7 +717,7 @@ function FinanceHubPage() {
     if (reason === 'selectOption' && newValue) {
       const jobCustId =
         loadedEstimateJob?.customerId != null
-          ? typeof loadedEstimateJob.customerId === 'object'
+          ? isPopulatedDocRef(loadedEstimateJob.customerId)
             ? loadedEstimateJob.customerId?._id
             : loadedEstimateJob.customerId
           : null;
@@ -1455,12 +1459,12 @@ function FinanceHubPage() {
                           <TableCell>{row.invoiceNumber}</TableCell>
                           <TableCell>{row.estimateNumber || '—'}</TableCell>
                           <TableCell>
-                            {typeof row.customerId === 'object' && row.customerId?.name
+                            {isPopulatedDocRef(row.customerId) && row.customerId?.name
                               ? row.customerId.name
                               : '—'}
                           </TableCell>
                           <TableCell>
-                            {typeof row.jobId === 'object' && row.jobId?.title ? row.jobId.title : '—'}
+                            {isPopulatedDocRef(row.jobId) && row.jobId?.title ? row.jobId.title : '—'}
                           </TableCell>
                           <TableCell align="right">${formatInvoiceMoney(row.total)}</TableCell>
                           <TableCell>

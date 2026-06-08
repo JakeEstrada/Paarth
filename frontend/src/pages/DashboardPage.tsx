@@ -5,14 +5,8 @@ import {
   GridLegacy as Grid,
   Paper,
   Typography,
-  Card,
-  CardContent,
   CircularProgress,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
   Divider,
   Button,
   useTheme,
@@ -24,6 +18,7 @@ import {
   IconButton,
   LinearProgress,
   Tooltip,
+  alpha,
 } from '@mui/material';
 import {
   AccountTree as JobsIcon,
@@ -39,6 +34,7 @@ import {
   Print as PrintIcon,
   Delete as DeleteIcon,
   AutoAwesome as AutoAwesomeIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -53,6 +49,152 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const AI_SUMMARY_HOVER_JOKE =
   'Tired of looking through big ass work logs... fuck that. Have AI generate a summary of that shit.';
+
+function dashboardPanelSx(theme) {
+  return {
+    p: { xs: 2, sm: 2.5 },
+    borderRadius: 3,
+    border: '1px solid',
+    borderColor: 'divider',
+    bgcolor: 'background.paper',
+    boxShadow:
+      theme.palette.mode === 'dark'
+        ? '0 1px 0 rgba(255,255,255,0.04)'
+        : '0 1px 3px rgba(15, 23, 42, 0.06)',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+  };
+}
+
+function DashboardStatCard({ label, value, icon: Icon, accentColor, theme }) {
+  return (
+    <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), borderLeft: `4px solid ${accentColor}` }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.68rem' }}
+          >
+            {label}
+          </Typography>
+          <Typography variant="h4" sx={{ fontWeight: 700, mt: 0.75, lineHeight: 1.15, fontSize: { xs: '1.35rem', sm: '1.75rem' } }}>
+            {value}
+          </Typography>
+        </Box>
+        <Box
+          sx={{
+            width: 42,
+            height: 42,
+            borderRadius: 2,
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: alpha(accentColor, theme.palette.mode === 'dark' ? 0.18 : 0.1),
+          }}
+        >
+          <Icon sx={{ fontSize: 22, color: accentColor }} />
+        </Box>
+      </Box>
+    </Paper>
+  );
+}
+
+function DashboardQuickTile({ label, value, icon: Icon, accentColor, onClick, alert, theme }) {
+  return (
+    <Paper
+      elevation={0}
+      onClick={onClick}
+      sx={{
+        p: 1.75,
+        borderRadius: 2.5,
+        border: '1px solid',
+        borderColor: alert ? 'error.main' : 'divider',
+        bgcolor: alert ? alpha(theme.palette.error.main, 0.06) : 'background.paper',
+        cursor: onClick ? 'pointer' : 'default',
+        flex: '1 1 120px',
+        minWidth: 0,
+        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+        '&:hover': onClick
+          ? {
+              transform: 'translateY(-1px)',
+              boxShadow: theme.palette.mode === 'dark' ? '0 6px 18px rgba(0,0,0,0.35)' : '0 6px 16px rgba(15,23,42,0.08)',
+            }
+          : undefined,
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+        <Box
+          sx={{
+            width: 36,
+            height: 36,
+            borderRadius: 1.5,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: alpha(accentColor, 0.12),
+            flexShrink: 0,
+          }}
+        >
+          <Icon sx={{ fontSize: 20, color: accentColor }} />
+        </Box>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+            {value}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            {label}
+          </Typography>
+        </Box>
+      </Box>
+    </Paper>
+  );
+}
+
+function DashboardPanelHeader({ title, actionLabel, onAction }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, gap: 1 }}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '-0.01em' }}>
+        {title}
+      </Typography>
+      {actionLabel && onAction ? (
+        <Button
+          size="small"
+          endIcon={<ChevronRightIcon sx={{ fontSize: 18 }} />}
+          onClick={onAction}
+          sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2 }}
+        >
+          {actionLabel}
+        </Button>
+      ) : null}
+    </Box>
+  );
+}
+
+function DashboardEmptyState({ message }) {
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        py: 4,
+        px: 2,
+        borderRadius: 2,
+        border: '1px dashed',
+        borderColor: 'divider',
+        bgcolor: 'action.hover',
+      }}
+    >
+      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+        {message}
+      </Typography>
+    </Box>
+  );
+}
 
 function renderInlineMarkdown(text) {
   const parts = String(text || '').split(/(\*\*[^*]+\*\*)/g);
@@ -974,6 +1116,11 @@ function DashboardPage() {
     }, 100);
   };
 
+  const greetingName = user?.name?.split(' ')[0] || 'there';
+  const todayLabel = format(new Date(), 'EEEE, MMMM d');
+  const stageEntries = Object.entries(stats.jobsByStage).sort((a, b) => b[1] - a[1]);
+  const maxStageCount = Math.max(...stageEntries.map(([, count]) => count), 1);
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
@@ -984,434 +1131,253 @@ function DashboardPage() {
 
   return (
     <Box sx={{ width: '100%', maxWidth: '100%', minWidth: 0, py: { xs: 2, sm: 3 } }}>
-      {/* Header */}
-      <Box sx={{ mb: { xs: 3, sm: 4 }, pt: { xs: 0.5, sm: 1 } }}>
-        <Typography
-          variant="h4"
-          sx={{
-            fontWeight: 600,
-            fontSize: { xs: '1.75rem', sm: '2.25rem' },
-            lineHeight: 1.3,
-            mb: 2,
-          }}
-        >
-          Dashboard
-        </Typography>
-        <Typography
-          variant="body1"
-          color="text.secondary"
-          sx={{
-            fontSize: { xs: '0.95rem', sm: '1.05rem' },
-            lineHeight: 1.5,
-            mt: 0.5,
-            display: 'block',
-          }}
-        >
-          Overview of your pipeline and activity
-        </Typography>
+      {/* Hero header */}
+      <Box
+        sx={{
+          mb: 3,
+          p: { xs: 2.5, sm: 3 },
+          borderRadius: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.14 : 0.08)} 0%, ${alpha(theme.palette.background.paper, 0.95)} 55%)`,
+        }}
+      >
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+          <Box>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: '0.08em', fontWeight: 600 }}>
+              {todayLabel}
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: '-0.02em', mt: 0.5, fontSize: { xs: '1.6rem', sm: '2rem' } }}>
+              Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {greetingName}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 480 }}>
+              Pipeline snapshot, upcoming work, and today&apos;s activity in one place.
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            <Button variant="contained" size="small" startIcon={<JobsIcon />} onClick={() => navigate('/pipeline')} sx={{ textTransform: 'none', borderRadius: 2 }}>
+              Pipeline
+            </Button>
+            <Button variant="outlined" size="small" startIcon={<CalendarIcon />} onClick={() => navigate('/calendar')} sx={{ textTransform: 'none', borderRadius: 2 }}>
+              Calendar
+            </Button>
+            <Button variant="outlined" size="small" startIcon={<TasksIcon />} onClick={() => navigate('/tasks')} sx={{ textTransform: 'none', borderRadius: 2 }}>
+              Tasks
+            </Button>
+          </Box>
+        </Box>
       </Box>
 
-      {/* Single boxed section: all metrics + panels */}
-      <Paper
-        sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2, mb: 3, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
-        elevation={0}
-        variant="outlined"
-      >
-        {/* Key metrics - row 1 */}
-        <Grid container spacing={2} sx={{ mb: 2, alignItems: 'stretch', width: '100%' }}>
-        <Grid item xs={6} sm={6} md={3} sx={{ display: 'flex' }}>
-          <Card sx={{ flex: 1, width: '100%', minWidth: 0, borderRadius: 2, boxShadow: 1, display: 'flex', flexDirection: 'column' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
-                    Active Jobs
-                  </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    {stats.activeJobs}
-                  </Typography>
-                </Box>
-                <JobsIcon sx={{ fontSize: 36, color: 'primary.main', opacity: 0.7 }} />
-              </Box>
-            </CardContent>
-          </Card>
+      {/* KPI row */}
+      <Grid container spacing={2} sx={{ mb: 2.5, alignItems: 'stretch' }}>
+        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
+          <DashboardStatCard label="Active Jobs" value={stats.activeJobs} icon={JobsIcon} accentColor={theme.palette.primary.main} theme={theme} />
         </Grid>
-        <Grid item xs={6} sm={6} md={3} sx={{ display: 'flex' }}>
-          <Card sx={{ flex: 1, width: '100%', minWidth: 0, borderRadius: 2, boxShadow: 1, display: 'flex', flexDirection: 'column' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
-                    Pipeline Value
-                  </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    {hideSensitive ? 'Locked' : formatCurrency(stats.totalRevenue)}
-                  </Typography>
-                </Box>
-                <MoneyIcon sx={{ fontSize: 36, color: 'primary.main', opacity: 0.7 }} />
-              </Box>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
+          <DashboardStatCard
+            label="Pipeline Value"
+            value={hideSensitive ? 'Locked' : formatCurrency(stats.totalRevenue)}
+            icon={MoneyIcon}
+            accentColor={theme.palette.primary.main}
+            theme={theme}
+          />
         </Grid>
-        <Grid item xs={6} sm={6} md={3} sx={{ display: 'flex' }}>
-          <Card sx={{ flex: 1, width: '100%', minWidth: 0, borderRadius: 2, boxShadow: 1, display: 'flex', flexDirection: 'column' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
-                    Contracted
-                  </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    {hideSensitive ? 'Locked' : formatCurrency(stats.contractedRevenue)}
-                  </Typography>
-                </Box>
-                <CheckCircleIcon sx={{ fontSize: 36, color: 'success.main', opacity: 0.7 }} />
-              </Box>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
+          <DashboardStatCard
+            label="Contracted"
+            value={hideSensitive ? 'Locked' : formatCurrency(stats.contractedRevenue)}
+            icon={CheckCircleIcon}
+            accentColor={theme.palette.success.main}
+            theme={theme}
+          />
         </Grid>
-        <Grid item xs={6} sm={6} md={3} sx={{ display: 'flex' }}>
-          <Card sx={{ flex: 1, width: '100%', minWidth: 0, borderRadius: 2, boxShadow: 1, display: 'flex', flexDirection: 'column' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
-                    Potential
-                  </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    {hideSensitive ? 'Locked' : formatCurrency(stats.potentialRevenue)}
-                  </Typography>
-                </Box>
-                <TrendingUpIcon sx={{ fontSize: 36, color: 'info.main', opacity: 0.7 }} />
-              </Box>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
+          <DashboardStatCard
+            label="Potential"
+            value={hideSensitive ? 'Locked' : formatCurrency(stats.potentialRevenue)}
+            icon={TrendingUpIcon}
+            accentColor={theme.palette.info.main}
+            theme={theme}
+          />
         </Grid>
       </Grid>
 
-      {/* Secondary stats + panels layout */}
-      <Grid container spacing={2} sx={{ mb: 0, alignItems: 'stretch', width: '100%' }}>
-        {/* Left column: small tiles — equal height segments on md+ to match right column */}
-        <Grid item xs={12} md={3} lg={3} sx={{ display: 'flex', alignSelf: 'stretch' }}>
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              width: '100%',
-              flex: 1,
-              minHeight: { xs: 'auto', md: 0 },
-              height: { md: '100%' },
-            }}
-          >
-            <Paper
-              sx={{
-                p: 2,
-                textAlign: 'center',
-                borderRadius: 2,
-                flex: { xs: 'none', md: '1 1 0' },
-                minHeight: { md: 0 },
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              elevation={0}
-              variant="outlined"
-            >
-              <PeopleIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {stats.totalCustomers}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                Customers
-              </Typography>
-            </Paper>
-            <Paper
-              sx={{
-                p: 2,
-                textAlign: 'center',
-                borderRadius: 2,
-                flex: { xs: 'none', md: '1 1 0' },
-                minHeight: { md: 0 },
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              elevation={0}
-              variant="outlined"
-            >
-              <CalendarIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {stats.upcomingAppointments.length}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                Upcoming
-              </Typography>
-            </Paper>
-            <Paper
-              sx={{
-                p: 2,
-                textAlign: 'center',
-                borderRadius: 2,
-                flex: { xs: 'none', md: '1 1 0' },
-                minHeight: { md: 0 },
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              elevation={0}
-              variant="outlined"
-            >
-              <TasksIcon sx={{ fontSize: 28, color: 'primary.main', mb: 0.5 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {stats.pendingTasks.length}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                Pending Tasks
-              </Typography>
-            </Paper>
-            <Paper
-              sx={{
-                p: 2,
-                textAlign: 'center',
-                borderRadius: 2,
-                flex: { xs: 'none', md: '1 1 0' },
-                minHeight: { md: 0 },
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderColor: stats.urgentTasks.length > 0 ? 'error.main' : undefined,
-              }}
-              elevation={0}
-              variant="outlined"
-            >
-              <WarningIcon
-                sx={{
-                  fontSize: 28,
-                  color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.secondary',
-                  mb: 0.5,
-                }}
-              />
-              <Typography
-                variant="h6"
-                sx={{ fontWeight: 600, color: stats.urgentTasks.length > 0 ? 'error.main' : 'text.primary' }}
-              >
-                {stats.urgentTasks.length}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                Urgent
-              </Typography>
-            </Paper>
-          </Box>
+      {/* Quick stats strip */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 3 }}>
+        <DashboardQuickTile label="Customers" value={stats.totalCustomers} icon={PeopleIcon} accentColor={theme.palette.primary.main} onClick={() => navigate('/customers')} theme={theme} />
+        <DashboardQuickTile
+          label="Upcoming"
+          value={stats.upcomingAppointments.length}
+          icon={CalendarIcon}
+          accentColor={theme.palette.primary.main}
+          onClick={() => navigate('/calendar')}
+          theme={theme}
+        />
+        <DashboardQuickTile label="Pending tasks" value={stats.pendingTasks.length} icon={TasksIcon} accentColor={theme.palette.primary.main} onClick={() => navigate('/tasks')} theme={theme} />
+        <DashboardQuickTile
+          label="Urgent"
+          value={stats.urgentTasks.length}
+          icon={WarningIcon}
+          accentColor={stats.urgentTasks.length > 0 ? theme.palette.error.main : theme.palette.text.secondary}
+          onClick={() => navigate('/tasks')}
+          alert={stats.urgentTasks.length > 0}
+          theme={theme}
+        />
+      </Box>
+
+      {/* Main panels */}
+      <Grid container spacing={2} sx={{ mb: 3, alignItems: 'stretch' }}>
+        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+          <Paper elevation={0} sx={dashboardPanelSx(theme)}>
+            <DashboardPanelHeader title="Jobs by stage" actionLabel="Pipeline" onAction={() => navigate('/pipeline')} />
+            {stageEntries.length === 0 ? (
+              <DashboardEmptyState message="No active jobs in the pipeline right now." />
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75, flex: 1, minHeight: 0, overflow: 'auto' }}>
+                {stageEntries.map(([stage, count]) => (
+                  <Box key={stage}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5, gap: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {getStageLabel(stage)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                        {count}
+                      </Typography>
+                    </Box>
+                    <LinearProgress
+                      variant="determinate"
+                      value={(count / maxStageCount) * 100}
+                      sx={{
+                        height: 6,
+                        borderRadius: 3,
+                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                        '& .MuiLinearProgress-bar': { borderRadius: 3 },
+                      }}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Paper>
         </Grid>
 
-        {/* Right column: panels spanning remaining width */}
-        <Grid item xs={12} md={9} lg={9} sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, maxWidth: '100%' }}>
-          <Grid container spacing={2} sx={{ flex: 1, width: '100%', maxWidth: '100%', alignItems: 'stretch' }}>
-            {/* Jobs by Stage */}
-            <Grid item xs={12} md={6} sx={{ display: 'flex', minWidth: 0 }}>
-              <Paper
-                sx={{
-                  p: 2.5,
-                  width: '100%',
-                  flex: 1,
-                  minHeight: { md: 280 },
-                  borderRadius: 2,
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-                elevation={0}
-                variant="outlined"
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Jobs by Stage
-                  </Typography>
-                  <Button size="small" onClick={() => navigate('/pipeline')} sx={{ textTransform: 'none' }}>
-                    View pipeline
-                  </Button>
-                </Box>
-                {Object.keys(stats.jobsByStage).length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                    No active jobs
-                  </Typography>
-                ) : (
+        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+          <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), overflow: 'hidden' }}>
+            <DashboardPanelHeader title="Pending tasks" actionLabel="View all" onAction={() => navigate('/tasks')} />
+            {stats.pendingTasks.length === 0 ? (
+              <DashboardEmptyState message="You're caught up — no pending tasks." />
+            ) : (
+              <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {stats.pendingTasks.map((task) => (
                   <Box
+                    key={task._id}
+                    onClick={() => navigate('/tasks')}
                     sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 1,
-                      flex: 1,
-                      minHeight: 0,
-                      overflow: 'auto',
+                      p: 1.5,
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.15s',
+                      '&:hover': { bgcolor: 'action.hover' },
                     }}
                   >
-                    {Object.entries(stats.jobsByStage)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([stage, count]) => (
-                        <Box
-                          key={stage}
-                          sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.75 }}
-                        >
-                          <Typography variant="body2" sx={{ flex: 1 }}>
-                            {getStageLabel(stage)}
-                          </Typography>
-                          <Chip label={count} color="primary" size="small" sx={{ fontWeight: 600 }} />
-                        </Box>
-                      ))}
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.25 }}>
+                      {task.title}
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+                      {task.dueDate && (
+                        <Typography variant="caption" color="text.secondary">
+                          Due {formatDate(task.dueDate)}
+                        </Typography>
+                      )}
+                      {task.assignedTo?.name && (
+                        <Typography variant="caption" color="text.secondary">
+                          {task.assignedTo.name}
+                        </Typography>
+                      )}
+                    </Box>
                   </Box>
-                )}
-              </Paper>
-            </Grid>
+                ))}
+              </Box>
+            )}
+          </Paper>
+        </Grid>
 
-            {/* Pending Tasks panel */}
-            <Grid item xs={12} md={6} sx={{ display: 'flex', minWidth: 0 }}>
-              <Paper
-                sx={{
-                  p: 2.5,
-                  width: '100%',
-                  flex: 1,
-                  minHeight: { md: 280 },
-                  borderRadius: 2,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                }}
-                elevation={0}
-                variant="outlined"
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Pending Tasks
-                  </Typography>
-                  <Button size="small" onClick={() => navigate('/tasks')} sx={{ textTransform: 'none' }}>
-                    View all
-                  </Button>
-                </Box>
-                {stats.pendingTasks.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                    No pending tasks
-                  </Typography>
-                ) : (
-                  <List sx={{ flex: 1, minHeight: 0, overflow: 'auto', py: 0 }}>
-                    {stats.pendingTasks.map((task, index) => (
-                      <Box key={task._id || index}>
-                        <ListItem>
-                          <ListItemIcon>
-                            <TasksIcon color="primary" />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={task.title}
-                            secondary={
-                              <Box sx={{ mt: 0.5 }}>
-                                {task.dueDate && (
-                                  <Typography variant="caption" color="text.secondary">
-                                    Due: {formatDate(task.dueDate)}
-                                  </Typography>
-                                )}
-                                {task.assignedTo?.name && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                    Assigned to: {task.assignedTo.name}
-                                  </Typography>
-                                )}
-                              </Box>
-                            }
-                          />
-                        </ListItem>
-                        {index < stats.pendingTasks.length - 1 && <Divider />}
+        <Grid item xs={12} sx={{ display: 'flex' }}>
+          <Paper elevation={0} sx={dashboardPanelSx(theme)}>
+            <DashboardPanelHeader title="Upcoming appointments" actionLabel="Calendar" onAction={() => navigate('/calendar')} />
+            {stats.upcomingAppointments.length === 0 ? (
+              <DashboardEmptyState message="Nothing scheduled ahead — check the calendar to book time." />
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {stats.upcomingAppointments.map((apt) => (
+                  <Box
+                    key={apt._id}
+                    onClick={() => navigate('/calendar')}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 1.5,
+                      p: 1.5,
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      cursor: 'pointer',
+                      '&:hover': { bgcolor: 'action.hover' },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 2,
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                      }}
+                    >
+                      <ScheduleIcon sx={{ fontSize: 20, color: 'primary.main' }} />
+                    </Box>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {apt.jobId?.title || apt.customerId?.name || apt.title || 'Appointment'}
+                        </Typography>
+                        <Chip
+                          label={`${formatDate(apt.date)}${apt.time ? ` · ${apt.time}` : ''}`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ height: 22, fontSize: '0.7rem' }}
+                        />
                       </Box>
-                    ))}
-                  </List>
-                )}
-              </Paper>
-            </Grid>
-
-            {/* Upcoming Appointments - full width under panels */}
-            <Grid item xs={12} sx={{ display: 'flex', minWidth: 0 }}>
-              <Paper
-                sx={{
-                  p: 2.5,
-                  width: '100%',
-                  flex: 1,
-                  borderRadius: 2,
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-                elevation={0}
-                variant="outlined"
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Upcoming Appointments
-                  </Typography>
-                  <Button size="small" onClick={() => navigate('/calendar')} sx={{ textTransform: 'none' }}>
-                    View calendar
-                  </Button>
-                </Box>
-                {stats.upcomingAppointments.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
-                    No upcoming appointments
-                  </Typography>
-                ) : (
-                  <List>
-                    {stats.upcomingAppointments.map((apt, index) => (
-                      <Box key={apt._id || index}>
-                        <ListItem>
-                          <ListItemIcon>
-                            <ScheduleIcon color="primary" />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                                <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                                  {apt.jobId?.title || apt.customerId?.name || apt.title || 'Appointment'}
-                                </Typography>
-                                <Chip
-                                  label={`${formatDate(apt.date)}${apt.time ? ` ${apt.time}` : ''}`}
-                                  size="small"
-                                  color="primary"
-                                  variant="outlined"
-                                />
-                              </Box>
-                            }
-                            secondary={
-                              <Box sx={{ mt: 0.5 }}>
-                                {apt.customerId?.name && (
-                                  <Typography variant="caption" color="text.secondary">
-                                    {apt.customerId.name}
-                                  </Typography>
-                                )}
-                                {apt.location && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                    📍 {apt.location}
-                                  </Typography>
-                                )}
-                              </Box>
-                            }
-                          />
-                        </ListItem>
-                        {index < stats.upcomingAppointments.length - 1 && <Divider />}
-                      </Box>
-                    ))}
-                  </List>
-                )}
-              </Paper>
-            </Grid>
-          </Grid>
+                      {(apt.customerId?.name || apt.location) && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                          {[apt.customerId?.name, apt.location].filter(Boolean).join(' · ')}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Paper>
         </Grid>
       </Grid>
-      </Paper>
 
-      {/* Recent Activity - full width */}
-      <Paper sx={{ p: 2.5, borderRadius: 2 }} elevation={0} variant="outlined">
+      {/* Recent Activity */}
+      <Paper elevation={0} sx={dashboardPanelSx(theme)}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-            Recent Activity
-          </Typography>
+          <Box>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '-0.01em' }}>
+              Recent activity
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Log work, generate summaries, or print a daily report
+            </Typography>
+          </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             <Tooltip
               title={AI_SUMMARY_HOVER_JOKE}
@@ -1426,7 +1392,7 @@ function DashboardPage() {
                   size="small"
                   startIcon={<AutoAwesomeIcon />}
                   onClick={openSummarySetup}
-                  sx={{ textTransform: 'none' }}
+                  sx={{ textTransform: 'none', borderRadius: 2 }}
                 >
                   AI summary
                 </Button>
@@ -1437,14 +1403,13 @@ function DashboardPage() {
               size="small"
               startIcon={<PrintIcon />}
               onClick={() => setPrintDialogOpen(true)}
-              sx={{ textTransform: 'none' }}
+              sx={{ textTransform: 'none', borderRadius: 2 }}
             >
               Print activity
             </Button>
           </Box>
         </Box>
 
-        {/* Quick manual activity entry */}
         <Box
           component="form"
           onSubmit={handleManualActivitySubmit}
@@ -1454,9 +1419,11 @@ function DashboardPage() {
             gap: 1.5,
             mb: 2,
             alignItems: 'center',
-            p: 1.5,
-            borderRadius: 1,
-            bgcolor: theme.palette.mode === 'dark' ? 'action.hover' : 'grey.50',
+            p: 2,
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.06 : 0.03),
           }}
         >
               <TextField
@@ -1488,114 +1455,95 @@ function DashboardPage() {
         </Box>
 
         {sortedActivities.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-            No recent activity
-          </Typography>
+          <DashboardEmptyState message="No activity logged yet — add a quick note above to get started." />
         ) : (
-          <Box>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {sortedActivities.slice(0, 50).map((activity, idx) => {
-                  const title = getActivityTitle(activity);
-                  const description = getActivityDescription(activity);
-                  const timeShort = formatActivityTime(activity.createdAt);
-                  const jobLabel = activity.jobId?.title || '';
-                  const taskLabel = activity.taskId?.title || '';
-                  const customerLabel = activity.customerId?.name || '';
-                  const userName = activity.createdBy?.name || '';
-                  const typeColor = getActivityTypeColor(activity.type);
+              const title = getActivityTitle(activity);
+              const description = getActivityDescription(activity);
+              const timeShort = formatActivityTime(activity.createdAt);
+              const jobLabel = activity.jobId?.title || '';
+              const taskLabel = activity.taskId?.title || '';
+              const customerLabel = activity.customerId?.name || '';
+              const userName = activity.createdBy?.name || '';
+              const typeColor = getActivityTypeColor(activity.type);
 
-                  return (
-                    <Box key={activity._id || idx}>
-                      <Box sx={{ py: 1, fontSize: '0.75rem', position: 'relative' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <Chip 
-                            label={title}
-                            size="small"
-                            color={typeColor}
-                            sx={{ 
-                              height: 20, 
-                              fontSize: '0.65rem',
-                              fontWeight: 600
-                            }}
-                          />
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                            {timeShort}
-                          </Typography>
-                          <Box sx={{ flexGrow: 1 }} />
-                          <IconButton
-                            size="small"
-                            onClick={() => handleDeleteClick(activity)}
-                            sx={{
-                              opacity: 0.6,
-                              '&:hover': {
-                                opacity: 1,
-                                color: 'error.main',
-                              },
-                            }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
-                        {description && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ display: 'block', fontSize: '0.7rem', mb: 0.5 }}
-                          >
-                            {description}
-                          </Typography>
-                        )}
-                        {(jobLabel || taskLabel || customerLabel) && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{
-                              display: 'block',
-                              fontSize: '0.65rem',
-                              fontFamily: 'monospace',
-                              mb: 0.5,
-                            }}
-                          >
-                            {jobLabel && (
-                              <Box
-                                component="span"
-                                onClick={() => {
-                                  // jobId can be either an object with _id or just the _id string
-                                  const jobId = activity.jobId?._id || activity.jobId;
-                                  if (jobId) {
-                                    navigate(`/pipeline?jobId=${jobId}`);
-                                  }
-                                }}
-                                sx={{
-                                  color: 'primary.main',
-                                  cursor: 'pointer',
-                                  textDecoration: 'underline',
-                                  '&:hover': {
-                                    color: 'primary.dark',
-                                  },
-                                }}
-                              >
-                                Job: {jobLabel}
-                              </Box>
-                            )}
-                            {taskLabel && `${jobLabel ? ' | ' : ''}${activity.taskId?.isProject ? 'Project' : 'Task'}: ${taskLabel}`}
-                            {(jobLabel || taskLabel) && customerLabel && ' | '}
-                            {customerLabel && `Customer: ${customerLabel}`}
-                          </Typography>
-                        )}
+              return (
+                <Box
+                  key={activity._id || idx}
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: idx === 0 ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.06 : 0.03) : 'transparent',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: description ? 0.5 : 0 }}>
+                        <Chip
+                          label={title}
+                          size="small"
+                          color={typeColor}
+                          sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600 }}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          {timeShort}
+                        </Typography>
                         {userName && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ fontSize: '0.65rem' }}
-                          >
-                            by {userName}
+                          <Typography variant="caption" color="text.secondary">
+                            · {userName}
                           </Typography>
                         )}
                       </Box>
-                      {idx < Math.min(sortedActivities.length, 50) - 1 && <Divider sx={{ opacity: 0.2 }} />}
+                      {description && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          {description}
+                        </Typography>
+                      )}
+                      {(jobLabel || taskLabel || customerLabel) && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          {jobLabel && (
+                            <Box
+                              component="span"
+                              onClick={() => {
+                                const jobId = activity.jobId?._id || activity.jobId;
+                                if (jobId) {
+                                  navigate(`/pipeline?jobId=${jobId}`);
+                                }
+                              }}
+                              sx={{
+                                color: 'primary.main',
+                                cursor: 'pointer',
+                                fontWeight: 500,
+                                '&:hover': { textDecoration: 'underline' },
+                              }}
+                            >
+                              {jobLabel}
+                            </Box>
+                          )}
+                          {taskLabel && `${jobLabel ? ' · ' : ''}${taskLabel}`}
+                          {(jobLabel || taskLabel) && customerLabel && ' · '}
+                          {customerLabel}
+                        </Typography>
+                      )}
                     </Box>
-                  );
-                })}
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeleteClick(activity)}
+                      sx={{
+                        opacity: 0.45,
+                        flexShrink: 0,
+                        '&:hover': { opacity: 1, color: 'error.main' },
+                      }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                </Box>
+              );
+            })}
           </Box>
         )}
       </Paper>
