@@ -48,6 +48,18 @@ export function tenantBrandingLogoUrl(tenantId, cacheBust, mode = 'light') {
   return `${publicApiBaseUrl()}/tenants/branding/${id}/logo${q}`;
 }
 
+/** Absolute URL to the tenant's uploaded estimate document logo. */
+export function tenantEstimateDocumentLogoUrl(tenantId, cacheBust) {
+  if (!tenantId) return null;
+  const id = typeof tenantId === 'object' && tenantId?._id ? tenantId._id : tenantId;
+  if (!id) return null;
+  const v = cacheBust || (typeof tenantId === 'object' && tenantId?.updatedAt ? new Date(tenantId.updatedAt).getTime() : '');
+  const params = new URLSearchParams();
+  if (v) params.set('v', String(v));
+  const q = params.toString() ? `?${params.toString()}` : '';
+  return `${publicApiBaseUrl()}/tenants/branding/${id}/estimate-logo${q}`;
+}
+
 /**
  * Merge optional cache-bust for branding URL (e.g. after logo upload).
  * @param {object|null} tenant

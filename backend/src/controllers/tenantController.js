@@ -337,13 +337,16 @@ function sanitizeEstimateDocumentSettings(raw) {
   return out;
 }
 
-function mergeEstimateDocumentSettings(stored) {
+function mergeEstimateDocumentSettings(stored, tenantId) {
   const base = { ...DEFAULT_ESTIMATE_DOCUMENT_SETTINGS };
   if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return base;
   for (const key of Object.keys(DEFAULT_ESTIMATE_DOCUMENT_SETTINGS)) {
     if (stored[key] != null && String(stored[key]).trim()) {
       base[key] = String(stored[key]).trim();
     }
+  }
+  if (tenantId && stored.logo && hasLogoBinary(stored.logo)) {
+    base.logoUrl = `/tenants/branding/${tenantId}/estimate-logo`;
   }
   return base;
 }
@@ -359,7 +362,7 @@ async function getTenantEstimateDocumentSettings(req, res) {
     if (!tenant) {
       return res.status(404).json({ error: 'Organization not found' });
     }
-    res.json({ settings: mergeEstimateDocumentSettings(tenant.estimateDocumentSettings) });
+    res.json({ settings: mergeEstimateDocumentSettings(tenant.estimateDocumentSettings, tenantId) });
   } catch (error) {
     console.error('getTenantEstimateDocumentSettings:', error);
     res.status(500).json({ error: error.message || 'Failed to load estimate document settings' });
@@ -381,15 +384,86 @@ async function updateTenantEstimateDocumentSettings(req, res) {
     if (!tenant) {
       return res.status(404).json({ error: 'Organization not found' });
     }
+    const priorLogo = tenant.estimateDocumentSettings?.logo;
     tenant.estimateDocumentSettings = {
-      ...mergeEstimateDocumentSettings(tenant.estimateDocumentSettings),
+      ...mergeEstimateDocumentSettings(tenant.estimateDocumentSettings, tenantId),
       ...sanitized,
     };
+    if (priorLogo && hasLogoBinary(priorLogo)) {
+      tenant.estimateDocumentSettings.logo = priorLogo;
+      tenant.estimateDocumentSettings.logoUrl = `/tenants/branding/${tenantId}/estimate-logo`;
+    }
     await tenant.save();
-    res.json({ settings: mergeEstimateDocumentSettings(tenant.estimateDocumentSettings) });
+    res.json({ settings: mergeEstimateDocumentSettings(tenant.estimateDocumentSettings, tenantId) });
   } catch (error) {
     console.error('updateTenantEstimateDocumentSettings:', error);
     res.status(500).json({ error: error.message || 'Failed to save estimate document settings' });
+  }
+}
+
+/** admin/super_admin: upload logo image for estimate documents */
+async function uploadEstimateDocumentLogo(req, res) {
+  try {
+    if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to update estimate header settings.' });
+    }
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded.' });
+    }
+
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
+    const previous = tenant.estimateDocumentSettings?.logo;
+    if (previous && (previous.path || previous.s3Key || previous.filename)) {
+      await deleteStoredFileBinary({
+        filename: previous.filename,
+        path: previous.path,
+        s3Key: previous.s3Key,
+        mimetype: previous.mimetype,
+      });
+    }
+
+    const payload = logoPayloadFromMulterFile(req.file);
+    tenant.estimateDocumentSettings = {
+      ...mergeEstimateDocumentSettings(tenant.estimateDocumentSettings, tenantId),
+      logo: payload,
+      logoUrl: `/tenants/branding/${tenant._id}/estimate-logo`,
+    };
+    await tenant.save();
+
+    res.json({
+      message: 'Estimate logo updated successfully',
+      brandingPath: `/tenants/branding/${tenant._id}/estimate-logo`,
+      settings: mergeEstimateDocumentSettings(tenant.estimateDocumentSettings, tenantId),
+    });
+  } catch (error) {
+    console.error('uploadEstimateDocumentLogo:', error);
+    res.status(500).json({ error: error.message || 'Failed to upload estimate logo' });
+  }
+}
+
+/** Public: stream estimate document logo for img tags and PDF export */
+async function getTenantEstimateDocumentLogo(req, res) {
+  try {
+    const { tenantId } = req.params;
+    const tenant = await Tenant.findById(tenantId).select('estimateDocumentSettings').lean();
+    if (!tenant?.estimateDocumentSettings?.logo || !hasLogoBinary(tenant.estimateDocumentSettings.logo)) {
+      return sendTransparentLogo(res);
+    }
+
+    const logo = tenant.estimateDocumentSettings.logo;
+    setBrandingLogoHeaders(res, logo.mimetype);
+    await streamLogoFile(res, logo);
+  } catch (error) {
+    console.error('getTenantEstimateDocumentLogo:', error);
+    sendLogoNotFound(res);
   }
 }
 
@@ -402,4 +476,6 @@ module.exports = {
   updateTenantPipelineSettings,
   getTenantEstimateDocumentSettings,
   updateTenantEstimateDocumentSettings,
+  uploadEstimateDocumentLogo,
+  getTenantEstimateDocumentLogo,
 };

@@ -46,6 +46,12 @@ const tenantSchema = new mongoose.Schema(
     /** Static header block on Finance Hub estimate documents */
     estimateDocumentSettings: {
       logoUrl: { type: String, trim: true },
+      logo: {
+        filename: { type: String },
+        path: { type: String },
+        s3Key: { type: String },
+        mimetype: { type: String, default: 'image/png' },
+      },
       companyName: { type: String, trim: true },
       addressLine1: { type: String, trim: true },
       addressLine2: { type: String, trim: true },

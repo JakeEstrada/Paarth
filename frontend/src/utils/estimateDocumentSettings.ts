@@ -1,3 +1,5 @@
+import { tenantEstimateDocumentLogoUrl } from './tenantBranding';
+
 export type EstimateDocumentSettings = {
   logoUrl: string;
   companyName: string;
@@ -34,10 +36,23 @@ export function mergeEstimateDocumentSettings(
   return base;
 }
 
+function isEstimateBrandingLogoPath(logoUrl?: string | null) {
+  return String(logoUrl || '').includes('/estimate-logo');
+}
+
 /** Resolve logo path/URL for estimate document <img> src. */
-export function resolveEstimateDocumentLogoSrc(logoUrl?: string | null): string {
+export function resolveEstimateDocumentLogoSrc(
+  logoUrl?: string | null,
+  tenantId?: unknown,
+  cacheBust?: string | number | null
+) {
   const raw = String(logoUrl || DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl).trim();
   if (!raw) return DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
+
+  if (isEstimateBrandingLogoPath(raw) && tenantId) {
+    return tenantEstimateDocumentLogoUrl(tenantId, cacheBust) || raw;
+  }
+
   if (/^https?:\/\//i.test(raw)) return raw;
   if (raw.startsWith('/')) return raw;
   return `/${raw.replace(/^\/+/, '')}`;

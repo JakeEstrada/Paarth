@@ -43,6 +43,7 @@ import {
   Print as PrintIcon,
   ReceiptLong as ReceiptLongIcon,
   Edit as EditIcon,
+  PhotoCamera as PhotoCameraIcon,
 } from '@mui/icons-material';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -347,7 +348,7 @@ function buildFreshEstimateDraftForJob(job) {
 }
 
 function FinanceHubPage() {
-  const { user } = useAuth();
+  const { user, tenantIdForBranding } = useAuth();
   const canEditEstimateHeader = ['super_admin', 'admin'].includes(user?.role);
   const [searchParams, setSearchParams] = useSearchParams();
   const estimateJobId = searchParams.get('jobId');
@@ -395,6 +396,8 @@ function FinanceHubPage() {
     ...DEFAULT_ESTIMATE_DOCUMENT_SETTINGS,
   }));
   const [savingEstimateHeader, setSavingEstimateHeader] = useState(false);
+  const [uploadingEstimateLogo, setUploadingEstimateLogo] = useState(false);
+  const [estimateLogoCacheBust, setEstimateLogoCacheBust] = useState(() => Date.now());
   const [estimateForm, setEstimateForm] = useState(() => ({
     estimateNumber: '',
     estimateDate: new Date().toISOString().slice(0, 10),
@@ -486,28 +489,29 @@ function FinanceHubPage() {
 
   /** All estimates in number order (1102-001, 1102-002, …) for arrow + strip navigation. */
   const sequentialEstimateNavRows = useMemo(() => {
-    const rows = [...orderedEstimateBrowserRows];
-    if (
-      loadedEstimateDoc?._id &&
-      !rows.some((row) => String(row?._id) === String(loadedEstimateDoc._id))
-    ) {
-      rows.push(loadedEstimateDoc);
-      rows.sort((a, b) => {
-        const av = estimateNumberSortValue(a?.estimateNumber);
-        const bv = estimateNumberSortValue(b?.estimateNumber);
-        if (av !== bv) return av - bv;
-        return new Date(a?.createdAt || 0).getTime() - new Date(b?.createdAt || 0).getTime();
-      });
-    }
+    const byId = new Map();
+    const add = (row) => {
+      if (!row?._id) return;
+      byId.set(String(row._id), row);
+    };
+    orderedEstimateBrowserRows.forEach(add);
+    jobEstimates.forEach(add);
+    if (loadedEstimateDoc?._id) add(loadedEstimateDoc);
+    const rows = Array.from(byId.values());
+    rows.sort((a, b) => {
+      const av = estimateNumberSortValue(a?.estimateNumber);
+      const bv = estimateNumberSortValue(b?.estimateNumber);
+      if (av !== bv) return av - bv;
+      return new Date(a?.createdAt || 0).getTime() - new Date(b?.createdAt || 0).getTime();
+    });
     return rows;
-  }, [orderedEstimateBrowserRows, loadedEstimateDoc]);
+  }, [orderedEstimateBrowserRows, jobEstimates, loadedEstimateDoc]);
 
-  const currentEstimateDocIndex = useMemo(() => {
-    if (!loadedEstimateDoc?._id) return -1;
-    return sequentialEstimateNavRows.findIndex(
-      (r) => String(r?._id || '') === String(loadedEstimateDoc._id)
-    );
-  }, [sequentialEstimateNavRows, loadedEstimateDoc]);
+  const activeEstimateNavId =
+    estimateIdParam ||
+    loadedEstimateDoc?._id ||
+    selectedEstimateSnapshot?.__estimateId ||
+    null;
 
   const invoiceEstimateNumber = useMemo(() => {
     if (isNewEstimateDraft) return estimateForm.estimateNumber || 'TBD';
@@ -516,6 +520,36 @@ function FinanceHubPage() {
     isNewEstimateDraft,
     estimateForm.estimateNumber,
     selectedEstimateSnapshot,
+  ]);
+
+  const effectiveEstimateNavIndex = useMemo(() => {
+    const rows = sequentialEstimateNavRows;
+    if (!rows.length) return -1;
+
+    const ids = [
+      estimateIdParam,
+      loadedEstimateDoc?._id,
+      selectedEstimateSnapshot?.__estimateId,
+    ].filter(Boolean);
+
+    for (const id of ids) {
+      const idx = rows.findIndex((r) => String(r?._id || '') === String(id));
+      if (idx >= 0) return idx;
+    }
+
+    const num = invoiceEstimateNumber;
+    if (num && num !== 'TBD') {
+      const idx = rows.findIndex((r) => String(r?.estimateNumber || '') === String(num));
+      if (idx >= 0) return idx;
+    }
+
+    return -1;
+  }, [
+    sequentialEstimateNavRows,
+    estimateIdParam,
+    loadedEstimateDoc,
+    selectedEstimateSnapshot,
+    invoiceEstimateNumber,
   ]);
 
   const canCreateInvoice =
@@ -1262,16 +1296,21 @@ function FinanceHubPage() {
   );
 
   const goEstimateDocOlder = useCallback(() => {
-    if (currentEstimateDocIndex <= 0) return;
-    const target = sequentialEstimateNavRows[currentEstimateDocIndex - 1];
+    if (effectiveEstimateNavIndex <= 0) return;
+    const target = sequentialEstimateNavRows[effectiveEstimateNavIndex - 1];
     if (target) navigateToSequentialEstimate(target);
-  }, [currentEstimateDocIndex, sequentialEstimateNavRows, navigateToSequentialEstimate]);
+  }, [effectiveEstimateNavIndex, sequentialEstimateNavRows, navigateToSequentialEstimate]);
 
   const goEstimateDocNewer = useCallback(() => {
-    if (currentEstimateDocIndex < 0 || currentEstimateDocIndex >= sequentialEstimateNavRows.length - 1) return;
-    const target = sequentialEstimateNavRows[currentEstimateDocIndex + 1];
+    if (
+      effectiveEstimateNavIndex < 0 ||
+      effectiveEstimateNavIndex >= sequentialEstimateNavRows.length - 1
+    ) {
+      return;
+    }
+    const target = sequentialEstimateNavRows[effectiveEstimateNavIndex + 1];
     if (target) navigateToSequentialEstimate(target);
-  }, [currentEstimateDocIndex, sequentialEstimateNavRows, navigateToSequentialEstimate]);
+  }, [effectiveEstimateNavIndex, sequentialEstimateNavRows, navigateToSequentialEstimate]);
 
   const saveEstimateOnCurrentContext = async () => {
     if (!estimateForm.customerId) {
@@ -1419,6 +1458,42 @@ function FinanceHubPage() {
     }
   };
 
+  const handleEstimateLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!canEditEstimateHeader) {
+      toast.error('Only admins can upload the estimate logo');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file');
+      return;
+    }
+    try {
+      setUploadingEstimateLogo(true);
+      const formData = new FormData();
+      formData.append('logo', file);
+      const { data } = await axios.post(`${API_URL}/tenants/estimate-document-logo`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const merged = mergeEstimateDocumentSettings(data?.settings);
+      const bust = Date.now();
+      setEstimateLogoCacheBust(bust);
+      setEstimateDocSettings(merged);
+      setEstimateHeaderDraft(merged);
+      toast.success('Estimate logo uploaded');
+    } catch (error) {
+      console.error('Error uploading estimate logo:', error);
+      toast.error(error.response?.data?.error || 'Failed to upload estimate logo');
+    } finally {
+      setUploadingEstimateLogo(false);
+    }
+  };
+
+  const resolveLogoSrc = (logoUrl) =>
+    resolveEstimateDocumentLogoSrc(logoUrl, tenantIdForBranding, estimateLogoCacheBust);
+
   const handleSaveEstimate = async () => {
     try {
       setSavingEstimate(true);
@@ -1509,26 +1584,21 @@ function FinanceHubPage() {
 
   const docOlderDisabled =
     isNewEstimateDraft ||
-    loadingJobEstimate ||
-    loadingEstimateBrowser ||
     savingEstimate ||
-    !loadedEstimateDoc?._id ||
-    currentEstimateDocIndex <= 0;
+    sequentialEstimateNavRows.length < 2 ||
+    effectiveEstimateNavIndex <= 0;
 
   const docNewerDisabled =
     isNewEstimateDraft ||
-    loadingJobEstimate ||
-    loadingEstimateBrowser ||
     savingEstimate ||
-    !loadedEstimateDoc?._id ||
-    currentEstimateDocIndex < 0 ||
-    currentEstimateDocIndex >= sequentialEstimateNavRows.length - 1;
+    sequentialEstimateNavRows.length < 2 ||
+    effectiveEstimateNavIndex < 0 ||
+    effectiveEstimateNavIndex >= sequentialEstimateNavRows.length - 1;
 
   const showArrowHint =
     !isNewEstimateDraft &&
-    !loadingJobEstimate &&
-    sequentialEstimateNavRows.length > 0 &&
-    Boolean(loadedEstimateDoc?._id);
+    sequentialEstimateNavRows.length > 1 &&
+    effectiveEstimateNavIndex >= 0;
 
   const handleJumpToEstimateNumber = async () => {
     const q = String(estimateJumpNumber || '').trim();
@@ -1969,7 +2039,7 @@ function FinanceHubPage() {
                     {sequentialEstimateNavRows.map((row) => {
                       const active =
                         !isNewEstimateDraft &&
-                        String(loadedEstimateDoc?._id || '') === String(row?._id || '');
+                        String(activeEstimateNavId || '') === String(row?._id || '');
                       return (
                         <Chip
                           key={row._id}
@@ -2052,7 +2122,7 @@ function FinanceHubPage() {
                   <Box sx={{ display: 'flex', gap: 2 }}>
                     <Box
                       component="img"
-                      src={resolveEstimateDocumentLogoSrc(estimateDocSettings.logoUrl)}
+                      src={resolveLogoSrc(estimateDocSettings.logoUrl)}
                       alt={`${estimateDocSettings.companyName || 'Company'} logo`}
                       sx={{ width: 68, height: 68, objectFit: 'contain' }}
                       onError={(e) => {
@@ -2359,7 +2429,25 @@ function FinanceHubPage() {
                   color="text.secondary"
                   sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
                 >
-                  Arrows browse every estimate in number order (1102-001 ← → 1102-002 ← → 1102-003 …).
+                  Arrows browse every estimate in number order (1102-0001 ← → 1102-0002 ← → 1102-0003 …).
+                </Typography>
+              )}
+              {isNewEstimateDraft && sequentialEstimateNavRows.length > 0 && (
+                <Typography
+                  variant="caption"
+                  color="warning.main"
+                  sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
+                >
+                  Save this draft first to browse other estimates with the arrows.
+                </Typography>
+              )}
+              {!isNewEstimateDraft && sequentialEstimateNavRows.length === 1 && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
+                >
+                  Only one estimate exists — create another to enable arrow navigation.
                 </Typography>
               )}
             </Box>
@@ -2457,7 +2545,7 @@ function FinanceHubPage() {
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Box
                 component="img"
-                src={resolveEstimateDocumentLogoSrc(estimateDocSettings.logoUrl)}
+                src={resolveLogoSrc(estimateDocSettings.logoUrl)}
                 alt={`${estimateDocSettings.companyName || 'Company'} logo`}
                 sx={{ width: 68, height: 68, objectFit: 'contain' }}
                 onError={(e) => {
@@ -2759,14 +2847,64 @@ function FinanceHubPage() {
             This information appears at the top of every estimate PDF and printout for your organization.
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              label="Logo URL or path"
-              value={estimateHeaderDraft.logoUrl}
-              onChange={(e) => handleEstimateHeaderDraftChange('logoUrl', e.target.value)}
-              placeholder="/scww.png"
-              helperText="Use a path in /public (e.g. /scww.png) or a full https:// image URL."
-              fullWidth
-            />
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Company logo
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                <Box
+                  component="img"
+                  src={resolveLogoSrc(estimateHeaderDraft.logoUrl)}
+                  alt="Logo preview"
+                  sx={{
+                    width: 72,
+                    height: 72,
+                    objectFit: 'contain',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 0.5,
+                    bgcolor: '#fff',
+                  }}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
+                  }}
+                />
+                <Button
+                  variant="outlined"
+                  component="label"
+                  disabled={uploadingEstimateLogo || savingEstimateHeader}
+                  startIcon={
+                    uploadingEstimateLogo ? <CircularProgress size={18} /> : <PhotoCameraIcon />
+                  }
+                >
+                  {uploadingEstimateLogo ? 'Uploading…' : 'Upload logo'}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                    hidden
+                    onChange={handleEstimateLogoUpload}
+                  />
+                </Button>
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                Upload a PNG, JPG, or SVG. This logo appears on every estimate PDF and printout.
+              </Typography>
+              <TextField
+                label="Or image URL / public path (optional)"
+                value={
+                  String(estimateHeaderDraft.logoUrl || '').includes('/estimate-logo')
+                    ? ''
+                    : estimateHeaderDraft.logoUrl
+                }
+                onChange={(e) => handleEstimateHeaderDraftChange('logoUrl', e.target.value)}
+                placeholder="/scww.png"
+                helperText="Leave blank when using an uploaded logo. Use /public paths or https:// URLs."
+                fullWidth
+                sx={{ mt: 1.5 }}
+              />
+            </Box>
             <TextField
               label="Company name"
               value={estimateHeaderDraft.companyName}
@@ -2816,8 +2954,8 @@ function FinanceHubPage() {
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <Box
                   component="img"
-                  src={resolveEstimateDocumentLogoSrc(estimateHeaderDraft.logoUrl)}
-                  alt="Logo preview"
+                  src={resolveLogoSrc(estimateHeaderDraft.logoUrl)}
+                  alt="Header preview logo"
                   sx={{ width: 48, height: 48, objectFit: 'contain' }}
                   onError={(e) => {
                     e.currentTarget.onerror = null;
