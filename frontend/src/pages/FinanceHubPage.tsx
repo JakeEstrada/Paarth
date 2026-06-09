@@ -484,22 +484,30 @@ function FinanceHubPage() {
     });
   }, [estimateBrowserRows]);
 
-  const jobEstimateNavRows = useMemo(() => {
-    if (!estimateJobId) return orderedEstimateBrowserRows;
-    return jobEstimates.length > 0
-      ? [...jobEstimates]
-      : orderedEstimateBrowserRows.filter((row) => {
-          const jid = row?.jobId?._id || row?.jobId;
-          return String(jid) === String(estimateJobId);
-        });
-  }, [estimateJobId, jobEstimates, orderedEstimateBrowserRows]);
+  /** All estimates in number order (1102-001, 1102-002, …) for arrow + strip navigation. */
+  const sequentialEstimateNavRows = useMemo(() => {
+    const rows = [...orderedEstimateBrowserRows];
+    if (
+      loadedEstimateDoc?._id &&
+      !rows.some((row) => String(row?._id) === String(loadedEstimateDoc._id))
+    ) {
+      rows.push(loadedEstimateDoc);
+      rows.sort((a, b) => {
+        const av = estimateNumberSortValue(a?.estimateNumber);
+        const bv = estimateNumberSortValue(b?.estimateNumber);
+        if (av !== bv) return av - bv;
+        return new Date(a?.createdAt || 0).getTime() - new Date(b?.createdAt || 0).getTime();
+      });
+    }
+    return rows;
+  }, [orderedEstimateBrowserRows, loadedEstimateDoc]);
 
   const currentEstimateDocIndex = useMemo(() => {
     if (!loadedEstimateDoc?._id) return -1;
-    return jobEstimateNavRows.findIndex(
+    return sequentialEstimateNavRows.findIndex(
       (r) => String(r?._id || '') === String(loadedEstimateDoc._id)
     );
-  }, [jobEstimateNavRows, loadedEstimateDoc]);
+  }, [sequentialEstimateNavRows, loadedEstimateDoc]);
 
   const invoiceEstimateNumber = useMemo(() => {
     if (isNewEstimateDraft) return estimateForm.estimateNumber || 'TBD';
@@ -543,18 +551,6 @@ function FinanceHubPage() {
     if (activeTab !== 'estimates' || typeof window === 'undefined') return;
     window.localStorage.removeItem(LOCAL_EST_SNAPSHOT_STACK_KEY);
   }, [activeTab]);
-
-  const goEstimateDocOlder = useCallback(() => {
-    if (currentEstimateDocIndex <= 0) return;
-    const target = jobEstimateNavRows[currentEstimateDocIndex - 1];
-    if (target) openEstimateFromBrowser(target);
-  }, [currentEstimateDocIndex, jobEstimateNavRows, openEstimateFromBrowser]);
-
-  const goEstimateDocNewer = useCallback(() => {
-    if (currentEstimateDocIndex < 0 || currentEstimateDocIndex >= jobEstimateNavRows.length - 1) return;
-    const target = jobEstimateNavRows[currentEstimateDocIndex + 1];
-    if (target) openEstimateFromBrowser(target);
-  }, [currentEstimateDocIndex, jobEstimateNavRows, openEstimateFromBrowser]);
 
   const descriptionAutocompleteOptions = useMemo(() => {
     const out = [];
@@ -1252,6 +1248,31 @@ function FinanceHubPage() {
     [estimateJobId, estimateFormIsDirty, isNewEstimateDraft, setSearchParams]
   );
 
+  const navigateToSequentialEstimate = useCallback(
+    (row) => {
+      if (!row?._id) return;
+      if (estimateFormIsDirty && !isNewEstimateDraft) {
+        toast.error('Save or discard your changes before switching estimates');
+        return;
+      }
+      setIsNewEstimateDraft(false);
+      openEstimateFromBrowser(row);
+    },
+    [estimateFormIsDirty, isNewEstimateDraft, openEstimateFromBrowser]
+  );
+
+  const goEstimateDocOlder = useCallback(() => {
+    if (currentEstimateDocIndex <= 0) return;
+    const target = sequentialEstimateNavRows[currentEstimateDocIndex - 1];
+    if (target) navigateToSequentialEstimate(target);
+  }, [currentEstimateDocIndex, sequentialEstimateNavRows, navigateToSequentialEstimate]);
+
+  const goEstimateDocNewer = useCallback(() => {
+    if (currentEstimateDocIndex < 0 || currentEstimateDocIndex >= sequentialEstimateNavRows.length - 1) return;
+    const target = sequentialEstimateNavRows[currentEstimateDocIndex + 1];
+    if (target) navigateToSequentialEstimate(target);
+  }, [currentEstimateDocIndex, sequentialEstimateNavRows, navigateToSequentialEstimate]);
+
   const saveEstimateOnCurrentContext = async () => {
     if (!estimateForm.customerId) {
       toast.error('Select an existing customer');
@@ -1487,21 +1508,27 @@ function FinanceHubPage() {
   };
 
   const docOlderDisabled =
-    !estimateJobId ||
     isNewEstimateDraft ||
     loadingJobEstimate ||
+    loadingEstimateBrowser ||
     savingEstimate ||
+    !loadedEstimateDoc?._id ||
     currentEstimateDocIndex <= 0;
 
   const docNewerDisabled =
-    !estimateJobId ||
     isNewEstimateDraft ||
     loadingJobEstimate ||
+    loadingEstimateBrowser ||
     savingEstimate ||
+    !loadedEstimateDoc?._id ||
     currentEstimateDocIndex < 0 ||
-    currentEstimateDocIndex >= jobEstimateNavRows.length - 1;
+    currentEstimateDocIndex >= sequentialEstimateNavRows.length - 1;
 
-  const showArrowHint = estimateJobId && !isNewEstimateDraft && !loadingJobEstimate;
+  const showArrowHint =
+    !isNewEstimateDraft &&
+    !loadingJobEstimate &&
+    sequentialEstimateNavRows.length > 0 &&
+    Boolean(loadedEstimateDoc?._id);
 
   const handleJumpToEstimateNumber = async () => {
     const q = String(estimateJumpNumber || '').trim();
@@ -1920,6 +1947,49 @@ function FinanceHubPage() {
                 width: '100%',
               }}
             >
+              {sequentialEstimateNavRows.length > 0 && (
+                <Box sx={{ width: '100%', maxWidth: 816, mb: 1.25, px: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+                    All estimates in order — click a number or use the arrows
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      gap: 0.75,
+                      overflowX: 'auto',
+                      py: 0.5,
+                      px: 0.25,
+                      borderRadius: 2,
+                      border: 1,
+                      borderColor: 'divider',
+                      bgcolor: (t) =>
+                        t.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                    }}
+                  >
+                    {sequentialEstimateNavRows.map((row) => {
+                      const active =
+                        !isNewEstimateDraft &&
+                        String(loadedEstimateDoc?._id || '') === String(row?._id || '');
+                      return (
+                        <Chip
+                          key={row._id}
+                          label={row.estimateNumber || 'Draft'}
+                          size="small"
+                          clickable
+                          color={active ? 'primary' : 'default'}
+                          variant={active ? 'filled' : 'outlined'}
+                          onClick={() => navigateToSequentialEstimate(row)}
+                          sx={{ flexShrink: 0, fontFamily: 'monospace', fontSize: '0.78rem' }}
+                        />
+                      );
+                    })}
+                    {isNewEstimateDraft && (
+                      <Chip label="New draft" size="small" color="warning" variant="outlined" sx={{ flexShrink: 0 }} />
+                    )}
+                  </Box>
+                </Box>
+              )}
+
               <Box
                 sx={{
                   display: 'flex',
@@ -2289,7 +2359,7 @@ function FinanceHubPage() {
                   color="text.secondary"
                   sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
                 >
-                  Arrows step through estimates on this job (older ← → newer).
+                  Arrows browse every estimate in number order (1102-001 ← → 1102-002 ← → 1102-003 …).
                 </Typography>
               )}
             </Box>
