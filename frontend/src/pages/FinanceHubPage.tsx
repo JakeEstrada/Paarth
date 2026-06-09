@@ -249,6 +249,23 @@ function isPopulatedDocRef(value) {
   return value != null && typeof value === 'object';
 }
 
+function sortEstimatesByNumber(list) {
+  return [...(list || [])].sort(
+    (a, b) => estimateNumberSortValue(a?.estimateNumber) - estimateNumberSortValue(b?.estimateNumber)
+  );
+}
+
+function findEstimateInLists(estimateId, lists) {
+  const id = String(estimateId || '');
+  if (!id) return null;
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    const hit = list.find((e) => String(e?._id || '') === id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 function computeEstimateFormFromJobSnapshot(job, snapshot) {
   const cust = job.customerId;
   const est = snapshot || {};
@@ -373,6 +390,12 @@ function FinanceHubPage() {
   const [isEstimateExportMode, setIsEstimateExportMode] = useState(false);
   const estimateCanvasRef = useRef(null);
   const invoicePdfRef = useRef(null);
+  /** Avoid refetching full jobs / estimate lists on arrow navigation. */
+  const estimateNavPrevRef = useRef({ jobId: null, estimateId: null });
+  const jobCacheRef = useRef(new Map());
+  const jobEstimatesCacheRef = useRef(new Map());
+  const estimateDocCacheRef = useRef(new Map());
+  const [switchingEstimate, setSwitchingEstimate] = useState(false);
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [createInvoiceKind, setCreateInvoiceKind] = useState('deposit');
   const [savingInvoice, setSavingInvoice] = useState(false);
@@ -661,57 +684,193 @@ function FinanceHubPage() {
   }, [activeTab, loadEstimateBrowser]);
 
   useEffect(() => {
+    if (activeTab !== 'estimates') return;
+    estimateBrowserRows.forEach((row) => {
+      if (row?._id) estimateDocCacheRef.current.set(String(row._id), row);
+    });
+  }, [activeTab, estimateBrowserRows]);
+
+  useEffect(() => {
     if (activeTab !== 'estimates' || !estimateJobId) {
       setLoadedEstimateJob(null);
       setLoadedEstimateDoc(null);
       setJobEstimates([]);
+      estimateNavPrevRef.current = { jobId: null, estimateId: null };
       return undefined;
     }
+
     let cancelled = false;
+    const jobKey = String(estimateJobId);
+    const estimateKey = estimateIdParam ? String(estimateIdParam) : null;
+    const prevNav = estimateNavPrevRef.current;
+    const jobChanged = prevNav.jobId !== jobKey;
+    const estimateChanged = prevNav.estimateId !== estimateKey;
+    estimateNavPrevRef.current = { jobId: jobKey, estimateId: estimateKey };
+
+    const mergeCustomerFromJob = (job) => {
+      const cust = job?.customerId;
+      if (isPopulatedDocRef(cust) && cust._id) {
+        setCustomers((prev) =>
+          prev.some((c) => String(c._id) === String(cust._id)) ? prev : [cust, ...prev]
+        );
+      }
+    };
+
+    const applyEditingJobSummary = (job) => {
+      setEditingJobSummary({
+        _id: job._id,
+        title: job.title || '',
+        stage: job.stage || '',
+        description: job.description || '',
+      });
+    };
+
+    const rememberEstimateDoc = (doc) => {
+      if (!doc?._id) return;
+      estimateDocCacheRef.current.set(String(doc._id), doc);
+    };
+
+    const lookupEstimateDoc = (estimateId) => {
+      if (!estimateId) return null;
+      return (
+        estimateDocCacheRef.current.get(String(estimateId)) ||
+        findEstimateInLists(estimateId, [jobEstimatesCacheRef.current.get(jobKey)])
+      );
+    };
+
+    const upsertJobEstimate = (estimateDoc) => {
+      if (!estimateDoc?._id) return;
+      rememberEstimateDoc(estimateDoc);
+      setJobEstimates((prev) => {
+        const next = prev.some((e) => String(e._id) === String(estimateDoc._id))
+          ? prev.map((e) => (String(e._id) === String(estimateDoc._id) ? estimateDoc : e))
+          : [...prev, estimateDoc];
+        const sorted = sortEstimatesByNumber(next);
+        jobEstimatesCacheRef.current.set(jobKey, sorted);
+        return sorted;
+      });
+    };
+
     (async () => {
       try {
-        setLoadingJobEstimate(true);
-        const { data: job } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
-        if (cancelled) return;
+        // Same job, new estimate only — skip full job + list refetch.
+        if (!jobChanged && estimateChanged && estimateKey && !isNewEstimateDraft) {
+          const cached = lookupEstimateDoc(estimateKey);
+          if (cached) {
+            setLoadedEstimateDoc(cached);
+            setIsNewEstimateDraft(false);
+            setNewEstimatePromptOpen(false);
+            return;
+          }
 
-        if (isNewEstimateDraft && !estimateIdParam) {
-          const hydrated = await hydrateJobWithEstimate(job, null);
+          setSwitchingEstimate(true);
+          const { data: estimateDoc } = await axios.get(`${API_URL}/estimates/${estimateKey}`);
           if (cancelled) return;
-          setLoadedEstimateJob(hydrated.job);
-          setJobEstimates(hydrated.estimatesForJob || []);
-          setEditingJobSummary({
-            _id: hydrated.job._id,
-            title: hydrated.job.title || '',
-            stage: hydrated.job.stage || '',
-            description: hydrated.job.description || '',
-          });
+          upsertJobEstimate(estimateDoc);
+          setLoadedEstimateDoc(estimateDoc);
+          setIsNewEstimateDraft(false);
+          setNewEstimatePromptOpen(false);
           return;
         }
 
-        const hydrated = await hydrateJobWithEstimate(job, estimateIdParam);
-        if (cancelled) return;
-        const cust = job.customerId;
-        if (isPopulatedDocRef(cust) && cust._id) {
-          setCustomers((prev) =>
-            prev.some((c) => String(c._id) === String(cust._id)) ? prev : [cust, ...prev]
-          );
+        const cachedJob = jobCacheRef.current.get(jobKey);
+        const cachedJobEstimates = jobEstimatesCacheRef.current.get(jobKey);
+
+        if (cachedJob && jobChanged) {
+          setLoadedEstimateJob(cachedJob);
+          mergeCustomerFromJob(cachedJob);
+          applyEditingJobSummary(cachedJob);
         }
-        setLoadedEstimateJob(hydrated.job);
-        setLoadedEstimateDoc(hydrated.estimateDoc || null);
-        setJobEstimates(hydrated.estimatesForJob || []);
+        if (cachedJobEstimates && jobChanged) {
+          setJobEstimates(cachedJobEstimates);
+        }
+        if (estimateKey && !isNewEstimateDraft) {
+          const cachedEstimate = lookupEstimateDoc(estimateKey);
+          if (cachedEstimate) {
+            setLoadedEstimateDoc(cachedEstimate);
+          }
+        }
+
+        const showFullJobLoading = jobChanged && !cachedJob;
+        if (showFullJobLoading) setLoadingJobEstimate(true);
+
+        if (isNewEstimateDraft && !estimateKey) {
+          const job =
+            cachedJob || (await axios.get(`${API_URL}/jobs/${jobKey}`).then((res) => res.data));
+          if (cancelled) return;
+          jobCacheRef.current.set(jobKey, job);
+          setLoadedEstimateJob(job);
+          mergeCustomerFromJob(job);
+          applyEditingJobSummary(job);
+
+          let estimatesForJob = cachedJobEstimates;
+          if (!estimatesForJob) {
+            const { data } = await axios.get(`${API_URL}/estimates`, { params: { jobId: jobKey } });
+            estimatesForJob = sortEstimatesByNumber(
+              Array.isArray(data) ? data : data?.estimates || []
+            );
+            estimatesForJob.forEach(rememberEstimateDoc);
+            jobEstimatesCacheRef.current.set(jobKey, estimatesForJob);
+          }
+          setJobEstimates(estimatesForJob);
+          setLoadedEstimateDoc(null);
+          return;
+        }
+
+        const needsJob = jobChanged && !cachedJob;
+        const needsEstimateList = jobChanged && !cachedJobEstimates;
+        const needsEstimateDoc =
+          estimateKey && !isNewEstimateDraft && !lookupEstimateDoc(estimateKey);
+
+        const [job, estimatesForJob, estimateDocFetched] = await Promise.all([
+          needsJob
+            ? axios.get(`${API_URL}/jobs/${jobKey}`).then((res) => res.data)
+            : Promise.resolve(cachedJob || jobCacheRef.current.get(jobKey)),
+          needsEstimateList
+            ? axios
+                .get(`${API_URL}/estimates`, { params: { jobId: jobKey } })
+                .then((res) =>
+                  sortEstimatesByNumber(Array.isArray(res.data) ? res.data : res.data?.estimates || [])
+                )
+            : Promise.resolve(cachedJobEstimates || jobEstimatesCacheRef.current.get(jobKey) || []),
+          needsEstimateDoc
+            ? axios.get(`${API_URL}/estimates/${estimateKey}`).then((res) => res.data)
+            : Promise.resolve(lookupEstimateDoc(estimateKey)),
+        ]);
+
+        if (cancelled) return;
+
+        if (job) {
+          jobCacheRef.current.set(jobKey, job);
+          setLoadedEstimateJob(job);
+          mergeCustomerFromJob(job);
+          applyEditingJobSummary(job);
+        }
+
+        if (Array.isArray(estimatesForJob)) {
+          estimatesForJob.forEach(rememberEstimateDoc);
+          jobEstimatesCacheRef.current.set(jobKey, estimatesForJob);
+          setJobEstimates(estimatesForJob);
+        }
+
+        let estimateDoc = estimateDocFetched;
+        if (!estimateDoc && estimateKey) {
+          estimateDoc = findEstimateInLists(estimateKey, [estimatesForJob]);
+        }
+        if (!estimateDoc && !estimateKey && estimatesForJob?.length) {
+          estimateDoc = estimatesForJob[estimatesForJob.length - 1];
+        }
+
+        if (estimateDoc) rememberEstimateDoc(estimateDoc);
+        setLoadedEstimateDoc(estimateDoc || null);
         setIsNewEstimateDraft(false);
         setNewEstimatePromptOpen(false);
-        setEditingJobSummary({
-          _id: hydrated.job._id,
-          title: hydrated.job.title || '',
-          stage: hydrated.job.stage || '',
-          description: hydrated.job.description || '',
-        });
-        if (hydrated.estimateDoc?._id && String(estimateIdParam || '') !== String(hydrated.estimateDoc._id)) {
+
+        if (estimateDoc?._id && String(estimateKey || '') !== String(estimateDoc._id)) {
           setSearchParams({
             tab: 'estimates',
-            jobId: String(estimateJobId),
-            estimateId: String(hydrated.estimateDoc._id),
+            jobId: jobKey,
+            estimateId: String(estimateDoc._id),
           });
         }
       } catch (error) {
@@ -722,13 +881,17 @@ function FinanceHubPage() {
         setEditingJobSummary(null);
         toast.error(error.response?.data?.error || 'Could not load estimate from job');
       } finally {
-        if (!cancelled) setLoadingJobEstimate(false);
+        if (!cancelled) {
+          setLoadingJobEstimate(false);
+          setSwitchingEstimate(false);
+        }
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [activeTab, estimateJobId, estimateIdParam, isNewEstimateDraft, hydrateJobWithEstimate, setSearchParams]);
+  }, [activeTab, estimateJobId, estimateIdParam, isNewEstimateDraft, setSearchParams]);
 
   useEffect(() => {
     if (activeTab !== 'estimates' || !estimateJobId || !loadedEstimateJob) return;
@@ -1327,6 +1490,7 @@ function FinanceHubPage() {
       const estimatePayload = buildEstimateApiPayload({});
       let savedEstimateId = null;
 
+      let savedDoc = null;
       if (!estimateDocId || isNewEstimateDraft) {
         const { data: createdEstimate } = await axios.post(`${API_URL}/estimates`, {
           customerId: estimateForm.customerId,
@@ -1335,18 +1499,46 @@ function FinanceHubPage() {
           ...estimatePayload,
         });
         savedEstimateId = createdEstimate?._id || null;
+        savedDoc = createdEstimate;
         toast.success(`Estimate ${createdEstimate?.estimateNumber || ''} saved on this job`);
       } else {
         const { data: updatedEstimate } = await axios.patch(`${API_URL}/estimates/${estimateDocId}`, estimatePayload);
         savedEstimateId = updatedEstimate?._id || estimateDocId;
+        savedDoc = updatedEstimate;
         toast.success(`Estimate ${updatedEstimate?.estimateNumber || ''} updated`);
       }
 
+      const jobKey = String(estimateJobId);
+      if (savedDoc?._id) {
+        estimateDocCacheRef.current.set(String(savedDoc._id), savedDoc);
+      }
+
       const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
-      const hydrated = await hydrateJobWithEstimate(refreshed, savedEstimateId);
-      setLoadedEstimateJob(hydrated.job);
-      setLoadedEstimateDoc(hydrated.estimateDoc || null);
-      setJobEstimates(hydrated.estimatesForJob || []);
+      jobCacheRef.current.set(jobKey, refreshed);
+      setLoadedEstimateJob(refreshed);
+
+      if (!estimateDocId || isNewEstimateDraft) {
+        const { data } = await axios.get(`${API_URL}/estimates`, { params: { jobId: estimateJobId } });
+        const sorted = sortEstimatesByNumber(Array.isArray(data) ? data : data?.estimates || []);
+        sorted.forEach((row) => {
+          if (row?._id) estimateDocCacheRef.current.set(String(row._id), row);
+        });
+        jobEstimatesCacheRef.current.set(jobKey, sorted);
+        setJobEstimates(sorted);
+        setLoadedEstimateDoc(
+          sorted.find((e) => String(e._id) === String(savedEstimateId)) || savedDoc
+        );
+      } else {
+        setLoadedEstimateDoc(savedDoc);
+        setJobEstimates((prev) => {
+          const next = prev.some((e) => String(e._id) === String(savedDoc._id))
+            ? prev.map((e) => (String(e._id) === String(savedDoc._id) ? savedDoc : e))
+            : [...prev, savedDoc];
+          const sorted = sortEstimatesByNumber(next);
+          jobEstimatesCacheRef.current.set(jobKey, sorted);
+          return sorted;
+        });
+      }
       setIsNewEstimateDraft(false);
       if (savedEstimateId) {
         setSearchParams({
@@ -2103,6 +2295,9 @@ function FinanceHubPage() {
                   display: 'flex',
                   flexDirection: 'column',
                   boxSizing: 'border-box',
+                  opacity: switchingEstimate ? 0.72 : 1,
+                  transition: 'opacity 0.15s ease',
+                  pointerEvents: switchingEstimate ? 'none' : 'auto',
                   // Keep estimate sheet typography print-like in dark mode.
                   '& .MuiTypography-root': { color: '#000' },
                   '& .MuiInputBase-root': { color: '#000' },
