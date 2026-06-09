@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
   Dialog,
@@ -60,6 +60,11 @@ import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
 import { formatPhoneForDisplay, telHref } from '../../utils/phoneFormat';
+import {
+  getJobFilesCache,
+  invalidateJobFilesCache,
+  setJobFilesCache,
+} from '../../utils/fileListCache';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -178,21 +183,27 @@ function JobDetailModal({
   const [shareMessage, setShareMessage] = useState('');
   const [sendingShare, setSendingShare] = useState(false);
 
-  useEffect(() => {
-    if (open && jobId) {
-      fetchJobDetails();
-    } else {
-      setIsEditing(false);
-      setEditedJob(null);
+  const fetchJobFiles = useCallback(async ({ force = false } = {}) => {
+    const jobKey = String(jobId || '');
+    if (!jobKey) return;
+
+    const cached = getJobFilesCache(jobKey);
+    if (cached && !force) {
+      setFiles(cached);
     }
-  }, [open, jobId]);
 
-  useEffect(() => {
-    if (!open || !jobId) return;
-    fetchFiles();
-  }, [open, jobId]);
+    try {
+      const response = await axios.get(`${API_URL}/files/job/${jobKey}`);
+      const list = Array.isArray(response.data) ? response.data : [];
+      setJobFilesCache(jobKey, list);
+      setFiles(list);
+    } catch (error) {
+      console.error('Error fetching files:', error);
+      if (!cached) setFiles([]);
+    }
+  }, [jobId]);
 
-  const fetchJobDetails = async () => {
+  const fetchJobDetails = useCallback(async () => {
     try {
       setLoading(true);
       const response = await axios.get(`${API_URL}/jobs/${jobId}`);
@@ -206,8 +217,6 @@ function JobDetailModal({
         console.error('Error fetching job tasks:', taskError);
         setJobTasks([]);
       }
-      // Fetch files for this job
-      await fetchFiles();
     } catch (error) {
       console.error('Error fetching job details:', error);
       toast.error('Failed to load job details');
@@ -215,16 +224,17 @@ function JobDetailModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId, onClose]);
 
-  const fetchFiles = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/files/job/${jobId}`);
-      setFiles(response.data || []);
-    } catch (error) {
-      console.error('Error fetching files:', error);
+  useEffect(() => {
+    if (open && jobId) {
+      fetchJobDetails();
+      fetchJobFiles();
+    } else {
+      setIsEditing(false);
+      setEditedJob(null);
     }
-  };
+  }, [open, jobId, fetchJobDetails, fetchJobFiles]);
 
   const validateUploadFile = (file) => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
@@ -280,7 +290,7 @@ function JobDetailModal({
           console.error('Error uploading file:', file.name, error);
         }
       }
-      await fetchFiles();
+      await fetchJobFiles({ force: true });
       setFileType('other');
       if (resetInput) resetInput.value = '';
       if (succeeded && !failed) {
@@ -336,7 +346,7 @@ function JobDetailModal({
     try {
       await axios.delete(`${API_URL}/files/${fileId}`);
       toast.success('File deleted successfully');
-      await fetchFiles();
+      await fetchJobFiles({ force: true });
     } catch (error) {
       console.error('Error deleting file:', error);
       toast.error('Failed to delete file');
@@ -443,6 +453,7 @@ function JobDetailModal({
     try {
       setDeleting(true);
       await axios.delete(`${API_URL}/jobs/${jobId}`);
+      invalidateJobFilesCache(jobId);
       toast.success('Job deleted successfully');
       setDeleteConfirmOpen(false);
       if (onJobDelete) {
@@ -521,6 +532,7 @@ function JobDetailModal({
         }`
       );
       await fetchJobDetails();
+      await fetchJobFiles({ force: true });
       setContractPacketOpen(true);
     } catch (error) {
       console.error('Error creating contract packet:', error);
