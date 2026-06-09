@@ -351,6 +351,7 @@ function FinanceHubPage() {
   const canEditEstimateHeader = ['super_admin', 'admin'].includes(user?.role);
   const [searchParams, setSearchParams] = useSearchParams();
   const estimateJobId = searchParams.get('jobId');
+  const estimateIdParam = searchParams.get('estimateId');
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return TAB_DEFS[0].key;
     const t = new URLSearchParams(window.location.search).get('tab');
@@ -381,6 +382,8 @@ function FinanceHubPage() {
   const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
   /** First-class estimate source of truth for current job context. */
   const [loadedEstimateDoc, setLoadedEstimateDoc] = useState(null);
+  /** All saved estimates on the open job (sorted by estimate number). */
+  const [jobEstimates, setJobEstimates] = useState([]);
   /** True when user clicked "New estimate" and is editing a fresh unsaved estimate draft. */
   const [isNewEstimateDraft, setIsNewEstimateDraft] = useState(false);
   const [newEstimatePromptOpen, setNewEstimatePromptOpen] = useState(false);
@@ -459,7 +462,9 @@ function FinanceHubPage() {
         toast.error('This estimate has no linked job');
         return;
       }
-      setSearchParams({ tab: 'estimates', jobId: String(jobId) });
+      const next = { tab: 'estimates', jobId: String(jobId) };
+      if (row?._id) next.estimateId = String(row._id);
+      setSearchParams(next);
     },
     [setSearchParams]
   );
@@ -478,12 +483,23 @@ function FinanceHubPage() {
       return ad - bd;
     });
   }, [estimateBrowserRows]);
+
+  const jobEstimateNavRows = useMemo(() => {
+    if (!estimateJobId) return orderedEstimateBrowserRows;
+    return jobEstimates.length > 0
+      ? [...jobEstimates]
+      : orderedEstimateBrowserRows.filter((row) => {
+          const jid = row?.jobId?._id || row?.jobId;
+          return String(jid) === String(estimateJobId);
+        });
+  }, [estimateJobId, jobEstimates, orderedEstimateBrowserRows]);
+
   const currentEstimateDocIndex = useMemo(() => {
     if (!loadedEstimateDoc?._id) return -1;
-    return orderedEstimateBrowserRows.findIndex(
+    return jobEstimateNavRows.findIndex(
       (r) => String(r?._id || '') === String(loadedEstimateDoc._id)
     );
-  }, [orderedEstimateBrowserRows, loadedEstimateDoc]);
+  }, [jobEstimateNavRows, loadedEstimateDoc]);
 
   const invoiceEstimateNumber = useMemo(() => {
     if (isNewEstimateDraft) return estimateForm.estimateNumber || 'TBD';
@@ -501,16 +517,24 @@ function FinanceHubPage() {
     estimateTotal > 0 &&
     Boolean(estimateForm.customerId);
 
-  const hydrateJobWithEstimate = useCallback(async (job) => {
-    if (!job?._id) return job;
+  const hydrateJobWithEstimate = useCallback(async (job, preferredEstimateId = null) => {
+    if (!job?._id) return { job, estimateDoc: null, estimatesForJob: [] };
     try {
       const { data } = await axios.get(`${API_URL}/estimates`, { params: { jobId: job._id } });
       const list = Array.isArray(data) ? data : data?.estimates || [];
-      const estimateDoc = list[0];
-      if (!estimateDoc) return { job, estimateDoc: null };
-      return { job, estimateDoc };
+      const sorted = [...list].sort(
+        (a, b) => estimateNumberSortValue(a?.estimateNumber) - estimateNumberSortValue(b?.estimateNumber)
+      );
+      let estimateDoc = null;
+      if (preferredEstimateId) {
+        estimateDoc = list.find((e) => String(e._id) === String(preferredEstimateId)) || null;
+      }
+      if (!estimateDoc && sorted.length > 0) {
+        estimateDoc = sorted[sorted.length - 1];
+      }
+      return { job, estimateDoc, estimatesForJob: sorted };
     } catch {
-      return { job, estimateDoc: null };
+      return { job, estimateDoc: null, estimatesForJob: [] };
     }
   }, []);
 
@@ -522,15 +546,15 @@ function FinanceHubPage() {
 
   const goEstimateDocOlder = useCallback(() => {
     if (currentEstimateDocIndex <= 0) return;
-    const target = orderedEstimateBrowserRows[currentEstimateDocIndex - 1];
+    const target = jobEstimateNavRows[currentEstimateDocIndex - 1];
     if (target) openEstimateFromBrowser(target);
-  }, [currentEstimateDocIndex, orderedEstimateBrowserRows, openEstimateFromBrowser]);
+  }, [currentEstimateDocIndex, jobEstimateNavRows, openEstimateFromBrowser]);
 
   const goEstimateDocNewer = useCallback(() => {
-    if (currentEstimateDocIndex < 0 || currentEstimateDocIndex >= orderedEstimateBrowserRows.length - 1) return;
-    const target = orderedEstimateBrowserRows[currentEstimateDocIndex + 1];
+    if (currentEstimateDocIndex < 0 || currentEstimateDocIndex >= jobEstimateNavRows.length - 1) return;
+    const target = jobEstimateNavRows[currentEstimateDocIndex + 1];
     if (target) openEstimateFromBrowser(target);
-  }, [currentEstimateDocIndex, orderedEstimateBrowserRows, openEstimateFromBrowser]);
+  }, [currentEstimateDocIndex, jobEstimateNavRows, openEstimateFromBrowser]);
 
   const descriptionAutocompleteOptions = useMemo(() => {
     const out = [];
@@ -610,6 +634,7 @@ function FinanceHubPage() {
     if (activeTab !== 'estimates' || !estimateJobId) {
       setLoadedEstimateJob(null);
       setLoadedEstimateDoc(null);
+      setJobEstimates([]);
       return undefined;
     }
     let cancelled = false;
@@ -618,7 +643,22 @@ function FinanceHubPage() {
         setLoadingJobEstimate(true);
         const { data: job } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
         if (cancelled) return;
-        const hydrated = await hydrateJobWithEstimate(job);
+
+        if (isNewEstimateDraft && !estimateIdParam) {
+          const hydrated = await hydrateJobWithEstimate(job, null);
+          if (cancelled) return;
+          setLoadedEstimateJob(hydrated.job);
+          setJobEstimates(hydrated.estimatesForJob || []);
+          setEditingJobSummary({
+            _id: hydrated.job._id,
+            title: hydrated.job.title || '',
+            stage: hydrated.job.stage || '',
+            description: hydrated.job.description || '',
+          });
+          return;
+        }
+
+        const hydrated = await hydrateJobWithEstimate(job, estimateIdParam);
         if (cancelled) return;
         const cust = job.customerId;
         if (isPopulatedDocRef(cust) && cust._id) {
@@ -628,6 +668,7 @@ function FinanceHubPage() {
         }
         setLoadedEstimateJob(hydrated.job);
         setLoadedEstimateDoc(hydrated.estimateDoc || null);
+        setJobEstimates(hydrated.estimatesForJob || []);
         setIsNewEstimateDraft(false);
         setNewEstimatePromptOpen(false);
         setEditingJobSummary({
@@ -636,10 +677,18 @@ function FinanceHubPage() {
           stage: hydrated.job.stage || '',
           description: hydrated.job.description || '',
         });
+        if (hydrated.estimateDoc?._id && String(estimateIdParam || '') !== String(hydrated.estimateDoc._id)) {
+          setSearchParams({
+            tab: 'estimates',
+            jobId: String(estimateJobId),
+            estimateId: String(hydrated.estimateDoc._id),
+          });
+        }
       } catch (error) {
         console.error('Error loading job for estimate:', error);
         setLoadedEstimateJob(null);
         setLoadedEstimateDoc(null);
+        setJobEstimates([]);
         setEditingJobSummary(null);
         toast.error(error.response?.data?.error || 'Could not load estimate from job');
       } finally {
@@ -649,16 +698,16 @@ function FinanceHubPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, estimateJobId, hydrateJobWithEstimate]);
+  }, [activeTab, estimateJobId, estimateIdParam, isNewEstimateDraft, hydrateJobWithEstimate, setSearchParams]);
 
   useEffect(() => {
     if (activeTab !== 'estimates' || !estimateJobId || !loadedEstimateJob) return;
     if (String(loadedEstimateJob._id) !== String(estimateJobId)) return;
+    if (isNewEstimateDraft) return;
     const nextForm = computeEstimateFormFromJobSnapshot(loadedEstimateJob, selectedEstimateSnapshot);
     setEstimateForm(nextForm);
     setLastSyncedEstimateForm(normalizeEstimateFormForCompare(nextForm));
-    setIsNewEstimateDraft(false);
-  }, [activeTab, estimateJobId, loadedEstimateJob, selectedEstimateSnapshot]);
+  }, [activeTab, estimateJobId, loadedEstimateJob, selectedEstimateSnapshot, isNewEstimateDraft]);
 
   useEffect(() => {
     if (activeTab !== 'estimates' || !estimateForm.customerId) {
@@ -1052,9 +1101,10 @@ function FinanceHubPage() {
       toast.success(`Invoice ${inv.invoiceNumber || ''} created and downloaded`);
 
       const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
-      const hydrated = await hydrateJobWithEstimate(refreshed);
+      const hydrated = await hydrateJobWithEstimate(refreshed, loadedEstimateDoc?._id || null);
       setLoadedEstimateJob(hydrated.job);
       setLoadedEstimateDoc(hydrated.estimateDoc || null);
+      setJobEstimates(hydrated.estimatesForJob || []);
     } catch (error) {
       console.error('Error creating invoice:', error);
       toast.error(error.response?.data?.error || error.message || 'Failed to create invoice');
@@ -1102,9 +1152,10 @@ function FinanceHubPage() {
       }
 
       const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
-      const hydrated = await hydrateJobWithEstimate(refreshed);
+      const hydrated = await hydrateJobWithEstimate(refreshed, loadedEstimateDoc?._id || null);
       setLoadedEstimateJob(hydrated.job);
       setLoadedEstimateDoc(hydrated.estimateDoc || null);
+      setJobEstimates(hydrated.estimatesForJob || []);
     } catch (error) {
       console.error('Error creating contract:', error);
       toast.error(error.response?.data?.error || error.message || 'Failed to create contract');
@@ -1121,6 +1172,7 @@ function FinanceHubPage() {
     if (!estimateJobId && prev) {
       setLoadedEstimateJob(null);
       setLoadedEstimateDoc(null);
+      setJobEstimates([]);
       const fresh = {
         estimateNumber: '',
         estimateDate: new Date().toISOString().slice(0, 10),
@@ -1178,8 +1230,27 @@ function FinanceHubPage() {
     const draft = buildFreshEstimateDraftForJob(loadedEstimateJob);
     setEstimateForm(draft);
     setLastSyncedEstimateForm(normalizeEstimateFormForCompare(draft));
+    setLoadedEstimateDoc(null);
     setIsNewEstimateDraft(true);
-  }, [loadedEstimateJob, estimateJobId]);
+    setSearchParams({ tab: 'estimates', jobId: String(estimateJobId) });
+  }, [loadedEstimateJob, estimateJobId, setSearchParams]);
+
+  const openEstimateOnCurrentJob = useCallback(
+    (estimateDoc) => {
+      if (!estimateJobId || !estimateDoc?._id) return;
+      if (estimateFormIsDirty && !isNewEstimateDraft) {
+        toast.error('Save or discard your changes before switching estimates');
+        return;
+      }
+      setIsNewEstimateDraft(false);
+      setSearchParams({
+        tab: 'estimates',
+        jobId: String(estimateJobId),
+        estimateId: String(estimateDoc._id),
+      });
+    },
+    [estimateJobId, estimateFormIsDirty, isNewEstimateDraft, setSearchParams]
+  );
 
   const saveEstimateOnCurrentContext = async () => {
     if (!estimateForm.customerId) {
@@ -1194,33 +1265,37 @@ function FinanceHubPage() {
     if (estimateJobId) {
       const estimateDocId = loadedEstimateDoc?._id || null;
       const estimatePayload = buildEstimateApiPayload({});
+      let savedEstimateId = null;
 
-      if (!estimateDocId) {
+      if (!estimateDocId || isNewEstimateDraft) {
         const { data: createdEstimate } = await axios.post(`${API_URL}/estimates`, {
           customerId: estimateForm.customerId,
           jobId: estimateJobId,
           status: 'draft',
           ...estimatePayload,
         });
+        savedEstimateId = createdEstimate?._id || null;
         toast.success(`Estimate ${createdEstimate?.estimateNumber || ''} saved on this job`);
-      } else if (!isNewEstimateDraft) {
-        const { data: updatedEstimate } = await axios.patch(`${API_URL}/estimates/${estimateDocId}`, estimatePayload);
-        toast.success(`Estimate ${updatedEstimate?.estimateNumber || ''} updated`);
       } else {
-        const { data: createdEstimate } = await axios.post(`${API_URL}/estimates`, {
-          customerId: estimateForm.customerId,
-          jobId: estimateJobId,
-          status: 'draft',
-          ...estimatePayload,
-        });
-        toast.success(`Estimate ${createdEstimate?.estimateNumber || ''} saved on this job`);
+        const { data: updatedEstimate } = await axios.patch(`${API_URL}/estimates/${estimateDocId}`, estimatePayload);
+        savedEstimateId = updatedEstimate?._id || estimateDocId;
+        toast.success(`Estimate ${updatedEstimate?.estimateNumber || ''} updated`);
       }
 
       const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
-      const hydrated = await hydrateJobWithEstimate(refreshed);
+      const hydrated = await hydrateJobWithEstimate(refreshed, savedEstimateId);
       setLoadedEstimateJob(hydrated.job);
       setLoadedEstimateDoc(hydrated.estimateDoc || null);
+      setJobEstimates(hydrated.estimatesForJob || []);
       setIsNewEstimateDraft(false);
+      if (savedEstimateId) {
+        setSearchParams({
+          tab: 'estimates',
+          jobId: String(estimateJobId),
+          estimateId: String(savedEstimateId),
+        });
+      }
+      await loadEstimateBrowser();
       mergeEstimateDescriptionHints(
         estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
       );
@@ -1252,44 +1327,42 @@ function FinanceHubPage() {
       });
       const newId = created?._id;
       if (newId) {
-        await axios.post(`${API_URL}/estimates`, {
+        const { data: createdEstimate } = await axios.post(`${API_URL}/estimates`, {
           customerId: estimateForm.customerId,
           jobId: newId,
           status: 'draft',
           ...buildEstimateApiPayload({}),
         });
-      }
-      mergeEstimateDescriptionHints(
-        estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
-      );
-      setEstimateDescHintsRev((n) => n + 1);
-      if (newId) {
-        setSearchParams({ tab: 'estimates', jobId: String(newId) });
+        mergeEstimateDescriptionHints(
+          estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+        );
+        setEstimateDescHintsRev((n) => n + 1);
+        const next = { tab: 'estimates', jobId: String(newId) };
+        if (createdEstimate?._id) next.estimateId = String(createdEstimate._id);
+        setSearchParams(next);
+      } else {
+        mergeEstimateDescriptionHints(
+          estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
+        );
+        setEstimateDescHintsRev((n) => n + 1);
       }
       toast.success('Estimate saved to new job');
       return true;
     }
 
-    const { data: existingEstimateList } = await axios.get(`${API_URL}/estimates`, {
-      params: { jobId: existingId },
+    const { data: createdEstimate } = await axios.post(`${API_URL}/estimates`, {
+      customerId: estimateForm.customerId,
+      jobId: existingId,
+      status: 'draft',
+      ...buildEstimateApiPayload({}),
     });
-    const existingEstimate =
-      (Array.isArray(existingEstimateList) ? existingEstimateList : existingEstimateList?.estimates || [])[0] || null;
-    if (!existingEstimate?._id) {
-      await axios.post(`${API_URL}/estimates`, {
-        customerId: estimateForm.customerId,
-        jobId: existingId,
-        status: 'draft',
-        ...buildEstimateApiPayload({}),
-      });
-    } else {
-      await axios.patch(`${API_URL}/estimates/${existingEstimate._id}`, buildEstimateApiPayload({}));
-    }
     mergeEstimateDescriptionHints(
       estimateForm.lineItems.map((r) => String(r.description || '').trim()).filter(Boolean)
     );
     setEstimateDescHintsRev((n) => n + 1);
-    setSearchParams({ tab: 'estimates', jobId: String(existingId) });
+    const next = { tab: 'estimates', jobId: String(existingId) };
+    if (createdEstimate?._id) next.estimateId = String(createdEstimate._id);
+    setSearchParams(next);
     const picked = customerPipelineJobs.find((j) => String(j._id) === String(existingId));
     toast.success(
       `Estimate saved on ${formatEstimateJobPickLabel(estimateForm.customerName, picked)}`
@@ -1352,10 +1425,15 @@ function FinanceHubPage() {
         await axios.delete(`${API_URL}/estimates/${estimateDocId}`);
       }
       const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
-      const hydrated = await hydrateJobWithEstimate(refreshed);
+      const hydrated = await hydrateJobWithEstimate(refreshed, null);
       setLoadedEstimateJob(hydrated.job);
       setLoadedEstimateDoc(hydrated.estimateDoc || null);
+      setJobEstimates(hydrated.estimatesForJob || []);
       setIsNewEstimateDraft(false);
+      const next = { tab: 'estimates', jobId: String(estimateJobId) };
+      if (hydrated.estimateDoc?._id) next.estimateId = String(hydrated.estimateDoc._id);
+      setSearchParams(next);
+      await loadEstimateBrowser();
       toast.success('Estimate deleted');
     } catch (error) {
       console.error('Error deleting estimate:', error);
@@ -1421,7 +1499,7 @@ function FinanceHubPage() {
     loadingJobEstimate ||
     savingEstimate ||
     currentEstimateDocIndex < 0 ||
-    currentEstimateDocIndex >= orderedEstimateBrowserRows.length - 1;
+    currentEstimateDocIndex >= jobEstimateNavRows.length - 1;
 
   const showArrowHint = estimateJobId && !isNewEstimateDraft && !loadingJobEstimate;
 
@@ -1650,6 +1728,8 @@ function FinanceHubPage() {
                   estimateBrowserRows.slice(0, 120).map((row) => {
                     const jobLabel = row?.jobId?.title || row?.jobId || 'No job';
                     const customerLabel = row?.customerId?.name || row?.customerId || 'Unknown customer';
+                    const isActive =
+                      String(row?._id || '') === String(loadedEstimateDoc?._id || '') && !isNewEstimateDraft;
                     const updated = row?.updatedAt
                       ? new Date(row.updatedAt).toLocaleString()
                       : row?.createdAt
@@ -1663,6 +1743,7 @@ function FinanceHubPage() {
                           borderTop: 1,
                           borderColor: 'divider',
                           cursor: 'pointer',
+                          bgcolor: isActive ? 'action.selected' : undefined,
                           '&:first-of-type': { borderTop: 'none' },
                           '&:hover': {
                             bgcolor: (t) =>
@@ -1723,6 +1804,31 @@ function FinanceHubPage() {
                   })}
                 </strong>
               </Typography>
+            )}
+
+            {estimateJobId && (jobEstimates.length > 0 || isNewEstimateDraft) && (
+              <Box sx={{ mt: 1.5, mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+                  Estimates on this job — each save with &quot;New estimate&quot; gets the next number (e.g. 1102-0022, 1102-0023)
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {jobEstimates.map((est) => {
+                    const active =
+                      !isNewEstimateDraft && String(loadedEstimateDoc?._id || '') === String(est._id);
+                    return (
+                      <Chip
+                        key={est._id}
+                        label={est.estimateNumber || 'Draft'}
+                        clickable
+                        color={active ? 'primary' : 'default'}
+                        variant={active ? 'filled' : 'outlined'}
+                        onClick={() => openEstimateOnCurrentJob(est)}
+                      />
+                    );
+                  })}
+                  {isNewEstimateDraft && <Chip label="New draft" color="warning" variant="outlined" />}
+                </Box>
+              </Box>
             )}
 
             {!estimateJobId &&
@@ -2183,7 +2289,7 @@ function FinanceHubPage() {
                   color="text.secondary"
                   sx={{ mt: 1, textAlign: 'center', width: '100%', maxWidth: 816 }}
                 >
-                  Arrows navigate estimate numbers across documents.
+                  Arrows step through estimates on this job (older ← → newer).
                 </Typography>
               )}
             </Box>
