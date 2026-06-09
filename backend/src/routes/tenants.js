@@ -9,6 +9,8 @@ const {
   getTenantBrandingLogo,
   getTenantPipelineSettings,
   updateTenantPipelineSettings,
+  getTenantEstimateDocumentSettings,
+  updateTenantEstimateDocumentSettings,
 } = require('../controllers/tenantController');
 
 // Public branding image (no auth — used on login page with tenant id)
@@ -20,5 +22,8 @@ router.post('/logo/dark', requireAuth, uploadTenantLogo.single('logo'), uploadTe
 
 router.get('/pipeline-settings', requireAuth, getTenantPipelineSettings);
 router.patch('/pipeline-settings', requireAuth, updateTenantPipelineSettings);
+
+router.get('/estimate-document-settings', requireAuth, getTenantEstimateDocumentSettings);
+router.patch('/estimate-document-settings', requireAuth, updateTenantEstimateDocumentSettings);
 
 module.exports = router;

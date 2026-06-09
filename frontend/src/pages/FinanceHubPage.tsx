@@ -42,13 +42,19 @@ import {
   PictureAsPdf as PictureAsPdfIcon,
   Print as PrintIcon,
   ReceiptLong as ReceiptLongIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import RegisterLedgerSection from '../components/finance/RegisterLedgerSection';
-import { APP_LOGO_LIGHT, ESTIMATE_DOCUMENT_LOGO } from '../utils/tenantBranding';
+import { useAuth } from '../context/AuthContext';
+import {
+  DEFAULT_ESTIMATE_DOCUMENT_SETTINGS,
+  mergeEstimateDocumentSettings,
+  resolveEstimateDocumentLogoSrc,
+} from '../utils/estimateDocumentSettings';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const ESTIMATE_DESC_HINTS_KEY = 'financeHubEstimateDescriptionHints';
@@ -93,10 +99,6 @@ function collectDescriptionsFromEstimateSnapshot(est) {
     .map((li) => String(li.description || '').trim())
     .filter(Boolean);
 }
-
-const COMPANY_PHONE = '(951)491-1137';
-const COMPANY_EMAIL = 'office@sanclementewoodworking.com';
-const COMPANY_WEBSITE = 'www.sanclementewoodworking.com';
 
 /** Two-draw schedule from estimate: deposit 40%, final 60%. */
 const INVOICE_DEPOSIT_FRACTION = 0.4;
@@ -345,6 +347,8 @@ function buildFreshEstimateDraftForJob(job) {
 }
 
 function FinanceHubPage() {
+  const { user } = useAuth();
+  const canEditEstimateHeader = ['super_admin', 'admin'].includes(user?.role);
   const [searchParams, setSearchParams] = useSearchParams();
   const estimateJobId = searchParams.get('jobId');
   const [activeTab, setActiveTab] = useState(() => {
@@ -380,6 +384,14 @@ function FinanceHubPage() {
   /** True when user clicked "New estimate" and is editing a fresh unsaved estimate draft. */
   const [isNewEstimateDraft, setIsNewEstimateDraft] = useState(false);
   const [newEstimatePromptOpen, setNewEstimatePromptOpen] = useState(false);
+  const [estimateDocSettings, setEstimateDocSettings] = useState(() => ({
+    ...DEFAULT_ESTIMATE_DOCUMENT_SETTINGS,
+  }));
+  const [estimateHeaderDialogOpen, setEstimateHeaderDialogOpen] = useState(false);
+  const [estimateHeaderDraft, setEstimateHeaderDraft] = useState(() => ({
+    ...DEFAULT_ESTIMATE_DOCUMENT_SETTINGS,
+  }));
+  const [savingEstimateHeader, setSavingEstimateHeader] = useState(false);
   const [estimateForm, setEstimateForm] = useState(() => ({
     estimateNumber: '',
     estimateDate: new Date().toISOString().slice(0, 10),
@@ -565,6 +577,28 @@ function FinanceHubPage() {
       }
     };
     fetchCustomers();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'estimates') return;
+    let cancelled = false;
+    const loadEstimateHeaderSettings = async () => {
+      try {
+        const { data } = await axios.get(`${API_URL}/tenants/estimate-document-settings`);
+        if (!cancelled) {
+          setEstimateDocSettings(mergeEstimateDocumentSettings(data?.settings));
+        }
+      } catch (error) {
+        console.error('Error loading estimate header settings:', error);
+        if (!cancelled) {
+          setEstimateDocSettings({ ...DEFAULT_ESTIMATE_DOCUMENT_SETTINGS });
+        }
+      }
+    };
+    loadEstimateHeaderSettings();
+    return () => {
+      cancelled = true;
+    };
   }, [activeTab]);
 
   useEffect(() => {
@@ -1263,6 +1297,34 @@ function FinanceHubPage() {
     return true;
   };
 
+  const handleOpenEstimateHeaderDialog = () => {
+    setEstimateHeaderDraft({ ...estimateDocSettings });
+    setEstimateHeaderDialogOpen(true);
+  };
+
+  const handleEstimateHeaderDraftChange = (field, value) => {
+    setEstimateHeaderDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveEstimateHeader = async () => {
+    try {
+      setSavingEstimateHeader(true);
+      const { data } = await axios.patch(`${API_URL}/tenants/estimate-document-settings`, {
+        settings: estimateHeaderDraft,
+      });
+      const merged = mergeEstimateDocumentSettings(data?.settings);
+      setEstimateDocSettings(merged);
+      setEstimateHeaderDraft(merged);
+      setEstimateHeaderDialogOpen(false);
+      toast.success('Estimate header updated');
+    } catch (error) {
+      console.error('Error saving estimate header settings:', error);
+      toast.error(error.response?.data?.error || 'Failed to save estimate header');
+    } finally {
+      setSavingEstimateHeader(false);
+    }
+  };
+
   const handleSaveEstimate = async () => {
     try {
       setSavingEstimate(true);
@@ -1510,6 +1572,16 @@ function FinanceHubPage() {
                 {estimateJobId ? 'Edit estimate' : 'New estimate'}
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                {canEditEstimateHeader && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<EditIcon />}
+                    onClick={handleOpenEstimateHeaderDialog}
+                  >
+                    Edit header
+                  </Button>
+                )}
                 <Chip size="small" color="primary" label={invoiceEstimateNumber || 'Pending number'} />
               </Box>
             </Box>
@@ -1804,23 +1876,37 @@ function FinanceHubPage() {
                   <Box sx={{ display: 'flex', gap: 2 }}>
                     <Box
                       component="img"
-                      src={ESTIMATE_DOCUMENT_LOGO}
-                      alt="SCWW logo"
+                      src={resolveEstimateDocumentLogoSrc(estimateDocSettings.logoUrl)}
+                      alt={`${estimateDocSettings.companyName || 'Company'} logo`}
                       sx={{ width: 68, height: 68, objectFit: 'contain' }}
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
+                      }}
                     />
                     <Box>
                       <Typography sx={{ fontWeight: 700, fontSize: 24, lineHeight: 1 }}>
-                        San Clemente Woodworking
+                        {estimateDocSettings.companyName}
                       </Typography>
-                      <Typography sx={{ fontSize: 14, mt: 0.8 }}>1030 Calle Sombra, Unit F</Typography>
-                      <Typography sx={{ fontSize: 14 }}>San Clemente, CA 92673</Typography>
+                      {estimateDocSettings.addressLine1 ? (
+                        <Typography sx={{ fontSize: 14, mt: 0.8 }}>{estimateDocSettings.addressLine1}</Typography>
+                      ) : null}
+                      {estimateDocSettings.addressLine2 ? (
+                        <Typography sx={{ fontSize: 14 }}>{estimateDocSettings.addressLine2}</Typography>
+                      ) : null}
                       <Box sx={{ mt: 2, ml: -9 }}>
-                        <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
-                          <Typography sx={{ fontSize: 13 }}>Phone #</Typography>
-                          <Typography sx={{ fontSize: 13, minWidth: 150 }}>{COMPANY_PHONE}</Typography>
-                        </Box>
-                        <Typography sx={{ fontSize: 13, ml: 0 }}>{COMPANY_WEBSITE}</Typography>
-                        <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{COMPANY_EMAIL}</Typography>
+                        {(estimateDocSettings.phoneLabel || estimateDocSettings.phone) && (
+                          <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
+                            <Typography sx={{ fontSize: 13 }}>{estimateDocSettings.phoneLabel || 'Phone #'}</Typography>
+                            <Typography sx={{ fontSize: 13, minWidth: 150 }}>{estimateDocSettings.phone}</Typography>
+                          </Box>
+                        )}
+                        {estimateDocSettings.website ? (
+                          <Typography sx={{ fontSize: 13, ml: 0 }}>{estimateDocSettings.website}</Typography>
+                        ) : null}
+                        {estimateDocSettings.email ? (
+                          <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{estimateDocSettings.email}</Typography>
+                        ) : null}
                       </Box>
                     </Box>
                   </Box>
@@ -2195,23 +2281,37 @@ function FinanceHubPage() {
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Box
                 component="img"
-                src={APP_LOGO_LIGHT}
-                alt="SCWW logo"
-                sx={{ width: 68, height: 68, objectFit: 'contain', borderRadius: '50%' }}
+                src={resolveEstimateDocumentLogoSrc(estimateDocSettings.logoUrl)}
+                alt={`${estimateDocSettings.companyName || 'Company'} logo`}
+                sx={{ width: 68, height: 68, objectFit: 'contain' }}
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
+                }}
               />
               <Box>
                 <Typography sx={{ fontWeight: 700, fontSize: 24, lineHeight: 1 }}>
-                  San Clemente Woodworking
+                  {estimateDocSettings.companyName}
                 </Typography>
-                <Typography sx={{ fontSize: 14, mt: 0.8 }}>1030 Calle Sombra, Unit F</Typography>
-                <Typography sx={{ fontSize: 14 }}>San Clemente, CA 92673</Typography>
+                {estimateDocSettings.addressLine1 ? (
+                  <Typography sx={{ fontSize: 14, mt: 0.8 }}>{estimateDocSettings.addressLine1}</Typography>
+                ) : null}
+                {estimateDocSettings.addressLine2 ? (
+                  <Typography sx={{ fontSize: 14 }}>{estimateDocSettings.addressLine2}</Typography>
+                ) : null}
                 <Box sx={{ mt: 2, ml: -9 }}>
-                  <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
-                    <Typography sx={{ fontSize: 13 }}>Phone #</Typography>
-                    <Typography sx={{ fontSize: 13, minWidth: 150 }}>{COMPANY_PHONE}</Typography>
-                  </Box>
-                  <Typography sx={{ fontSize: 13, ml: 0 }}>{COMPANY_WEBSITE}</Typography>
-                  <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{COMPANY_EMAIL}</Typography>
+                  {(estimateDocSettings.phoneLabel || estimateDocSettings.phone) && (
+                    <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
+                      <Typography sx={{ fontSize: 13 }}>{estimateDocSettings.phoneLabel || 'Phone #'}</Typography>
+                      <Typography sx={{ fontSize: 13, minWidth: 150 }}>{estimateDocSettings.phone}</Typography>
+                    </Box>
+                  )}
+                  {estimateDocSettings.website ? (
+                    <Typography sx={{ fontSize: 13, ml: 0 }}>{estimateDocSettings.website}</Typography>
+                  ) : null}
+                  {estimateDocSettings.email ? (
+                    <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{estimateDocSettings.email}</Typography>
+                  ) : null}
                 </Box>
               </Box>
             </Box>
@@ -2465,6 +2565,121 @@ function FinanceHubPage() {
           </Button>
           <Button variant="contained" onClick={handleCreateNewAfterSave} disabled={savingEstimate}>
             Save & start new
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={estimateHeaderDialogOpen}
+        onClose={() => {
+          if (!savingEstimateHeader) setEstimateHeaderDialogOpen(false);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Edit estimate header</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            This information appears at the top of every estimate PDF and printout for your organization.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              label="Logo URL or path"
+              value={estimateHeaderDraft.logoUrl}
+              onChange={(e) => handleEstimateHeaderDraftChange('logoUrl', e.target.value)}
+              placeholder="/scww.png"
+              helperText="Use a path in /public (e.g. /scww.png) or a full https:// image URL."
+              fullWidth
+            />
+            <TextField
+              label="Company name"
+              value={estimateHeaderDraft.companyName}
+              onChange={(e) => handleEstimateHeaderDraftChange('companyName', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Address line 1"
+              value={estimateHeaderDraft.addressLine1}
+              onChange={(e) => handleEstimateHeaderDraftChange('addressLine1', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Address line 2"
+              value={estimateHeaderDraft.addressLine2}
+              onChange={(e) => handleEstimateHeaderDraftChange('addressLine2', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Phone label"
+              value={estimateHeaderDraft.phoneLabel}
+              onChange={(e) => handleEstimateHeaderDraftChange('phoneLabel', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Phone number"
+              value={estimateHeaderDraft.phone}
+              onChange={(e) => handleEstimateHeaderDraftChange('phone', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Website"
+              value={estimateHeaderDraft.website}
+              onChange={(e) => handleEstimateHeaderDraftChange('website', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Email"
+              value={estimateHeaderDraft.email}
+              onChange={(e) => handleEstimateHeaderDraftChange('email', e.target.value)}
+              fullWidth
+            />
+            <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: '#fff', color: '#000' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Preview
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Box
+                  component="img"
+                  src={resolveEstimateDocumentLogoSrc(estimateHeaderDraft.logoUrl)}
+                  alt="Logo preview"
+                  sx={{ width: 48, height: 48, objectFit: 'contain' }}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
+                  }}
+                />
+                <Box>
+                  <Typography sx={{ fontWeight: 700, fontSize: 16, color: '#000' }}>
+                    {estimateHeaderDraft.companyName || 'Company name'}
+                  </Typography>
+                  {estimateHeaderDraft.addressLine1 ? (
+                    <Typography sx={{ fontSize: 12, color: '#000' }}>{estimateHeaderDraft.addressLine1}</Typography>
+                  ) : null}
+                  {estimateHeaderDraft.addressLine2 ? (
+                    <Typography sx={{ fontSize: 12, color: '#000' }}>{estimateHeaderDraft.addressLine2}</Typography>
+                  ) : null}
+                  {estimateHeaderDraft.phone ? (
+                    <Typography sx={{ fontSize: 12, color: '#000', mt: 0.5 }}>
+                      {(estimateHeaderDraft.phoneLabel || 'Phone #') + ' ' + estimateHeaderDraft.phone}
+                    </Typography>
+                  ) : null}
+                  {estimateHeaderDraft.website ? (
+                    <Typography sx={{ fontSize: 12, color: '#000' }}>{estimateHeaderDraft.website}</Typography>
+                  ) : null}
+                  {estimateHeaderDraft.email ? (
+                    <Typography sx={{ fontSize: 12, color: '#000' }}>{estimateHeaderDraft.email}</Typography>
+                  ) : null}
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setEstimateHeaderDialogOpen(false)} disabled={savingEstimateHeader}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleSaveEstimateHeader} disabled={savingEstimateHeader}>
+            {savingEstimateHeader ? 'Saving…' : 'Save header'}
           </Button>
         </DialogActions>
       </Dialog>

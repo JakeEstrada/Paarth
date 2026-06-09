@@ -301,6 +301,98 @@ async function updateTenantPipelineSettings(req, res) {
   }
 }
 
+const DEFAULT_ESTIMATE_DOCUMENT_SETTINGS = {
+  logoUrl: '/scww.png',
+  companyName: 'San Clemente Woodworking',
+  addressLine1: '1030 Calle Sombra, Unit F',
+  addressLine2: 'San Clemente, CA 92673',
+  phoneLabel: 'Phone #',
+  phone: '(951)491-1137',
+  website: 'www.sanclementewoodworking.com',
+  email: 'office@sanclementewoodworking.com',
+};
+
+function sanitizeEstimateDocumentSettings(raw) {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const trimField = (value, maxLen = 500) => {
+    if (value == null) return undefined;
+    return String(value).trim().slice(0, maxLen);
+  };
+  const out = {};
+  const fields = [
+    'logoUrl',
+    'companyName',
+    'addressLine1',
+    'addressLine2',
+    'phoneLabel',
+    'phone',
+    'website',
+    'email',
+  ];
+  for (const key of fields) {
+    if (Object.prototype.hasOwnProperty.call(raw, key)) {
+      out[key] = trimField(raw[key]) ?? '';
+    }
+  }
+  return out;
+}
+
+function mergeEstimateDocumentSettings(stored) {
+  const base = { ...DEFAULT_ESTIMATE_DOCUMENT_SETTINGS };
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return base;
+  for (const key of Object.keys(DEFAULT_ESTIMATE_DOCUMENT_SETTINGS)) {
+    if (stored[key] != null && String(stored[key]).trim()) {
+      base[key] = String(stored[key]).trim();
+    }
+  }
+  return base;
+}
+
+/** Any authenticated user in the tenant can read estimate header settings. */
+async function getTenantEstimateDocumentSettings(req, res) {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    const tenant = await Tenant.findById(tenantId).select('estimateDocumentSettings').lean();
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    res.json({ settings: mergeEstimateDocumentSettings(tenant.estimateDocumentSettings) });
+  } catch (error) {
+    console.error('getTenantEstimateDocumentSettings:', error);
+    res.status(500).json({ error: error.message || 'Failed to load estimate document settings' });
+  }
+}
+
+/** super_admin + admin only */
+async function updateTenantEstimateDocumentSettings(req, res) {
+  try {
+    if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to update estimate header settings.' });
+    }
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    const sanitized = sanitizeEstimateDocumentSettings(req.body?.settings ?? req.body);
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    tenant.estimateDocumentSettings = {
+      ...mergeEstimateDocumentSettings(tenant.estimateDocumentSettings),
+      ...sanitized,
+    };
+    await tenant.save();
+    res.json({ settings: mergeEstimateDocumentSettings(tenant.estimateDocumentSettings) });
+  } catch (error) {
+    console.error('updateTenantEstimateDocumentSettings:', error);
+    res.status(500).json({ error: error.message || 'Failed to save estimate document settings' });
+  }
+}
+
 module.exports = {
   uploadTenantLogo,
   uploadTenantLogoLight,
@@ -308,4 +400,6 @@ module.exports = {
   getTenantBrandingLogo,
   getTenantPipelineSettings,
   updateTenantPipelineSettings,
+  getTenantEstimateDocumentSettings,
+  updateTenantEstimateDocumentSettings,
 };

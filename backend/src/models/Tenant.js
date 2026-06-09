@@ -43,6 +43,17 @@ const tenantSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: undefined,
     },
+    /** Static header block on Finance Hub estimate documents */
+    estimateDocumentSettings: {
+      logoUrl: { type: String, trim: true },
+      companyName: { type: String, trim: true },
+      addressLine1: { type: String, trim: true },
+      addressLine2: { type: String, trim: true },
+      phoneLabel: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      website: { type: String, trim: true },
+      email: { type: String, trim: true },
+    },
     /** Plaid Item for this org (Finance Hub / register). accessToken is not selected by default. */
     plaidLink: {
       itemId: { type: String },
