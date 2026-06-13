@@ -1,6 +1,5 @@
 // @ts-nocheck — large page; tighten types incrementally
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import {
   Autocomplete,
@@ -16,12 +15,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
-  FormControlLabel,
-  FormLabel,
   IconButton,
-  Radio,
-  RadioGroup,
   Link,
   Table,
   TableBody,
@@ -41,7 +35,6 @@ import {
   Delete as DeleteIcon,
   PictureAsPdf as PictureAsPdfIcon,
   Print as PrintIcon,
-  ReceiptLong as ReceiptLongIcon,
   Edit as EditIcon,
   PhotoCamera as PhotoCameraIcon,
 } from '@mui/icons-material';
@@ -101,19 +94,6 @@ function collectDescriptionsFromEstimateSnapshot(est) {
     .filter(Boolean);
 }
 
-/** Two-draw schedule from estimate: deposit 40%, final 60%. */
-const INVOICE_DEPOSIT_FRACTION = 0.4;
-const INVOICE_FINAL_FRACTION = 0.6;
-
-const INVOICE_PERMITS_ACK_LINE =
-  'Any city permits or engineer fees are either not included or are provided by the customer';
-
-function roundMoneyClient(value) {
-  const x = Number(value);
-  if (!Number.isFinite(x)) return 0;
-  return Math.round((x + Number.EPSILON) * 100) / 100;
-}
-
 const TAB_DEFS = [
   {
     key: 'register',
@@ -123,17 +103,7 @@ const TAB_DEFS = [
   {
     key: 'estimates',
     label: 'Estimates',
-    subtitle: 'Create and review estimate documents before contract execution.',
-  },
-  {
-    key: 'contracts',
-    label: 'Contracts',
-    subtitle: 'Manage signed agreements and contract status history.',
-  },
-  {
-    key: 'invoices',
-    label: 'Invoices',
-    subtitle: 'View billing activity and outstanding customer invoices.',
+    subtitle: 'Create and review estimate documents.',
   },
   {
     key: 'change-orders',
@@ -146,6 +116,13 @@ const TAB_DEFS = [
     subtitle: 'Manage planned payment milestones and due timelines.',
   },
 ];
+
+const REMOVED_TAB_KEYS = new Set(['contracts', 'invoices']);
+
+function normalizeFinanceTab(tab) {
+  if (!tab || REMOVED_TAB_KEYS.has(tab)) return 'register';
+  return TAB_DEFS.some((x) => x.key === tab) ? tab : 'register';
+}
 
 /** Legacy browser snapshot key kept for one-time cleanup migration. */
 const LOCAL_EST_SNAPSHOT_STACK_KEY = 'financeHubSavedEstimateSnapshots';
@@ -373,7 +350,7 @@ function FinanceHubPage() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return TAB_DEFS[0].key;
     const t = new URLSearchParams(window.location.search).get('tab');
-    return t && TAB_DEFS.some((x) => x.key === t) ? t : TAB_DEFS[0].key;
+    return normalizeFinanceTab(t);
   });
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
@@ -389,17 +366,12 @@ function FinanceHubPage() {
   const [estimateSaveTargetId, setEstimateSaveTargetId] = useState(null);
   const [isEstimateExportMode, setIsEstimateExportMode] = useState(false);
   const estimateCanvasRef = useRef(null);
-  const invoicePdfRef = useRef(null);
   /** Avoid refetching full jobs / estimate lists on arrow navigation. */
   const estimateNavPrevRef = useRef({ jobId: null, estimateId: null });
   const jobCacheRef = useRef(new Map());
   const jobEstimatesCacheRef = useRef(new Map());
   const estimateDocCacheRef = useRef(new Map());
   const [switchingEstimate, setSwitchingEstimate] = useState(false);
-  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
-  const [createInvoiceKind, setCreateInvoiceKind] = useState('deposit');
-  const [savingInvoice, setSavingInvoice] = useState(false);
-  const [invoicePdfPayload, setInvoicePdfPayload] = useState(null);
   const [changeOrdersList, setChangeOrdersList] = useState([]);
   const [loadingChangeOrders, setLoadingChangeOrders] = useState(false);
   /** Full job JSON (consumer context only). */
@@ -575,13 +547,6 @@ function FinanceHubPage() {
     invoiceEstimateNumber,
   ]);
 
-  const canCreateInvoice =
-    Boolean(estimateJobId) &&
-    !loadingJobEstimate &&
-    !isNewEstimateDraft &&
-    estimateTotal > 0 &&
-    Boolean(estimateForm.customerId);
-
   const hydrateJobWithEstimate = useCallback(async (job, preferredEstimateId = null) => {
     if (!job?._id) return { job, estimateDoc: null, estimatesForJob: [] };
     try {
@@ -635,8 +600,8 @@ function FinanceHubPage() {
   const tabParam = searchParams.get('tab');
   const jobIdParam = searchParams.get('jobId');
   useEffect(() => {
-    if (tabParam && TAB_DEFS.some((t) => t.key === tabParam)) {
-      setActiveTab(tabParam);
+    if (tabParam) {
+      setActiveTab(normalizeFinanceTab(tabParam));
     }
   }, [tabParam, jobIdParam]);
 
@@ -1196,167 +1161,6 @@ function FinanceHubPage() {
     }
   };
 
-  const persistBillingPdfArtifact = async (doc, { filename, description, fileType }) => {
-    if (!doc || !estimateForm.customerId) return;
-    try {
-      const blob = doc.output('blob');
-      const formData = new FormData();
-      formData.append('file', new File([blob], filename, { type: 'application/pdf' }));
-      formData.append('customerId', String(estimateForm.customerId));
-      formData.append('fileType', fileType || 'invoice');
-      if (description) formData.append('description', String(description));
-      await axios.post(`${API_URL}/files/upload-document`, formData);
-    } catch (error) {
-      console.warn('Failed to persist billing PDF artifact:', error);
-    }
-  };
-
-  const renderInvoicePdfDoc = async () => {
-    if (!invoicePdfRef.current) {
-      throw new Error('Billing document layout not ready');
-    }
-    const canvas = await html2canvas(invoicePdfRef.current, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      useCORS: true,
-    });
-    const imageData = canvas.toDataURL('image/png');
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-    const pageW = 612;
-    const pageH = 792;
-    doc.addImage(imageData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
-    return doc;
-  };
-
-  /** Same PDF used by Create invoice / Generate contract (deposit or final). */
-  const downloadBillingInvoicePdf = async (inv, kind, contractTotalHint) => {
-    if (!inv?._id && !inv?.invoiceNumber) throw new Error('Invalid invoice record');
-    let contractTotal;
-    if (contractTotalHint != null && Number.isFinite(Number(contractTotalHint))) {
-      contractTotal = Number(contractTotalHint);
-    } else if (inv.contractTotal != null && Number.isFinite(Number(inv.contractTotal))) {
-      contractTotal = Number(inv.contractTotal);
-    } else {
-      contractTotal = Number(estimateTotal) || 0;
-    }
-    const dueToday = roundMoneyClient(Number(inv?.total ?? 0));
-    const payload = {
-      docKind: 'invoice',
-      kind,
-      contractTotal,
-      dueToday,
-      estimateNumber: inv.estimateNumber || invoiceEstimateNumber,
-      invoiceNumber: inv.invoiceNumber || '',
-      invoiceDate: (inv.issuedAt ? new Date(inv.issuedAt) : new Date()).toISOString().slice(0, 10),
-      customerName: estimateForm.customerName,
-      projectName: estimateForm.projectName,
-      customerAddress: estimateForm.customerAddress,
-      lineItems: Array.isArray(estimateForm.lineItems) ? estimateForm.lineItems : [],
-      footerNote: String(estimateForm.footerNote || '').trim(),
-    };
-
-    flushSync(() => {
-      setInvoicePdfPayload(payload);
-    });
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const doc = await renderInvoicePdfDoc();
-    const kindSlug = kind === 'final' ? 'final' : 'deposit';
-    const invoiceIdentifier = inv.invoiceNumber || inv._id || invoiceEstimateNumber || 'draft';
-    const artifactFilename = `Invoice-${kindSlug}-${invoiceIdentifier}.pdf`;
-    await persistBillingPdfArtifact(doc, {
-      filename: artifactFilename,
-      fileType: 'invoice',
-      description: `Immutable invoice PDF artifact (${kindSlug}) for invoice ${inv.invoiceNumber || invoiceIdentifier}`,
-    });
-    doc.save(artifactFilename);
-    flushSync(() => {
-      setInvoicePdfPayload(null);
-    });
-  };
-
-  const handleConfirmCreateInvoice = async () => {
-    if (!estimateJobId || !canCreateInvoice || !loadedEstimateDoc?._id) return;
-    try {
-      setSavingInvoice(true);
-      const { data } = await axios.post(
-        `${API_URL}/estimates/${loadedEstimateDoc._id}/generate-invoice`,
-        { kind: createInvoiceKind }
-      );
-
-      const inv = data?.invoice || data;
-      if (!inv?._id && !inv?.invoiceNumber) throw new Error('Invoice was not created');
-      const kind = data?.kind || createInvoiceKind;
-      const contractTotal = Number(
-        data?.contractTotal ?? inv?.contractTotal ?? estimateTotal ?? 0
-      );
-      await downloadBillingInvoicePdf(inv, kind, contractTotal);
-      setCreateInvoiceOpen(false);
-      toast.success(`Invoice ${inv.invoiceNumber || ''} created and downloaded`);
-
-      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
-      const hydrated = await hydrateJobWithEstimate(refreshed, loadedEstimateDoc?._id || null);
-      setLoadedEstimateJob(hydrated.job);
-      setLoadedEstimateDoc(hydrated.estimateDoc || null);
-      setJobEstimates(hydrated.estimatesForJob || []);
-    } catch (error) {
-      console.error('Error creating invoice:', error);
-      toast.error(error.response?.data?.error || error.message || 'Failed to create invoice');
-      flushSync(() => {
-        setInvoicePdfPayload(null);
-      });
-    } finally {
-      setSavingInvoice(false);
-    }
-  };
-
-  const handleGenerateContract = async () => {
-    if (!estimateJobId || !loadedEstimateDoc?._id) return;
-    const estimateDirty =
-      JSON.stringify(normalizeEstimateFormForCompare(estimateForm)) !==
-      JSON.stringify(lastSyncedEstimateForm);
-    if (estimateDirty) {
-      toast.error('Save your estimate first so the contract and deposit invoice use your latest line items.');
-      return;
-    }
-    try {
-      setSavingInvoice(true);
-      const { data } = await axios.post(
-        `${API_URL}/estimates/${loadedEstimateDoc._id}/generate-contract`,
-        {}
-      );
-      const contractNumber = data?.contract?.contractNumber || '';
-      const depositInv = data?.depositInvoice;
-      const syncedGrandTotal = Number(data?.estimate?.grandTotal ?? 0);
-
-      if (depositInv && (depositInv.invoiceNumber || depositInv._id)) {
-        const contractTotalForPdf = Number(
-          depositInv.contractTotal ?? syncedGrandTotal ?? estimateTotal ?? 0
-        );
-        await downloadBillingInvoicePdf(depositInv, 'deposit', contractTotalForPdf);
-        toast.success(
-          `Contract ${contractNumber} created and deposit invoice ${depositInv.invoiceNumber || ''} downloaded`
-        );
-      } else {
-        toast.success(
-          contractNumber
-            ? `Contract ${contractNumber} created. No deposit invoice — contract total is $0 (check estimate line totals are saved).`
-            : 'Contract created'
-        );
-      }
-
-      const { data: refreshed } = await axios.get(`${API_URL}/jobs/${estimateJobId}`);
-      const hydrated = await hydrateJobWithEstimate(refreshed, loadedEstimateDoc?._id || null);
-      setLoadedEstimateJob(hydrated.job);
-      setLoadedEstimateDoc(hydrated.estimateDoc || null);
-      setJobEstimates(hydrated.estimatesForJob || []);
-    } catch (error) {
-      console.error('Error creating contract:', error);
-      toast.error(error.response?.data?.error || error.message || 'Failed to create contract');
-    } finally {
-      setSavingInvoice(false);
-    }
-  };
-
   const estimatePrevJobIdRef = useRef(undefined);
   useEffect(() => {
     const prev = estimatePrevJobIdRef.current;
@@ -1820,8 +1624,7 @@ function FinanceHubPage() {
           Finance Hub
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          One workspace for register, estimates, contracts, invoices, change orders, payment
-          schedules.
+          One workspace for register, estimates, change orders, and payment schedules.
         </Typography>
       </Box>
 
@@ -2655,24 +2458,6 @@ function FinanceHubPage() {
               >
                 Download PDF
               </Button>
-              <Button
-                variant="outlined"
-                startIcon={<ReceiptLongIcon />}
-                onClick={() => {
-                  setCreateInvoiceKind('deposit');
-                  setCreateInvoiceOpen(true);
-                }}
-                disabled={!canCreateInvoice || savingInvoice}
-              >
-                Create invoice
-              </Button>
-              <Button
-                variant="outlined"
-                onClick={handleGenerateContract}
-                disabled={!canCreateInvoice || savingInvoice}
-              >
-                Generate contract
-              </Button>
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={printEstimatePdf}>
                 Print estimate
               </Button>
@@ -2714,300 +2499,6 @@ function FinanceHubPage() {
               </CardContent>
             </Card>
           )}
-
-      {invoicePdfPayload && (
-        <Box
-          ref={invoicePdfRef}
-          sx={{
-            position: 'fixed',
-            left: -12000,
-            top: 0,
-            width: 816,
-            minHeight: 1056,
-            bgcolor: '#fff',
-            color: '#000',
-            p: 5,
-            boxSizing: 'border-box',
-            border: '1px solid #d9d9d9',
-            fontFamily: 'Arial, Helvetica, sans-serif',
-            display: 'flex',
-            flexDirection: 'column',
-            '& .MuiTypography-root': { color: '#000' },
-          }}
-        >
-          <Box sx={{ flex: '0 0 auto', width: '100%' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Box
-                component="img"
-                src={resolveLogoSrc(estimateDocSettings.logoUrl)}
-                alt={`${estimateDocSettings.companyName || 'Company'} logo`}
-                sx={{ width: 68, height: 68, objectFit: 'contain' }}
-                onError={(e) => {
-                  e.currentTarget.onerror = null;
-                  e.currentTarget.src = DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
-                }}
-              />
-              <Box>
-                <Typography sx={{ fontWeight: 700, fontSize: 24, lineHeight: 1 }}>
-                  {estimateDocSettings.companyName}
-                </Typography>
-                {estimateDocSettings.addressLine1 ? (
-                  <Typography sx={{ fontSize: 14, mt: 0.8 }}>{estimateDocSettings.addressLine1}</Typography>
-                ) : null}
-                {estimateDocSettings.addressLine2 ? (
-                  <Typography sx={{ fontSize: 14 }}>{estimateDocSettings.addressLine2}</Typography>
-                ) : null}
-                <Box sx={{ mt: 2, ml: -9 }}>
-                  {(estimateDocSettings.phoneLabel || estimateDocSettings.phone) && (
-                    <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center' }}>
-                      <Typography sx={{ fontSize: 13 }}>{estimateDocSettings.phoneLabel || 'Phone #'}</Typography>
-                      <Typography sx={{ fontSize: 13, minWidth: 150 }}>{estimateDocSettings.phone}</Typography>
-                    </Box>
-                  )}
-                  {estimateDocSettings.website ? (
-                    <Typography sx={{ fontSize: 13, ml: 0 }}>{estimateDocSettings.website}</Typography>
-                  ) : null}
-                  {estimateDocSettings.email ? (
-                    <Typography sx={{ fontSize: 13, minWidth: 260, ml: 0 }}>{estimateDocSettings.email}</Typography>
-                  ) : null}
-                </Box>
-              </Box>
-            </Box>
-
-            <Box sx={{ textAlign: 'right' }}>
-              <Typography sx={{ fontWeight: 700, fontSize: 22, mb: 1 }}>
-                {invoicePdfPayload.docKind === 'change_order' ? 'Change Order' : 'Invoice'}
-              </Typography>
-              <Box sx={{ width: 280, border: '1px solid #000', ml: 'auto' }}>
-                <Box sx={{ display: 'flex', bgcolor: '#000', color: '#fff', fontWeight: 700, fontSize: 12 }}>
-                  <Box sx={{ width: '34%', p: 1, borderRight: '1px solid #fff' }}>Date</Box>
-                  <Box sx={{ width: '33%', p: 1, borderRight: '1px solid #fff' }}>Estimate #</Box>
-                  <Box sx={{ width: '33%', p: 1 }}>
-                    {invoicePdfPayload.docKind === 'change_order' ? 'Change Order #' : 'Invoice #'}
-                  </Box>
-                </Box>
-                <Box sx={{ display: 'flex' }}>
-                  <Typography sx={{ width: '34%', fontSize: 12, px: 1, py: 0.8, borderRight: '1px solid #000' }}>
-                    {invoicePdfPayload.invoiceDate}
-                  </Typography>
-                  <Typography
-                    sx={{
-                      width: '33%',
-                      fontSize: 12,
-                      px: 1,
-                      py: 0.8,
-                      borderRight: '1px solid #000',
-                      textAlign: 'right',
-                    }}
-                  >
-                    {invoicePdfPayload.estimateNumber}
-                  </Typography>
-                  <Typography sx={{ width: '33%', fontSize: 12, px: 1, py: 0.8, textAlign: 'right' }}>
-                    {invoicePdfPayload.invoiceNumber}
-                  </Typography>
-                </Box>
-              </Box>
-              {invoicePdfPayload.docKind === 'change_order' ? (
-                <Typography
-                  sx={{
-                    fontSize: 11,
-                    mt: 1,
-                    maxWidth: 280,
-                    ml: 'auto',
-                    textAlign: 'right',
-                    lineHeight: 1.35,
-                  }}
-                >
-                  References estimate #{invoicePdfPayload.estimateNumber}. Stored estimate total at generation: $
-                  {formatInvoiceMoney(invoicePdfPayload.referencedEstimateTotal)}
-                </Typography>
-              ) : null}
-            </Box>
-          </Box>
-
-          <Box sx={{ mt: 3, width: '48%', border: '1px solid #000' }}>
-            <Box sx={{ bgcolor: '#000', color: '#fff', p: 1, fontWeight: 700, fontSize: 12 }}>Name / Address</Box>
-            <Box sx={{ p: 1 }}>
-              <Typography sx={{ fontSize: 13 }}>{invoicePdfPayload.customerName}</Typography>
-              <Typography sx={{ fontSize: 13 }}>{invoicePdfPayload.customerAddress?.street}</Typography>
-              <Typography sx={{ fontSize: 13 }}>{invoicePdfPayload.customerAddress?.city}</Typography>
-              {invoicePdfPayload.projectName ? (
-                <Typography sx={{ fontSize: 12, mt: 0.5 }}>Project: {invoicePdfPayload.projectName}</Typography>
-              ) : null}
-            </Box>
-          </Box>
-
-          <Box sx={{ mt: 3, border: '1px solid #000' }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '20% 48% 12% 20%', bgcolor: '#000', color: '#fff' }}>
-              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Item</Box>
-              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Description</Box>
-              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Qty</Box>
-              <Box sx={{ px: 0.75, py: 0.55, fontWeight: 700, fontSize: 11.5 }}>Total</Box>
-            </Box>
-            {invoicePdfPayload.lineItems.map((row, index) => {
-              const qty = row.quantity != null && row.quantity !== '' ? row.quantity : '';
-              const tot = Number(row.total);
-              const totalStr = Number.isFinite(tot)
-                ? tot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                : String(row.total ?? '').trim() || '—';
-              return (
-                <Box
-                  key={`inv-line-${index}`}
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: '20% 48% 12% 20%',
-                    borderTop: '1px solid #000',
-                    alignItems: 'stretch',
-                  }}
-                >
-                  <Box
-                    sx={{
-                      px: 0.75,
-                      py: 0.45,
-                      borderRight: '1px solid #000',
-                      fontSize: 12.5,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {row.itemName}
-                  </Box>
-                  <Box
-                    sx={{
-                      px: 0.75,
-                      py: 0.45,
-                      borderRight: '1px solid #000',
-                      fontSize: 12.5,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {row.description}
-                  </Box>
-                  <Box sx={{ px: 0.75, py: 0.45, borderRight: '1px solid #000', fontSize: 12.5 }}>{qty}</Box>
-                  <Box sx={{ px: 0.75, py: 0.45, fontSize: 12.5, textAlign: 'right' }}>${totalStr}</Box>
-                </Box>
-              );
-            })}
-          </Box>
-          </Box>
-
-          <Box sx={{ flex: '1 1 auto', minHeight: 32, width: '100%' }} aria-hidden />
-
-          <Box sx={{ flex: '0 0 auto', width: '100%', mt: 'auto' }}>
-            <Box
-              sx={{
-                mt: 1.5,
-                display: 'flex',
-                justifyContent: 'flex-end',
-                flexDirection: 'column',
-                alignItems: 'flex-end',
-                gap: 1,
-              }}
-            >
-              {invoicePdfPayload.docKind === 'change_order' ? (
-                <>
-                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
-                    <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
-                      Estimate reference total
-                    </Box>
-                    <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 14 }}>
-                      ${formatInvoiceMoney(invoicePdfPayload.referencedEstimateTotal)}
-                    </Box>
-                  </Box>
-                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
-                    <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
-                      Change order total
-                    </Box>
-                    <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
-                      ${formatInvoiceMoney(invoicePdfPayload.grandTotal)}
-                    </Box>
-                  </Box>
-                </>
-              ) : (
-                <>
-                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
-                    <Box sx={{ width: '40%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 13 }}>
-                      Total
-                    </Box>
-                    <Box sx={{ width: '60%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
-                      $
-                      {formatInvoiceMoney(invoicePdfPayload.contractTotal)}
-                    </Box>
-                  </Box>
-                  <Box sx={{ width: 280, border: '1px solid #000', display: 'flex' }}>
-                    <Box sx={{ width: '52%', borderRight: '1px solid #000', p: 1, fontWeight: 700, fontSize: 12 }}>
-                      {invoicePdfPayload.kind === 'final' ? 'Final due today' : 'Deposit due today'}
-                    </Box>
-                    <Box sx={{ width: '48%', p: 1, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
-                      ${formatInvoiceMoney(invoicePdfPayload.dueToday)}
-                    </Box>
-                  </Box>
-                </>
-              )}
-            </Box>
-
-            <Box sx={{ mt: 2 }}>
-              <Typography sx={{ fontSize: 12, lineHeight: 1.5 }}>
-                {INVOICE_PERMITS_ACK_LINE} ______
-              </Typography>
-              <Typography sx={{ fontSize: 12, mt: 1.5 }}>{invoicePdfPayload.footerNote}</Typography>
-              <Typography sx={{ fontSize: 12, mt: 0.4 }}>Initials ____</Typography>
-            </Box>
-          </Box>
-        </Box>
-      )}
-
-      <Dialog
-        open={createInvoiceOpen}
-        onClose={() => {
-          if (!savingInvoice) setCreateInvoiceOpen(false);
-        }}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Create invoice from estimate</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            The PDF matches your estimate layout (line items and totals). Choose whether this bill is for the
-            deposit (40% of the contract total) or the final draw (60%).
-          </Typography>
-          <FormControl component="fieldset" variant="standard" sx={{ mb: 1 }}>
-            <FormLabel component="legend">Invoice type</FormLabel>
-            <RadioGroup
-              row
-              value={createInvoiceKind}
-              onChange={(e) => setCreateInvoiceKind(e.target.value)}
-            >
-              <FormControlLabel value="deposit" control={<Radio />} label="Deposit" />
-              <FormControlLabel value="final" control={<Radio />} label="Final" />
-            </RadioGroup>
-          </FormControl>
-          <Typography variant="body2" sx={{ mb: 1 }}>
-            Contract total (from line items):{' '}
-            <strong>${formatInvoiceMoney(estimateTotal)}</strong>
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Deposit today (40%): <strong>${formatInvoiceMoney(roundMoneyClient(estimateTotal * INVOICE_DEPOSIT_FRACTION))}</strong>
-            {' · '}
-            Final (60%): <strong>${formatInvoiceMoney(roundMoneyClient(estimateTotal * INVOICE_FINAL_FRACTION))}</strong>
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-            Estimate # {invoiceEstimateNumber}
-            {estimateJobId ? ` · Job ${String(estimateJobId).slice(-8)}` : ''}. Save any estimate edits before
-            creating an invoice so totals match.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setCreateInvoiceOpen(false)} disabled={savingInvoice}>
-            Cancel
-          </Button>
-          <Button variant="contained" onClick={handleConfirmCreateInvoice} disabled={savingInvoice}>
-            {savingInvoice ? 'Working…' : 'Create & download PDF'}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog open={newEstimatePromptOpen} onClose={() => setNewEstimatePromptOpen(false)}>
         <DialogTitle>Unsaved estimate changes</DialogTitle>
