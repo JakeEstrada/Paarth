@@ -71,7 +71,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
-  const { isAdmin, tenantForBranding, user } = useAuth();
+  const { isAdmin, user } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const isActive = (path) => {
@@ -155,7 +155,6 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         }}
       >
         <BrandLogo
-          tenant={tenantForBranding}
           alt="Liminnality"
           sx={{
             height: 96,

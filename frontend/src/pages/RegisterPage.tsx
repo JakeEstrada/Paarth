@@ -23,7 +23,6 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
 import PhoneTextField from '../components/common/PhoneTextField';
 
@@ -42,7 +41,6 @@ function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const navigate = useNavigate();
-  const { tenantForBranding } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -133,9 +131,8 @@ function RegisterPage() {
         <Card sx={{ boxShadow: '0 8px 32px rgba(0,0,0,0.1)', borderRadius: 3 }}>
           <CardContent sx={{ p: 4 }}>
             <Box sx={{ textAlign: 'center', mb: 4 }}>
-              <BrandLogo
-                tenant={tenantForBranding}
-                alt="Organization logo"
+            <BrandLogo
+              alt="Liminnality"
                 sx={{
                   height: 80,
                   width: 80,

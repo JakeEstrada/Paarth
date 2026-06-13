@@ -29,7 +29,6 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/axios';
-import BrandLogo from '../components/common/BrandLogo';
 import ProfilePhotoFieldPreview from '../components/common/ProfilePhotoFieldPreview';
 import { useTheme } from '@mui/material/styles';
 import { useShopViewSensitive, SHOP_VIEW_SENSITIVE_PIN } from '../hooks/useShopViewSensitive';
@@ -37,7 +36,7 @@ import { useShopViewSensitive, SHOP_VIEW_SENSITIVE_PIN } from '../hooks/useShopV
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function AccountSettingsPage() {
-  const { user: currentUser, fetchCurrentUser, isSuperAdmin, tenantForBranding } = useAuth();
+  const { user: currentUser, fetchCurrentUser } = useAuth();
   const theme = useTheme();
   const { isShopViewRole, sensitiveUnlocked, setSensitiveUnlocked } = useShopViewSensitive(currentUser?.role);
   const [loading, setLoading] = useState(true);
@@ -63,8 +62,6 @@ function AccountSettingsPage() {
     new: false,
     confirm: false,
   });
-  const [uploadingLogoLight, setUploadingLogoLight] = useState(false);
-  const [uploadingLogoDark, setUploadingLogoDark] = useState(false);
   const [uploadingProfilePhoto, setUploadingProfilePhoto] = useState(false);
   const [shopViewPinDialogOpen, setShopViewPinDialogOpen] = useState(false);
   const [shopViewPinInput, setShopViewPinInput] = useState('');
@@ -128,47 +125,6 @@ function AccountSettingsPage() {
       toast.error(error.response?.data?.error || 'Failed to update profile');
     } finally {
       setUpdating(false);
-    }
-  };
-
-  const handleTenantLogoUpload = async (e, themeMode) => {
-    if (!isSuperAdmin()) {
-      toast.error('Only the organization super admin can change company logos.');
-      e.target.value = '';
-      return;
-    }
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please choose an image file');
-      e.target.value = '';
-      return;
-    }
-    try {
-      if (themeMode === 'dark') setUploadingLogoDark(true);
-      else setUploadingLogoLight(true);
-      const formData = new FormData();
-      formData.append('logo', file);
-      await api.post(`/tenants/logo/${themeMode}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      toast.success(`Organization ${themeMode} logo updated. It will appear for everyone in your company.`);
-      try {
-        localStorage.setItem('tenantLogoCacheBust', String(Date.now()));
-      } catch {
-        /* ignore */
-      }
-      const token = localStorage.getItem('accessToken');
-      if (token && fetchCurrentUser) {
-        await fetchCurrentUser(token);
-      }
-    } catch (error) {
-      console.error('Logo upload:', error);
-      toast.error(error.response?.data?.error || 'Failed to upload logo');
-    } finally {
-      setUploadingLogoLight(false);
-      setUploadingLogoDark(false);
-      e.target.value = '';
     }
   };
 
@@ -485,100 +441,6 @@ function AccountSettingsPage() {
           </Grid>
         )}
       </Paper>
-
-      {isSuperAdmin() && (
-        <Paper
-          elevation={0}
-          sx={{
-            borderRadius: '16px',
-            p: 4,
-            mb: 3,
-            background: theme.palette.background.paper,
-            boxShadow:
-              theme.palette.mode === 'dark'
-                ? '0 2px 12px rgba(0, 0, 0, 0.35)'
-                : '0 2px 12px rgba(0, 0, 0, 0.06)',
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-            <PhotoCameraIcon sx={{ fontSize: 28, color: 'primary.main' }} />
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Organization logo (super admin only)
-            </Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Only a super admin can change these. They appear in the sidebar, login screen for your team, payroll,
-            and printed reports for everyone in your organization. PNG, JPG, GIF, WebP, or SVG. Max 2&nbsp;MB.
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3, flexWrap: 'wrap' }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
-              <Typography variant="body2" color="text.secondary">Light logo</Typography>
-              <BrandLogo
-                tenant={tenantForBranding}
-                preferTenantLogo
-                themeMode="light"
-                alt="Light theme organization logo"
-                sx={{
-                  height: 80,
-                  width: 80,
-                  objectFit: 'contain',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                  p: 0.5,
-                }}
-              />
-              <Button
-                variant="outlined"
-                component="label"
-                disabled={uploadingLogoLight}
-                startIcon={uploadingLogoLight ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
-              >
-                {uploadingLogoLight ? 'Uploading…' : 'Upload light'}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
-                  hidden
-                  onChange={(e) => handleTenantLogoUpload(e, 'light')}
-                />
-              </Button>
-            </Box>
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
-              <Typography variant="body2" color="text.secondary">Dark logo</Typography>
-              <BrandLogo
-                tenant={tenantForBranding}
-                preferTenantLogo
-                themeMode="dark"
-                alt="Dark theme organization logo"
-                sx={{
-                  height: 80,
-                  width: 80,
-                  objectFit: 'contain',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                  p: 0.5,
-                }}
-              />
-              <Button
-                variant="outlined"
-                component="label"
-                disabled={uploadingLogoDark}
-                startIcon={uploadingLogoDark ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
-              >
-                {uploadingLogoDark ? 'Uploading…' : 'Upload dark'}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
-                  hidden
-                  onChange={(e) => handleTenantLogoUpload(e, 'dark')}
-                />
-              </Button>
-            </Box>
-          </Box>
-        </Paper>
-      )}
 
       {isShopViewRole && (
         <Paper

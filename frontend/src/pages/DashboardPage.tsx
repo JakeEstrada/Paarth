@@ -42,7 +42,7 @@ import toast from 'react-hot-toast';
 import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
-import { tenantBrandingLogoUrl, APP_LOGO_LIGHT } from '../utils/tenantBranding';
+import { APP_LOGO_LIGHT } from '../utils/tenantBranding';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -783,8 +783,7 @@ function DashboardPage() {
   // Handle print
   const handlePrint = () => {
     setPrintDialogOpen(false);
-    const reportLogoSrc =
-      tenantBrandingLogoUrl(tenantIdForBranding) || `${window.location.origin}${APP_LOGO_LIGHT}`;
+    const reportLogoSrc = `${window.location.origin}${APP_LOGO_LIGHT}`;
 
     // Filter activities for selected date (handle timezone correctly)
     // Parse the date string and create date in local timezone
@@ -1808,9 +1807,8 @@ function DashboardPage() {
   );
 }
 
-// Print View Component (uses useAuth so tenant branding is always in scope)
+// Print View Component
 function PrintView({ activities, selectedDate }) {
-  const { tenantForBranding } = useAuth();
   // Filter activities for selected date (handle timezone correctly)
   // Parse the date string and create date in local timezone
   const [year, month, day] = selectedDate.split('-').map(Number);
@@ -1939,8 +1937,7 @@ function PrintView({ activities, selectedDate }) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, '@media print': { mb: 2 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <BrandLogo
-            tenant={tenantForBranding}
-            alt="Organization logo"
+            alt="Liminnality"
             sx={{ height: 60, width: 60, objectFit: 'contain', '@media print': { height: 50, width: 50 } }}
           />
           <Box>
