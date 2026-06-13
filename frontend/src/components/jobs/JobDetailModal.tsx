@@ -67,6 +67,21 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+function estimateNumberSortValue(estimateNumber) {
+  const raw = String(estimateNumber || '').trim();
+  const m = raw.match(/^(\d+)-(\d+)$/);
+  if (!m) return Number.MAX_SAFE_INTEGER;
+  const prefix = Number(m[1]) || 0;
+  const seq = Number(m[2]) || 0;
+  return prefix * 100000 + seq;
+}
+
+function sortJobEstimatesByNumber(list) {
+  return [...(list || [])].sort(
+    (a, b) => estimateNumberSortValue(a?.estimateNumber) - estimateNumberSortValue(b?.estimateNumber)
+  );
+}
+
 const openPdfViewer = (fileId) => {
   window.open(`/pdf/${fileId}`, '_blank');
 };
@@ -173,6 +188,7 @@ function JobDetailModal({
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
   const [jobTasks, setJobTasks] = useState([]);
+  const [jobEstimates, setJobEstimates] = useState([]);
   const [changeOrderOpen, setChangeOrderOpen] = useState(false);
   const hideFinancials = hideSensitive;
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -213,6 +229,16 @@ function JobDetailModal({
       } catch (taskError) {
         console.error('Error fetching job tasks:', taskError);
         setJobTasks([]);
+      }
+      try {
+        const estimatesResponse = await axios.get(`${API_URL}/estimates`, { params: { jobId } });
+        const list = Array.isArray(estimatesResponse.data)
+          ? estimatesResponse.data
+          : estimatesResponse.data?.estimates || [];
+        setJobEstimates(sortJobEstimatesByNumber(list));
+      } catch (estimateError) {
+        console.error('Error fetching job estimates:', estimateError);
+        setJobEstimates([]);
       }
     } catch (error) {
       console.error('Error fetching job details:', error);
@@ -1253,14 +1279,28 @@ function JobDetailModal({
                       </Typography>
                     )}
                     <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        component={RouterLink}
-                        to={`/finance?tab=estimates&jobId=${job._id}`}
-                      >
-                        Open estimate
-                      </Button>
+                      {jobEstimates.length > 0 ? (
+                        jobEstimates.map((est) => (
+                          <Button
+                            key={est._id}
+                            size="small"
+                            variant="outlined"
+                            component={RouterLink}
+                            to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${est._id}`}
+                          >
+                            Open {est.estimateNumber || 'estimate'}
+                          </Button>
+                        ))
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          component={RouterLink}
+                          to={`/finance?tab=estimates&jobId=${job._id}`}
+                        >
+                          Create estimate
+                        </Button>
+                      )}
                       <Button
                         size="small"
                         variant="outlined"

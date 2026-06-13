@@ -37,6 +37,7 @@ import {
   Print as PrintIcon,
   Edit as EditIcon,
   PhotoCamera as PhotoCameraIcon,
+  ContentCopy as ContentCopyIcon,
 } from '@mui/icons-material';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -382,7 +383,6 @@ function FinanceHubPage() {
   const [jobEstimates, setJobEstimates] = useState([]);
   /** True when user clicked "New estimate" and is editing a fresh unsaved estimate draft. */
   const [isNewEstimateDraft, setIsNewEstimateDraft] = useState(false);
-  const [newEstimatePromptOpen, setNewEstimatePromptOpen] = useState(false);
   const [estimateDocSettings, setEstimateDocSettings] = useState(() => ({
     ...DEFAULT_ESTIMATE_DOCUMENT_SETTINGS,
   }));
@@ -829,7 +829,6 @@ function FinanceHubPage() {
         if (estimateDoc) rememberEstimateDoc(estimateDoc);
         setLoadedEstimateDoc(estimateDoc || null);
         setIsNewEstimateDraft(false);
-        setNewEstimatePromptOpen(false);
 
         if (estimateDoc?._id && String(estimateKey || '') !== String(estimateDoc._id)) {
           setSearchParams({
@@ -1222,16 +1221,6 @@ function FinanceHubPage() {
     );
   }, [estimateForm, lastSyncedEstimateForm]);
 
-  const startNewEstimateDraft = useCallback(() => {
-    if (!loadedEstimateJob || !estimateJobId) return;
-    const draft = buildFreshEstimateDraftForJob(loadedEstimateJob);
-    setEstimateForm(draft);
-    setLastSyncedEstimateForm(normalizeEstimateFormForCompare(draft));
-    setLoadedEstimateDoc(null);
-    setIsNewEstimateDraft(true);
-    setSearchParams({ tab: 'estimates', jobId: String(estimateJobId) });
-  }, [loadedEstimateJob, estimateJobId, setSearchParams]);
-
   const openEstimateOnCurrentJob = useCallback(
     (estimateDoc) => {
       if (!estimateJobId || !estimateDoc?._id) return;
@@ -1502,6 +1491,56 @@ function FinanceHubPage() {
     }
   };
 
+  const handleCopyEstimate = async () => {
+    if (!estimateJobId) {
+      toast.error('Open an estimate on a job first');
+      return;
+    }
+    if (!loadedEstimateDoc?._id || isNewEstimateDraft) {
+      toast.error('Save this estimate before copying');
+      return;
+    }
+    if (estimateFormIsDirty) {
+      toast.error('Save your changes before copying');
+      return;
+    }
+    try {
+      setSavingEstimate(true);
+      const { data: copied } = await axios.post(`${API_URL}/estimates/${loadedEstimateDoc._id}/copy`);
+      const jobKey = String(estimateJobId);
+      if (copied?._id) {
+        estimateDocCacheRef.current.set(String(copied._id), copied);
+      }
+      const { data } = await axios.get(`${API_URL}/estimates`, { params: { jobId: estimateJobId } });
+      const sorted = sortEstimatesByNumber(Array.isArray(data) ? data : data?.estimates || []);
+      sorted.forEach((row) => {
+        if (row?._id) estimateDocCacheRef.current.set(String(row._id), row);
+      });
+      jobEstimatesCacheRef.current.set(jobKey, sorted);
+      setJobEstimates(sorted);
+      setLoadedEstimateDoc(sorted.find((e) => String(e._id) === String(copied._id)) || copied);
+      setIsNewEstimateDraft(false);
+      setSearchParams({
+        tab: 'estimates',
+        jobId: jobKey,
+        estimateId: String(copied._id),
+      });
+      const hydrated = computeEstimateFormFromJobSnapshot(
+        loadedEstimateJob,
+        mapEstimateDocToLegacySnapshots(copied).current
+      );
+      setEstimateForm(hydrated);
+      setLastSyncedEstimateForm(normalizeEstimateFormForCompare(hydrated));
+      await loadEstimateBrowser();
+      toast.success(`Copied to estimate ${copied?.estimateNumber || ''}`);
+    } catch (error) {
+      console.error('Error copying estimate:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to copy estimate');
+    } finally {
+      setSavingEstimate(false);
+    }
+  };
+
   const handleDeleteEstimate = async () => {
     if (!estimateJobId) return;
     if (!loadedEstimateDoc?._id) {
@@ -1533,34 +1572,6 @@ function FinanceHubPage() {
     } finally {
       setSavingEstimate(false);
     }
-  };
-
-  const handleStartNewEstimate = async () => {
-    if (!estimateJobId || !loadedEstimateJob) return;
-    if (estimateFormIsDirty) {
-      setNewEstimatePromptOpen(true);
-      return;
-    }
-    startNewEstimateDraft();
-  };
-
-  const handleCreateNewAfterSave = async () => {
-    setNewEstimatePromptOpen(false);
-    try {
-      setSavingEstimate(true);
-      const saved = await saveEstimateOnCurrentContext();
-      if (saved) startNewEstimateDraft();
-    } catch (error) {
-      console.error('Error saving before new estimate:', error);
-      toast.error(error.response?.data?.error || error.message || 'Failed to save estimate');
-    } finally {
-      setSavingEstimate(false);
-    }
-  };
-
-  const handleCreateNewDiscardCurrent = () => {
-    setNewEstimatePromptOpen(false);
-    startNewEstimateDraft();
   };
 
   const estimateRevisionRailSx = {
@@ -1901,7 +1912,7 @@ function FinanceHubPage() {
             {estimateJobId && (jobEstimates.length > 0 || isNewEstimateDraft) && (
               <Box sx={{ mt: 1.5, mb: 0.5 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-                  Estimates on this job — each save with &quot;New estimate&quot; gets the next number (e.g. 1102-0022, 1102-0023)
+                  Estimates on this job — use <strong>Copy estimate</strong> to duplicate the current one with the next number (e.g. 1102-0023 → 1102-0024).
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                   {jobEstimates.map((est) => {
@@ -2474,10 +2485,17 @@ function FinanceHubPage() {
               {estimateJobId && (
                 <Button
                   variant="outlined"
-                  onClick={handleStartNewEstimate}
-                  disabled={savingEstimate || loadingJobEstimate}
+                  startIcon={<ContentCopyIcon />}
+                  onClick={() => void handleCopyEstimate()}
+                  disabled={
+                    savingEstimate ||
+                    loadingJobEstimate ||
+                    !loadedEstimateDoc?._id ||
+                    isNewEstimateDraft ||
+                    estimateFormIsDirty
+                  }
                 >
-                  New estimate
+                  Copy estimate
                 </Button>
               )}
               <Button
@@ -2499,25 +2517,6 @@ function FinanceHubPage() {
               </CardContent>
             </Card>
           )}
-
-      <Dialog open={newEstimatePromptOpen} onClose={() => setNewEstimatePromptOpen(false)}>
-        <DialogTitle>Unsaved estimate changes</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary">
-            You have unsaved edits. Save this estimate first, or discard these changes and start a
-            fresh estimate draft.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setNewEstimatePromptOpen(false)}>Cancel</Button>
-          <Button color="warning" onClick={handleCreateNewDiscardCurrent}>
-            Discard & start new
-          </Button>
-          <Button variant="contained" onClick={handleCreateNewAfterSave} disabled={savingEstimate}>
-            Save & start new
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog
         open={estimateHeaderDialogOpen}

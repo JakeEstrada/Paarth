@@ -251,6 +251,58 @@ async function deleteEstimate(req, res) {
   }
 }
 
+/** Duplicate a saved estimate on the same job with the next estimate number (e.g. 1102-0023 → 1102-0024). */
+async function copyEstimate(req, res) {
+  try {
+    const source = await Estimate.findById(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Estimate not found' });
+    if (!source.jobId) {
+      return res.status(400).json({ error: 'Estimate must be linked to a job before it can be copied' });
+    }
+
+    const numbering = await getNextDocumentNumber({
+      documentType: 'estimate',
+      prefix: source.prefix || '1102',
+    });
+    const lineItems = parseLineItems(source.lineItems || []);
+    const totals = computeTotals({
+      lineItems,
+      taxRate: source.taxRate,
+      discountAmount: source.discountAmount,
+    });
+
+    const estimate = await Estimate.create({
+      customerId: source.customerId,
+      jobId: source.jobId,
+      status: 'draft',
+      estimateNumber: numbering.display,
+      prefix: numbering.prefix,
+      sequenceNumber: numbering.sequenceNumber,
+      estimateDate: new Date(),
+      lineItems,
+      notes: String(source.notes || '').trim(),
+      projectName: String(source.projectName || '').trim(),
+      footerNote: String(source.footerNote || '').trim(),
+      ...totals,
+      sourceType: 'manual',
+      createdBy: req.user?._id || null,
+      updatedBy: req.user?._id || null,
+      sentAt: null,
+      approvedAt: null,
+      rejectedAt: null,
+      archivedAt: null,
+    });
+
+    await Job.findByIdAndUpdate(source.jobId, {
+      $set: { valueEstimated: Number(estimate.grandTotal || 0) },
+    });
+
+    res.status(201).json(estimate);
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to copy estimate' });
+  }
+}
+
 async function updateEstimateStatus(req, res) {
   try {
     const estimate = await Estimate.findById(req.params.id);
@@ -690,6 +742,7 @@ module.exports = {
   getEstimate,
   patchEstimate,
   deleteEstimate,
+  copyEstimate,
   updateEstimateStatus,
   generateInvoiceFromEstimate,
   generateContractFromEstimate,

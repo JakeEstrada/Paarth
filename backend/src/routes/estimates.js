@@ -7,6 +7,7 @@ const {
   getEstimate,
   patchEstimate,
   deleteEstimate,
+  copyEstimate,
   updateEstimateStatus,
   generateInvoiceFromEstimate,
   generateContractFromEstimate,
@@ -28,6 +29,7 @@ router.post('/', createEstimate);
 router.get('/:id', getEstimate);
 router.patch('/:id', patchEstimate);
 router.delete('/:id', deleteEstimate);
+router.post('/:id/copy', copyEstimate);
 router.post('/:id/status', updateEstimateStatus);
 router.post('/:id/generate-invoice', generateInvoiceFromEstimate);
 router.post('/:id/generate-contract', generateContractFromEstimate);
