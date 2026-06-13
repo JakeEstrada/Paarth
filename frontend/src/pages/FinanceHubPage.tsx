@@ -1497,16 +1497,22 @@ function FinanceHubPage() {
       return;
     }
     if (!loadedEstimateDoc?._id || isNewEstimateDraft) {
-      toast.error('Save this estimate before copying');
+      toast.error('Save this estimate before creating a copy');
       return;
     }
     if (estimateFormIsDirty) {
-      toast.error('Save your changes before copying');
+      toast.error('Save your changes before creating a copy');
       return;
     }
     try {
       setSavingEstimate(true);
-      const { data: copied } = await axios.post(`${API_URL}/estimates/${loadedEstimateDoc._id}/copy`);
+      const estimatePayload = buildEstimateApiPayload({});
+      const { data: copied } = await axios.post(`${API_URL}/estimates`, {
+        customerId: estimateForm.customerId,
+        jobId: estimateJobId,
+        status: 'draft',
+        ...estimatePayload,
+      });
       const jobKey = String(estimateJobId);
       if (copied?._id) {
         estimateDocCacheRef.current.set(String(copied._id), copied);
@@ -1532,10 +1538,10 @@ function FinanceHubPage() {
       setEstimateForm(hydrated);
       setLastSyncedEstimateForm(normalizeEstimateFormForCompare(hydrated));
       await loadEstimateBrowser();
-      toast.success(`Copied to estimate ${copied?.estimateNumber || ''}`);
+      toast.success(`Created copy ${copied?.estimateNumber || ''}`);
     } catch (error) {
-      console.error('Error copying estimate:', error);
-      toast.error(error.response?.data?.error || error.message || 'Failed to copy estimate');
+      console.error('Error creating estimate copy:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to create a copy');
     } finally {
       setSavingEstimate(false);
     }
@@ -1912,7 +1918,7 @@ function FinanceHubPage() {
             {estimateJobId && (jobEstimates.length > 0 || isNewEstimateDraft) && (
               <Box sx={{ mt: 1.5, mb: 0.5 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-                  Estimates on this job — use <strong>Copy estimate</strong> to duplicate the current one with the next number (e.g. 1102-0023 → 1102-0024).
+                  Estimates on this job — <strong>Create a copy</strong> duplicates the current estimate and assigns the next available number (e.g. copy 1102-0001 when 1102-0023 exists → 1102-0024).
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                   {jobEstimates.map((est) => {
@@ -2495,7 +2501,7 @@ function FinanceHubPage() {
                     estimateFormIsDirty
                   }
                 >
-                  Copy estimate
+                  Create a copy
                 </Button>
               )}
               <Button

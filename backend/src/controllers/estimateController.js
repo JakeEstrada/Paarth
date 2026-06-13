@@ -10,6 +10,59 @@ const { getNextDocumentNumber, initializeSequence, formatDocumentNumber } = requ
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
 const DOCUMENT_TEXT_DIR = path.join(UPLOADS_DIR, 'documents-text');
 
+function roundMoney(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round((x + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Next estimate number = max existing sequence + 1 (never reuse a taken number).
+ * e.g. copying 1102-0001 when 1102-0023 exists → 1102-0024.
+ */
+async function allocateNextEstimateNumber(prefix = '1102') {
+  const normalizedPrefix = String(prefix || '1102').trim() || '1102';
+  const estimates = await Estimate.find({ prefix: normalizedPrefix })
+    .select('sequenceNumber estimateNumber')
+    .lean();
+
+  let maxSeq = 0;
+  for (const est of estimates) {
+    const fromField = Number(est.sequenceNumber) || 0;
+    if (fromField > maxSeq) maxSeq = fromField;
+    const m = String(est.estimateNumber || '').match(/^(\d+)-(\d+)$/);
+    if (m && m[1] === normalizedPrefix) {
+      const parsed = Number(m[2]) || 0;
+      if (parsed > maxSeq) maxSeq = parsed;
+    }
+  }
+
+  let candidate = maxSeq + 1;
+  for (let guard = 0; guard < 10000; guard += 1) {
+    const display = formatDocumentNumber({
+      prefix: normalizedPrefix,
+      sequence: candidate,
+      documentType: 'estimate',
+    });
+    const taken = await Estimate.findOne({ estimateNumber: display }).select('_id').lean();
+    if (!taken) {
+      await initializeSequence({
+        documentType: 'estimate',
+        prefix: normalizedPrefix,
+        nextSequence: candidate,
+      });
+      return {
+        sequenceNumber: candidate,
+        display,
+        prefix: normalizedPrefix,
+      };
+    }
+    candidate += 1;
+  }
+
+  throw new Error('Could not allocate a free estimate number');
+}
+
 function parseLineItems(lineItems = []) {
   if (!Array.isArray(lineItems)) return [];
   return lineItems.map((row) => ({
@@ -19,12 +72,6 @@ function parseLineItems(lineItems = []) {
     unitPrice: Number(row?.unitPrice) || 0,
     total: Number(row?.total) || 0,
   }));
-}
-
-function roundMoney(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.round((x + Number.EPSILON) * 100) / 100;
 }
 
 function computeTotals({ lineItems = [], taxRate = 0, discountAmount = 0 }) {
@@ -139,7 +186,7 @@ async function createEstimate(req, res) {
     const { customerId, jobId = null } = req.body;
     if (!customerId) return res.status(400).json({ error: 'customerId is required' });
 
-    const numbering = await getNextDocumentNumber({ documentType: 'estimate', prefix: '1102' });
+    const numbering = await allocateNextEstimateNumber('1102');
     const lineItems = parseLineItems(req.body?.lineItems || []);
     const totals = computeTotals({
       lineItems,
@@ -260,10 +307,7 @@ async function copyEstimate(req, res) {
       return res.status(400).json({ error: 'Estimate must be linked to a job before it can be copied' });
     }
 
-    const numbering = await getNextDocumentNumber({
-      documentType: 'estimate',
-      prefix: source.prefix || '1102',
-    });
+    const numbering = await allocateNextEstimateNumber(source.prefix || '1102');
     const lineItems = parseLineItems(source.lineItems || []);
     const totals = computeTotals({
       lineItems,
