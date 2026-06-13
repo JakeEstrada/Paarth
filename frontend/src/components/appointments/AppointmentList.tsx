@@ -12,8 +12,7 @@ import {
 import {
   CheckCircle as CheckCircleIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
+  Close as CloseIcon,
   Add as AddIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
@@ -21,6 +20,17 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+const dismissButtonSx = {
+  color: 'text.disabled',
+  opacity: 0.45,
+  p: 0.5,
+  '&:hover': {
+    opacity: 0.85,
+    color: 'text.secondary',
+    backgroundColor: 'action.hover',
+  },
+};
 
 function AppointmentList({ onAppointmentClick, onAppointmentComplete, onAddClick, onCountChange, refreshTrigger }) {
   const [appointments, setAppointments] = useState([]);
@@ -138,14 +148,12 @@ function AppointmentList({ onAppointmentClick, onAppointmentComplete, onAddClick
             icon={<RadioButtonUncheckedIcon />}
             checkedIcon={<CheckCircleIcon />}
             checked={false}
-            onChange={(e) => {
-              e.stopPropagation();
-              handleComplete(appointment._id, e);
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => handleComplete(appointment._id, e)}
+            sx={{
+              color: 'text.primary',
+              '&.Mui-checked': { color: 'text.primary' },
             }}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-            sx={{ color: 'primary.main' }}
           />
           
           <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -174,24 +182,14 @@ function AppointmentList({ onAppointmentClick, onAppointmentComplete, onAddClick
             </Box>
           </Box>
 
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAppointmentClick && onAppointmentClick(appointment._id);
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              color="error"
-              onClick={(e) => handleDelete(appointment._id, e)}
-            >
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Box>
+          <IconButton
+            size="small"
+            onClick={(e) => handleDelete(appointment._id, e)}
+            sx={dismissButtonSx}
+            title="Remove"
+          >
+            <CloseIcon sx={{ fontSize: 16 }} />
+          </IconButton>
         </Paper>
           ))}
         </Box>
