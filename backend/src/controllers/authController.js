@@ -1,6 +1,16 @@
 const User = require('../models/User');
-const { generateAccessToken, generateRefreshToken } = require('../utils/generateToken');
+const {
+  generateAccessToken,
+  generateRefreshToken,
+  generatePasswordResetToken,
+  verifyPasswordResetToken,
+} = require('../utils/generateToken');
+const { sendPasswordResetEmail } = require('../services/emailService');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
+
+function getFrontendUrl() {
+  return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+}
 
 function photoPayloadFromMulterFile(file) {
   if (!file) return null;
@@ -151,21 +161,27 @@ async function forgotPassword(req, res) {
       user = await User.findOne({ email: email.toLowerCase() }).setOptions({ bypassTenant: true });
     }
     if (!user) {
-      // Don't reveal if user exists for security
-      return res.json({ 
-        message: 'If an account with that email exists, a password reset link has been sent.' 
+      return res.json({
+        message: 'If an account with that email exists, a password reset link has been sent.',
       });
     }
-    
-    // In a real app, you would send an email with a reset token
-    // For now, we'll just return a message
-    // TODO: Implement email sending with reset token
-    
-    res.json({ 
+
+    const resetToken = generatePasswordResetToken(user.email);
+    const resetLink = `${getFrontendUrl()}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+    try {
+      await sendPasswordResetEmail({
+        toEmail: user.email,
+        userName: user.name,
+        resetLink,
+      });
+    } catch (emailError) {
+      console.error('Password reset email failed:', emailError);
+      return res.status(500).json({ error: 'Unable to send password reset email. Please try again later.' });
+    }
+
+    res.json({
       message: 'If an account with that email exists, a password reset link has been sent.',
-      // In development, you might want to return the user email for testing
-      // Remove this in production
-      ...(process.env.NODE_ENV === 'development' && { email: user.email })
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -203,29 +219,35 @@ async function forgotUsername(req, res) {
   }
 }
 
-// Reset password (would normally require a token from email)
+// Reset password using the signed token from the reset email
 async function resetPassword(req, res) {
   try {
-    const { email, newPassword } = req.body;
-    
-    if (!email || !newPassword) {
-      return res.status(400).json({ error: 'Email and new password are required' });
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Reset token and new password are required' });
     }
-    
-    let user = await User.findOne({ email: email.toLowerCase() });
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+    }
+
+    const payload = verifyPasswordResetToken(token);
+    if (!payload) {
+      return res.status(400).json({ error: 'Invalid or expired reset link. Please request a new one.' });
+    }
+
+    let user = await User.findOne({ email: payload.email });
     if (!user) {
-      user = await User.findOne({ email: email.toLowerCase() }).setOptions({ bypassTenant: true });
+      user = await User.findOne({ email: payload.email }).setOptions({ bypassTenant: true });
     }
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    
-    // In a real app, verify the reset token here
-    // For now, we'll allow direct reset (add token verification in production)
-    
+
     user.password = newPassword;
     await user.save();
-    
+
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });

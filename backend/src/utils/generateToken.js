@@ -32,9 +32,31 @@ function verifyRefreshToken(token) {
   }
 }
 
+function generatePasswordResetToken(email) {
+  return jwt.sign(
+    { email: email.toLowerCase(), purpose: 'password-reset' },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+}
+
+function verifyPasswordResetToken(token) {
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    if (payload.purpose !== 'password-reset' || !payload.email) {
+      return null;
+    }
+    return payload;
+  } catch (error) {
+    return null;
+  }
+}
+
 module.exports = {
   generateAccessToken,
   generateRefreshToken,
   verifyAccessToken,
-  verifyRefreshToken
+  verifyRefreshToken,
+  generatePasswordResetToken,
+  verifyPasswordResetToken,
 };
