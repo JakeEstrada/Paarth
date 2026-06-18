@@ -455,7 +455,7 @@ async function getTenantEstimateDocumentLogo(req, res) {
     const { tenantId } = req.params;
     const tenant = await Tenant.findById(tenantId).select('estimateDocumentSettings').lean();
     if (!tenant?.estimateDocumentSettings?.logo || !hasLogoBinary(tenant.estimateDocumentSettings.logo)) {
-      return sendTransparentLogo(res);
+      return sendLogoNotFound(res);
     }
 
     const logo = tenant.estimateDocumentSettings.logo;

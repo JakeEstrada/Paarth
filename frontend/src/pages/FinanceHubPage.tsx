@@ -47,6 +47,7 @@ import RegisterLedgerSection from '../components/finance/RegisterLedgerSection';
 import { useAuth } from '../context/AuthContext';
 import {
   DEFAULT_ESTIMATE_DOCUMENT_SETTINGS,
+  estimateDocumentLogoFallbackSrc,
   mergeEstimateDocumentSettings,
   resolveEstimateDocumentLogoSrc,
 } from '../utils/estimateDocumentSettings';
@@ -386,6 +387,7 @@ function FinanceHubPage() {
   const [estimateDocSettings, setEstimateDocSettings] = useState(() => ({
     ...DEFAULT_ESTIMATE_DOCUMENT_SETTINGS,
   }));
+  const [estimateDocSettingsReady, setEstimateDocSettingsReady] = useState(false);
   const [estimateHeaderDialogOpen, setEstimateHeaderDialogOpen] = useState(false);
   const [estimateHeaderDraft, setEstimateHeaderDraft] = useState(() => ({
     ...DEFAULT_ESTIMATE_DOCUMENT_SETTINGS,
@@ -626,6 +628,7 @@ function FinanceHubPage() {
     let cancelled = false;
     const loadEstimateHeaderSettings = async () => {
       try {
+        setEstimateDocSettingsReady(false);
         const { data } = await axios.get(`${API_URL}/tenants/estimate-document-settings`);
         if (!cancelled) {
           setEstimateDocSettings(mergeEstimateDocumentSettings(data?.settings));
@@ -634,6 +637,10 @@ function FinanceHubPage() {
         console.error('Error loading estimate header settings:', error);
         if (!cancelled) {
           setEstimateDocSettings({ ...DEFAULT_ESTIMATE_DOCUMENT_SETTINGS });
+        }
+      } finally {
+        if (!cancelled) {
+          setEstimateDocSettingsReady(true);
         }
       }
     };
@@ -1473,8 +1480,27 @@ function FinanceHubPage() {
     }
   };
 
-  const resolveLogoSrc = (logoUrl) =>
-    resolveEstimateDocumentLogoSrc(logoUrl, tenantIdForBranding, estimateLogoCacheBust);
+  const resolveLogoSrc = useCallback(
+    (logoUrl) => resolveEstimateDocumentLogoSrc(logoUrl, tenantIdForBranding, estimateLogoCacheBust),
+    [tenantIdForBranding, estimateLogoCacheBust]
+  );
+
+  const estimateLogoSrc = useMemo(
+    () => resolveLogoSrc(estimateDocSettings.logoUrl),
+    [estimateDocSettings.logoUrl, resolveLogoSrc]
+  );
+
+  const estimateHeaderDraftLogoSrc = useMemo(
+    () => resolveLogoSrc(estimateHeaderDraft.logoUrl),
+    [estimateHeaderDraft.logoUrl, resolveLogoSrc]
+  );
+
+  const handleEstimateLogoError = useCallback((event) => {
+    const fallback = estimateDocumentLogoFallbackSrc(event.currentTarget.src);
+    if (!fallback) return;
+    event.currentTarget.onerror = null;
+    event.currentTarget.src = fallback;
+  }, []);
 
   const handleSaveEstimate = async () => {
     try {
@@ -2132,16 +2158,17 @@ function FinanceHubPage() {
                 <Box sx={{ flex: '0 0 auto', width: '100%' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Box sx={{ display: 'flex', gap: 2 }}>
-                    <Box
-                      component="img"
-                      src={resolveLogoSrc(estimateDocSettings.logoUrl)}
-                      alt={`${estimateDocSettings.companyName || 'Company'} logo`}
-                      sx={{ width: 68, height: 68, objectFit: 'contain' }}
-                      onError={(e) => {
-                        e.currentTarget.onerror = null;
-                        e.currentTarget.src = DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
-                      }}
-                    />
+                    {estimateDocSettingsReady ? (
+                      <Box
+                        component="img"
+                        src={estimateLogoSrc}
+                        alt={`${estimateDocSettings.companyName || 'Company'} logo`}
+                        sx={{ width: 68, height: 68, objectFit: 'contain' }}
+                        onError={handleEstimateLogoError}
+                      />
+                    ) : (
+                      <Box sx={{ width: 68, height: 68 }} />
+                    )}
                     <Box>
                       <Typography sx={{ fontWeight: 700, fontSize: 24, lineHeight: 1 }}>
                         {estimateDocSettings.companyName}
@@ -2542,7 +2569,7 @@ function FinanceHubPage() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                 <Box
                   component="img"
-                  src={resolveLogoSrc(estimateHeaderDraft.logoUrl)}
+                  src={estimateHeaderDraftLogoSrc}
                   alt="Logo preview"
                   sx={{
                     width: 72,
@@ -2554,10 +2581,7 @@ function FinanceHubPage() {
                     p: 0.5,
                     bgcolor: '#fff',
                   }}
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
-                  }}
+                  onError={handleEstimateLogoError}
                 />
                 <Button
                   variant="outlined"
@@ -2642,13 +2666,10 @@ function FinanceHubPage() {
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <Box
                   component="img"
-                  src={resolveLogoSrc(estimateHeaderDraft.logoUrl)}
+                  src={estimateHeaderDraftLogoSrc}
                   alt="Header preview logo"
                   sx={{ width: 48, height: 48, objectFit: 'contain' }}
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
-                  }}
+                  onError={handleEstimateLogoError}
                 />
                 <Box>
                   <Typography sx={{ fontWeight: 700, fontSize: 16, color: '#000' }}>

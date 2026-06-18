@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Box } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material/styles';
 import { useTheme } from '@mui/material/styles';
@@ -16,9 +17,21 @@ export function BrandLogo({
 }) {
   const muiTheme = useTheme();
   const resolvedThemeMode = themeMode || muiTheme.palette.mode || 'light';
-  const src = fallbackSrc || defaultAppLogoForMode(resolvedThemeMode);
+  const src = useMemo(
+    () => fallbackSrc || defaultAppLogoForMode(resolvedThemeMode),
+    [fallbackSrc, resolvedThemeMode]
+  );
 
-  return <Box component="img" src={src} alt={alt} sx={sx} />;
+  return (
+    <Box
+      component="img"
+      key={src}
+      src={src}
+      alt={alt}
+      decoding="async"
+      sx={sx}
+    />
+  );
 }
 
 export default BrandLogo;

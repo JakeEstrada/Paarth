@@ -50,10 +50,17 @@ export function resolveEstimateDocumentLogoSrc(
   if (!raw) return DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
 
   if (isEstimateBrandingLogoPath(raw) && tenantId) {
-    return tenantEstimateDocumentLogoUrl(tenantId, cacheBust) || raw;
+    return tenantEstimateDocumentLogoUrl(tenantId, cacheBust) || DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
   }
 
   if (/^https?:\/\//i.test(raw)) return raw;
   if (raw.startsWith('/')) return raw;
   return `/${raw.replace(/^\/+/, '')}`;
+}
+
+export function estimateDocumentLogoFallbackSrc(currentSrc?: string | null) {
+  const fallback = DEFAULT_ESTIMATE_DOCUMENT_SETTINGS.logoUrl;
+  const current = String(currentSrc || '').trim();
+  if (!current || current.endsWith(fallback)) return null;
+  return fallback;
 }
