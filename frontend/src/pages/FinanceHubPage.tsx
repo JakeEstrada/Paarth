@@ -724,7 +724,6 @@ function FinanceHubPage() {
           if (cached) {
             setLoadedEstimateDoc(cached);
             setIsNewEstimateDraft(false);
-            setNewEstimatePromptOpen(false);
             return;
           }
 
@@ -734,7 +733,6 @@ function FinanceHubPage() {
           upsertJobEstimate(estimateDoc);
           setLoadedEstimateDoc(estimateDoc);
           setIsNewEstimateDraft(false);
-          setNewEstimatePromptOpen(false);
           return;
         }
 
@@ -1182,7 +1180,6 @@ function FinanceHubPage() {
       setEstimateForm(fresh);
       setLastSyncedEstimateForm(normalizeEstimateFormForCompare(fresh));
       setIsNewEstimateDraft(false);
-      setNewEstimatePromptOpen(false);
       setEditingJobSummary(null);
       setCustomerPipelineJobs([]);
       setEstimateSaveTargetId(null);
