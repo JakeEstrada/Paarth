@@ -46,6 +46,8 @@ import {
   InsertDriveFile as InsertDriveFileIcon,
   Share as ShareIcon,
   PostAdd as PostAddIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  ContentCopy as ContentCopyIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import axios from 'axios';
@@ -64,6 +66,7 @@ import {
   invalidateJobFilesCache,
   setJobFilesCache,
 } from '../../utils/fileListCache';
+import { renderSummaryBlocks } from '../../utils/summaryMarkdown';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -195,6 +198,11 @@ function JobDetailModal({
   const [shareSmsRecipient, setShareSmsRecipient] = useState('');
   const [shareMessage, setShareMessage] = useState('');
   const [sendingShare, setSendingShare] = useState(false);
+  const [aiSummaryOpen, setAiSummaryOpen] = useState(false);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummaryText, setAiSummaryText] = useState('');
+  const [aiSummaryPrompt, setAiSummaryPrompt] = useState('');
+  const [aiSummaryMeta, setAiSummaryMeta] = useState(null);
 
   const fetchJobFiles = useCallback(async ({ force = false } = {}) => {
     const jobKey = String(jobId || '');
@@ -692,6 +700,40 @@ function JobDetailModal({
     }
   };
 
+  const handleGenerateAiSummary = async () => {
+    if (!jobId) return;
+    setAiSummaryLoading(true);
+    setAiSummaryText('');
+    setAiSummaryMeta(null);
+    try {
+      const payload = {};
+      const trimmed = aiSummaryPrompt.trim();
+      if (trimmed) payload.prompt = trimmed;
+      const res = await axios.post(`${API_URL}/activities/job/${jobId}/summary`, payload);
+      setAiSummaryText(res.data.summary || '');
+      setAiSummaryMeta({
+        activityCount: res.data.activityCount,
+        totalActivities: res.data.totalActivities,
+        noteCount: res.data.noteCount,
+        taskCount: res.data.taskCount,
+        appointmentCount: res.data.appointmentCount,
+        truncated: res.data.truncated,
+        generatedAt: res.data.generatedAt,
+      });
+    } catch (error) {
+      console.error('Job AI summary error:', error);
+      toast.error(error.response?.data?.error || 'Failed to generate summary');
+      setAiSummaryOpen(false);
+    } finally {
+      setAiSummaryLoading(false);
+    }
+  };
+
+  const handleOpenAiSummary = () => {
+    setAiSummaryOpen(true);
+    handleGenerateAiSummary();
+  };
+
   return (
     <Dialog
       open={open}
@@ -939,11 +981,22 @@ function JobDetailModal({
             {/* Recent Activity - First thing users see */}
             <Grid item xs={12}>
               <Paper sx={{ p: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <DescriptionIcon sx={{ mr: 1, color: 'primary.main' }} />
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Recent Activity
-                  </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <DescriptionIcon sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      Recent Activity
+                    </Typography>
+                  </Box>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<AutoAwesomeIcon />}
+                    onClick={handleOpenAiSummary}
+                    disabled={!jobId || aiSummaryLoading}
+                  >
+                    AI summary
+                  </Button>
                 </Box>
                 
                 {job.notes && job.notes.length > 0 ? (
@@ -1718,6 +1771,72 @@ function JobDetailModal({
           <Button onClick={handleCloseShareDialog} disabled={sendingShare}>Cancel</Button>
           <Button onClick={handleSendShareSms} variant="contained" disabled={sendingShare}>
             {sendingShare ? 'Sending...' : 'Send Text'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={aiSummaryOpen}
+        onClose={() => {
+          if (!aiSummaryLoading) setAiSummaryOpen(false);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>AI job summary</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Optional focus (e.g. scheduling, customer communication)"
+            value={aiSummaryPrompt}
+            onChange={(e) => setAiSummaryPrompt(e.target.value)}
+            disabled={aiSummaryLoading}
+            sx={{ mb: 2 }}
+            helperText={`${aiSummaryPrompt.length}/1500`}
+            inputProps={{ maxLength: 1500 }}
+          />
+          {aiSummaryMeta && !aiSummaryLoading && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+              Based on {aiSummaryMeta.noteCount ?? 0} note(s), {aiSummaryMeta.activityCount ?? 0} activity
+              row(s)
+              {aiSummaryMeta.truncated ? ' (activity list capped)' : ''}, {aiSummaryMeta.taskCount ?? 0}{' '}
+              task(s), {aiSummaryMeta.appointmentCount ?? 0} appointment(s).
+              {aiSummaryMeta.generatedAt
+                ? ` Generated ${formatDateTime(aiSummaryMeta.generatedAt)}.`
+                : null}
+            </Typography>
+          )}
+          {aiSummaryLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 4, justifyContent: 'center' }}>
+              <CircularProgress size={28} />
+              <Typography variant="body2" color="text.secondary">
+                Summarizing job history…
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{ maxHeight: '50vh', overflowY: 'auto' }}>{renderSummaryBlocks(aiSummaryText)}</Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              if (aiSummaryText) {
+                navigator.clipboard.writeText(aiSummaryText);
+                toast.success('Summary copied');
+              }
+            }}
+            disabled={!aiSummaryText || aiSummaryLoading}
+            startIcon={<ContentCopyIcon />}
+          >
+            Copy
+          </Button>
+          <Button onClick={handleGenerateAiSummary} disabled={aiSummaryLoading}>
+            Refresh
+          </Button>
+          <Button onClick={() => setAiSummaryOpen(false)} disabled={aiSummaryLoading}>
+            Close
           </Button>
         </DialogActions>
       </Dialog>

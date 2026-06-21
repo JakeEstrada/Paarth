@@ -339,6 +339,333 @@ async function openAiSummarizeActivities({
   return text;
 }
 
+function formatAddressParts(parts) {
+  return parts.filter(Boolean).join(', ');
+}
+
+function formatJobLocation(job) {
+  const ja = job?.jobAddress;
+  if (ja && (ja.street || ja.city || ja.state || ja.zip)) {
+    return formatAddressParts([ja.street, ja.city, ja.state, ja.zip]);
+  }
+  const ca = job?.customerId?.address;
+  if (ca && (ca.street || ca.city || ca.state || ca.zip)) {
+    return formatAddressParts([ca.street, ca.city, ca.state, ca.zip]);
+  }
+  return '';
+}
+
+function formatScheduleBlock(job) {
+  const schedule = job?.schedule || {};
+  const entries = Array.isArray(schedule.entries) ? schedule.entries : [];
+  const lines = [];
+  if (entries.length > 0) {
+    for (const e of entries) {
+      if (!e?.startDate) continue;
+      const start = new Date(e.startDate).toISOString();
+      const end = e.endDate ? new Date(e.endDate).toISOString() : start;
+      lines.push(
+        `- Installer: ${e.installer || '—'} | ${start} → ${end}`
+      );
+    }
+  } else if (schedule.startDate) {
+    const start = new Date(schedule.startDate).toISOString();
+    const end = schedule.endDate ? new Date(schedule.endDate).toISOString() : start;
+    const inst = schedule.installer || (schedule.installers || []).join(', ') || '—';
+    lines.push(`- Installer: ${inst} | ${start} → ${end}`);
+  }
+  if (schedule.crewNotes) {
+    lines.push(`- Crew notes: ${String(schedule.crewNotes).slice(0, 500)}`);
+  }
+  return lines.length ? lines.join('\n') : '(none scheduled)';
+}
+
+function formatJobNotesBlock(notes) {
+  if (!Array.isArray(notes) || notes.length === 0) return '(none)';
+  return [...notes]
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .map((n) => {
+      const iso = n.createdAt ? new Date(n.createdAt).toISOString() : '—';
+      const author = n.createdByName || n.createdBy?.name || '—';
+      const flags = [
+        n.isStageChange ? 'stage-change' : null,
+        n.important ? 'important' : null,
+        n.isAppointment ? 'appointment' : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+      const prefix = flags ? `[${flags}] ` : '';
+      const content = String(n.content || '').slice(0, 800);
+      return `${iso} | ${author} | ${prefix}${content}`;
+    })
+    .join('\n');
+}
+
+function formatTasksBlock(tasks) {
+  if (!Array.isArray(tasks) || tasks.length === 0) return '(none)';
+  return tasks
+    .map((t) => {
+      const due = t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : '—';
+      const status = t.completedAt ? 'completed' : 'open';
+      const desc = t.description ? ` — ${String(t.description).slice(0, 200)}` : '';
+      return `- [${status}] ${t.title || 'Task'} | due ${due}${desc}`;
+    })
+    .join('\n');
+}
+
+function formatAppointmentsBlock(appointments) {
+  if (!Array.isArray(appointments) || appointments.length === 0) return '(none)';
+  return appointments
+    .map((a) => {
+      const when = a.date ? new Date(a.date).toISOString().slice(0, 10) : '—';
+      const loc = a.location ? ` @ ${a.location}` : '';
+      return `- [${a.status || 'scheduled'}] ${a.title || 'Appointment'} | ${when} ${a.time || ''}${loc}`;
+    })
+    .join('\n');
+}
+
+function buildJobContextForSummary(job, activities, tasks, appointments) {
+  const customer = job.customerId;
+  const stageLabel = STAGE_LABELS[job.stage] || job.stage;
+  const location = formatJobLocation(job);
+  const activityLines = sortActivitiesForSummary(activities).map(formatActivityLineForSummary);
+  const { text: activityText, includedLineCount, omittedLineCount } =
+    buildActivityListForModel(activityLines);
+
+  const sections = [
+    '=== JOB ===',
+    `Title: ${job.title || '—'}`,
+    `Stage: ${stageLabel}`,
+    `Customer: ${customer?.name || '—'}`,
+    customer?.primaryPhone ? `Customer phone: ${customer.primaryPhone}` : null,
+    customer?.primaryEmail ? `Customer email: ${customer.primaryEmail}` : null,
+    job.assignedTo?.name ? `Assigned to: ${job.assignedTo.name}` : null,
+    job.description ? `Description: ${String(job.description).slice(0, 1500)}` : null,
+    typeof job.valueEstimated === 'number' ? `Estimated value: ${job.valueEstimated}` : null,
+    typeof job.valueContracted === 'number' ? `Contracted value: ${job.valueContracted}` : null,
+    job.createdAt ? `Job created: ${new Date(job.createdAt).toISOString()}` : null,
+    '',
+    '=== LOCATION / JOB SITE ===',
+    location || '(no address on file)',
+    job.jobContact?.phone ? `Job contact phone: ${job.jobContact.phone}` : null,
+    job.jobContact?.email ? `Job contact email: ${job.jobContact.email}` : null,
+    '',
+    '=== INSTALL SCHEDULE ===',
+    formatScheduleBlock(job),
+    '',
+    '=== JOB NOTES / UPDATES (chronological) ===',
+    formatJobNotesBlock(job.notes),
+    '',
+    '=== ACTIVITY LOG (chronological) ===',
+    `Included ${includedLineCount} activity row(s)${omittedLineCount > 0 ? ` (${omittedLineCount} omitted due to size limit)` : ''}.`,
+    activityText,
+    '',
+    '=== TASKS ===',
+    formatTasksBlock(tasks),
+    '',
+    '=== APPOINTMENTS ===',
+    formatAppointmentsBlock(appointments),
+  ];
+
+  return sections.filter((line) => line !== null).join('\n');
+}
+
+async function openAiSummarizeJob({ jobContext, userInstructions }) {
+  if (typeof globalThis.fetch !== 'function') {
+    const err = new Error(
+      'This Node build has no global fetch. Use Node 18+ on the server.'
+    );
+    err.code = 'NO_FETCH';
+    throw err;
+  }
+
+  const apiKey = normalizeOpenAIApiKey(
+    process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.OPENNAI_API_KEY
+  );
+  if (!apiKey) {
+    const err = new Error('OPENAI_API_KEY_NOT_SET');
+    err.code = 'NO_KEY';
+    throw err;
+  }
+
+  const systemPrompt = [
+    'You summarize a single CRM job for a woodworking / cabinetry / install business.',
+    'Use ONLY the data provided. Do not invent customers, dates, amounts, or outcomes.',
+    'Return valid markdown with these headings in order:',
+    '## Job overview',
+    '## Location and site',
+    '## Schedule and crew',
+    '## Timeline and updates',
+    '## Tasks and appointments',
+    '## Current status and recommended follow-ups',
+    'Keep bullets concise. Mention location/address when present. Highlight stage changes, scheduling, and open tasks.',
+    'If data is sparse, say so briefly under the relevant section.',
+  ].join(' ');
+
+  const trimmedInstructions =
+    typeof userInstructions === 'string'
+      ? userInstructions.trim().slice(0, MAX_SUMMARY_INSTRUCTIONS_CHARS)
+      : '';
+
+  const userParts = [];
+  if (trimmedInstructions) {
+    userParts.push(
+      `Additional instructions from the user:\n${trimmedInstructions}`,
+      ''
+    );
+  }
+  userParts.push('Job data:', '---', jobContext.slice(0, MAX_ACTIVITY_TEXT_CHARS), '---');
+  const userContent = userParts.join('\n');
+
+  const model = (process.env.OPENAI_ACTIVITY_SUMMARY_MODEL || 'gpt-4o-mini').trim();
+  const body = {
+    model,
+    temperature: 0.35,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+  };
+
+  const openaiHeaders = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+  };
+  const org = (process.env.OPENAI_ORG_ID || process.env.OPENAI_ORGANIZATION || '').trim();
+  if (org) openaiHeaders['OpenAI-Organization'] = org;
+  const project = (process.env.OPENAI_PROJECT_ID || '').trim();
+  if (project) openaiHeaders['OpenAI-Project'] = project;
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), OPENAI_FETCH_TIMEOUT_MS);
+  let res;
+  try {
+    res = await globalThis.fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: openaiHeaders,
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      const err = new Error(
+        `OpenAI request timed out after ${OPENAI_FETCH_TIMEOUT_MS}ms.`
+      );
+      err.code = 'OPENAI_TIMEOUT';
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    const err = new Error(raw.slice(0, 500) || 'Invalid OpenAI response');
+    err.code = 'OPENAI_BAD_JSON';
+    throw err;
+  }
+
+  if (!res.ok) {
+    const apiMsg = data?.error?.message || raw.slice(0, 500) || 'OpenAI request failed';
+    const err = new Error(apiMsg);
+    err.status = res.status;
+    err.openai = data?.error;
+    throw err;
+  }
+
+  const text = data.choices?.[0]?.message?.content?.trim();
+  if (!text) {
+    const err = new Error('OpenAI returned no summary text (empty choices).');
+    err.code = 'OPENAI_EMPTY';
+    throw err;
+  }
+  return text;
+}
+
+function handleOpenAiSummaryError(e, res) {
+  if (e.code === 'NO_KEY') {
+    return res.status(503).json({
+      error:
+        'OpenAI is not configured. Set OPENAI_API_KEY in your backend environment.',
+      code: 'NO_KEY',
+    });
+  }
+  if (e.code === 'NO_FETCH') {
+    return res.status(500).json({ error: e.message, code: 'NO_FETCH' });
+  }
+  if (e.code === 'OPENAI_TIMEOUT') {
+    return res.status(504).json({ error: e.message, code: 'OPENAI_TIMEOUT' });
+  }
+  console.error('Job summary OpenAI error:', e?.message, e?.status, e?.openai);
+  return res.status(502).json({
+    error: e.message || 'Failed to generate summary',
+    code: e.code,
+  });
+}
+
+// POST body: { prompt? } — optional focus instructions for the model
+async function generateJobSummary(req, res) {
+  try {
+    const Job = require('../models/Job');
+    const Task = require('../models/Task');
+    const Appointment = require('../models/Appointment');
+    const { jobId } = req.params;
+    const rawInstructions = req.body?.prompt ?? req.body?.instructions ?? '';
+    const userInstructions =
+      typeof rawInstructions === 'string' ? rawInstructions.slice(0, MAX_SUMMARY_INSTRUCTIONS_CHARS) : '';
+
+    const job = await Job.findById(jobId)
+      .populate('customerId')
+      .populate('assignedTo', 'name email')
+      .populate('notes.createdBy', 'name email');
+
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const MAX = 500;
+    const [activities, tasks, appointments, totalActivities] = await Promise.all([
+      Activity.find({ jobId: job._id })
+        .populate('createdBy', 'name email')
+        .populate('customerId', 'name')
+        .populate('taskId', 'title isProject')
+        .sort({ createdAt: -1 })
+        .limit(MAX),
+      Task.find({ jobId: job._id }).sort({ dueDate: 1, createdAt: -1 }).limit(100),
+      Appointment.find({ jobId: job._id }).sort({ date: -1 }).limit(50),
+      Activity.countDocuments({ jobId: job._id }),
+    ]);
+
+    const jobContext = buildJobContextForSummary(job, activities, tasks, appointments);
+
+    let summary;
+    try {
+      summary = await openAiSummarizeJob({ jobContext, userInstructions });
+    } catch (e) {
+      return handleOpenAiSummaryError(e, res);
+    }
+
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    res.json({
+      summary,
+      activityCount: activities.length,
+      totalActivities,
+      truncated: totalActivities > MAX,
+      noteCount: Array.isArray(job.notes) ? job.notes.length : 0,
+      taskCount: tasks.length,
+      appointmentCount: appointments.length,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('generateJobSummary:', error);
+    res.status(500).json({ error: error.message });
+  }
+}
+
 // Get activities for a job
 async function getJobActivities(req, res) {
   try {
@@ -679,6 +1006,7 @@ module.exports = {
   getRecentActivities,
   getActivitiesByDateRange,
   generateActivitySummary,
+  generateJobSummary,
   deleteActivity,
   logPayrollPrint
 };
