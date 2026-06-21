@@ -706,10 +706,33 @@ function JobDetailModal({
     setAiSummaryText('');
     setAiSummaryMeta(null);
     try {
-      const payload = {};
       const trimmed = aiSummaryPrompt.trim();
+      const payload = { jobId };
       if (trimmed) payload.prompt = trimmed;
-      const res = await axios.post(`${API_URL}/activities/job/${jobId}/summary`, payload);
+
+      const summaryUrls = [
+        `${API_URL}/activities/summary`,
+        `${API_URL}/activities/job/${jobId}/summary`,
+        `${API_URL}/jobs/${jobId}/summary`,
+      ];
+
+      let res;
+      let lastError;
+      for (const url of summaryUrls) {
+        try {
+          res = await axios.post(url, payload);
+          break;
+        } catch (error) {
+          lastError = error;
+          if (error.response?.status !== 404) {
+            throw error;
+          }
+        }
+      }
+      if (!res) {
+        throw lastError;
+      }
+
       setAiSummaryText(res.data.summary || '');
       setAiSummaryMeta({
         activityCount: res.data.activityCount,
@@ -722,7 +745,16 @@ function JobDetailModal({
       });
     } catch (error) {
       console.error('Job AI summary error:', error);
-      toast.error(error.response?.data?.error || 'Failed to generate summary');
+      const status = error.response?.status;
+      if (status === 404) {
+        toast.error(
+          'Job summary API is not available yet. Redeploy the backend on Render with the latest code.'
+        );
+      } else if (status === 400 && !error.response?.data?.error) {
+        toast.error('Job summary requires a backend update. Redeploy the backend, then try again.');
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to generate summary');
+      }
       setAiSummaryOpen(false);
     } finally {
       setAiSummaryLoading(false);

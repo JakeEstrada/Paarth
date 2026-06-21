@@ -21,6 +21,7 @@ const {
   resetAllEstimates,
   addJobInvoice
 } = require('../controllers/jobController');
+const { generateJobSummary } = require('../controllers/activityController');
 
 router.use(requireAuth);
 
@@ -39,6 +40,7 @@ router.post('/:id/move-to-dead-estimates', moveToDeadEstimates);
 router.post('/:id/archive', archiveJob);
 router.post('/:id/unarchive', unarchiveJob);
 router.post('/:id/reopen-from-completed', reopenFromCompleted);
+router.post('/:id/summary', generateJobSummary);
 router.get('/:id', getJob);
 router.patch('/:id', updateJob);
 router.post('/:id/move-stage', moveJobStage);

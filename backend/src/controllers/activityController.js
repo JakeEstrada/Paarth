@@ -608,12 +608,16 @@ function handleOpenAiSummaryError(e, res) {
 }
 
 // POST body: { prompt? } — optional focus instructions for the model
+// jobId from route param (:jobId or :id) or body.jobId when using POST /activities/summary
 async function generateJobSummary(req, res) {
   try {
     const Job = require('../models/Job');
     const Task = require('../models/Task');
     const Appointment = require('../models/Appointment');
-    const { jobId } = req.params;
+    const jobId = req.params.jobId || req.params.id || req.body?.jobId;
+    if (!jobId) {
+      return res.status(400).json({ error: 'jobId is required' });
+    }
     const rawInstructions = req.body?.prompt ?? req.body?.instructions ?? '';
     const userInstructions =
       typeof rawInstructions === 'string' ? rawInstructions.slice(0, MAX_SUMMARY_INSTRUCTIONS_CHARS) : '';
@@ -903,8 +907,13 @@ async function logPayrollPrint(req, res) {
 }
 
 // POST body: { startDate, endDate, prompt? } — ISO dates; optional prompt / instructions for the model
+// POST body: { jobId, prompt? } — summarize a single job (no date range)
 async function generateActivitySummary(req, res) {
   try {
+    if (req.body?.jobId) {
+      return generateJobSummary(req, res);
+    }
+
     const { startDate, endDate } = req.body || {};
     const rawInstructions = req.body?.prompt ?? req.body?.instructions ?? '';
     const userInstructions =
