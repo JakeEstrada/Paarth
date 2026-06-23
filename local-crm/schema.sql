@@ -87,20 +87,30 @@ CREATE TABLE pipeline_stages (
     FOREIGN KEY (section_id) REFERENCES kanban_sections(id) ON DELETE CASCADE
 );
 
+-- Dynamic pipeline fields (EAV-lite pattern):
+-- - Definitions live in job_field_definitions (board-wide when stage_id IS NULL, stage-specific otherwise).
+-- - Values live in jobs.custom_fields JSON, keyed by field_key — no migration when users add fields.
+-- - Use json_extract(custom_fields, '$.field_key') expression indexes only for fields you filter on often.
+
 CREATE TABLE job_field_definitions (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
     board_id TEXT NOT NULL,
+    stage_id TEXT,
     field_key TEXT NOT NULL,
     label TEXT NOT NULL,
-    field_type TEXT NOT NULL DEFAULT 'text' CHECK (field_type IN ('text','textarea','number','currency','phone','email','date','boolean')),
+    field_type TEXT NOT NULL DEFAULT 'text' CHECK (field_type IN ('text','textarea','number','currency','phone','email','date','boolean','select')),
+    options TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(options)),
+    default_value TEXT,
     show_on_card INTEGER NOT NULL DEFAULT 0 CHECK (show_on_card IN (0,1)),
     required INTEGER NOT NULL DEFAULT 0 CHECK (required IN (0,1)),
     sort_order INTEGER NOT NULL DEFAULT 0,
     builtin_column TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (board_id) REFERENCES kanban_boards(id) ON DELETE CASCADE,
-    UNIQUE (board_id, field_key)
+    FOREIGN KEY (stage_id) REFERENCES pipeline_stages(id) ON DELETE CASCADE,
+    CHECK (stage_id IS NULL OR board_id IS NOT NULL)
 );
 
 CREATE TABLE customers (
@@ -324,6 +334,13 @@ CREATE INDEX pipeline_stages_bench_idx ON pipeline_stages(moves_to_bench);
 CREATE INDEX pipeline_stages_scheduled_idx ON pipeline_stages(is_scheduled_stage);
 CREATE INDEX pipeline_stages_closed_idx ON pipeline_stages(is_closed);
 CREATE INDEX job_field_definitions_board_sort_idx ON job_field_definitions(board_id, sort_order);
+CREATE UNIQUE INDEX job_field_definitions_board_field_key_idx
+    ON job_field_definitions(board_id, field_key)
+    WHERE stage_id IS NULL;
+CREATE UNIQUE INDEX job_field_definitions_stage_field_key_idx
+    ON job_field_definitions(stage_id, field_key)
+    WHERE stage_id IS NOT NULL;
+CREATE INDEX job_field_definitions_stage_sort_idx ON job_field_definitions(stage_id, sort_order);
 CREATE INDEX customers_name_idx ON customers(name);
 CREATE INDEX customers_primary_email_idx ON customers(primary_email);
 CREATE INDEX customer_phones_customer_idx ON customer_phones(customer_id);
@@ -364,6 +381,11 @@ CREATE INDEX job_tags_tag_idx ON job_tags(tag_id);
 -- Create expression indexes later for specific JSON keys you actually query, for example:
 -- CREATE INDEX jobs_custom_fields_project_type_idx ON jobs(json_extract(custom_fields, '$.project_type'));
 -- CREATE INDEX activities_metadata_entity_idx ON activities(json_extract(metadata, '$.entity'));
+--
+-- job_field_definitions.options example for select fields:
+--   ["Residential","Commercial","Remodel"]
+-- jobs.custom_fields value example (keyed by field_key):
+--   {"project_type":"Residential","deposit_received":true,"target_install":"2026-06-01"}
 
 -- updated_at triggers
 CREATE TRIGGER app_settings_updated_at
