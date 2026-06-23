@@ -1,3 +1,9 @@
+/**
+ * FinanceHubPage — Estimates, invoices, contracts, Plaid register.
+ * Route: /finance
+ * APIs: /estimates, /invoices, /contracts, /plaid/*
+ * Docs: ../../../docs/PAGES.md#financehubpagetsx
+ */
 // @ts-nocheck — large page; tighten types incrementally
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';

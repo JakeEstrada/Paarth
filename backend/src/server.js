@@ -1,3 +1,7 @@
+/**
+ * Paarth API server — Express + MongoDB + Socket.IO.
+ * Route map: see ../docs/BACKEND.md
+ */
 const express = require('express');
 const http = require('http');
 const mongoose = require('mongoose');
@@ -71,7 +75,7 @@ app.use(express.urlencoded({ extended: false }));
 // Serve uploaded files statically (before DB check)
 app.use('/uploads', express.static('uploads'));
 
-// Resolve tenant context for every request (must run only when MongoDB is ready, or skip DB for static paths)
+// --- Tenant context: resolve x-tenant-id / slug before DB-backed routes ---
 app.use(async (req, res, next) => {
   // Let CORS preflight through without touching the DB (avoids "CORS failed" when Mongo is cold / slow)
   if (req.method === 'OPTIONS') {
@@ -166,7 +170,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Import routes
+// --- REST API routes (also mounted under /api/* below) ---
 const authRoutes = require('./routes/auth');
 const customerRoutes = require('./routes/customers');
 const jobRoutes = require('./routes/jobs');

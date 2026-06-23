@@ -1,3 +1,8 @@
+/**
+ * CompletedAppointmentsPage — Historical appointments list.
+ * Route: /completed-appointments
+ * Docs: ../../../docs/PAGES.md
+ */
 import { useState, useEffect } from 'react';
 import {
   Typography,

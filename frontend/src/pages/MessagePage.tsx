@@ -1,3 +1,9 @@
+/**
+ * MessagePage — SMS sent, scheduled, and received (Twilio).
+ * Route: /messages
+ * APIs: /twilio/messages, /twilio/send-sms
+ * Docs: ../../../docs/PAGES.md#messagepagetsx
+ */
 import { useCallback, useEffect, useState } from 'react';
 import {
   Box,

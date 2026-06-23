@@ -1,3 +1,8 @@
+/**
+ * SmsConsentPage — SMS opt-in disclosure for Twilio compliance.
+ * Route: /sms-consent
+ * Docs: ../../../docs/PAGES.md
+ */
 import { useState } from 'react';
 import { Box, Button, Container, Link as MuiLink, Paper, Stack, TextField, Typography } from '@mui/material';
 import { Link } from 'react-router-dom';

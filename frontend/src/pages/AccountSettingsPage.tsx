@@ -1,3 +1,8 @@
+/**
+ * AccountSettingsPage — Profile, password, tenant branding.
+ * Route: /account-settings
+ * Docs: ../../../docs/PAGES.md#accountsettingspagetsx
+ */
 import { useState, useEffect } from 'react';
 import {
   Box,

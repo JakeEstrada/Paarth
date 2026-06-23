@@ -1,3 +1,8 @@
+/**
+ * PictureViewerPage — Full-page image viewer.
+ * Route: /picture/:fileId
+ * Docs: ../../../docs/PAGES.md#pictureviewerpagetsx
+ */
 import { Box, Button, Stack, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate, useParams } from 'react-router-dom';

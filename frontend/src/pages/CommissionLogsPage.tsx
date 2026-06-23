@@ -1,3 +1,8 @@
+/**
+ * CommissionLogsPage — Sales commission logs.
+ * Route: /commission-logs
+ * Docs: ../../../docs/PAGES.md#commissionlogspagetsx
+ */
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box,

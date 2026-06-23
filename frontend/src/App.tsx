@@ -1,3 +1,7 @@
+/**
+ * App — Root router: public auth routes, kiosk views, and MainLayout shell.
+ * Route map: see ../../docs/PAGES.md
+ */
 import type { JSX } from 'react';
 import { useEffect } from 'react';
 import { Box, useTheme } from '@mui/material';
@@ -59,6 +63,7 @@ function App(): JSX.Element | null {
       }}
     >
       <Routes>
+        {/* --- Public auth & legal (no sidebar) --- */}
         <Route path="/login" element={user ? <Navigate to="/pipeline" replace /> : <LoginPage />} />
         <Route path="/register" element={user ? <Navigate to="/pipeline" replace /> : <RegisterPage />} />
         <Route path="/forgot-password" element={user ? <Navigate to="/pipeline" replace /> : <ForgotPasswordPage />} />
@@ -67,6 +72,8 @@ function App(): JSX.Element | null {
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<TermsAndConditions />} />
         <Route path="/sms-consent" element={<SmsConsentPage />} />
+
+        {/* --- Kiosk / TV full-screen views --- */}
         <Route
           path="/calendar-view"
           element={
@@ -97,6 +104,8 @@ function App(): JSX.Element | null {
             </ProtectedRoute>
           }
         />
+
+        {/* --- Standalone file viewers (no sidebar) --- */}
         <Route
           path="/pdf/:fileId"
           element={
@@ -113,6 +122,8 @@ function App(): JSX.Element | null {
             </ProtectedRoute>
           }
         />
+
+        {/* --- Main app: sidebar + nested page routes --- */}
         <Route
           path="/*"
           element={

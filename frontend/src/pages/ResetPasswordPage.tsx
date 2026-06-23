@@ -1,3 +1,9 @@
+/**
+ * ResetPasswordPage — Set a new password from email token (?token=).
+ * Route: /reset-password
+ * API: POST /auth/reset-password
+ * Docs: ../../../docs/PAGES.md#resetpasswordpagetsx
+ */
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {

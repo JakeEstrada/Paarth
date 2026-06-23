@@ -1,3 +1,7 @@
+/**
+ * JobDetailModal — Full job editor: notes, files, tasks, AI summary.
+ * Docs: ../../../docs/COMPONENTS.md
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {

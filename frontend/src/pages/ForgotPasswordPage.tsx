@@ -1,3 +1,9 @@
+/**
+ * ForgotPasswordPage — Request a password reset email.
+ * Route: /forgot-password
+ * API: POST /auth/forgot-password
+ * Docs: ../../../docs/PAGES.md#forgotpasswordpagetsx
+ */
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {

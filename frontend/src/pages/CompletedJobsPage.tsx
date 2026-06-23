@@ -1,3 +1,9 @@
+/**
+ * CompletedJobsPage — Closed-out / paid jobs.
+ * Route: /completed-jobs
+ * API: GET /jobs/completed
+ * Docs: ../../../docs/PAGES.md#completedjobspagetsx
+ */
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {

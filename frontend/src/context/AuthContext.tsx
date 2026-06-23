@@ -1,3 +1,8 @@
+/**
+ * AuthContext — Session state, login/logout, role helpers, tenant branding id.
+ * Sets axios default headers (Authorization, x-tenant-id) after login.
+ * Docs: ../../docs/CODEBASE.md
+ */
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';

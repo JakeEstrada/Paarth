@@ -1,3 +1,8 @@
+/**
+ * CompletedTasksPage — Completed tasks and appointments.
+ * Route: /completed-tasks
+ * Docs: ../../../docs/PAGES.md#completedtaskspagetsx
+ */
 import { useState, useEffect, useMemo } from 'react';
 import {
   Typography,

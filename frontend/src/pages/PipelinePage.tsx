@@ -1,3 +1,9 @@
+/**
+ * PipelinePage — Kanban pipeline board (main job workflow UI).
+ * Routes: /pipeline, /pipeline-view (TV mode)
+ * APIs: GET /jobs, POST /jobs/:id/move-stage
+ * Docs: ../../../docs/PAGES.md#pipelinepagetsx
+ */
 // @ts-nocheck — large page; tighten types incrementally
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -200,6 +206,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     }
   }, [jobs, searchParams, setSearchParams]);
 
+  /** Paginate through GET /jobs until all active pipeline cards are loaded. */
   const fetchJobs = useCallback(async ({ background = false } = {}) => {
     try {
       if (!background) {
@@ -284,6 +291,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   };
 
   const handleStageChange = async (jobId, toStage, note) => {
+    // POST move-stage logs activity + stage-change note on the server
     const previousJobs = jobs;
     setJobs((prev) =>
       prev.map((job) => (String(job?._id) === String(jobId) ? { ...job, stage: toStage } : job))

@@ -1,3 +1,8 @@
+/**
+ * TermsAndConditions — Static terms of service (public).
+ * Route: /terms
+ * Docs: ../../../docs/PAGES.md
+ */
 import { Box, Container, Paper, Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
 import BrandLogo from '../components/common/BrandLogo';

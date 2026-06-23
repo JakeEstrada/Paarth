@@ -1,3 +1,9 @@
+/**
+ * RegisterPage — New user registration.
+ * Route: /register
+ * API: POST /auth/register
+ * Docs: ../../../docs/PAGES.md#registerpagetsx
+ */
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {

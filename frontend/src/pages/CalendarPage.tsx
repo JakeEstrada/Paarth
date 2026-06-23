@@ -1,3 +1,8 @@
+/**
+ * CalendarPage — LEGACY calendar UI (superseded by CalendarPageNew.tsx).
+ * Not mounted in App.tsx. Kept for reference during migration.
+ * Docs: ../../../docs/PAGES.md#calendarpagenewtsx
+ */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,

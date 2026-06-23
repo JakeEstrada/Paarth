@@ -1,3 +1,8 @@
+/**
+ * TakeoffSheetPage — Field takeoff form with job autofill.
+ * Route: /takeoff-sheet
+ * Docs: ../../../docs/PAGES.md#takeoffsheetpagetsx
+ */
 // @ts-nocheck — large page; tighten types incrementally
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';

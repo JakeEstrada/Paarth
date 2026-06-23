@@ -1,3 +1,9 @@
+/**
+ * LoginPage — Sign in with email and password.
+ * Route: /login
+ * API: POST /auth/login
+ * Docs: ../../../docs/PAGES.md#loginpagetsx
+ */
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {

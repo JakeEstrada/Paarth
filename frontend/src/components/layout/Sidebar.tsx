@@ -1,3 +1,7 @@
+/**
+ * Sidebar — Primary navigation groups (workspace, finance, operations, archive).
+ * Admin-only items filtered via useAuth().isAdmin().
+ */
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Drawer,

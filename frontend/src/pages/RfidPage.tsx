@@ -1,3 +1,9 @@
+/**
+ * RfidPage — Live RFID scan log from shop devices.
+ * Route: /rfid
+ * APIs: GET /rfid/scans, Socket.IO rfid.scan.created
+ * Docs: ../../../docs/PAGES.md#rfidpagetsx
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,

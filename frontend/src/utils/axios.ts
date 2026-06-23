@@ -1,3 +1,7 @@
+/**
+ * axios api client — Prefer this over raw axios in new code.
+ * Attaches JWT, tenant id, socket id; redirects to login on 401.
+ */
 import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import {
   isAuthFlowPagePath,

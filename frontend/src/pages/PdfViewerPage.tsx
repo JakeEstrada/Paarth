@@ -1,3 +1,9 @@
+/**
+ * PdfViewerPage — Full-page PDF file viewer.
+ * Route: /pdf/:fileId
+ * API: GET /files/:id/download
+ * Docs: ../../../docs/PAGES.md#pdfviewerpagetsx
+ */
 import { Box, Button, Stack, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate, useParams } from 'react-router-dom';

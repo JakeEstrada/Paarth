@@ -1,3 +1,9 @@
+/**
+ * BillsPage — Vendor bills tracking.
+ * Route: /bills
+ * APIs: /bills
+ * Docs: ../../../docs/PAGES.md#billspagetsx
+ */
 import { useState, useEffect } from 'react';
 import {
   Box,

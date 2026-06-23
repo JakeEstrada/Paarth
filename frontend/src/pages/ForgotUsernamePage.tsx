@@ -1,3 +1,9 @@
+/**
+ * ForgotUsernamePage — Recover account email / username.
+ * Route: /forgot-username
+ * API: POST /auth/forgot-username
+ * Docs: ../../../docs/PAGES.md#forgotusernamepagetsx
+ */
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {

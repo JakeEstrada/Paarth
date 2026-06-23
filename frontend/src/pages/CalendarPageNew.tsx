@@ -1,3 +1,10 @@
+/**
+ * CalendarPageNew — Install calendar: bench, scheduled jobs, appointments.
+ * Routes: /calendar, /calendar-view (TV mode)
+ * APIs: GET /jobs, GET/POST /appointments
+ * Docs: ../../../docs/PAGES.md#calendarpagenewtsx
+ * Note: CalendarPage.tsx is legacy; App uses this file.
+ */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -1514,6 +1521,7 @@ function jobEligibleForCalendarGrid(job) {
   return hasCalendarSchedule(job) || job.stage === 'SCHEDULED';
 }
 
+/** Partition jobs into install bench vs month-grid scheduled (see docs/PAGES.md). */
 function splitCalendarJobs(allJobs = []) {
   const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
   const bench = allJobs.filter(

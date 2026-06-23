@@ -1,3 +1,9 @@
+/**
+ * DashboardPage — Home: stats, upcoming work, activity feed, AI summary.
+ * Route: /dashboard
+ * APIs: GET /activities/recent, POST /activities/summary
+ * Docs: ../../../docs/PAGES.md#dashboardpagetsx
+ */
 // @ts-nocheck — large page; tighten types incrementally
 import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import {

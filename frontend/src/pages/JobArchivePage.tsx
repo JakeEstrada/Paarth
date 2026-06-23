@@ -1,3 +1,9 @@
+/**
+ * JobArchivePage — Dead estimates and archived jobs by month.
+ * Routes: /archive, /dead-estimates
+ * APIs: GET /jobs/archive, GET /jobs/dead-estimates
+ * Docs: ../../../docs/PAGES.md#jobarchivepagetsx
+ */
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {

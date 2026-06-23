@@ -1,3 +1,9 @@
+/**
+ * UsersPage — Admin user management (roles, access).
+ * Route: /users (admin only)
+ * APIs: GET/POST/PATCH /users
+ * Docs: ../../../docs/PAGES.md#userspagetsx
+ */
 import { useState, useEffect } from 'react';
 import {
   Box,

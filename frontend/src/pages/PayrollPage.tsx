@@ -1,3 +1,8 @@
+/**
+ * PayrollPage — Timesheets, mileage, PDF print, SMS share.
+ * Route: /payroll
+ * Docs: ../../../docs/PAGES.md#payrollpagetsx
+ */
 import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import axios from 'axios';

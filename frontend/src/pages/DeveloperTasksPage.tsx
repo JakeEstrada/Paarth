@@ -1,3 +1,8 @@
+/**
+ * DeveloperTasksPage — Internal developer task tracker.
+ * Route: /developer
+ * Docs: ../../../docs/PAGES.md#developertaskspagetsx
+ */
 import { useState, useEffect } from 'react';
 import {
   Box,

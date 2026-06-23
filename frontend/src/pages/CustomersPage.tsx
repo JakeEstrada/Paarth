@@ -1,3 +1,9 @@
+/**
+ * CustomersPage — Customer directory, detail editor, job list.
+ * Routes: /customers, /customers-view (TV mode)
+ * APIs: GET/PATCH /customers, GET /customers/global-search
+ * Docs: ../../../docs/PAGES.md#customerspagetsx
+ */
 // @ts-nocheck — large page; tighten types incrementally
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -84,7 +90,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const [shareMessage, setShareMessage] = useState('');
   const [sendingShare, setSendingShare] = useState(false);
 
-  // Fetch customers
+  // Load customer list (up to 1000) for directory and search
   const fetchCustomers = async () => {
     try {
       setLoading(true);

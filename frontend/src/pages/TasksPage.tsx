@@ -1,3 +1,9 @@
+/**
+ * TasksPage — Projects and tasks (optional job/customer link).
+ * Route: /tasks
+ * APIs: GET/POST/PATCH /tasks
+ * Docs: ../../../docs/PAGES.md#taskspagetsx
+ */
 // @ts-nocheck — large page; tighten types incrementally
 import { useState, useEffect, useMemo } from 'react';
 import {
