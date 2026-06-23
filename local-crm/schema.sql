@@ -2,6 +2,17 @@ PRAGMA foreign_keys = ON;
 
 -- Local CRM — SQLite schema
 -- Converted from the DBML/PostgreSQL-style schema.
+--
+-- Pipeline workspaces (kanban_boards):
+-- - Each board is an independent pipeline with its own stages, fields, and optional calendar.
+-- - Dynamic field definitions → job_field_definitions; values → jobs.custom_fields JSON (no migrations).
+--
+-- Calendars:
+-- - calendars.board_id optionally ties a calendar to one pipeline workspace.
+-- - kanban_boards.calendar_id points at the board's primary calendar (bench / scheduling UX).
+--   No FK here (table order); keep in sync with calendars.board_id in application code.
+-- - appointments are calendar events: calendar_id is required; job_id / customer_id are optional links.
+--
 -- SQLite notes:
 -- - UUIDs are stored as TEXT using lower(hex(randomblob(16))) defaults.
 -- - Booleans are INTEGER values constrained to 0 or 1.
@@ -33,17 +44,6 @@ CREATE TABLE users (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE calendars (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-    name TEXT NOT NULL,
-    timezone TEXT,
-    color TEXT NOT NULL DEFAULT '#1976D2',
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE kanban_boards (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
     name TEXT NOT NULL,
@@ -55,7 +55,6 @@ CREATE TABLE kanban_boards (
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (calendar_id) REFERENCES calendars(id) ON DELETE SET NULL,
     FOREIGN KEY (on_schedule_stage_id) REFERENCES pipeline_stages(id) ON DELETE SET NULL
 );
 
@@ -85,6 +84,19 @@ CREATE TABLE pipeline_stages (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (board_id) REFERENCES kanban_boards(id) ON DELETE CASCADE,
     FOREIGN KEY (section_id) REFERENCES kanban_sections(id) ON DELETE CASCADE
+);
+
+CREATE TABLE calendars (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    board_id TEXT,
+    name TEXT NOT NULL,
+    timezone TEXT,
+    color TEXT NOT NULL DEFAULT '#1976D2',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (board_id) REFERENCES kanban_boards(id) ON DELETE CASCADE
 );
 
 -- Dynamic pipeline fields (EAV-lite pattern):
@@ -240,8 +252,12 @@ CREATE TABLE tasks (
     FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- Calendar events (appointments, meetings, reminders, etc.).
+-- Belong to a calendar first; job_id and customer_id are optional associations only.
 CREATE TABLE appointments (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    calendar_id TEXT NOT NULL,
+    event_type TEXT NOT NULL DEFAULT 'appointment' CHECK (event_type IN ('appointment','meeting','reminder','block','other')),
     title TEXT NOT NULL,
     starts_at TEXT NOT NULL,
     ends_at TEXT NOT NULL,
@@ -249,7 +265,6 @@ CREATE TABLE appointments (
     reason TEXT,
     notes TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','completed','cancelled','no_show')),
-    calendar_id TEXT,
     job_id TEXT,
     customer_id TEXT,
     walk_in_name TEXT,
@@ -264,7 +279,7 @@ CREATE TABLE appointments (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CHECK (ends_at > starts_at),
-    FOREIGN KEY (calendar_id) REFERENCES calendars(id) ON DELETE SET NULL,
+    FOREIGN KEY (calendar_id) REFERENCES calendars(id) ON DELETE CASCADE,
     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE SET NULL,
     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL
@@ -324,7 +339,9 @@ CREATE TABLE job_tags (
 
 -- Indexes
 CREATE INDEX users_role_idx ON users(role);
+CREATE INDEX calendars_board_idx ON calendars(board_id);
 CREATE INDEX calendars_sort_idx ON calendars(sort_order);
+CREATE INDEX kanban_boards_calendar_idx ON kanban_boards(calendar_id);
 CREATE INDEX kanban_boards_sort_idx ON kanban_boards(sort_order);
 CREATE INDEX kanban_boards_default_idx ON kanban_boards(is_default);
 CREATE INDEX kanban_sections_board_sort_idx ON kanban_sections(board_id, sort_order);
@@ -363,8 +380,9 @@ CREATE INDEX tasks_due_idx ON tasks(due_at);
 CREATE INDEX idx_tasks_job_id ON tasks(job_id);
 CREATE INDEX tasks_customer_idx ON tasks(customer_id);
 CREATE INDEX tasks_assigned_idx ON tasks(assigned_to_id, status);
+CREATE INDEX appointments_calendar_starts_idx ON appointments(calendar_id, starts_at);
 CREATE INDEX appointments_starts_idx ON appointments(starts_at);
-CREATE INDEX appointments_calendar_idx ON appointments(calendar_id);
+CREATE INDEX appointments_event_type_idx ON appointments(event_type);
 CREATE INDEX idx_appointments_job_id ON appointments(job_id);
 CREATE INDEX appointments_customer_idx ON appointments(customer_id);
 CREATE INDEX appointments_google_event_idx ON appointments(google_event_id);
@@ -386,6 +404,11 @@ CREATE INDEX job_tags_tag_idx ON job_tags(tag_id);
 --   ["Residential","Commercial","Remodel"]
 -- jobs.custom_fields value example (keyed by field_key):
 --   {"project_type":"Residential","deposit_received":true,"target_install":"2026-06-01"}
+--
+-- New pipeline + calendar (app logic on create):
+--   1. INSERT kanban_boards ...
+--   2. INSERT calendars (board_id = new board, name = 'Production calendar')
+--   3. UPDATE kanban_boards SET calendar_id = new calendar WHERE id = board
 
 -- updated_at triggers
 CREATE TRIGGER app_settings_updated_at
