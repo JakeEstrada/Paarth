@@ -8,9 +8,8 @@ const ALLOWED_PATHNAMES = new Set([
   '/documents',
   '/archive',
   '/dead-estimates',
-  '/completed-appointments',
-  '/completed-jobs',
   '/completed-tasks',
+  '/completed-jobs',
   '/developer',
   '/payroll',
   '/bills',
@@ -45,9 +44,8 @@ Main app routes (path → purpose):
 - /tasks — projects and tasks
 - /documents — document browser
 - /archive — job archive (also /dead-estimates)
-- /completed-appointments — completed appointments
+- /completed-tasks — completed tasks and appointments
 - /completed-jobs — finished closed-out jobs
-- /completed-tasks — completed tasks
 - /developer — internal developer tasks
 - /payroll — payroll tools
 - /bills — bills

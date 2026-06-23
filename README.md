@@ -43,6 +43,7 @@ Set `VITE_API_URL` in `frontend/.env` and MongoDB + JWT vars in `backend/.env`.
 | [docs/PAGES.md](docs/PAGES.md) | Every page: route, purpose, APIs, key logic |
 | [docs/BACKEND.md](docs/BACKEND.md) | REST routes and controllers |
 | [docs/COMPONENTS.md](docs/COMPONENTS.md) | Shared UI building blocks |
+| [docs/CLEANUP.md](docs/CLEANUP.md) | Dead code removed and redirect map |
 
 Each page file under `frontend/src/pages/` has a short header comment pointing to `docs/PAGES.md`.
 

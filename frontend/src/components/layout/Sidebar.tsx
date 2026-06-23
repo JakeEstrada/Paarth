@@ -24,7 +24,6 @@ import {
   Assignment as TasksIcon,
   Archive as ArchiveIcon,
   CheckCircle as CompletedJobsIcon,
-  EventNote as CompletedAppointmentsIcon,
   Code as DeveloperIcon,
   AccountBalance as PayrollIcon,
   Person as UsersIcon,

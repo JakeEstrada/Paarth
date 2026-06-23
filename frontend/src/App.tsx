@@ -20,10 +20,9 @@ import TermsAndConditions from './pages/TermsAndConditions';
 import SmsConsentPage from './pages/SmsConsentPage';
 import PipelinePage from './pages/PipelinePage';
 import JobArchivePage from './pages/JobArchivePage';
-import CompletedAppointmentsPage from './pages/CompletedAppointmentsPage';
 import CompletedJobsPage from './pages/CompletedJobsPage';
 import CompletedTasksPage from './pages/CompletedTasksPage';
-import CalendarPage from './pages/CalendarPageNew';
+import CalendarPage from './pages/CalendarPage';
 import TasksPage from './pages/TasksPage';
 import DeveloperTasksPage from './pages/DeveloperTasksPage';
 import CustomersPage from './pages/CustomersPage';
@@ -139,9 +138,9 @@ function App(): JSX.Element | null {
                   <Route path="/documents" element={<DocumentsPage />} />
                   <Route path="/messages" element={<MessagePage />} />
                   <Route path="/rfid" element={<RfidPage />} />
-                  <Route path="/dead-estimates" element={<JobArchivePage />} />
+                  <Route path="/dead-estimates" element={<Navigate to="/archive" replace />} />
                   <Route path="/archive" element={<JobArchivePage />} />
-                  <Route path="/completed-appointments" element={<CompletedAppointmentsPage />} />
+                  <Route path="/completed-appointments" element={<Navigate to="/completed-tasks" replace />} />
                   <Route path="/completed-jobs" element={<CompletedJobsPage />} />
                   <Route path="/completed-tasks" element={<CompletedTasksPage />} />
                   <Route path="/developer" element={<DeveloperTasksPage />} />

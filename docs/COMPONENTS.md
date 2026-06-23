@@ -34,7 +34,7 @@ Reusable UI outside `pages/`. Pages compose these; business rules often live in 
 
 ## Calendar (in page file)
 
-`CalendarPageNew.tsx` embeds `EventModal`, `BenchJobCard`, `ScheduledJobCard`, `CalendarDay` — large single file by design.
+| `CalendarPage.tsx` embeds `EventModal`, `BenchJobCard`, `ScheduledJobCard`, `CalendarDay` — large single file by design.
 
 ## Tasks & todos
 

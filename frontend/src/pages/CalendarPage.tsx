@@ -1,1221 +1,2728 @@
 /**
- * CalendarPage — LEGACY calendar UI (superseded by CalendarPageNew.tsx).
- * Not mounted in App.tsx. Kept for reference during migration.
- * Docs: ../../../docs/PAGES.md#calendarpagenewtsx
+ * CalendarPage — Install calendar: bench, scheduled jobs, appointments.
+ * Routes: /calendar, /calendar-view (TV mode)
+ * APIs: GET /jobs, GET/POST /appointments
+ * Docs: ../../../docs/PAGES.md#calendarpagetsx
  */
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
   Typography,
-  Card,
-  CardContent,
-  Chip,
-  CircularProgress,
-  IconButton,
-  Tooltip,
-  TextField,
-  InputAdornment,
   Button,
+  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  CircularProgress,
+  Card,
+  CardContent,
+  Menu,
+  ListItemIcon,
+  ListItemText,
   useTheme,
+  useMediaQuery,
+  Autocomplete,
+  Tooltip,
 } from '@mui/material';
 import {
-  DragIndicator as DragIndicatorIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
+  Add as AddIcon,
   Edit as EditIcon,
-  Search as SearchIcon,
-  CalendarToday as CalendarTodayIcon,
+  Delete as DeleteIcon,
+  Today as TodayIcon,
+  CheckCircle as CheckCircleIcon,
+  DragIndicator as DragIndicatorIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
+  Person as PersonIcon,
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon,
+  Settings as SettingsIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, startOfWeek, endOfWeek, isSameDay, differenceInDays } from 'date-fns';
-import axios from 'axios';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, startOfWeek, endOfWeek, isSameDay, addDays } from 'date-fns';
+import axios, { isAxiosError } from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { useTheme as useAppTheme } from '../context/ThemeContext';
+import JobDetailModal from '../components/jobs/JobDetailModal';
+import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { getConnectedSocketId } from '../services/socket';
+import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
+import EmployeeSmsRecipientField, {
+  parseSmsRecipientSelection,
+} from '../components/common/EmployeeSmsRecipientField';
+import { formatPhoneForDisplay, nanpDigitsOnly } from '../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-// Bench Job Card Component (draggable)
-function BenchJobCard({ job, onDragStart, canModify = true }) {
-  // Calculate duration: floor(job total / 2000), minimum 1 day
-  const jobTotal = job.valueEstimated || job.valueTotal || 0;
-  const defaultDuration = Math.max(1, Math.floor(jobTotal / 2000));
+const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const CALENDAR_HIDDEN_WEEKDAYS_KEY = 'calendarHiddenWeekdays';
+const CALENDAR_BENCH_POSITION_KEY = 'calendarBenchPosition';
+const DEFAULT_BENCH_JOB_COLOR = '#1976D2';
+const CALENDAR_INSTALLER_ORDER_KEY = 'calendarInstallerOrder';
 
-  const handleDragStart = (e) => {
-    if (!canModify) {
-      e.preventDefault();
-      toast.error('You do not have permission to modify calendar events');
+// Default installer order used for calendar lanes and suggestions
+const DEFAULT_INSTALLER_ORDER = [
+  'Nick',
+  'Ed',
+  'Eder',
+  'Daniel',
+  'Moris',
+  'Hayden'
+];
+
+function normalizeInstallerOrder(names) {
+  const seen = new Set();
+  return (Array.isArray(names) ? names : [])
+    .map((n) => String(n || '').trim())
+    .filter((n) => {
+      if (!n) return false;
+      const k = n.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+}
+
+function toISODate(year, month, day) {
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return `${year}-${mm}-${dd}`;
+}
+
+function nthWeekdayOfMonth(year, monthIndex, weekday, nth) {
+  const first = new Date(year, monthIndex, 1);
+  const offset = (weekday - first.getDay() + 7) % 7;
+  return new Date(year, monthIndex, 1 + offset + (nth - 1) * 7);
+}
+
+function lastWeekdayOfMonth(year, monthIndex, weekday) {
+  const last = new Date(year, monthIndex + 1, 0);
+  const offset = (last.getDay() - weekday + 7) % 7;
+  return new Date(year, monthIndex, last.getDate() - offset);
+}
+
+function buildMajorUSHolidayMap(year) {
+  const map = {};
+  map[toISODate(year, 1, 1)] = "New Year's Day";
+  map[format(nthWeekdayOfMonth(year, 0, 1, 3), 'yyyy-MM-dd')] = 'Martin Luther King Jr. Day';
+  map[format(nthWeekdayOfMonth(year, 1, 1, 3), 'yyyy-MM-dd')] = "Presidents' Day";
+  map[format(lastWeekdayOfMonth(year, 4, 1), 'yyyy-MM-dd')] = 'Memorial Day';
+  map[toISODate(year, 6, 19)] = 'Juneteenth';
+  map[toISODate(year, 7, 4)] = 'Independence Day';
+  map[format(nthWeekdayOfMonth(year, 8, 1, 1), 'yyyy-MM-dd')] = 'Labor Day';
+  map[format(nthWeekdayOfMonth(year, 10, 4, 4), 'yyyy-MM-dd')] = 'Thanksgiving';
+  map[toISODate(year, 12, 25)] = 'Christmas Day';
+  return map;
+}
+
+// Anonymous Gregorian computus for Easter Sunday
+function getEasterSunday(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31); // 3=March, 4=April
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+function getHolidayChipLabel(label, tvMode) {
+  if (!label) return '';
+  if (!tvMode) return label;
+  const shortMap = {
+    "New Year's Day": 'New Year',
+    'Martin Luther King Jr. Day': 'MLK Day',
+    "Presidents' Day": "Presidents'",
+    'Memorial Day': 'Memorial',
+    Juneteenth: 'Juneteenth',
+    'Independence Day': 'Independence',
+    'Labor Day': 'Labor',
+    Thanksgiving: 'Thanksgiving',
+    'Christmas Day': 'Christmas',
+    Easter: 'Easter',
+  };
+  return shortMap[label] || label.replace(/\s+Day$/i, '');
+}
+
+// Event creation/edit modal
+function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, installerOptions = [], selectedInstaller = '' }) {
+  const theme = useTheme();
+  const GROUP_ACCENTS = ['#1976D2', '#9C27B0', '#FF9800', '#4CAF50', '#3F51B5'];
+  const getGroupAccent = (idx) => GROUP_ACCENTS[idx % GROUP_ACCENTS.length];
+  const sortScheduleEntries = (entries = []) =>
+    [...entries].sort((a, b) => {
+      const aDate = a?.startDate ? new Date(`${a.startDate}T00:00:00`).getTime() : Number.POSITIVE_INFINITY;
+      const bDate = b?.startDate ? new Date(`${b.startDate}T00:00:00`).getTime() : Number.POSITIVE_INFINITY;
+      if (aDate !== bDate) return aDate - bDate;
+      return String(a?.installer || '').localeCompare(String(b?.installer || ''));
+    });
+
+  const [formData, setFormData] = useState({
+    title: '',
+    startTime: '09:00',
+    endTime: '17:00',
+    allDay: true,
+    excludeSaturdays: false,
+    excludeSundays: false,
+    description: '',
+    jobId: null,
+    color: '#1976D2', // Default blue
+    // Each entry is an independent "group":
+    // { installer, start date, end date }
+    entries: [{ installer: '', startDate: '', endDate: '' }],
+  });
+  const [availableJobs, setAvailableJobs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareSmsRecipient, setShareSmsRecipient] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [sendingShare, setSendingShare] = useState(false);
+  const resolvedJob =
+    (formData.jobId ? availableJobs.find((j) => String(j._id) === String(formData.jobId)) : null) ||
+    job ||
+    null;
+  const headerAddressLine =
+    resolvedJob?.jobAddress && (resolvedJob.jobAddress.street || resolvedJob.jobAddress.city || resolvedJob.jobAddress.state || resolvedJob.jobAddress.zip)
+      ? [resolvedJob.jobAddress.street, resolvedJob.jobAddress.city, resolvedJob.jobAddress.state, resolvedJob.jobAddress.zip]
+          .filter(Boolean)
+          .join(', ')
+      : resolvedJob?.customerId?.address && (resolvedJob.customerId.address.street || resolvedJob.customerId.address.city || resolvedJob.customerId.address.state || resolvedJob.customerId.address.zip)
+        ? [resolvedJob.customerId.address.street, resolvedJob.customerId.address.city, resolvedJob.customerId.address.state, resolvedJob.customerId.address.zip]
+            .filter(Boolean)
+            .join(', ')
+        : '';
+  const headerPhoneRaw =
+    resolvedJob?.jobContact?.phone?.trim()
+      ? resolvedJob.jobContact.phone.trim()
+      : resolvedJob?.customerId?.primaryPhone?.trim()
+        ? resolvedJob.customerId.primaryPhone.trim()
+        : '';
+  const headerPhoneLine = headerPhoneRaw ? formatPhoneForDisplay(headerPhoneRaw) : '';
+
+  const formatAddress = (address) => {
+    if (!address) return '';
+    return [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+  };
+
+  const buildCustomerShareMessage = () => {
+    const customer = resolvedJob?.customerId || {};
+    const address = resolvedJob?.jobAddress ? formatAddress(resolvedJob.jobAddress) : formatAddress(customer.address);
+    const phones = [];
+    const seenDigits = new Set();
+    const addPhone = (raw) => {
+      const v = String(raw || '').trim();
+      if (!v) return;
+      const d = nanpDigitsOnly(v);
+      const dedupeKey = d.length === 10 ? d : v.toLowerCase();
+      if (seenDigits.has(dedupeKey)) return;
+      seenDigits.add(dedupeKey);
+      phones.push(formatPhoneForDisplay(v));
+    };
+    if (resolvedJob?.jobContact?.phone) addPhone(resolvedJob.jobContact.phone);
+    if (customer?.primaryPhone) addPhone(customer.primaryPhone);
+    if (Array.isArray(customer?.contactPhones)) {
+      customer.contactPhones.forEach((p) => addPhone(p?.value));
+    }
+    const email = customer?.primaryEmail || '';
+    const lines = [
+      `Customer: ${customer?.name || 'Unknown'}`,
+      resolvedJob?.title ? `Job: ${resolvedJob.title}` : null,
+      phones.length ? `Phone: ${phones.join(', ')}` : null,
+      email ? `Email: ${email}` : null,
+      address ? `Address: ${address}` : null,
+    ].filter(Boolean);
+    return lines.join('\n');
+  };
+
+  const handleOpenShareDialog = () => {
+    setShareSmsRecipient('');
+    setShareMessage(buildCustomerShareMessage());
+    setShareDialogOpen(true);
+  };
+
+  const handleCloseShareDialog = () => {
+    setShareDialogOpen(false);
+    setShareSmsRecipient('');
+    setShareMessage('');
+    setSendingShare(false);
+  };
+
+  const handleSendShareSms = async () => {
+    if (!shareSmsRecipient) {
+      toast.error('Select an employee to send to');
       return;
     }
-    e.dataTransfer.setData('jobId', job._id);
-    e.dataTransfer.setData('duration', defaultDuration.toString());
-    e.dataTransfer.effectAllowed = 'move';
-    if (onDragStart) onDragStart(job);
+    if (!shareMessage.trim()) {
+      toast.error('Message cannot be empty');
+      return;
+    }
+    try {
+      setSendingShare(true);
+      await axios.post(`${API_URL}/twilio/send-sms`, {
+        ...parseSmsRecipientSelection(shareSmsRecipient),
+        message: shareMessage.trim(),
+        customerId: resolvedJob?.customerId?._id || resolvedJob?.customerId || undefined,
+      });
+      toast.success('Customer info sent by text');
+      handleCloseShareDialog();
+    } catch (error) {
+      console.error('Error sending customer info text:', error);
+      toast.error(error.response?.data?.error || 'Failed to send text');
+    } finally {
+      setSendingShare(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open) {
+      // Set default dates from selected date or job
+      const date = selectedDate || (job?.schedule?.startDate ? new Date(job.schedule.startDate) : new Date());
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const legacyEndDateStr = job?.schedule?.endDate
+        ? format(new Date(job.schedule.endDate), 'yyyy-MM-dd')
+        : dateStr;
+
+      const scheduleEntries = Array.isArray(job?.schedule?.entries) ? job.schedule.entries : [];
+      let computedEntries = [];
+
+      if (scheduleEntries.length > 0) {
+        computedEntries = scheduleEntries.map((entry) => ({
+          installer: entry?.installer || '',
+          startDate: entry?.startDate ? format(new Date(entry.startDate), 'yyyy-MM-dd') : '',
+          endDate: entry?.endDate ? format(new Date(entry.endDate), 'yyyy-MM-dd') : '',
+        }));
+      } else {
+        // Backward compatibility: build grouped entries from legacy fields.
+        const installersList = Array.isArray(job?.schedule?.installers) && job.schedule.installers.length > 0
+          ? job.schedule.installers.filter(Boolean)
+          : (job?.schedule?.installer ? [job.schedule.installer] : []);
+
+        const installers = installersList.length > 0
+          ? installersList
+          : selectedInstaller
+            ? [selectedInstaller]
+            : [''];
+
+        computedEntries = installers.map((inst) => ({
+          installer: inst,
+          startDate: dateStr,
+          endDate: legacyEndDateStr,
+        }));
+      }
+
+      if (selectedInstaller && computedEntries.length > 0 && !computedEntries[0].installer) {
+        computedEntries[0].installer = selectedInstaller;
+      }
+      
+      setFormData({
+        title: job?.schedule?.title || job?.title || '',
+        startTime: '09:00',
+        endTime: '17:00',
+        allDay: true,
+        excludeSaturdays: false,
+        excludeSundays: false,
+        description: job?.customerId?.name ? `Customer: ${job.customerId.name}` : '',
+        jobId: job?._id || null,
+        color: job?.color || '#1976D2',
+        entries: sortScheduleEntries(computedEntries),
+      });
+
+      // Fetch available jobs
+      fetchAvailableJobs();
+    }
+  }, [open, selectedDate, job, selectedInstaller]);
+
+  const fetchAvailableJobs = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/jobs`);
+      const jobs = response.data.jobs || response.data || [];
+      setAvailableJobs(jobs.filter((j) => !shouldExcludeJobFromCalendarSchedule(j)));
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+    }
+  };
+
+  // Fuzzy match: every character of `query` appears in order in `str` (case-insensitive)
+  const fuzzyMatch = (query, str) => {
+    if (!query || !str) return true;
+    const q = query.toLowerCase().trim();
+    const s = String(str).toLowerCase();
+    let i = 0;
+    for (let j = 0; j < s.length && i < q.length; j++) {
+      if (s[j] === q[i]) i++;
+    }
+    return i === q.length;
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.title.trim()) {
+      toast.error('Please enter a title');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // If jobId is selected, update the job's schedule
+      if (formData.jobId) {
+        const normalizedEntries = (formData.entries || [])
+          .map((entry) => {
+            const installer = String(entry?.installer || '').trim();
+            const startDate = entry?.startDate || '';
+            const endDate = entry?.endDate || entry?.startDate || '';
+            return { installer, startDate, endDate };
+          })
+          .filter((entry) => entry.installer && entry.startDate);
+
+        if (normalizedEntries.length === 0) {
+          toast.error('Please add at least one installer group (installer + start date)');
+          setLoading(false);
+          return;
+        }
+
+        const shouldExcludeSaturdays = !!formData.excludeSaturdays;
+        const shouldExcludeSundays = !!formData.excludeSundays;
+
+        // Expand each entry range into allowed days, then re-group into smaller consecutive ranges.
+        const expandedEntries = [];
+        for (const entry of normalizedEntries) {
+          const installer = entry.installer;
+          const start = new Date(entry.startDate + 'T00:00:00');
+          const end = new Date(entry.endDate + 'T00:00:00');
+
+          if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
+
+          // Ensure start <= end
+          const rangeStart = start.getTime() <= end.getTime() ? start : end;
+          const rangeEnd = start.getTime() <= end.getTime() ? end : start;
+
+          let groupStart = null; // Date
+          let prevAllowed = null; // Date
+
+          for (let d = rangeStart; d.getTime() <= rangeEnd.getTime(); d = addDays(d, 1)) {
+            const day = d.getDay(); // 0=Sun, 6=Sat
+            const isBlocked =
+              (shouldExcludeSaturdays && day === 6) ||
+              (shouldExcludeSundays && day === 0);
+
+            if (isBlocked) {
+              if (groupStart && prevAllowed) {
+                expandedEntries.push({
+                  installer,
+                  startDate: format(groupStart, 'yyyy-MM-dd'),
+                  endDate: format(prevAllowed, 'yyyy-MM-dd'),
+                });
+              }
+              groupStart = null;
+              prevAllowed = null;
+              continue;
+            }
+
+            if (!groupStart) {
+              groupStart = d;
+              prevAllowed = d;
+              continue;
+            }
+
+            const expectedNext = addDays(prevAllowed, 1);
+            if (expectedNext.getTime() === d.getTime()) {
+              prevAllowed = d;
+            } else {
+              expandedEntries.push({
+                installer,
+                startDate: format(groupStart, 'yyyy-MM-dd'),
+                endDate: format(prevAllowed, 'yyyy-MM-dd'),
+              });
+              groupStart = d;
+              prevAllowed = d;
+            }
+          }
+
+          if (groupStart && prevAllowed) {
+            expandedEntries.push({
+              installer,
+              startDate: format(groupStart, 'yyyy-MM-dd'),
+              endDate: format(prevAllowed, 'yyyy-MM-dd'),
+            });
+          }
+        }
+
+        if (expandedEntries.length === 0) {
+          toast.error('No valid days left after excluding weekends');
+          setLoading(false);
+          return;
+        }
+
+        const updatedEntries = expandedEntries.map((entry) => {
+          const startDateTime = formData.allDay
+            ? new Date(entry.startDate + 'T00:00:00')
+            : new Date(entry.startDate + 'T' + formData.startTime);
+          const endDateTime = formData.allDay
+            ? new Date(entry.endDate + 'T23:59:59')
+            : new Date(entry.endDate + 'T' + formData.endTime);
+
+          return {
+            installer: entry.installer,
+            startDate: startDateTime.toISOString(),
+            endDate: endDateTime.toISOString(),
+          };
+        });
+
+        const legacyInstallers = Array.from(new Set(updatedEntries.map((e) => e.installer).filter(Boolean)));
+        const earliest = updatedEntries.reduce((acc, e) =>
+          new Date(e.startDate).getTime() <= new Date(acc.startDate).getTime() ? e : acc
+        );
+        const latest = updatedEntries.reduce((acc, e) =>
+          new Date(e.endDate).getTime() >= new Date(acc.endDate).getTime() ? e : acc
+        );
+
+        await axios.patch(`${API_URL}/jobs/${formData.jobId}`, {
+          schedule: {
+            // Legacy single date range (Google sync + older clients)
+            startDate: earliest.startDate,
+            endDate: latest.endDate,
+            installer: earliest.installer,
+            installers: legacyInstallers,
+
+            // Preferred multi-schedule model
+            entries: updatedEntries,
+            recurrence: {
+              type: 'none',
+              interval: 1,
+              count: 1,
+            },
+            crewNotes: job?.schedule?.crewNotes,
+            title: formData.title,
+          },
+          // Keep the existing job stage; do not auto-advance it when scheduling
+          color: formData.color,
+        });
+
+        // Job (including display color) is already saved. Google sync is optional.
+        try {
+          await axios.post(`${API_URL}/calendar/jobs/${formData.jobId}/sync`);
+          toast.success('Job saved and synced to Google Calendar.');
+        } catch (calendarError: unknown) {
+          if (!isAxiosError(calendarError)) {
+            toast.success('Job saved. Google Calendar sync could not be reached.');
+          } else {
+            const status = calendarError.response?.status;
+            const data = calendarError.response?.data as
+              | { code?: string; error?: string; message?: string }
+              | undefined;
+            const apiCode = data?.code;
+            const msg = String(data?.error || data?.message || calendarError.message || '');
+            const notConfigured =
+              apiCode === 'GOOGLE_NOT_CONFIGURED' ||
+              (status === 503 &&
+                (msg.includes('not configured') || msg.includes('Please configure Google Calendar')));
+            if (notConfigured) {
+              toast.success(
+                'Job saved in Paarth (schedule and color). Google Calendar is not set up on the server, so nothing was sent to Google.',
+                { duration: 7000 },
+              );
+            } else if (status === 503 || msg.toLowerCase().includes('sync failed')) {
+              toast.success(
+                'Job saved in Paarth (schedule and color). Google Calendar sync failed — your changes are still stored here.',
+                { duration: 6000 },
+              );
+            } else {
+              toast.success(
+                'Job saved in Paarth. Google Calendar sync failed — your changes are still stored here.',
+                { duration: 6000 },
+              );
+            }
+          }
+        }
+      } // end if (formData.jobId)
+
+      onSave();
+      onClose();
+    } catch (error) {
+      console.error('Error saving event:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to save event';
+      console.error('Error details:', {
+        message: errorMessage,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  return (
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth="sm" 
+      fullWidth
+      sx={{
+        '& .MuiDialog-paper': {
+          m: { xs: 1, sm: 2 },
+          maxHeight: { xs: '95vh', sm: '90vh' },
+        }
+      }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+        <Box sx={{ minWidth: 120 }}>
+          <span>{job ? 'Edit Event' : 'Schedule Job'}</span>
+        </Box>
+        <Box sx={{ flex: 1, textAlign: 'center', px: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+          <Box sx={{ minWidth: 0 }}>
+          {headerAddressLine ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: 'block',
+                maxWidth: { xs: '48vw', sm: '55vw', md: '34vw' },
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                verticalAlign: 'middle',
+                mx: 'auto',
+              }}
+              title={headerAddressLine}
+            >
+              {headerAddressLine}
+            </Typography>
+          ) : null}
+          {headerPhoneLine ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: 'block',
+                maxWidth: { xs: '48vw', sm: '55vw', md: '34vw' },
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                mx: 'auto',
+                mt: 0.25,
+              }}
+              title={headerPhoneLine}
+            >
+              {headerPhoneLine}
+            </Typography>
+          ) : null}
+          </Box>
+          {(headerAddressLine || headerPhoneLine) && (
+            <Tooltip title="Text customer info">
+              <IconButton size="small" onClick={handleOpenShareDialog}>
+                <ShareIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+        {(job || formData.jobId) && onViewJob && (
+          <Button
+            size="small"
+            startIcon={<PersonIcon />}
+            onClick={() => {
+              const id = formData.jobId || job?._id;
+              if (id) {
+                onViewJob(id);
+                onClose();
+              }
+            }}
+          >
+            View job
+          </Button>
+        )}
+      </DialogTitle>
+      <DialogContent sx={{ px: { xs: 2, sm: 3 } }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          <TextField
+            label="Title"
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            fullWidth
+            required
+          />
+
+          <Autocomplete
+            options={availableJobs}
+            value={availableJobs.find(j => j._id === formData.jobId) || null}
+            onChange={(_, newValue) => {
+              const selectedJob = newValue;
+              setFormData({
+                ...formData,
+                jobId: selectedJob?._id || null,
+                title: selectedJob?.schedule?.title || selectedJob?.title || formData.title,
+                color: selectedJob?.color || formData.color,
+              });
+            }}
+            getOptionLabel={(j) => (j && j.title) ? `${j.title} - ${j.customerId?.name || 'Unknown'}` : ''}
+            filterOptions={(options, { inputValue }) => {
+              const q = inputValue.trim();
+              if (!q) return options;
+              return options.filter(j => fuzzyMatch(q, `${j.title} ${j.customerId?.name || ''}`));
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Job (Optional)" placeholder="Type to search jobs..." />
+            )}
+            isOptionEqualToValue={(option, value) => option?._id === value?._id}
+          />
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Schedule Groups
+              </Typography>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    entries: sortScheduleEntries([
+                      ...(Array.isArray(prev.entries) ? prev.entries : []),
+                      { installer: '', startDate: '', endDate: '' }, // empty group (as requested)
+                    ]),
+                  }));
+                }}
+                title="Add another installer/date group"
+                sx={{
+                  border: `1px solid ${theme.palette.divider}`,
+                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)',
+                }}
+              >
+                <AddIcon fontSize="small" />
+              </IconButton>
+            </Box>
+
+            {(formData.entries || []).map((entry, idx) => (
+              <Box
+                key={idx}
+                sx={{
+                  border: `1px solid ${theme.palette.divider}`,
+                  borderLeft: `6px solid ${getGroupAccent(idx)}`,
+                  borderRadius: 1.5,
+                  p: 1.25,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1,
+                  backgroundColor:
+                    theme.palette.mode === 'dark'
+                      ? 'rgba(255,255,255,0.03)'
+                      : 'rgba(25, 118, 210, 0.05)',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 700, color: theme.palette.text.primary }}
+                  >
+                    Group {idx + 1}
+                  </Typography>
+                  {(formData.entries || []).length > 1 && (
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setFormData((prev) => ({
+                          ...prev,
+                          entries: sortScheduleEntries(prev.entries.filter((_, i) => i !== idx)),
+                        }));
+                      }}
+                      title="Remove this group"
+                      sx={{
+                        border: `1px solid ${theme.palette.divider}`,
+                        backgroundColor:
+                          theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)',
+                      }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Box>
+
+                <Autocomplete
+                  freeSolo
+                  options={installerOptions}
+                  value={entry.installer || ''}
+                  onChange={(_, newValue) => {
+                    const next = typeof newValue === 'string' ? newValue : (newValue || '').toString();
+                    setFormData((prev) => ({
+                      ...prev,
+                      entries: sortScheduleEntries(
+                        prev.entries.map((e, i) => (i === idx ? { ...e, installer: next } : e))
+                      ),
+                    }));
+                  }}
+                  inputValue={entry.installer || ''}
+                  onInputChange={(_, newInputValue) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      entries: sortScheduleEntries(
+                        prev.entries.map((e, i) => (i === idx ? { ...e, installer: newInputValue || '' } : e))
+                      ),
+                    }));
+                  }}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Installer" fullWidth />
+                  )}
+                />
+
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <TextField
+                    label="Start Date"
+                    type="date"
+                    value={entry.startDate}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        entries: sortScheduleEntries(
+                          prev.entries.map((en, i) => (i === idx ? { ...en, startDate: next } : en))
+                        ),
+                      }));
+                    }}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ flex: 1, minWidth: 160 }}
+                  />
+
+                  <TextField
+                    label="End Date"
+                    type="date"
+                    value={entry.endDate}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        entries: sortScheduleEntries(
+                          prev.entries.map((en, i) => (i === idx ? { ...en, endDate: next } : en))
+                        ),
+                      }));
+                    }}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ flex: 1, minWidth: 160 }}
+                  />
+                </Box>
+              </Box>
+            ))}
+          </Box>
+
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                border: `1px solid ${theme.palette.divider}`,
+                backgroundColor: formData.excludeSaturdays
+                  ? theme.palette.mode === 'dark'
+                    ? 'rgba(76, 175, 80, 0.18)'
+                    : 'rgba(76, 175, 80, 0.10)'
+                  : 'transparent',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={formData.excludeSaturdays}
+                onChange={(e) => setFormData({ ...formData, excludeSaturdays: e.target.checked })}
+                id="excludeSaturdays"
+              />
+              <label htmlFor="excludeSaturdays">Exclude Saturdays</label>
+            </Box>
+
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                border: `1px solid ${theme.palette.divider}`,
+                backgroundColor: formData.excludeSundays
+                  ? theme.palette.mode === 'dark'
+                    ? 'rgba(255, 152, 0, 0.16)'
+                    : 'rgba(255, 152, 0, 0.10)'
+                  : 'transparent',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={formData.excludeSundays}
+                onChange={(e) => setFormData({ ...formData, excludeSundays: e.target.checked })}
+                id="excludeSundays"
+              />
+              <label htmlFor="excludeSundays">Exclude Sundays</label>
+            </Box>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <input
+              type="checkbox"
+              checked={formData.allDay}
+              onChange={(e) => setFormData({ ...formData, allDay: e.target.checked })}
+              id="allDay"
+            />
+            <label htmlFor="allDay">All day</label>
+          </Box>
+
+          {!formData.allDay && (
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                label="Start Time"
+                type="time"
+                value={formData.startTime}
+                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="End Time"
+                type="time"
+                value={formData.endTime}
+                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+              />
+            </Box>
+          )}
+
+          <TextField
+            label="Description"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            fullWidth
+            multiline
+            rows={3}
+          />
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="body2" sx={{ minWidth: 100 }}>
+              Color:
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
+              <Box
+                component="input"
+                type="color"
+                aria-label="Pick event color"
+                value={formData.color}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                sx={{
+                  width: 44,
+                  height: 44,
+                  p: 0,
+                  border: 'none',
+                  borderRadius: 1,
+                  background: 'none',
+                  cursor: 'pointer',
+                  overflow: 'hidden',
+                  '&::-webkit-color-swatch-wrapper': {
+                    p: 0,
+                  },
+                  '&::-webkit-color-swatch': {
+                    border: '1px solid rgba(0,0,0,0.25)',
+                    borderRadius: '6px',
+                  },
+                  '&::-moz-color-swatch': {
+                    border: '1px solid rgba(0,0,0,0.25)',
+                    borderRadius: '6px',
+                  },
+                }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Full palette picker
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+        {(job?.schedule?.entries?.length > 0 || job?.schedule?.startDate) && (
+          <Button 
+            onClick={async () => {
+              if (!window.confirm(`Are you sure you want to remove "${job.title}" from the calendar?`)) {
+                return;
+              }
+              try {
+                setLoading(true);
+                await axios.patch(`${API_URL}/jobs/${job._id}`, {
+                  schedule: {
+                    startDate: null,
+                    endDate: null,
+                    installer: '',
+                    installers: [],
+                    entries: [],
+                  },
+                  stage: 'READY_TO_SCHEDULE',
+                  color: DEFAULT_BENCH_JOB_COLOR,
+                });
+
+                // Remove from Google Calendar if synced
+                try {
+                  await axios.delete(`${API_URL}/calendar/jobs/${job._id}/sync`);
+                } catch (calendarError) {
+                  console.warn('Google Calendar removal failed:', calendarError);
+                }
+
+                toast.success('Job removed from calendar');
+                onSave();
+                onClose();
+              } catch (error) {
+                console.error('Error removing job from calendar:', error);
+                toast.error('Failed to remove job from calendar');
+              } finally {
+                setLoading(false);
+              }
+            }}
+            color="error"
+            disabled={loading}
+            startIcon={<DeleteIcon />}
+          >
+            Remove from Calendar
+          </Button>
+        )}
+        <Box sx={{ flex: 1 }} />
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained" disabled={loading}>
+          {loading ? <CircularProgress size={20} /> : 'Save'}
+        </Button>
+      </DialogActions>
+
+      <Dialog open={shareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Share Customer by Text</DialogTitle>
+        <DialogContent>
+          <EmployeeSmsRecipientField
+            dialogOpen={shareDialogOpen}
+            value={shareSmsRecipient}
+            onChange={setShareSmsRecipient}
+            disabled={sendingShare}
+            sx={{ mt: 1, mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={4}
+            label="Message"
+            value={shareMessage}
+            onChange={(e) => setShareMessage(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseShareDialog} disabled={sendingShare}>Cancel</Button>
+          <Button onClick={handleSendShareSms} variant="contained" disabled={sendingShare}>
+            {sendingShare ? 'Sending...' : 'Send Text'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Dialog>
+  );
+}
+
+// Calendar Day Component
+function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete, onViewJob, onDayContextMenu, installerOrder, holidayLabel = '', tvMode = false }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [contextMenu, setContextMenu] = useState(null);
+  const [contextMenuEvent, setContextMenuEvent] = useState(null);
+  // First, get all events that fall on this calendar day
+  const eventsForDate = events.filter(e => {
+    if (!e.schedule?.startDate) return false;
+    const startDate = new Date(e.schedule.startDate);
+    const endDate = e.schedule.endDate ? new Date(e.schedule.endDate) : startDate;
+    
+    // Check if date falls within the event range
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const startStr = format(startDate, 'yyyy-MM-dd');
+    const endStr = format(endDate, 'yyyy-MM-dd');
+    
+    return dateStr >= startStr && dateStr <= endStr;
+  })
+  // Keep rows visually aligned across days by installer “lane”
+  // We support up to 5 horizontal “sections” per day:
+  // 4 dedicated installer lanes + 1 “Other” lane.
+  const primaryInstallers = installerOrder.slice(0, 4);
+  const laneInstallers = [...primaryInstallers, '__OTHER__']; // 5th lane for everything else
+
+  // 1. For each lane, pick at most one event for that lane.
+  const laneEvents = laneInstallers.map((installerKey) => {
+    if (installerKey === '__OTHER__') {
+      // First event whose installer is NOT one of the primary installers
+      const match = eventsForDate.find((e) => {
+        const name = e.schedule?.installer || '';
+        return !primaryInstallers.includes(name);
+      });
+      return match || null;
+    }
+    const match = eventsForDate.find(
+      (e) => (e.schedule?.installer || '') === installerKey
+    );
+    return match || null;
+  });
+
+  // 2. Count any remaining “other” events for a small "+N more" indicator in the bottom lane.
+  const extraOtherEventsCount = eventsForDate.filter((e) => {
+    const name = e.schedule?.installer || '';
+    const isPrimary = primaryInstallers.includes(name);
+    const isInOtherLane =
+      !isPrimary &&
+      laneEvents[laneEvents.length - 1] &&
+      laneEvents[laneEvents.length - 1]._id === e._id;
+    return !isPrimary && !isInOtherLane;
+  }).length;
+
+  const handleContextMenu = (e, event) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu(
+      contextMenu === null
+        ? {
+            mouseX: e.clientX + 2,
+            mouseY: e.clientY - 6,
+          }
+        : null
+    );
+    setContextMenuEvent(event);
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenu(null);
+    setContextMenuEvent(null);
+  };
+
+  const handleDelete = () => {
+    if (contextMenuEvent && onEventDelete) {
+      onEventDelete(contextMenuEvent);
+    }
+    handleCloseContextMenu();
   };
 
   return (
+    <>
+      <Paper
+        sx={{
+          width: '100%',
+          height: '100%',
+          p: 0.5,
+          border: `1px solid ${theme.palette.divider}`,
+          backgroundColor: isCurrentMonth 
+            ? theme.palette.background.paper 
+            : (theme.palette.mode === 'dark' ? '#141414' : '#f7f7f7'),
+          // Adjacent-month padding days: keep grid alignment but make jobs nearly invisible
+          opacity: isCurrentMonth ? 1 : 0.14,
+          cursor: 'pointer',
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden',
+          transition: 'background-color 0.15s ease, opacity 0.15s ease',
+          '&:hover': {
+            backgroundColor: isCurrentMonth 
+              ? (theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5')
+              : (theme.palette.mode === 'dark' ? '#1E1E1E' : '#f0f0f0'),
+            opacity: isCurrentMonth ? 1 : 0.38,
+          },
+        }}
+        onClick={() => onDayClick(date)}
+        onContextMenu={(e) => {
+          if (onDayContextMenu) {
+            e.preventDefault();
+            e.stopPropagation();
+            onDayContextMenu(date, e);
+          }
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: isToday(date) ? 800 : 600,
+              color: isToday(date)
+                ? 'primary.main'
+                : isCurrentMonth
+                  ? 'text.primary'
+                  : theme.palette.mode === 'dark'
+                    ? 'rgba(255,255,255,0.22)'
+                    : 'rgba(0,0,0,0.22)',
+              flexShrink: 0,
+              lineHeight: 1.2,
+              fontSize: { xs: '0.8rem', sm: '0.9rem' },
+            }}
+          >
+            {format(date, 'd')}
+          </Typography>
+          {holidayLabel && (
+            <Typography
+              variant="caption"
+              title={holidayLabel}
+              sx={{
+                color: theme.palette.mode === 'dark' ? '#FFD166' : '#8A5A00',
+                backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 209, 102, 0.14)' : 'rgba(255, 209, 102, 0.22)',
+                border: theme.palette.mode === 'dark' ? '1px solid rgba(255, 209, 102, 0.35)' : '1px solid rgba(138, 90, 0, 0.25)',
+                borderRadius: '10px',
+                px: 0.5,
+                py: 0.15,
+                fontSize: tvMode ? '0.56rem' : '0.62rem',
+                fontWeight: 800,
+                letterSpacing: '0.01em',
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'clip',
+                maxWidth: tvMode ? '92px' : '140px',
+              }}
+            >
+              {getHolidayChipLabel(holidayLabel, tvMode)}
+            </Typography>
+          )}
+        </Box>
+        
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          flex: 1,
+          width: '100%',
+          overflow: 'hidden',
+          minHeight: 0,
+          gap: 0,
+          justifyContent: 'flex-start',
+        }}>
+          {laneEvents.map((event, index) => (
+            <Box
+              key={event?._id || `lane-${index}`}
+              sx={{
+                flex: '1 1 0',
+                width: '100%',
+                minHeight: 0,
+                minWidth: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                gap: 0.25,
+              }}
+            >
+              {event && (() => {
+                const historical = isHistoricalClosedJob(event.job);
+                return (
+                <Chip
+                  label={[event.schedule?.title || event.title, event.schedule?.installer].filter(Boolean).join(' | ')}
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEventClick(event);
+                  }}
+                  onContextMenu={(e) => handleContextMenu(e, event)}
+                  sx={{
+                    width: '100%',
+                    maxWidth: '100%',
+                    fontSize: { xs: '0.8rem', sm: '0.85rem' },
+                    height: 24,
+                    maxHeight: '100%',
+                    backgroundColor: event.color || '#1976D2',
+                    color: theme.palette.getContrastText(event.color || '#1976D2'),
+                    borderRadius: '4px',
+                    overflow: 'hidden',
+                    opacity: historical ? 0.72 : 1,
+                    '&.MuiChip-root': {
+                      py: 0,
+                      px: 0,
+                      display: 'flex',
+                      justifyContent: 'flex-start',
+                    },
+                    '& .MuiChip-label': {
+                      width: '100%',
+                      px: 0.75,
+                      py: 0,
+                      lineHeight: 1.25,
+                      fontWeight: 700,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      textAlign: 'left',
+                    },
+                    '&:hover': { opacity: historical ? 0.85 : 0.8 },
+                  }}
+                />
+                );
+              })()}
+              {index === laneEvents.length - 1 && extraOtherEventsCount > 0 && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontSize: '0.6rem', textAlign: 'right', px: 0.25, lineHeight: 1 }}
+                >
+                  +{extraOtherEventsCount} more
+                </Typography>
+              )}
+            </Box>
+          ))}
+        </Box>
+      </Paper>
+      
+      {/* Context Menu */}
+      {contextMenuEvent && (
+        <Menu
+          open={contextMenu !== null}
+          onClose={handleCloseContextMenu}
+          anchorReference="anchorPosition"
+          anchorPosition={
+            contextMenu !== null
+              ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+              : undefined
+          }
+        >
+          {onViewJob && contextMenuEvent?._id && (
+            <MenuItem
+              onClick={() => {
+                // For calendar chips, we pass a pseudo-event with `jobId`
+                onViewJob(contextMenuEvent.jobId || contextMenuEvent._id);
+                handleCloseContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <PersonIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>View job</ListItemText>
+            </MenuItem>
+          )}
+          <MenuItem onClick={handleDelete} disabled={isHistoricalClosedJob(contextMenuEvent?.job)}>
+            <ListItemIcon>
+              <DeleteIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>
+              {isHistoricalClosedJob(contextMenuEvent?.job)
+                ? 'Closed out (reference only)'
+                : 'Remove from Calendar'}
+            </ListItemText>
+          </MenuItem>
+        </Menu>
+      )}
+    </>
+  );
+}
+
+// Bench Job Card Component
+function BenchJobCard({ job, onJobClick, onViewJob, onRemoveFromBench }) {
+  const jobTotal = job.valueEstimated || job.valueTotal || 0;
+  const defaultDuration = Math.max(1, Math.floor(jobTotal / 2000));
+
+  return (
     <Card
-      draggable={canModify}
-      onDragStart={canModify ? handleDragStart : undefined}
       sx={{
-        cursor: canModify ? 'grab' : 'default',
-        '&:active': { cursor: canModify ? 'grabbing' : 'default' },
-        borderLeft: '4px solid #1976D2',
-        minWidth: 200,
-        maxWidth: 250,
+        cursor: 'pointer',
+        borderLeft: `4px solid ${DEFAULT_BENCH_JOB_COLOR}`,
+        minWidth: 150,
+        maxWidth: 180,
+        position: 'relative',
         '&:hover': {
-          boxShadow: 4,
-          transform: 'translateY(-2px)',
+          boxShadow: 2,
+          transform: 'translateY(-1px)',
           transition: 'all 0.2s',
         },
       }}
+      onClick={() => onJobClick(job)}
     >
-      <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <DragIndicatorIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+      <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 800,
+                fontSize: '0.85rem',
+                mb: 0.25,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={job.title}
+            >
               {job.title}
             </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {job.customerId?.name || 'Unknown'}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              {defaultDuration} days • ${(jobTotal / 1000).toFixed(0)}k
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                fontSize: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.75,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+              }}
+            >
+              <Box
+                component="span"
+                sx={{
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {job.customerId?.name || 'Unknown'}
+              </Box>
+              <Box component="span" sx={{ flexShrink: 0, opacity: 0.8 }}>
+                | {defaultDuration} days
+              </Box>
             </Typography>
           </Box>
+          {onViewJob && (
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewJob(job._id);
+              }}
+              title="View job (customer & details)"
+              sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
+            >
+              <PersonIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          )}
+          {onRemoveFromBench && (
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemoveFromBench(job);
+              }}
+              title="Remove from bench (move to dead estimates)"
+              sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+            >
+              <DeleteIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          )}
         </Box>
       </CardContent>
     </Card>
   );
 }
 
-// Multi-Day Job Bar Component - renders individual blocks per day (Google Calendar style)
-function MultiDayJobBar({ job, calendarDays, onResize, onMove, canModify = true }) {
-  const theme = useTheme();
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeStart, setResizeStart] = useState(null);
-  const [resizeDirection, setResizeDirection] = useState(null);
-  const [isHovered, setIsHovered] = useState(false);
-
-  if (!job.schedule?.startDate) {
-    console.warn('MultiDayJobBar: Job has no startDate', job.title, job._id);
-    return null;
-  }
-
-  // Parse dates and normalize to local timezone (avoid UTC shifts)
-  const startDateStr = job.schedule.startDate;
-  
-  // Extract date components directly from ISO string to avoid timezone issues
-  // Format: "2026-02-16T08:00:00.000Z" -> extract "2026-02-16"
-  let year, month, day;
-  if (startDateStr && typeof startDateStr === 'string') {
-    const dateMatch = startDateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (dateMatch) {
-      year = parseInt(dateMatch[1]);
-      month = parseInt(dateMatch[2]) - 1; // Month is 0-indexed
-      day = parseInt(dateMatch[3]);
-    } else {
-      // Fallback to Date parsing
-      const parsed = new Date(startDateStr);
-      year = parsed.getFullYear();
-      month = parsed.getMonth();
-      day = parsed.getDate();
-    }
-  } else {
-    const parsed = new Date(startDateStr);
-    year = parsed.getFullYear();
-    month = parsed.getMonth();
-    day = parsed.getDate();
-  }
-  
-  // Create date in local timezone
-  const startDate = new Date(year, month, day, 0, 0, 0, 0);
-
-  const endDateStr = job.schedule.endDate || job.schedule.startDate;
-  
-  // Extract date components for end date
-  let endYear, endMonth, endDay;
-  if (endDateStr && typeof endDateStr === 'string') {
-    const dateMatch = endDateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (dateMatch) {
-      endYear = parseInt(dateMatch[1]);
-      endMonth = parseInt(dateMatch[2]) - 1; // Month is 0-indexed
-      endDay = parseInt(dateMatch[3]);
-    } else {
-      // Fallback to Date parsing
-      const parsed = new Date(endDateStr);
-      endYear = parsed.getFullYear();
-      endMonth = parsed.getMonth();
-      endDay = parsed.getDate();
-    }
-  } else {
-    const parsed = new Date(endDateStr);
-    endYear = parsed.getFullYear();
-    endMonth = parsed.getMonth();
-    endDay = parsed.getDate();
-  }
-  
-  const endDate = new Date(endYear, endMonth, endDay, 23, 59, 59, 999);
-  
-  const duration = differenceInDays(endDate, startDate) + 1;
-
-  console.log('MultiDayJobBar rendering:', {
-    title: job.title,
-    startDateISO: startDateStr,
-    startDate: startDate.toISOString(),
-    startDateFormatted: format(startDate, 'yyyy-MM-dd'),
-    endDateISO: endDateStr,
-    endDate: endDate.toISOString(),
-    endDateFormatted: format(endDate, 'yyyy-MM-dd'),
-    duration,
-    calendarDaysCount: calendarDays.length,
-    calendarStart: calendarDays[0] ? format(calendarDays[0], 'yyyy-MM-dd') : 'N/A',
-    calendarEnd: calendarDays[calendarDays.length - 1] ? format(calendarDays[calendarDays.length - 1], 'yyyy-MM-dd') : 'N/A',
-  });
-
-  // Find which grid cells this job spans
-  // Use string comparison to avoid timezone issues completely
-  const startDateFormatted = format(startDate, 'yyyy-MM-dd');
-  const endDateFormatted = format(endDate, 'yyyy-MM-dd');
-  
-  // Find start index - if job starts before calendar, use first day
-  let startIndex = calendarDays.findIndex(day => {
-    const dayStr = format(day, 'yyyy-MM-dd');
-    return dayStr === startDateFormatted;
-  });
-  if (startIndex === -1) {
-    // Job starts before this month's calendar - use first day of calendar
-    startIndex = 0;
-  }
-
-  // Find end index - if job ends after calendar, use last day
-  let endIndex = calendarDays.findIndex(day => {
-    const dayStr = format(day, 'yyyy-MM-dd');
-    return dayStr === endDateFormatted;
-  });
-  if (endIndex === -1) {
-    // Job ends after this month's calendar - use last day of calendar
-    endIndex = calendarDays.length - 1;
-  }
-
-  // Ensure valid indices
-  if (startIndex === -1 || endIndex === -1 || startIndex > endIndex) {
-    console.warn('Job not found in calendar days:', {
-      jobTitle: job.title,
-      jobId: job._id,
-      startDate: startDate.toISOString(),
-      startDateFormatted: format(startDate, 'yyyy-MM-dd'),
-      endDate: endDate.toISOString(),
-      endDateFormatted: format(endDate, 'yyyy-MM-dd'),
-      startIndex,
-      endIndex,
-      calendarStart: calendarDays[0] ? format(calendarDays[0], 'yyyy-MM-dd') : 'N/A',
-      calendarEnd: calendarDays[calendarDays.length - 1] ? format(calendarDays[calendarDays.length - 1], 'yyyy-MM-dd') : 'N/A',
-    });
-    return null;
-  }
-
-  // Calculate position and width based on grid cells
-  // The calendar is a 7-column CSS Grid, so we need to calculate column positions
-  const startCol = startIndex % 7; // Column in the grid (0-6)
-  const endCol = endIndex % 7; // Column in the grid (0-6)
-  const startRow = Math.floor(startIndex / 7); // Row in the grid
-  const endRow = Math.floor(endIndex / 7); // Row in the grid
-  
-  const cellWidth = 100 / 7; // percentage width of each column
-  const barHeight = 24; // Height for each day block
-  const barSpacing = 2; // Spacing between multiple blocks on same day
-  
-  // Calculate consistent top position for all blocks
-  const headerRowHeight = 48; // Day headers
-  const cellPaddingTop = 8; // p: 1 = 8px top padding
-  const dateLineHeight = 24; // Date typography line height
-  const dateMarginBottom = 4; // mb: 0.5 = 4px margin bottom
-  const cellContentOffset = cellPaddingTop + dateLineHeight + dateMarginBottom;
-  const cellMinHeight = 100; // minHeight from CalendarDay
-  
-  const calculateTopForRow = (row) => {
-    return headerRowHeight + (row * cellMinHeight) + cellContentOffset;
-  };
-
-  // Render individual blocks for each day the job spans (Google Calendar style)
-  const dayBlocks = [];
-  for (let i = startIndex; i <= endIndex; i++) {
-    const row = Math.floor(i / 7);
-    const col = i % 7;
-    // Calculate left position: column * cell width
-    // Add small offset to account for cell padding/borders
-    const dayLeft = col * cellWidth;
-    const dayTop = calculateTopForRow(row);
-    
-    console.log(`Block ${i}: row=${row}, col=${col}, left=${dayLeft}%, top=${dayTop}px`);
-    
-    dayBlocks.push({
-      index: i,
-      row,
-      col,
-      left: dayLeft,
-      top: dayTop,
-      isFirst: i === startIndex,
-      isLast: i === endIndex,
-    });
-  }
-
-  const rowsSpanned = endRow - startRow + 1;
-  const colsSpanned = dayBlocks.length; // Total number of days
-
-  console.log('MultiDayJobBar positioning:', {
-    title: job.title,
-    startIndex,
-    endIndex,
-    startRow,
-    startCol,
-    endRow,
-    endCol,
-    rowsSpanned,
-    colsSpanned,
-    dayBlocks: dayBlocks.length,
-  });
-
-  const handleMouseDown = (e, direction) => {
-    if (!canModify) {
-      toast.error('You do not have permission to modify calendar events');
-      return;
-    }
-    e.stopPropagation();
-    e.preventDefault();
-    setIsResizing(true);
-    setResizeDirection(direction);
-    setResizeStart({ 
-      x: e.clientX, 
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      startIndex,
-      endIndex
-    });
-  };
-
-  const barRef = useRef(null);
-
-  useEffect(() => {
-    if (!isResizing || !resizeStart || !barRef.current) return;
-
-    const handleMouseMove = (e) => {
-      // Get the grid container
-      const gridContainer = barRef.current?.parentElement;
-      if (!gridContainer) return;
-
-      // Calculate which cell the mouse is over
-      const rect = gridContainer.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const cellWidth = rect.width / 7; // 7 columns
-      const cellIndex = Math.floor(x / cellWidth);
-      const clampedCellIndex = Math.max(0, Math.min(calendarDays.length - 1, cellIndex));
-      
-      if (resizeDirection === 'right') {
-        // Resizing end date - move to the cell the mouse is over
-        const newEndIndex = Math.max(resizeStart.startIndex, clampedCellIndex);
-        const newEndDate = new Date(calendarDays[newEndIndex]);
-        newEndDate.setHours(23, 59, 59, 999);
-        const newDuration = differenceInDays(newEndDate, startDate) + 1;
-        
-        if (newDuration >= 1 && newEndIndex !== resizeStart.endIndex && onResize) {
-          onResize(job._id, newDuration, newEndDate);
-        }
-      } else if (resizeDirection === 'left') {
-        // Resizing start date - move to the cell the mouse is over
-        const newStartIndex = Math.min(resizeStart.endIndex, clampedCellIndex);
-        const newStartDate = new Date(calendarDays[newStartIndex]);
-        newStartDate.setHours(0, 0, 0, 0);
-        const newDuration = differenceInDays(endDate, newStartDate) + 1;
-        
-        if (newDuration >= 1 && newStartIndex !== resizeStart.startIndex && onResize) {
-          onResize(job._id, newDuration, endDate, newStartDate);
-        }
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      setResizeStart(null);
-      setResizeDirection(null);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing, resizeStart, resizeDirection, startDate, endDate, calendarDays, job._id, onResize]);
-
-  // Render individual day blocks (Google Calendar style - one block per day)
-  return (
-    <>
-      {dayBlocks.map((block, blockIndex) => {
-        // Each block should be positioned in its own day cell
-        // Left: based on column (0-6), each column is 1/7 of the grid width
-        // Top: based on row (same vertical position within the row)
-        // The grid has no gap, so each cell is exactly 1/7 width
-        const safeLeft = block.left; // Already calculated as col * cellWidth
-        const safeWidth = cellWidth - 0.5; // Small margin to avoid overlap
-        const safeTop = block.top; // Already calculated for the row
-
-        return (
-          <Box
-            key={`${job._id}-day-${block.index}`}
-            ref={blockIndex === 0 ? barRef : null}
-            sx={{
-              position: 'absolute',
-              left: `${safeLeft}%`,
-              width: `${safeWidth}%`,
-              top: `${safeTop}px`,
-              height: `${barHeight}px`,
-              backgroundColor: isHovered ? (job.color || '#1565C0') : (job.color || '#1976D2'),
-              opacity: isHovered ? 0.9 : 1,
-              color: 'white',
-              borderRadius: '4px',
-              p: 0.5,
-              fontSize: '0.7rem',
-              userSelect: 'none',
-              zIndex: 10,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-start',
-              transition: 'background-color 0.2s',
-              boxSizing: 'border-box',
-              overflow: 'hidden',
-              '&:hover': {
-                backgroundColor: '#1565C0',
-              },
-              cursor: canModify ? 'move' : 'default',
-            }}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            draggable={blockIndex === 0 && canModify}
-            onDragStart={(e) => {
-              if (blockIndex === 0 && canModify) {
-                e.dataTransfer.setData('scheduledJobId', job._id);
-                e.dataTransfer.setData('currentStartDate', startDate.toISOString());
-              } else {
-                e.preventDefault();
-              }
-            }}
-          >
-            {/* Small dot indicator on left */}
-            <Box
-              sx={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                backgroundColor: theme.palette.background.paper,
-                mr: 0.5,
-                flexShrink: 0,
-              }}
-            />
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                fontWeight: 500, 
-                overflow: 'hidden', 
-                textOverflow: 'ellipsis', 
-                whiteSpace: 'nowrap', 
-                flex: 1,
-                fontSize: '0.7rem',
-              }}
-            >
-              {job.title}
-            </Typography>
-            
-            {/* Resize handles - only on first and last blocks */}
-            {block.isFirst && canModify && (
-              <Box
-                onMouseDown={(e) => handleMouseDown(e, 'left')}
-                sx={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: '6px',
-                  cursor: 'w-resize',
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  '&:hover': {
-                    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-                  },
-                }}
-              />
-            )}
-            
-            {block.isLast && canModify && (
-              <Box
-                onMouseDown={(e) => handleMouseDown(e, 'right')}
-                sx={{
-                  position: 'absolute',
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: '6px',
-                  cursor: 'e-resize',
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  '&:hover': {
-                    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-                  },
-                }}
-              />
-            )}
-          </Box>
-        );
-      })}
-    </>
-  );
-}
-
-// Calendar Day Component
-function CalendarDay({ date, scheduledJobs, onDrop, onJobMove, onJobResize, isCurrentMonth, isLastInRow, canModify = true }) {
-  const theme = useTheme();
-  const [isDragOver, setIsDragOver] = useState(false);
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    
-    if (!canModify) {
-      toast.error('You do not have permission to modify calendar events');
-      return;
-    }
-    
-    const jobId = e.dataTransfer.getData('jobId');
-    const scheduledJobId = e.dataTransfer.getData('scheduledJobId');
-    const duration = parseInt(e.dataTransfer.getData('duration') || '5');
-    const currentStartDate = e.dataTransfer.getData('currentStartDate');
-
-    if (scheduledJobId && currentStartDate) {
-      // Moving an existing scheduled job - preserve duration
-      const oldStartDate = new Date(currentStartDate);
-      const job = scheduledJobs.find(j => j._id === scheduledJobId);
-      const oldEndDate = job?.schedule?.endDate 
-        ? new Date(job.schedule.endDate)
-        : oldStartDate;
-      const oldDuration = differenceInDays(oldEndDate, oldStartDate) + 1;
-      
-      // Create date in local timezone to avoid timezone shifts
-      const dateYear = date.getFullYear();
-      const dateMonth = date.getMonth();
-      const dateDay = date.getDate();
-      
-      const newStartDate = new Date(dateYear, dateMonth, dateDay, 0, 0, 0, 0);
-      const newEndDate = new Date(dateYear, dateMonth, dateDay + oldDuration - 1, 23, 59, 59, 999);
-      
-      if (onJobMove) {
-        onJobMove(scheduledJobId, newStartDate, newEndDate);
-      }
-    } else if (jobId) {
-      // Dropping a bench job
-      // Create date in local timezone to avoid timezone shifts
-      const dateYear = date.getFullYear();
-      const dateMonth = date.getMonth();
-      const dateDay = date.getDate();
-      
-      const newStartDate = new Date(dateYear, dateMonth, dateDay, 0, 0, 0, 0);
-      const newEndDate = new Date(dateYear, dateMonth, dateDay + duration - 1, 23, 59, 59, 999);
-      
-      console.log('Calculating end date:', {
-        dropDate: format(date, 'MMM dd, yyyy'),
-        startDate: newStartDate.toISOString(),
-        endDate: newEndDate.toISOString(),
-        startDateFormatted: format(newStartDate, 'MMM dd, yyyy'),
-        endDateFormatted: format(newEndDate, 'MMM dd, yyyy'),
-        duration,
-        calculatedDays: differenceInDays(newEndDate, newStartDate) + 1
-      });
-      
-      if (onDrop) {
-        onDrop(jobId, newStartDate, newEndDate, duration);
-      }
-    }
-  };
-
-  const handleDragOver = (e) => {
-    if (!canModify) {
-      e.preventDefault();
-      return;
-    }
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragOver(false);
-  };
+// Scheduled Job Card Component (with green checkmark)
+function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob }) {
+  const jobTotal = job.valueEstimated || job.valueTotal || 0;
+  const defaultDuration = Math.max(1, Math.floor(jobTotal / 2000));
 
   return (
-    <Box
+    <Card
       sx={{
-        minHeight: 100,
-        p: 1,
-        borderRight: isLastInRow ? 'none' : `1px solid ${theme.palette.divider}`,
-        borderBottom: `1px solid ${theme.palette.divider}`,
-        backgroundColor: isDragOver 
-          ? (theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.2)' : '#E3F2FD')
-          : (isCurrentMonth ? theme.palette.background.paper : (theme.palette.mode === 'dark' ? '#141414' : '#f7f7f7')),
-        opacity: isCurrentMonth ? 1 : 0.14,
-        transition: 'background-color 0.2s, opacity 0.15s',
+        borderLeft: `4px solid ${job.color || '#4caf50'}`,
+        minWidth: 150,
+        maxWidth: 180,
         position: 'relative',
         '&:hover': {
-          backgroundColor: isCurrentMonth 
-            ? (theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5')
-            : (theme.palette.mode === 'dark' ? '#1E1E1E' : '#f0f0f0'),
-          opacity: isCurrentMonth ? 1 : 0.38,
+          boxShadow: 2,
+          transform: 'translateY(-1px)',
+          transition: 'all 0.2s',
         },
       }}
-      onDrop={canModify ? handleDrop : undefined}
-      onDragOver={canModify ? handleDragOver : undefined}
-      onDragLeave={canModify ? handleDragLeave : undefined}
     >
-      <Typography
-        variant="body2"
-        sx={{
-          fontWeight: isToday(date) ? 700 : 500,
-          color: isToday(date)
-            ? 'primary.main'
-            : isCurrentMonth
-              ? 'text.primary'
-              : theme.palette.mode === 'dark'
-                ? 'rgba(255,255,255,0.22)'
-                : 'rgba(0,0,0,0.22)',
-          mb: 0.5,
-          fontSize: isToday(date) ? '0.9rem' : '0.85rem',
-        }}
-      >
-        {format(date, 'd')}
-      </Typography>
-      {/* Jobs are now rendered at month level as multi-day bars */}
-    </Box>
+      <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <CheckCircleIcon sx={{ color: '#4caf50', fontSize: 18 }} />
+          <Box 
+            sx={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+            onClick={() => onJobClick(job)}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 800, fontSize: '0.85rem', mb: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {job.title}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+              {defaultDuration} days
+            </Typography>
+          </Box>
+          {onViewJob && (
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewJob(job._id);
+              }}
+              title="View job (customer & details)"
+              sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
+            >
+              <PersonIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          )}
+          {onJobDelete && (
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onJobDelete(job);
+              }}
+              sx={{
+                padding: 0.5,
+                '&:hover': {
+                  backgroundColor: 'error.light',
+                  color: 'error.main',
+                },
+              }}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          )}
+        </Box>
+      </CardContent>
+    </Card>
   );
 }
 
-function CalendarPage() {
+/**
+ * Bench + “Scheduled” sidebar + job pickers: hide closed/archived/dead jobs.
+ * Calendar grid uses `jobEligibleForCalendarGrid` instead so closed jobs stay visible for reference.
+ */
+/** Closed-out / completed jobs: hide from bench & scheduled sidebar, keep on calendar grid. */
+function isHistoricalClosedJob(job) {
+  return !!(
+    job?.isCompletedClosedOut ||
+    job?.stage === 'FINAL_PAYMENT_CLOSED'
+  );
+}
+
+function shouldExcludeJobFromCalendarSchedule(job) {
+  if (!job || job.isArchived || job.isDeadEstimate) return true;
+  if (isHistoricalClosedJob(job)) return true;
+  return false;
+}
+
+function hasCalendarSchedule(job) {
+  const entries = job?.schedule?.entries;
+  if (Array.isArray(entries) && entries.some((e) => e?.startDate)) return true;
+  return !!job?.schedule?.startDate;
+}
+
+/** Show on calendar month grid (includes closed-out jobs that still have install dates). */
+function jobEligibleForCalendarGrid(job) {
+  if (!job || job.isArchived || job.isDeadEstimate) return false;
+  return hasCalendarSchedule(job) || job.stage === 'SCHEDULED';
+}
+
+/** Partition jobs into install bench vs month-grid scheduled (see docs/PAGES.md). */
+function splitCalendarJobs(allJobs = []) {
+  const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
+  const bench = allJobs.filter(
+    (job) =>
+      readinessStages.includes(job.stage) &&
+      !job.isArchived &&
+      !job.isDeadEstimate &&
+      !hasCalendarSchedule(job)
+  );
+  const scheduled = allJobs.filter((job) => {
+    if (shouldExcludeJobFromCalendarSchedule(job)) return false;
+    return hasCalendarSchedule(job) || job.stage === 'SCHEDULED';
+  });
+  return { bench, scheduled };
+}
+
+function CalendarPage({ tvMode = false, externalViewControls = false }) {
   const theme = useTheme();
-  const { canModifyCalendar } = useAuth();
+  const navigate = useNavigate();
+  const { mode, toggleColorMode } = useAppTheme();
+  const { user, canModifyCalendar, canViewCalendar, tenantIdForBranding } = useAuth();
+  const { hideSensitive } = useShopViewSensitive(user?.role);
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [benchJobs, setBenchJobs] = useState([]);
   const [scheduledJobs, setScheduledJobs] = useState([]);
+  const [allJobs, setAllJobs] = useState([]);
+  const benchJobsRef = useRef([]);
+  const scheduledJobsRef = useRef([]);
+  const allJobsRef = useRef([]);
+  const [selectedInstaller, setSelectedInstaller] = useState('');
   const [loading, setLoading] = useState(true);
-  const [draggedJob, setDraggedJob] = useState(null);
-  const [benchHeight, setBenchHeight] = useState(250); // Default height in pixels
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showScheduledList, setShowScheduledList] = useState(false);
-  const [isBenchDragOver, setIsBenchDragOver] = useState(false);
+  const [eventModalOpen, setEventModalOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [jobIdForDetailModal, setJobIdForDetailModal] = useState(null);
+  const [benchHeight, setBenchHeight] = useState(250);
+  const [isResizing, setIsResizing] = useState(false);
+  const [isBenchMinimized, setIsBenchMinimized] = useState(false);
+  const [installerBaseOrder, setInstallerBaseOrder] = useState(() => {
+    try {
+      const stored = localStorage.getItem(CALENDAR_INSTALLER_ORDER_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const cleaned = normalizeInstallerOrder(parsed);
+        if (cleaned.length > 0) return cleaned;
+      }
+    } catch (_) {}
+    return DEFAULT_INSTALLER_ORDER;
+  });
+  const [installerOrder, setInstallerOrder] = useState(installerBaseOrder);
+  const [installerSettingsOpen, setInstallerSettingsOpen] = useState(false);
+  const [installerDraftOrder, setInstallerDraftOrder] = useState(installerBaseOrder);
+
+  const [benchPosition, setBenchPosition] = useState(() => {
+    if (tvMode) return 'right';
+    try {
+      const stored = localStorage.getItem(CALENDAR_BENCH_POSITION_KEY);
+      if (stored === 'top' || stored === 'right' || stored === 'bottom') return stored;
+    } catch (_) {}
+    return 'right';
+  });
+  const [benchWidth, setBenchWidth] = useState(tvMode ? 260 : 320);
+  const canModifyCalendarWithPin = () => canModifyCalendar();
+
+  useEffect(() => {
+    if (tvMode) return;
+    try {
+      localStorage.setItem(CALENDAR_BENCH_POSITION_KEY, benchPosition);
+    } catch (_) {}
+  }, [benchPosition, tvMode]);
+
+  const [hiddenWeekdays, setHiddenWeekdays] = useState(() => {
+    try {
+      const stored = localStorage.getItem(CALENDAR_HIDDEN_WEEKDAYS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed.filter((d) => d >= 0 && d <= 6) : [];
+      }
+    } catch (_) {}
+    return [];
+  });
+  const [dayContextMenu, setDayContextMenu] = useState(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CALENDAR_HIDDEN_WEEKDAYS_KEY, JSON.stringify(hiddenWeekdays));
+    } catch (_) {}
+  }, [hiddenWeekdays]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CALENDAR_INSTALLER_ORDER_KEY, JSON.stringify(installerBaseOrder));
+    } catch (_) {}
+  }, [installerBaseOrder]);
 
   useEffect(() => {
     fetchJobs();
-  }, []);
+  }, [currentDate]);
 
-  const fetchJobs = async () => {
+  useEffect(() => {
+    benchJobsRef.current = benchJobs;
+  }, [benchJobs]);
+
+  useEffect(() => {
+    scheduledJobsRef.current = scheduledJobs;
+  }, [scheduledJobs]);
+
+  useEffect(() => {
+    allJobsRef.current = allJobs;
+  }, [allJobs]);
+
+  const fetchJobs = useCallback(async ({ background = false } = {}) => {
     try {
-      setLoading(true);
+      if (!background) {
+        setLoading(true);
+      }
       const response = await axios.get(`${API_URL}/jobs`, {
-        params: { includeCompletedClosedOut: true },
+        params: { includeCompletedClosedOut: true, limit: 500 },
       });
-      const allJobs = response.data.jobs || response.data || [];
-      
-      console.log('Raw jobs response:', {
-        totalJobs: allJobs.length,
-        sampleJob: allJobs[0] ? {
-          id: allJobs[0]._id,
-          title: allJobs[0].title,
-          stage: allJobs[0].stage,
-          schedule: allJobs[0].schedule,
-          isArchived: allJobs[0].isArchived,
-          isDeadEstimate: allJobs[0].isDeadEstimate
-        } : null
-      });
-      
-      const jobHasCalendarSchedule = (job) => {
-        const entries = job?.schedule?.entries;
-        if (Array.isArray(entries) && entries.some((e) => e?.startDate)) return true;
-        return !!job?.schedule?.startDate;
-      };
+      const jobs = response.data.jobs || response.data || [];
+      setAllJobs(jobs);
+      const { bench, scheduled } = splitCalendarJobs(jobs);
 
-      // Filter bench jobs (readiness phase only — not already on the calendar)
-      const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
-      const bench = allJobs.filter(job => 
-        readinessStages.includes(job.stage) && 
-        !job.isArchived && 
-        !job.isDeadEstimate &&
-        !jobHasCalendarSchedule(job)
-      );
-      
-      // Filter scheduled jobs - entries, legacy startDate, or stage SCHEDULED
-      const scheduled = allJobs.filter(job => {
-        const hasSchedule = jobHasCalendarSchedule(job);
-        const isScheduledStage = job.stage === 'SCHEDULED';
-        const notArchived = !job.isArchived;
-        const notDeadEstimate = !job.isDeadEstimate;
-        
-        // Include if it has a schedule date OR is in SCHEDULED stage
-        const shouldInclude = (hasSchedule || isScheduledStage) && notArchived && notDeadEstimate;
-        
-        if (shouldInclude && !hasSchedule) {
-          console.warn('Job has SCHEDULED stage but no schedule.startDate:', {
-            id: job._id,
-            title: job.title,
-            stage: job.stage,
-            schedule: job.schedule
-          });
-        }
-        
-        return shouldInclude;
-      });
-      
-      console.log('Fetched jobs:', {
-        total: allJobs.length,
-        bench: bench.length,
-        scheduled: scheduled.length,
-        scheduledJobs: scheduled.map(j => ({
-          id: j._id,
-          title: j.title,
-          startDate: j.schedule?.startDate,
-          endDate: j.schedule?.endDate,
-          stage: j.stage,
-          customer: j.customerId?.name
-        }))
-      });
-      
       setBenchJobs(bench);
       setScheduledJobs(scheduled);
+
+      // Update installer order based on any installers used in jobs
+      const installerSet = new Set(installerBaseOrder);
+      jobs.forEach((job) => {
+        const entries = Array.isArray(job?.schedule?.entries) ? job.schedule.entries : [];
+        const installers = entries.length > 0
+          ? entries.map((e) => e?.installer).filter(Boolean)
+          : (Array.isArray(job?.schedule?.installers) && job.schedule.installers.length > 0
+            ? job.schedule.installers
+            : (job?.schedule?.installer ? [job.schedule.installer] : []));
+        installers.forEach((name) => {
+          if (name && typeof name === 'string') installerSet.add(name);
+        });
+      });
+      setInstallerOrder(Array.from(installerSet));
     } catch (error) {
       console.error('Error fetching jobs:', error);
-      console.error('Error response:', error.response?.data);
       toast.error('Failed to load jobs');
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
+  }, [installerBaseOrder]);
+
+  const openInstallerSettings = () => {
+    setInstallerDraftOrder(installerBaseOrder);
+    setInstallerSettingsOpen(true);
   };
 
-  const handleDropJob = async (jobId, startDate, endDate, duration) => {
-    if (!canModifyCalendar()) {
-      toast.error('You do not have permission to modify calendar events');
+  const updateInstallerDraftAt = (index, value) => {
+    setInstallerDraftOrder((prev) => prev.map((name, i) => (i === index ? value : name)));
+  };
+
+  const moveInstallerDraft = (index, direction) => {
+    setInstallerDraftOrder((prev) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[nextIndex];
+      copy[nextIndex] = temp;
+      return copy;
+    });
+  };
+
+  const removeInstallerDraft = (index) => {
+    setInstallerDraftOrder((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addInstallerDraft = () => {
+    setInstallerDraftOrder((prev) => [...prev, '']);
+  };
+
+  const saveInstallerSettings = async () => {
+    const cleaned = normalizeInstallerOrder(installerDraftOrder);
+    if (cleaned.length === 0) {
+      toast.error('Add at least one installer name');
       return;
     }
-    try {
-      // Normalize dates to start of day to avoid timezone issues
-      const normalizedStartDate = new Date(startDate);
-      normalizedStartDate.setHours(0, 0, 0, 0);
-      const normalizedEndDate = new Date(endDate);
-      normalizedEndDate.setHours(23, 59, 59, 999);
+    setInstallerBaseOrder(cleaned);
+    setInstallerSettingsOpen(false);
+    toast.success('Installer defaults updated');
+    await fetchJobs();
+  };
 
-      console.log('Scheduling job:', {
-        jobId,
-        startDate: normalizedStartDate.toISOString(),
-        endDate: normalizedEndDate.toISOString(),
-        startDateFormatted: format(normalizedStartDate, 'MMM dd, yyyy'),
-        endDateFormatted: format(normalizedEndDate, 'MMM dd, yyyy'),
-        duration,
-        calculatedDays: differenceInDays(normalizedEndDate, normalizedStartDate) + 1
-      });
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const handleRealtimeProjectUpdate = useCallback((payload) => {
+    const sourceSocketId = payload?.sourceSocketId || null;
+    const ownSocketId = getConnectedSocketId();
+    if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
+    const incoming = payload?.patch || payload?.project;
+    const entityId = String(payload?.entityId || incoming?._id || '').trim();
+    if (!incoming || !entityId) return;
+    console.time('socket job patch');
+    const applyPatch = (list) => {
+      const idx = list.findIndex((j) => String(j?._id) === entityId);
+      if (incoming.deleted) {
+        if (idx === -1) return list;
+        const next = [...list];
+        next.splice(idx, 1);
+        return next;
+      }
+      if (idx === -1) return [incoming, ...list];
+      const next = [...list];
+      next[idx] = { ...next[idx], ...incoming };
+      return next;
+    };
+    const merged = applyPatch(allJobsRef.current);
+    const deduped = Array.from(new Map(merged.map((j) => [String(j?._id), j])).values()).filter(Boolean);
+    setAllJobs(deduped);
+    const { bench, scheduled } = splitCalendarJobs(deduped);
+    setBenchJobs(bench);
+    setScheduledJobs(scheduled);
+    console.timeEnd('socket job patch');
+  }, []);
+  const handleRealtimeTaskUpdate = useCallback(() => {}, []);
+  useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeProjectUpdate);
+  useSocketSubscription(tenantRoom, 'project.created', handleRealtimeProjectUpdate);
+  useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeTaskUpdate);
+  useSocketSubscription(tenantRoom, 'task.created', handleRealtimeTaskUpdate);
 
-      const response = await axios.patch(`${API_URL}/jobs/${jobId}`, {
-        schedule: {
-          startDate: normalizedStartDate.toISOString(),
-          endDate: normalizedEndDate.toISOString()
-        },
-        stage: 'SCHEDULED',
-      });
+  // Generate calendar days for a specific month
+  const getCalendarDaysForMonth = (date) => {
+    const monthStart = startOfMonth(date);
+    const monthEnd = endOfMonth(date);
+    const calendarStart = startOfWeek(monthStart);
+    const calendarEnd = endOfWeek(monthEnd);
+    return eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+  };
 
-      console.log('Job update response:', {
-        jobId,
-        response: response.data,
-        updatedJob: response.data.job || response.data
-      });
+  // Get months: TV mode shows current + next month.
+  // Standard mode stays the same (one on mobile, three on desktop).
+  const months = useMemo(() => {
+    if (tvMode) {
+      return [currentDate, addMonths(currentDate, 1)];
+    }
+    if (isMobile) {
+      return [currentDate];
+    }
+    return [
+      currentDate,
+      addMonths(currentDate, 1),
+      addMonths(currentDate, 2),
+    ];
+  }, [currentDate, isMobile, tvMode]);
 
-      // Sync to Google Calendar
-      try {
-        await axios.post(`${API_URL}/calendar/jobs/${jobId}/sync`);
-      } catch (calendarError) {
-        // Don't fail if Google Calendar sync fails
-        console.warn('Google Calendar sync failed:', calendarError);
+  const holidayMap = useMemo(() => {
+    const years = new Set();
+    months.forEach((monthDate) => {
+      years.add(monthDate.getFullYear());
+      years.add(addMonths(monthDate, -1).getFullYear());
+      years.add(addMonths(monthDate, 1).getFullYear());
+    });
+    const combined = {};
+    years.forEach((year) => {
+      Object.assign(combined, buildMajorUSHolidayMap(year));
+      combined[format(getEasterSunday(year), 'yyyy-MM-dd')] = 'Easter';
+    });
+    return combined;
+  }, [months]);
+
+  // Render one calendar chip per schedule entry (installer + start/end date range).
+  // Legacy support: if `schedule.entries` is missing, we fall back to the old single-range + `schedule.installers` model.
+  const calendarEvents = useMemo(() => {
+    const gridJobs = (allJobs || []).filter(jobEligibleForCalendarGrid);
+    return gridJobs.flatMap((job) => {
+      const schedule = job?.schedule || {};
+      const entries = Array.isArray(schedule?.entries) ? schedule.entries : [];
+
+      if (entries.length > 0) {
+        return entries
+          .filter((entry) => entry?.startDate && entry?.installer)
+          .map((entry, entryIndex) => ({
+            _id: `${job._id}_entry_${entryIndex}`,
+            eventType: 'entries',
+            entryIndex,
+            jobId: job._id,
+            job,
+            title: job?.title,
+            color: job?.color,
+            schedule: {
+              startDate: entry.startDate,
+              endDate: entry.endDate || entry.startDate,
+              installer: entry.installer,
+            },
+          }));
       }
 
-      toast.success('Job scheduled successfully');
-      
-      // Immediately refresh to get latest data
-      await fetchJobs();
-    } catch (error) {
-      console.error('Error scheduling job:', error);
-      console.error('Error details:', error.response?.data);
-      toast.error('Failed to schedule job');
+      // Legacy fallback
+      const installers = Array.isArray(schedule?.installers) && schedule.installers.length > 0
+        ? schedule.installers
+        : (schedule?.installer ? [schedule.installer] : []);
+
+      if (!schedule?.startDate || installers.length === 0) return [];
+
+      return installers
+        .filter(Boolean)
+        .map((installer, installerIndex) => ({
+          _id: `${job._id}_legacy_${installer}_${installerIndex}`,
+          eventType: 'legacy_installer',
+          jobId: job._id,
+          job,
+          title: job?.title,
+          color: job?.color,
+          schedule: {
+            startDate: schedule.startDate,
+            endDate: schedule.endDate || schedule.startDate,
+            installer,
+          },
+        }));
+    });
+  }, [allJobs]);
+
+  const handleDayClick = (date) => {
+    if (!canModifyCalendarWithPin()) {
+      toast.error('You do not have permission to create or modify calendar events');
+      return;
     }
+    setSelectedDate(date);
+    setSelectedJob(null);
+    setSelectedInstaller('');
+    setEventModalOpen(true);
   };
 
-  const handleJobMove = async (jobId, newStartDate, newEndDate) => {
-    if (!canModifyCalendar()) {
+  const handleEventClick = (eventOrJob) => {
+    const job = eventOrJob?.job || eventOrJob;
+    if (isHistoricalClosedJob(job)) {
+      setJobIdForDetailModal(job._id);
+      return;
+    }
+    if (!canModifyCalendarWithPin()) {
       toast.error('You do not have permission to modify calendar events');
       return;
     }
-    try {
-      // Normalize dates
-      const normalizedStartDate = new Date(newStartDate);
-      normalizedStartDate.setHours(0, 0, 0, 0);
-      const normalizedEndDate = new Date(newEndDate);
-      normalizedEndDate.setHours(23, 59, 59, 999);
-
-      await axios.patch(`${API_URL}/jobs/${jobId}`, {
-        schedule: {
-          startDate: normalizedStartDate.toISOString(),
-          endDate: normalizedEndDate.toISOString()
-        },
-      });
-
-      // Sync to Google Calendar
-      try {
-        await axios.post(`${API_URL}/calendar/jobs/${jobId}/sync`);
-      } catch (calendarError) {
-        console.warn('Google Calendar sync failed:', calendarError);
-      }
-
-      toast.success('Job moved successfully');
-      await fetchJobs();
-    } catch (error) {
-      console.error('Error moving job:', error);
-      console.error('Error details:', error.response?.data);
-      console.error('Error status:', error.response?.status);
-      toast.error(error.response?.data?.error || 'Failed to move job');
-    }
+    setSelectedJob(job);
+    setSelectedInstaller(
+      eventOrJob?.schedule?.installer ||
+        job?.schedule?.installer ||
+        (Array.isArray(job?.schedule?.installers) ? job.schedule.installers?.[0] : '') ||
+        ''
+    );
+    const start = eventOrJob?.schedule?.startDate || job?.schedule?.startDate;
+    setSelectedDate(start ? new Date(start) : new Date());
+    setEventModalOpen(true);
   };
 
-  const handleJobResize = async (jobId, newDuration, newEndDate, newStartDate = null) => {
-    if (!canModifyCalendar()) {
+  const handleEventDelete = async (eventOrJob) => {
+    const job = eventOrJob?.job || eventOrJob;
+    if (isHistoricalClosedJob(job)) {
+      toast('This job is closed out — schedule is kept for reference only.');
+      return;
+    }
+    const isCalendarChipEvent = !!eventOrJob?.job && !!eventOrJob?.jobId;
+    const eventType = eventOrJob?.eventType;
+    const entryIndex = typeof eventOrJob?.entryIndex === 'number' ? eventOrJob.entryIndex : null;
+    const installerToRemove = eventOrJob?.schedule?.installer || '';
+
+    if (!canModifyCalendarWithPin()) {
       toast.error('You do not have permission to modify calendar events');
       return;
     }
-    try {
-      const job = scheduledJobs.find(j => j._id === jobId);
-      if (!job) return;
 
-      // Normalize dates
-      const normalizedEndDate = new Date(newEndDate);
-      normalizedEndDate.setHours(23, 59, 59, 999);
-      
-      const scheduleUpdate = {
-        ...job.schedule,
-        endDate: normalizedEndDate.toISOString()
+    const removalLabel =
+      isCalendarChipEvent && installerToRemove
+        ? `${job.title} (${installerToRemove})`
+        : job.title;
+
+    if (!window.confirm(`Are you sure you want to remove "${removalLabel}" from the calendar?`)) {
+      return;
+    }
+
+    try {
+      const clearSchedule = async () => {
+        await axios.patch(`${API_URL}/jobs/${job._id}`, {
+          schedule: {
+            startDate: null,
+            endDate: null,
+            installer: '',
+            installers: [],
+            entries: [],
+          },
+          stage: 'READY_TO_SCHEDULE',
+          color: DEFAULT_BENCH_JOB_COLOR,
+        });
+
+        // Remove from Google Calendar if synced
+        try {
+          await axios.delete(`${API_URL}/calendar/jobs/${job._id}/sync`);
+        } catch (calendarError) {
+          console.warn('Google Calendar removal failed:', calendarError);
+        }
+
+        toast.success('Job removed from calendar');
       };
 
-      // If newStartDate is provided (left-edge resize), update it
-      if (newStartDate) {
-        const normalizedStartDate = new Date(newStartDate);
-        normalizedStartDate.setHours(0, 0, 0, 0);
-        scheduleUpdate.startDate = normalizedStartDate.toISOString();
+      // If user clicked the delete button on the Scheduled Job cards,
+      // they pass the whole `job`, not a chip/event.
+      if (!isCalendarChipEvent) {
+        await clearSchedule();
+        await fetchJobs();
+        return;
       }
 
-      await axios.patch(`${API_URL}/jobs/${jobId}`, {
-        schedule: scheduleUpdate,
-      });
+      if (eventType === 'entries' && entryIndex !== null) {
+        const existingEntries = Array.isArray(job?.schedule?.entries) ? job.schedule.entries : [];
+        const remainingEntries = existingEntries.filter((_, i) => i !== entryIndex);
 
-      // Sync to Google Calendar (debounced - only on final release)
-      setTimeout(async () => {
-        try {
-          await axios.post(`${API_URL}/calendar/jobs/${jobId}/sync`);
-        } catch (calendarError) {
-          console.warn('Google Calendar sync failed:', calendarError);
+        if (remainingEntries.length === 0) {
+          await clearSchedule();
+        } else {
+          const remainingInstallers = remainingEntries.map((e) => e?.installer).filter(Boolean);
+          const earliest = remainingEntries.reduce((acc, e) =>
+            new Date(e?.startDate).getTime() <= new Date(acc?.startDate).getTime() ? e : acc
+          , remainingEntries[0] || {});
+          const latest = remainingEntries.reduce((acc, e) =>
+            new Date(e?.endDate).getTime() >= new Date(acc?.endDate).getTime() ? e : acc
+          , remainingEntries[0] || {});
+
+          await axios.patch(`${API_URL}/jobs/${job._id}`, {
+            schedule: {
+              entries: remainingEntries,
+              startDate: earliest?.startDate || null,
+              endDate: latest?.endDate || earliest?.startDate || null,
+              installer: earliest?.installer || '',
+              installers: remainingInstallers,
+              recurrence: job?.schedule?.recurrence,
+              crewNotes: job?.schedule?.crewNotes,
+              title: job?.schedule?.title,
+            },
+          });
+
+          toast.success('Schedule entry removed from calendar');
         }
-      }, 500);
 
-      // Don't show toast on every resize, only on final release
-      await fetchJobs();
-    } catch (error) {
-      console.error('Error resizing job:', error);
-      toast.error('Failed to resize job');
-    }
-  };
-
-  const handleMoveToBench = async (jobId) => {
-    try {
-      await axios.patch(`${API_URL}/jobs/${jobId}`, {
-        schedule: {
-          startDate: null,
-          endDate: null
-        },
-        stage: 'READY_TO_SCHEDULE',
-        color: '#1976D2',
-      });
-
-      // Remove from Google Calendar if synced
-      try {
-        await axios.delete(`${API_URL}/calendar/jobs/${jobId}/sync`);
-      } catch (calendarError) {
-        // Don't fail if Google Calendar sync fails
-        console.warn('Google Calendar removal failed:', calendarError);
+        await fetchJobs();
+        return;
       }
 
-      toast.success('Job moved back to bench');
+      // Legacy chip removal (old "multiple installers, same date range")
+      const existingInstallers = Array.isArray(job?.schedule?.installers) && job.schedule.installers.length > 0
+        ? job.schedule.installers
+        : (job?.schedule?.installer ? [job.schedule.installer] : []);
+
+      const remainingInstallers = existingInstallers.filter((i) => i !== installerToRemove);
+
+      if (remainingInstallers.length === 0) {
+        await clearSchedule();
+      } else {
+        await axios.patch(`${API_URL}/jobs/${job._id}`, {
+          schedule: {
+            startDate: job?.schedule?.startDate,
+            endDate: job?.schedule?.endDate,
+            installer: remainingInstallers[0],
+            installers: remainingInstallers,
+            recurrence: job?.schedule?.recurrence,
+            crewNotes: job?.schedule?.crewNotes,
+            title: job?.schedule?.title,
+          },
+        });
+
+        toast.success('Installer removed from calendar');
+      }
+
       await fetchJobs();
     } catch (error) {
-      console.error('Error moving job to bench:', error);
-      console.error('Error details:', error.response?.data);
-      toast.error('Failed to move job to bench');
+      console.error('Error removing job from calendar:', error);
+      toast.error('Failed to remove job from calendar');
     }
   };
 
-  const handleBenchDrop = (e) => {
+  const handleRemoveFromBench = async (job) => {
+    if (!window.confirm(`Remove "${job.title}" from the bench? It will be moved to dead estimates.`)) {
+      return;
+    }
+    try {
+      await axios.post(`${API_URL}/jobs/${job._id}/move-to-dead-estimates`);
+      toast.success('Job removed from bench');
+      await fetchJobs();
+    } catch (error) {
+      console.error('Error removing job from bench:', error);
+      toast.error('Failed to remove job from bench');
+    }
+  };
+
+  const handlePrevMonth = () => {
+    setCurrentDate(addMonths(currentDate, -1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(addMonths(currentDate, 1));
+  };
+
+  const handleToday = () => {
+    setCurrentDate(new Date());
+  };
+
+  const effectiveHiddenWeekdays = tvMode ? [] : hiddenWeekdays;
+  const visibleWeekdays = useMemo(
+    () => [0, 1, 2, 3, 4, 5, 6].filter((d) => !effectiveHiddenWeekdays.includes(d)),
+    [effectiveHiddenWeekdays]
+  );
+
+  const handleDayContextMenu = (date, e) => {
     e.preventDefault();
-    setIsBenchDragOver(false);
-    
-    const scheduledJobId = e.dataTransfer.getData('scheduledJobId');
-    
-    if (scheduledJobId) {
-      handleMoveToBench(scheduledJobId);
-    }
+    setDayContextMenu({
+      left: e.clientX,
+      top: e.clientY,
+      date,
+    });
   };
 
-  const handleBenchDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setIsBenchDragOver(true);
+  const handleCloseDayContextMenu = () => setDayContextMenu(null);
+
+  const toggleWeekdayHidden = (weekday) => {
+    setHiddenWeekdays((prev) =>
+      prev.includes(weekday) ? prev.filter((d) => d !== weekday) : [...prev, weekday].sort((a, b) => a - b)
+    );
+    setDayContextMenu(null);
   };
 
-  const handleBenchDragLeave = () => {
-    setIsBenchDragOver(false);
-  };
+  // Render a single month calendar
+  const renderMonth = (monthDate, monthIndex) => {
+    const calendarDays = getCalendarDaysForMonth(monthDate);
+    const visibleDays = calendarDays.filter((d) => !effectiveHiddenWeekdays.includes(d.getDay()));
+    const columnCount = visibleWeekdays.length;
 
-  const months = useMemo(() => {
-    const monthsArray = [];
-    for (let i = 0; i < 3; i++) {
-      monthsArray.push(addMonths(new Date(), i));
-    }
-    return monthsArray;
-  }, []);
-
-  if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
+      <Box key={monthIndex} sx={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {/* Month Header - hide on mobile since it's in the main header */}
+        {!isMobile && (
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 600,
+              mb: tvMode ? 0.25 : 0.5,
+              textAlign: 'center',
+              fontSize: tvMode ? { xs: '0.9rem', sm: '1rem' } : { xs: '1rem', sm: '1.15rem' },
+            }}
+          >
+            {format(monthDate, 'MMMM yyyy')}
+          </Typography>
+        )}
+
+        {/* Day Headers - only visible weekdays */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${columnCount}, 1fr)`, mb: 0, gap: 0 }}>
+          {visibleWeekdays.map((dayIndex) => (
+            <Paper
+              key={dayIndex}
+              sx={{
+                p: tvMode ? 0.25 : 0.5,
+                textAlign: 'center',
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
+                border: `1px solid ${theme.palette.divider}`,
+                fontWeight: 600,
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  fontSize: tvMode ? { xs: '0.65rem', sm: '0.7rem' } : { xs: '0.75rem', sm: '0.8rem' },
+                  lineHeight: 1.1,
+                }}
+              >
+                {isMobile ? WEEKDAY_LABELS[dayIndex].substring(0, 1) : WEEKDAY_LABELS[dayIndex].substring(0, 3)}
+              </Typography>
+            </Paper>
+          ))}
+        </Box>
+
+        {/* Calendar Days Grid - only visible weekdays */}
+        <Box sx={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${columnCount}, 1fr)`,
+          gridAutoRows: 'auto',
+          gap: 0,
+          minHeight: 0,
+          '& > *': {
+            minWidth: 0,
+            aspectRatio: tvMode ? '1.6' : '1',
+          }
+        }}>
+          {visibleDays.map((date, index) => (
+            <Box
+              key={index}
+              sx={{
+                width: '100%',
+                minWidth: 0,
+                aspectRatio: tvMode ? '1.6' : '1',
+                display: 'block',
+              }}
+            >
+              <CalendarDay
+                key={index}
+                date={date}
+                isCurrentMonth={isSameMonth(date, monthDate)}
+                events={calendarEvents}
+                holidayLabel={holidayMap[format(date, 'yyyy-MM-dd')] || ''}
+                tvMode={tvMode}
+                onDayClick={handleDayClick}
+                onEventClick={handleEventClick}
+                onEventDelete={handleEventDelete}
+                onViewJob={(id) => setJobIdForDetailModal(id)}
+                onDayContextMenu={handleDayContextMenu}
+                installerOrder={installerOrder}
+              />
+            </Box>
+          ))}
+        </Box>
       </Box>
     );
-  }
+  };
 
-  return (
-    <Box sx={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      height: '100vh', 
-      overflow: 'hidden',
-      backgroundColor: theme.palette.background.default
-    }}>
-      {/* Calendar Header */}
-      <Box sx={{ 
-        p: 2, 
-        backgroundColor: theme.palette.background.paper, 
-        borderBottom: `1px solid ${theme.palette.divider}`,
-        flexShrink: 0,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: 2
-      }}>
-        <Typography variant="h4" sx={{ fontWeight: 600 }}>
-          Calendar
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <TextField
-            size="small"
-            placeholder="Search scheduled jobs..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon />
-                </InputAdornment>
-              ),
-            }}
-            sx={{ minWidth: 250 }}
-          />
-          <Button
-            variant="outlined"
-            startIcon={<CalendarTodayIcon />}
-            onClick={() => setShowScheduledList(true)}
-          >
-            All Scheduled ({scheduledJobs.length})
-          </Button>
-        </Box>
+  const renderCalendarContent = () =>
+    loading ? (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+        <CircularProgress />
       </Box>
-
-      {/* Scrollable Calendar Content */}
-      <Box sx={{ 
-        flex: 1, 
-        overflowY: 'auto', 
-        overflowX: 'hidden',
-        p: 3
-      }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: '100%' }}>
-          {months.map((month, monthIndex) => {
-            const monthStart = startOfMonth(month);
-            const monthEnd = endOfMonth(month);
-            const calendarStart = startOfWeek(monthStart);
-            const calendarEnd = endOfWeek(monthEnd);
-            const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
-
-            // Filter jobs that overlap with this month
-            const monthJobs = scheduledJobs.filter(job => {
-              if (!job.schedule?.startDate) {
-                console.log('Job filtered out (no startDate):', job.title);
-                return false;
-              }
-              const jobStart = new Date(job.schedule.startDate);
-              const jobEnd = job.schedule.endDate ? new Date(job.schedule.endDate) : jobStart;
-              // Check if job overlaps with this month
-              const overlaps = jobEnd >= calendarStart && jobStart <= calendarEnd;
-              if (!overlaps) {
-                console.log('Job filtered out (no overlap):', {
-                  title: job.title,
-                  start: format(jobStart, 'yyyy-MM-dd'),
-                  end: format(jobEnd, 'yyyy-MM-dd'),
-                  calendarStart: format(calendarStart, 'yyyy-MM-dd'),
-                  calendarEnd: format(calendarEnd, 'yyyy-MM-dd'),
-                });
-              }
-              return overlaps;
-            });
-            
-            console.log(`Month ${format(month, 'MMMM yyyy')}: Found ${monthJobs.length} jobs to render`, 
-              monthJobs.map(j => ({ title: j.title, start: j.schedule?.startDate, end: j.schedule?.endDate }))
-            );
-
-            return (
-              <Box key={monthIndex} sx={{ backgroundColor: theme.palette.background.paper, borderRadius: 2, p: 2, boxShadow: 1 }}>
-                <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}>
-                  {format(month, 'MMMM yyyy')}
-                </Typography>
-                <Box sx={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: 'repeat(7, 1fr)', 
-                  gap: 0,
-                  border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 1,
-                  overflow: 'visible', // Changed from 'hidden' to 'visible' so bars can show
-                  position: 'relative',
-                  minHeight: '600px', // Ensure enough height for job bars
-                }}>
-                  {/* Day headers */}
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                    <Box
-                      key={day}
-                      sx={{
-                        p: 1.5,
-                        textAlign: 'center',
-                        backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
-                        borderRight: `1px solid ${theme.palette.divider}`,
-                        '&:last-child': { borderRight: 'none' },
-                        borderBottom: `1px solid ${theme.palette.divider}`,
-                      }}
-                    >
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-                        {day}
-                      </Typography>
-                    </Box>
-                  ))}
-                  {/* Calendar days */}
-                  {days.map((day, dayIndex) => (
-                    <CalendarDay
-                      key={day.toISOString()}
-                      date={day}
-                      scheduledJobs={scheduledJobs}
-                      onDrop={handleDropJob}
-                      onJobMove={handleJobMove}
-                      onJobResize={handleJobResize}
-                      isCurrentMonth={isSameMonth(day, month)}
-                      isLastInRow={(dayIndex + 1) % 7 === 0}
-                      canModify={canModifyCalendar()}
-                    />
-                  ))}
-                  {/* Multi-day job bars */}
-                  {monthJobs.map((job) => {
-                    if (!job.schedule?.startDate) {
-                      console.warn('Skipping job without startDate:', job.title);
-                      return null;
-                    }
-                    return (
-                      <MultiDayJobBar
-                        key={job._id}
-                        job={job}
-                        calendarDays={days}
-                        onResize={handleJobResize}
-                        onMove={handleJobMove}
-                        canModify={canModifyCalendar()}
-                      />
-                    );
-                  })}
-                </Box>
-              </Box>
-            );
-          })}
-        </Box>
+    ) : (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: tvMode ? { xs: 0.35, sm: 0.5 } : { xs: 1, sm: 1.5 } }}>
+        {months.map((monthDate, index) => renderMonth(monthDate, index))}
       </Box>
+    );
 
-      {/* Bench Footer */}
-      <Box 
-        sx={{ 
-          flexShrink: 0,
-          backgroundColor: isBenchDragOver 
-            ? (theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.2)' : '#E3F2FD')
-            : theme.palette.background.paper,
-          borderTop: `2px solid ${isBenchDragOver ? theme.palette.primary.main : theme.palette.divider}`,
-          p: 2,
-          height: `${benchHeight}px`,
-          overflowY: 'auto',
-          position: 'relative',
-          display: 'flex',
-          flexDirection: 'column',
-          transition: 'all 0.2s',
-        }}
-        onDrop={handleBenchDrop}
-        onDragOver={handleBenchDragOver}
-        onDragLeave={handleBenchDragLeave}
-      >
-        {/* Resize Handle */}
+  const renderBenchPanelContent = (placement) => {
+    const isVertical = placement !== 'right';
+    const resizeEdge = placement === 'top' ? 'bottom' : placement === 'bottom' ? 'top' : 'left';
+    return (
+      <>
+        {/* Minimize/Expand Button */}
         <Box
-          onMouseDown={(e) => {
-            e.preventDefault();
-            const startY = e.clientY;
-            const startHeight = benchHeight;
-            
-            const handleMouseMove = (moveEvent) => {
-              const deltaY = startY - moveEvent.clientY; // Inverted because we're dragging up
-              const newHeight = Math.max(150, Math.min(600, startHeight + deltaY));
-              setBenchHeight(newHeight);
-            };
-            
-            const handleMouseUp = () => {
-              document.removeEventListener('mousemove', handleMouseMove);
-              document.removeEventListener('mouseup', handleMouseUp);
-            };
-            
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-          }}
           sx={{
             position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '8px',
-            cursor: 'ns-resize',
-            backgroundColor: 'transparent',
-            '&:hover': {
-              backgroundColor: 'rgba(0, 0, 0, 0.1)',
-            },
-            '&:active': {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-            },
-            transition: 'background-color 0.2s',
+            ...(placement === 'right'
+              ? { top: isBenchMinimized ? 0 : 4, right: 4 }
+              : { top: isBenchMinimized ? 0 : -3, right: 8 }),
+            zIndex: 20,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
           }}
-        />
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Bench ({benchJobs.length})
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Jobs ready to schedule. Drag to calendar to schedule. Drag scheduled jobs here to unschedule.
-          </Typography>
+        >
+          <IconButton
+            onClick={() => {
+              setIsBenchMinimized(!isBenchMinimized);
+              if (!isBenchMinimized && benchHeight < 150) setBenchHeight(250);
+            }}
+            size="small"
+            sx={{
+              backgroundColor: theme.palette.background.paper,
+              border: `1px solid ${theme.palette.divider}`,
+              '&:hover': {
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
+              },
+            }}
+            title={isBenchMinimized ? 'Expand Bench' : 'Minimize Bench'}
+          >
+            {isBenchMinimized ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+          </IconButton>
         </Box>
-        {benchJobs.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
-            No jobs on the bench
-          </Typography>
+
+        {/* Resize Handle - vertical (top/bottom) or horizontal (right) */}
+        {!isBenchMinimized && isVertical && (
+          <Box
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsResizing(true);
+              const startY = e.clientY;
+              const startHeight = benchHeight;
+              const handleMouseMove = (moveEvent) => {
+                moveEvent.preventDefault();
+                const deltaY = placement === 'bottom' ? startY - moveEvent.clientY : moveEvent.clientY - startY;
+                const newHeight = Math.max(150, Math.min(600, startHeight + deltaY));
+                setBenchHeight(newHeight);
+              };
+              const handleMouseUp = () => {
+                setIsResizing(false);
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+              };
+              document.addEventListener('mousemove', handleMouseMove);
+              document.addEventListener('mouseup', handleMouseUp);
+            }}
+            sx={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              ...(resizeEdge === 'top' ? { top: -3, height: '16px' } : { bottom: -3, height: '16px' }),
+              cursor: 'ns-resize',
+              backgroundColor: 'transparent',
+              zIndex: 10,
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '40px',
+                  height: '4px',
+                  backgroundColor: '#999',
+                  borderRadius: '2px',
+                },
+              },
+            }}
+          />
+        )}
+
+        {!isBenchMinimized && placement === 'right' && (
+          <Box
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const startX = e.clientX;
+              const startWidth = benchWidth;
+              const handleMouseMove = (moveEvent) => {
+                moveEvent.preventDefault();
+                const deltaX = startX - moveEvent.clientX;
+                const newWidth = Math.max(280, Math.min(600, startWidth + deltaX));
+                setBenchWidth(newWidth);
+              };
+              const handleMouseUp = () => {
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+              };
+              document.addEventListener('mousemove', handleMouseMove);
+              document.addEventListener('mouseup', handleMouseUp);
+            }}
+            sx={{
+              position: 'absolute',
+              left: -3,
+              top: 0,
+              bottom: 0,
+              width: '16px',
+              cursor: 'ew-resize',
+              backgroundColor: 'transparent',
+              zIndex: 10,
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '4px',
+                  height: '40px',
+                  backgroundColor: '#999',
+                  borderRadius: '2px',
+                },
+              },
+            }}
+          />
+        )}
+
+        {isBenchMinimized ? (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              px: { xs: 1, sm: 2 },
+              py: 1,
+              height: '100%',
+              cursor: 'pointer',
+              '&:hover': {
+                backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
+              },
+            }}
+            onClick={() => setIsBenchMinimized(false)}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+              Bench ({benchJobs.length}) • Scheduled ({scheduledJobs.length})
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
+              Tap to expand
+            </Typography>
+          </Box>
         ) : (
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-            {benchJobs.map((job) => (
-              <BenchJobCard key={job._id} job={job} onDragStart={setDraggedJob} canModify={canModifyCalendar()} />
-            ))}
+          <Box sx={{ display: 'flex', flexDirection: placement === 'right' ? 'column' : { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 }, height: '100%', mt: 1, flexWrap: placement === 'right' ? 'nowrap' : undefined }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                Bench ({benchJobs.length})
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                Jobs ready to schedule. Click to schedule on calendar.
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
+                {benchJobs.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">No jobs on bench</Typography>
+                ) : (
+                  benchJobs.map((job) => (
+                    <BenchJobCard
+                      key={job._id}
+                      job={job}
+                      onJobClick={(j) => {
+                        if (!canModifyCalendarWithPin()) {
+                          toast.error('You do not have permission to modify calendar events');
+                          return;
+                        }
+                        setSelectedJob(j);
+                        setSelectedInstaller('');
+                        setSelectedDate(new Date());
+                        setEventModalOpen(true);
+                      }}
+                      onViewJob={(id) => setJobIdForDetailModal(id)}
+                      onRemoveFromBench={handleRemoveFromBench}
+                    />
+                  ))
+                )}
+              </Box>
+            </Box>
+            <Box sx={{
+              flex: 1,
+              minWidth: 0,
+              borderLeft: placement === 'right' ? 'none' : { xs: 'none', md: '1px solid #e0e0e0' },
+              borderTop: placement === 'right' ? '1px solid #e0e0e0' : { xs: '1px solid #e0e0e0', md: 'none' },
+              pl: { xs: 0, md: placement === 'right' ? 0 : 3 },
+              pt: { xs: 2, md: 0 },
+            }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                Scheduled ({scheduledJobs.length})
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                Jobs with scheduled dates. Click to edit.
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
+                {scheduledJobs.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">No scheduled jobs</Typography>
+                ) : (
+                  scheduledJobs.map((job) => (
+                    <ScheduledJobCard
+                      key={job._id}
+                      job={job}
+                      onJobClick={(j) => {
+                        if (!canModifyCalendarWithPin()) {
+                          toast.error('You do not have permission to modify calendar events');
+                          return;
+                        }
+                        setSelectedJob(j);
+                        setSelectedInstaller(
+                          j?.schedule?.installer ||
+                            (Array.isArray(j?.schedule?.installers) ? j.schedule.installers?.[0] : '') ||
+                            ''
+                        );
+                        setSelectedDate(j.schedule?.startDate ? new Date(j.schedule.startDate) : new Date());
+                        setEventModalOpen(true);
+                      }}
+                      onJobDelete={handleEventDelete}
+                      onViewJob={(id) => setJobIdForDetailModal(id)}
+                    />
+                  ))
+                )}
+              </Box>
+            </Box>
           </Box>
         )}
+      </>
+    );
+  };
+
+  return (
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <Box sx={{ 
+        p: tvMode ? { xs: 0.5, sm: 1 } : { xs: 1, sm: 2 }, 
+        borderBottom: '1px solid #e0e0e0', 
+        display: 'flex', 
+        flexDirection: { xs: 'column', sm: 'row' },
+        justifyContent: 'space-between', 
+        alignItems: { xs: 'stretch', sm: 'center' },
+        gap: { xs: 1, sm: 1.5 }
+      }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            gap: { xs: 1, sm: 2 },
+            flexWrap: 'wrap',
+            width: 'auto',
+          }}
+        >
+          <IconButton onClick={handlePrevMonth} size="small">
+            <ChevronLeftIcon />
+          </IconButton>
+          <Typography 
+            variant="h5" 
+            sx={{ 
+              fontWeight: 600, 
+              minWidth: { xs: 'auto', sm: 200 }, 
+              textAlign: 'center',
+              fontSize: tvMode ? { xs: '0.8rem', sm: '1rem', md: '1.2rem' } : { xs: '0.875rem', sm: '1.25rem', md: '1.5rem' }
+            }}
+          >
+            {isMobile 
+              ? format(currentDate, 'MMMM yyyy')
+              : tvMode
+                ? `${format(currentDate, 'MMMM yyyy')} - ${format(addMonths(currentDate, 1), 'MMMM yyyy')}`
+                : `${format(currentDate, 'MMMM yyyy')} - ${format(addMonths(currentDate, 2), 'MMMM yyyy')}`
+            }
+          </Typography>
+          <IconButton onClick={handleNextMonth} size="small">
+            <ChevronRightIcon />
+          </IconButton>
+          <Button
+            startIcon={<TodayIcon />}
+            onClick={handleToday}
+            variant="outlined"
+            size="small"
+            sx={{ display: { xs: 'none', sm: 'flex' } }}
+          >
+            Today
+          </Button>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+          {tvMode && !externalViewControls ? (
+            <>
+              <Button
+                onClick={() => navigate('/pipeline-view')}
+                variant="outlined"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                Pipeline view
+              </Button>
+              <Button
+                onClick={() => navigate('/calendar-view')}
+                variant="contained"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                Calendar view
+              </Button>
+              <Button
+                onClick={() => navigate('/customers-view')}
+                variant="outlined"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                Customers view
+              </Button>
+              <Button
+                onClick={() => navigate('/calendar')}
+                variant="contained"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                Exit Calendar view
+              </Button>
+            </>
+          ) : !tvMode ? (
+            <>
+              {/* Standalone event creation removed; calendar now only schedules existing jobs */}
+              <FormControl size="small" sx={{ minWidth: 120, display: { xs: 'none', sm: 'flex' } }}>
+                <InputLabel>Bench position</InputLabel>
+                <Select
+                  value={benchPosition}
+                  label="Bench position"
+                  onChange={(e) => setBenchPosition(e.target.value)}
+                >
+                  <MenuItem value="top">Top</MenuItem>
+                  <MenuItem value="right">Right</MenuItem>
+                  <MenuItem value="bottom">Bottom</MenuItem>
+                </Select>
+              </FormControl>
+              <Button
+                onClick={() => navigate('/calendar-view')}
+                variant="outlined"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                Calendar view
+              </Button>
+              <Tooltip title="Installer default order settings">
+                <IconButton
+                  size="small"
+                  onClick={openInstallerSettings}
+                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                >
+                  <SettingsIcon />
+                </IconButton>
+              </Tooltip>
+            </>
+          ) : null}
+          {tvMode && (
+            <Button
+              onClick={() => navigate('/calendar')}
+              variant="outlined"
+              size="small"
+              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+            >
+              Exit Calendar view
+            </Button>
+          )}
+          {tvMode && (
+            <Button
+              onClick={toggleColorMode}
+              variant="outlined"
+              size="small"
+              startIcon={mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+            >
+              {mode === 'dark' ? 'Light mode' : 'Dark mode'}
+            </Button>
+          )}
+        </Box>
       </Box>
 
-      {/* Scheduled Jobs Dialog */}
-      <Dialog
-        open={showScheduledList}
-        onClose={() => setShowScheduledList(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          All Scheduled Jobs ({scheduledJobs.length})
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
-            {scheduledJobs.length === 0 ? (
-              <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-                No scheduled jobs
-              </Typography>
-            ) : (
-              scheduledJobs
-                .filter(job => {
-                  if (!searchTerm) return true;
-                  const search = searchTerm.toLowerCase();
-                  return (
-                    job.title?.toLowerCase().includes(search) ||
-                    job.customerId?.name?.toLowerCase().includes(search) ||
-                    job._id?.toLowerCase().includes(search)
-                  );
-                })
-                .map((job) => {
-                  const startDate = job.schedule?.startDate ? new Date(job.schedule.startDate) : null;
-                  const endDate = job.schedule?.endDate ? new Date(job.schedule.endDate) : null;
-                  
-                  return (
-                    <Card key={job._id} sx={{ borderLeft: '4px solid #1976D2' }}>
-                      <CardContent sx={{ p: 2 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
-                              {job.title}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                              Customer: {job.customerId?.name || 'Unknown'}
-                            </Typography>
-                            {startDate && (
-                              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                                <Chip
-                                  label={`Start: ${format(startDate, 'MMM dd, yyyy')}`}
-                                  size="small"
-                                  color="primary"
-                                  variant="outlined"
-                                />
-                                {endDate && (
-                                  <Chip
-                                    label={`End: ${format(endDate, 'MMM dd, yyyy')}`}
-                                    size="small"
-                                    color="secondary"
-                                    variant="outlined"
-                                  />
-                                )}
-                                <Chip
-                                  label={`Stage: ${job.stage || 'N/A'}`}
-                                  size="small"
-                                  variant="outlined"
-                                />
-                              </Box>
-                            )}
-                          </Box>
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  );
-                })
-            )}
+      {/* Main area: layout depends on bench position */}
+      {benchPosition === 'top' && (
+        <>
+          {/* Bench at top */}
+          <Box
+            sx={{
+              flexShrink: 0,
+              backgroundColor: theme.palette.background.paper,
+              borderBottom: `3px solid ${theme.palette.divider}`,
+              p: isBenchMinimized ? 0 : { xs: 1, sm: 2 },
+              height: isBenchMinimized ? '40px' : isMobile ? '200px' : `${benchHeight}px`,
+              overflow: isBenchMinimized ? 'hidden' : 'auto',
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              transition: 'height 0.3s ease, padding 0.3s ease',
+            }}
+          >
+            {renderBenchPanelContent('top')}
           </Box>
+          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 0.5, sm: 1 }, minHeight: 0 }}>
+            {renderCalendarContent()}
+          </Box>
+        </>
+      )}
+
+      {benchPosition === 'right' && (
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
+          <Box sx={{ flex: 1, overflow: 'auto', p: tvMode ? { xs: 0.2, sm: 0.4 } : { xs: 0.5, sm: 1 }, minWidth: 0 }}>
+            {renderCalendarContent()}
+          </Box>
+          <Box
+            sx={{
+              flexShrink: 0,
+              width: isBenchMinimized ? 48 : benchWidth,
+              backgroundColor: theme.palette.background.paper,
+              borderLeft: `3px solid ${theme.palette.divider}`,
+              p: isBenchMinimized ? 0 : tvMode ? { xs: 0.5, sm: 0.75 } : { xs: 1, sm: 2 },
+              overflow: isBenchMinimized ? 'hidden' : 'auto',
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              transition: 'width 0.3s ease',
+            }}
+          >
+            {renderBenchPanelContent('right')}
+          </Box>
+        </Box>
+      )}
+
+      {benchPosition === 'bottom' && (
+        <>
+          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 0.5, sm: 1 }, minHeight: 0 }}>
+            {renderCalendarContent()}
+          </Box>
+          {/* Bench at bottom - resizable */}
+          <Box
+            sx={{
+              flexShrink: 0,
+              backgroundColor: theme.palette.background.paper,
+              borderTop: `3px solid ${theme.palette.divider}`,
+              p: isBenchMinimized ? 0 : { xs: 1, sm: 2 },
+              height: isBenchMinimized ? '40px' : isMobile ? '200px' : `${benchHeight}px`,
+              overflow: isBenchMinimized ? 'hidden' : 'auto',
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              transition: 'height 0.3s ease, padding 0.3s ease',
+            }}
+          >
+            {renderBenchPanelContent('bottom')}
+          </Box>
+        </>
+      )}
+
+      {/* Event Modal */}
+      <EventModal
+        open={eventModalOpen}
+        onClose={() => {
+          setEventModalOpen(false);
+          setSelectedDate(null);
+          setSelectedJob(null);
+          setSelectedInstaller('');
+        }}
+        selectedDate={selectedDate}
+        job={selectedJob}
+        onSave={fetchJobs}
+        onViewJob={(id) => setJobIdForDetailModal(id)}
+        installerOptions={installerOrder}
+        selectedInstaller={selectedInstaller}
+      />
+
+      <Dialog open={installerSettingsOpen} onClose={() => setInstallerSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Installer order settings</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Set the default installer names and order used in calendar lanes and installer suggestions.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+            {installerDraftOrder.map((name, idx) => (
+              <Box key={`installer-draft-${idx}`} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  label={`Installer ${idx + 1}`}
+                  value={name}
+                  onChange={(e) => updateInstallerDraftAt(idx, e.target.value)}
+                />
+                <IconButton size="small" onClick={() => moveInstallerDraft(idx, -1)} disabled={idx === 0}>
+                  <ExpandLessIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={() => moveInstallerDraft(idx, 1)}
+                  disabled={idx === installerDraftOrder.length - 1}
+                >
+                  <ExpandMoreIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => removeInstallerDraft(idx)}
+                  disabled={installerDraftOrder.length <= 1}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            ))}
+          </Box>
+          <Button startIcon={<AddIcon />} onClick={addInstallerDraft} size="small" sx={{ mt: 1.5 }}>
+            Add installer
+          </Button>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowScheduledList(false)}>Close</Button>
+          <Button onClick={() => setInstallerSettingsOpen(false)}>Cancel</Button>
+          <Button onClick={saveInstallerSettings} variant="contained">
+            Save
+          </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Job detail modal (customer, files, etc.) */}
+      <JobDetailModal
+        jobId={jobIdForDetailModal}
+        open={!!jobIdForDetailModal}
+        onClose={() => setJobIdForDetailModal(null)}
+        onJobUpdate={async (jobId, updates) => { await fetchJobs(); }}
+        onJobDelete={(jobId) => {
+          setJobIdForDetailModal(null);
+          fetchJobs();
+        }}
+        onJobArchive={(jobId) => {
+          setJobIdForDetailModal(null);
+          fetchJobs();
+        }}
+        hideSensitive={hideSensitive}
+      />
+
+      {/* Right-click on a date: hide/show that weekday */}
+      <Menu
+        open={!!dayContextMenu}
+        onClose={handleCloseDayContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          dayContextMenu
+            ? { top: dayContextMenu.top, left: dayContextMenu.left }
+            : undefined
+        }
+      >
+        {dayContextMenu && (() => {
+          const weekday = dayContextMenu.date.getDay();
+          const label = WEEKDAY_LABELS[weekday];
+          const isHidden = hiddenWeekdays.includes(weekday);
+          return (
+            <MenuItem
+              onClick={() => toggleWeekdayHidden(weekday)}
+            >
+              {isHidden ? `Show ${label}s` : `Hide ${label}s`}
+            </MenuItem>
+          );
+        })()}
+      </Menu>
     </Box>
   );
 }
 
 export default CalendarPage;
+

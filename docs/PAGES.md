@@ -72,10 +72,9 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
   - `handleSaveCustomerEdit` (~387) — persists phones, emails, addresses arrays.
   - URL `?customerId=` — deep-link opens customer detail (used by search bar and assistant).
 
-### CalendarPageNew.tsx
+### CalendarPage.tsx
 - **Routes:** `/calendar` · 📺 `/calendar-view`
 - **Purpose:** **Production calendar** — month grid, install bench, scheduled jobs, appointments, installer lanes.
-- **Note:** `CalendarPage.tsx` is legacy; App imports this file as `CalendarPage`.
 - **APIs:** `GET /jobs`, `GET/POST /appointments`, schedule entry endpoints via job updates
 - **Important logic:**
   - `splitCalendarJobs` (~1517) — splits jobs into **bench** (stage flag + no schedule) vs **scheduled** (has `schedule.entries`).
@@ -165,13 +164,9 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 - **APIs:** `GET /jobs/completed`
 
 ### CompletedTasksPage.tsx
-- **Route:** `/completed-tasks`
-- **Purpose:** Completed tasks and appointments in one view.
+- **Route:** `/completed-tasks` (also `/completed-appointments` redirects here)
+- **Purpose:** Completed tasks and appointments in one weekly view.
 - **APIs:** `GET /tasks`, `GET /appointments` (filtered client-side)
-
-### CompletedAppointmentsPage.tsx
-- **Route:** `/completed-appointments` (legacy route; may redirect or overlap with completed-tasks)
-- **Purpose:** Historical appointments list.
 
 ---
 
@@ -195,7 +190,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 | `/dashboard` | DashboardPage |
 | `/pipeline` | PipelinePage |
 | `/customers` | CustomersPage |
-| `/calendar` | CalendarPageNew |
+| `/calendar` | CalendarPage |
 | `/tasks` | TasksPage |
 | `/documents` | DocumentsPage |
 | `/messages` | MessagePage |
@@ -212,7 +207,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 | `/completed-tasks` | CompletedTasksPage |
 | `/developer` | DeveloperTasksPage |
 | `/pipeline-view` | PipelinePage (tvMode) |
-| `/calendar-view` | CalendarPageNew (tvMode) |
+| `/calendar-view` | CalendarPage (tvMode) |
 | `/customers-view` | CustomersPage (viewMode) |
 
 Defined in `frontend/src/App.tsx`.
