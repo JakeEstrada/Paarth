@@ -3,6 +3,14 @@ const Job = require('../models/Job');
 const Activity = require('../models/Activity');
 const Estimate = require('../models/Estimate');
 const { publishProjectCreated, publishProjectUpdated } = require('../services/eventBus');
+const {
+  roundMoney,
+  getContractBase,
+  resolvePaymentSchedule,
+  normalizePaymentScheduleInput,
+  findScheduleAmountForKind,
+  diffPaymentScheduleActivities,
+} = require('../utils/paymentSchedule');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
@@ -128,8 +136,12 @@ async function getJob(req, res) {
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
+
+    const jobObj = job.toObject();
+    const resolved = resolvePaymentSchedule(jobObj);
+    jobObj.paymentScheduleResolved = resolved;
     
-    res.json(job);
+    res.json(jobObj);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -307,6 +319,23 @@ async function updateJob(req, res) {
     // Update the job (remove temporary _notesToUpdate field first)
     const { _notesToUpdate, ...jobUpdateData } = req.body;
     delete jobUpdateData.invoices;
+    delete jobUpdateData.paymentScheduleResolved;
+
+    let paymentScheduleWarnings = [];
+    let paymentScheduleActivities = [];
+    if (jobUpdateData.paymentSchedule !== undefined) {
+      const contractBase = getContractBase({ ...job.toObject(), ...jobUpdateData });
+      const { schedule, warnings } = normalizePaymentScheduleInput(
+        jobUpdateData.paymentSchedule,
+        contractBase
+      );
+      paymentScheduleWarnings = warnings;
+      paymentScheduleActivities = diffPaymentScheduleActivities(
+        oldData.paymentSchedule,
+        schedule
+      );
+      jobUpdateData.paymentSchedule = schedule;
+    }
     if (jobUpdateData.estimateHistory !== undefined || jobUpdateData.estimate !== undefined) {
       warnLegacyEstimateUsage('updateJob ignored legacy estimate payload', {
         jobId: String(job._id),
@@ -320,7 +349,26 @@ async function updateJob(req, res) {
     if (jobUpdateData.takeoff !== undefined) {
       job.markModified('takeoff');
     }
+    if (jobUpdateData.paymentSchedule !== undefined) {
+      job.markModified('paymentSchedule');
+    }
     await job.save();
+
+    for (const activity of paymentScheduleActivities) {
+      try {
+        await Activity.create({
+          type: activity.type,
+          jobId: job._id,
+          customerId: job.customerId,
+          note: activity.note,
+          amount: activity.amount,
+          paymentType: activity.paymentType,
+          createdBy: req.user?._id || job.createdBy || createdBy,
+        });
+      } catch (activityError) {
+        console.error('Error creating payment schedule activity:', activityError);
+      }
+    }
     
     // Track ALL field changes (excluding notes which we handle separately)
     const changes = trackChanges(
@@ -453,8 +501,14 @@ async function updateJob(req, res) {
     publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
       sourceSocketId: req.headers['x-socket-id'] || null,
     });
+
+    const responseJob = job.toObject();
+    responseJob.paymentScheduleResolved = resolvePaymentSchedule(responseJob);
+    if (paymentScheduleWarnings.length) {
+      responseJob.paymentScheduleWarnings = paymentScheduleWarnings;
+    }
     
-    res.json(job);
+    res.json(responseJob);
   } catch (error) {
     console.error('Error updating job:', error);
     console.error('Error stack:', error.stack);
@@ -465,13 +519,7 @@ async function updateJob(req, res) {
   }
 }
 
-function roundMoney(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.round((x + Number.EPSILON) * 100) / 100;
-}
-
-/** Append a deposit (40%) or final (60%) invoice derived from an estimate total. */
+/** Append a deposit or final invoice derived from the job payment schedule (or 40/60 fallback). */
 async function addJobInvoice(req, res) {
   try {
     const job = await Job.findById(req.params.id);
@@ -492,10 +540,16 @@ async function addJobInvoice(req, res) {
       return res.status(400).json({ error: 'estimateNumber is required' });
     }
 
+    const resolvedSchedule = resolvePaymentSchedule(job.toObject());
     let amount = Number(req.body?.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      const pct = kind === 'deposit' ? 0.4 : 0.6;
-      amount = roundMoney(contractTotal * pct);
+      const scheduleAmount = findScheduleAmountForKind(resolvedSchedule, kind);
+      if (scheduleAmount != null && scheduleAmount > 0) {
+        amount = scheduleAmount;
+      } else {
+        const pct = kind === 'deposit' ? 0.4 : 0.6;
+        amount = roundMoney(contractTotal * pct);
+      }
     } else {
       amount = roundMoney(amount);
     }
@@ -503,7 +557,20 @@ async function addJobInvoice(req, res) {
     const invoiceDate =
       String(req.body?.invoiceDate || '').trim() || new Date().toISOString().slice(0, 10);
 
-    const label = kind === 'deposit' ? 'Deposit invoice (40%)' : 'Final invoice (60%)';
+    const scheduleItem =
+      kind === 'deposit'
+        ? resolvedSchedule.items.find((i) => i.dueType === 'deposit') ||
+          resolvedSchedule.items.find((i) => /deposit/i.test(String(i.label || '')))
+        : resolvedSchedule.items.find((i) => i.dueType === 'final') ||
+          resolvedSchedule.items.find((i) => /final/i.test(String(i.label || '')));
+    const pctPart =
+      scheduleItem?.amountType === 'percentage' && Number.isFinite(Number(scheduleItem.percentage))
+        ? ` (${scheduleItem.percentage}%)`
+        : '';
+    const label =
+      kind === 'deposit'
+        ? `Deposit invoice${pctPart}`
+        : `Final invoice${pctPart}`;
 
     const entry = {
       kind,

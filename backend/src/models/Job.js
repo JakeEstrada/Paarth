@@ -56,6 +56,45 @@ const jobSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+
+  /**
+   * Customizable payment schedule for the base contract (excludes change orders).
+   * Jobs without items fall back to standard 40/60 at read time.
+   */
+  paymentSchedule: {
+    type: {
+      type: String,
+      enum: ['standard_40_60', 'custom'],
+      default: 'standard_40_60',
+    },
+    items: [
+      {
+        label: { type: String, trim: true },
+        amountType: {
+          type: String,
+          enum: ['percentage', 'fixed'],
+          default: 'percentage',
+        },
+        percentage: Number,
+        amount: Number,
+        dueType: {
+          type: String,
+          enum: ['deposit', 'milestone', 'final', 'custom'],
+          default: 'custom',
+        },
+        dueNote: { type: String, trim: true, default: '' },
+        dueDate: Date,
+        status: {
+          type: String,
+          enum: ['pending', 'invoiced', 'paid'],
+          default: 'pending',
+        },
+        paidAmount: { type: Number, default: 0 },
+        paidAt: Date,
+        sortOrder: { type: Number, default: 0 },
+      },
+    ],
+  },
   source: {
     type: String,
     enum: ['referral', 'yelp', 'instagram', 'facebook', 'website', 'repeat', 'other'],

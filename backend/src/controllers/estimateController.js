@@ -6,6 +6,10 @@ const File = require('../models/File');
 const fs = require('fs');
 const path = require('path');
 const { getNextDocumentNumber, initializeSequence, formatDocumentNumber } = require('../utils/documentSequence');
+const {
+  resolvePaymentSchedule,
+  findScheduleAmountForKind,
+} = require('../utils/paymentSchedule');
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
 const DOCUMENT_TEXT_DIR = path.join(UPLOADS_DIR, 'documents-text');
@@ -385,14 +389,31 @@ async function generateInvoiceFromEstimate(req, res) {
       return res.status(400).json({ error: 'Estimate must have a positive total' });
     }
 
-    /** Deposit 40%, final balance 60% (matches standard contract payment schedule). */
-    const depositShare = 0.4;
-    const finalShare = 0.6;
-    const fraction = kind === 'deposit' ? depositShare : finalShare;
-    const amountDue = roundMoney(contractTotal * fraction);
+    let job = null;
+    if (estimate.jobId) {
+      job = await Job.findById(estimate.jobId).lean();
+    }
+    const resolvedSchedule = resolvePaymentSchedule(job || {});
+    const scheduleAmount = findScheduleAmountForKind(resolvedSchedule, kind);
+    const amountDue =
+      scheduleAmount != null && scheduleAmount > 0
+        ? scheduleAmount
+        : roundMoney(contractTotal * (kind === 'deposit' ? 0.4 : 0.6));
+
+    const scheduleItem =
+      kind === 'deposit'
+        ? resolvedSchedule.items.find((i) => i.dueType === 'deposit') ||
+          resolvedSchedule.items.find((i) => /deposit/i.test(String(i.label || '')))
+        : resolvedSchedule.items.find((i) => i.dueType === 'final') ||
+          resolvedSchedule.items.find((i) => /final/i.test(String(i.label || '')));
+    const pctLabel =
+      scheduleItem?.amountType === 'percentage' && Number.isFinite(Number(scheduleItem.percentage))
+        ? `${scheduleItem.percentage}%`
+        : kind === 'deposit'
+          ? '40%'
+          : '60%';
 
     const numbering = await getNextDocumentNumber({ documentType: 'invoice', prefix: estimate.prefix || '1102' });
-    const pctLabel = kind === 'deposit' ? '40%' : '60%';
     const lineItems = [
       {
         itemName: kind === 'deposit' ? 'Deposit invoice' : 'Final invoice',
@@ -497,7 +518,21 @@ async function generateContractFromEstimate(req, res) {
       .exec();
 
     if (contractTotal > 0 && !depositInvoice) {
-      const depositAmount = roundMoney(contractTotal * 0.4);
+      const resolvedSchedule = resolvePaymentSchedule(
+        estimate.jobId ? await Job.findById(estimate.jobId).lean() : {}
+      );
+      const scheduleDeposit = findScheduleAmountForKind(resolvedSchedule, 'deposit');
+      const depositAmount =
+        scheduleDeposit != null && scheduleDeposit > 0
+          ? scheduleDeposit
+          : roundMoney(contractTotal * 0.4);
+      const depositItem =
+        resolvedSchedule.items.find((i) => i.dueType === 'deposit') ||
+        resolvedSchedule.items.find((i) => /deposit/i.test(String(i.label || '')));
+      const depositPctLabel =
+        depositItem?.amountType === 'percentage' && Number.isFinite(Number(depositItem.percentage))
+          ? `${depositItem.percentage}%`
+          : '40%';
       const invoiceNumbering = await getNextDocumentNumber({
         documentType: 'invoice',
         prefix: estimate.prefix || '1102',
@@ -505,7 +540,7 @@ async function generateContractFromEstimate(req, res) {
       const invoiceLineItems = [
         {
           itemName: 'Deposit invoice',
-          description: `40% of contract total per estimate ${estimate.estimateNumber || ''}`.trim(),
+          description: `${depositPctLabel} of contract total per estimate ${estimate.estimateNumber || ''}`.trim(),
           quantity: 1,
           unitPrice: depositAmount,
           total: depositAmount,
@@ -528,7 +563,7 @@ async function generateContractFromEstimate(req, res) {
         discountAmount: 0,
         total: depositAmount,
         balanceDue: depositAmount,
-        notes: `Generated with contract from estimate ${estimate.estimateNumber} (deposit, 40%)`,
+        notes: `Generated with contract from estimate ${estimate.estimateNumber} (deposit, ${depositPctLabel})`,
         invoiceKind: 'deposit',
         contractTotal,
         estimateNumber: String(estimate.estimateNumber || '').trim(),

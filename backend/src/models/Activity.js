@@ -27,6 +27,7 @@ const activitySchema = new mongoose.Schema({
       'estimate_updated',
       'contract_signed',
       'deposit_received',
+      'payment_schedule_updated',
       'payment_received',
       'job_scheduled',
       'calendar_sync',
