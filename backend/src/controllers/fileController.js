@@ -1,7 +1,5 @@
 const File = require('../models/File');
-const DocumentFolder = require('../models/DocumentFolder');
 const Job = require('../models/Job');
-const Customer = require('../models/Customer');
 const Activity = require('../models/Activity');
 const fs = require('fs');
 const path = require('path');
@@ -10,7 +8,6 @@ const { s3Client, BUCKET_NAME, isS3Configured } = require('../config/s3');
 // Get uploads directory - same as in upload.js middleware
 // Use environment variable if set, otherwise use relative path
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
-const DOCUMENT_TEXT_DIR = path.join(UPLOADS_DIR, 'documents-text');
 const ALLOWED_DOCUMENT_MIME_TYPES = new Set([
   'application/pdf',
   'text/plain',
@@ -23,322 +20,6 @@ const ALLOWED_DOCUMENT_MIME_TYPES = new Set([
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ]);
-const AUTO_TEXT_SUMMARY_DESC_REGEX = /^\[AUTO_DOC:(estimate|contract|invoices)\]\s/;
-
-function sanitizePathSegment(segment) {
-  return String(segment || '')
-    .trim()
-    .replace(/[<>:"\\|?*\x00-\x1F]/g, '_')
-    .replace(/\s+/g, ' ')
-    .replace(/\.+$/g, '');
-}
-
-function ensureTxtExtension(name) {
-  return name.toLowerCase().endsWith('.txt') ? name : `${name}.txt`;
-}
-
-function sanitizeDisplayFilename(raw) {
-  const base = path.basename(String(raw || '').trim());
-  if (!base) return '';
-  return base
-    .replace(/[<>:"\\|?*\x00-\x1F]/g, '_')
-    .replace(/\s+/g, ' ')
-    .slice(0, 220);
-}
-
-function hasAnyValue(input) {
-  if (input == null) return false;
-  if (typeof input === 'string') return input.trim().length > 0;
-  if (typeof input === 'number') return Number.isFinite(input);
-  if (typeof input === 'boolean') return input;
-  if (Array.isArray(input)) return input.length > 0 && input.some((v) => hasAnyValue(v));
-  if (typeof input === 'object') return Object.values(input).some((v) => hasAnyValue(v));
-  return false;
-}
-
-async function resolveFolderPath(folderPath, createdBy) {
-  if (!folderPath) return null;
-  const segments = String(folderPath)
-    .split('/')
-    .map((part) => sanitizePathSegment(part))
-    .filter(Boolean);
-
-  let parentId = null;
-  for (const segment of segments) {
-    let folder = await DocumentFolder.findOne({ parentId, name: segment });
-    if (!folder) {
-      folder = await DocumentFolder.create({
-        name: segment,
-        parentId,
-        createdBy,
-      });
-    }
-    parentId = folder._id;
-  }
-
-  return parentId;
-}
-
-async function findOrCreateFolderByName(parentId, name, createdBy) {
-  let folder = await DocumentFolder.findOne({ parentId, name });
-  if (folder) return folder;
-  folder = await DocumentFolder.create({ name, parentId, createdBy });
-  return folder;
-}
-
-function formatDateOrDash(value) {
-  if (!value) return '-';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '-';
-  return d.toISOString();
-}
-
-function printable(value) {
-  const s = String(value ?? '').trim();
-  return s || '-';
-}
-
-function appendTakeoffItems(lines, sheetData) {
-  const rows = Array.isArray(sheetData?.rows) ? sheetData.rows : [];
-  lines.push('', 'Takeoff Items:');
-  if (!rows.length) {
-    lines.push('- (none)');
-    return;
-  }
-  rows.forEach((row, idx) => {
-    const item = printable(row?.item);
-    const qty = printable(row?.qty);
-    const material = printable(row?.material);
-    const description = printable(row?.description);
-    if ([item, qty, material, description].every((v) => v === '-')) return;
-    lines.push(`${idx + 1}. Item: ${item} | Qty: ${qty} | Material: ${material}`);
-    lines.push(`   Description: ${description}`);
-  });
-}
-
-function warnLegacyEstimateUsage(context, details = {}) {
-  console.warn('[estimate-deprecated]', context, details);
-}
-
-function buildEstimateSummary(job, estimateDoc) {
-  const lineItems = Array.isArray(estimateDoc?.lineItems) ? estimateDoc.lineItems : [];
-  const lines = [
-    `Job: ${job.title || 'Untitled'}`,
-    `Estimate Number: ${estimateDoc?.estimateNumber || '-'}`,
-    `Estimate Date: ${estimateDoc?.estimateDate ? new Date(estimateDoc.estimateDate).toISOString().slice(0, 10) : '-'}`,
-    `Amount: ${estimateDoc?.grandTotal != null ? estimateDoc.grandTotal : '-'}`,
-    `Sent At: ${formatDateOrDash(estimateDoc?.sentAt)}`,
-    `Project Name: ${estimateDoc?.projectName || '-'}`,
-    '',
-    'Line Items:',
-  ];
-  if (!lineItems.length) {
-    lines.push('- (none)');
-  } else {
-    lineItems.forEach((li, i) => {
-      lines.push(
-        `${i + 1}. ${li.itemName || li.description || 'Item'} | Qty: ${li.quantity ?? '-'} | Unit: ${li.unitPrice ?? '-'} | Total: ${li.total ?? '-'}`
-      );
-    });
-  }
-  if (estimateDoc?.footerNote) {
-    lines.push('', 'Footer Note:', estimateDoc.footerNote);
-  }
-  return lines.join('\n');
-}
-
-function buildContractSummary(job, contractDoc) {
-  const c = contractDoc || {};
-  return [
-    `Job: ${job.title || 'Untitled'}`,
-    `Contract Number: ${c.contractNumber || '-'}`,
-    `Signed At: ${formatDateOrDash(c.signedAt)}`,
-    `Contract Date: ${formatDateOrDash(c.contractDate)}`,
-    `Total: ${c.total ?? '-'}`,
-    `Deposit Required: ${c.depositRequired ?? '-'}`,
-    `Deposit Received: ${c.depositReceived ?? '-'}`,
-    `Deposit Received At: ${formatDateOrDash(c.depositReceivedAt)}`,
-  ].join('\n');
-}
-
-function buildInvoicesSummary(job, invoiceDocs) {
-  const invoices = Array.isArray(invoiceDocs) ? invoiceDocs : [];
-  const lines = [`Job: ${job.title || 'Untitled'}`, '', 'Invoices:'];
-  invoices.forEach((inv, idx) => {
-    lines.push(
-      `${idx + 1}. ${inv.invoiceNumber || 'invoice'} | Amount: ${inv.total ?? '-'} | Estimate: ${inv.estimateId || '-'} | Date: ${inv.issuedAt ? new Date(inv.issuedAt).toISOString().slice(0, 10) : '-'}`
-    );
-  });
-  if (!invoices.length) lines.push('- (none)');
-  return lines.join('\n');
-}
-
-function buildTakeoffSummary(job) {
-  const t = job?.takeoff || {};
-  const s = t.sheetData || {};
-  const lines = [
-    `Job: ${job.title || 'Untitled'}`,
-    `Sold To: ${printable(s.soldTo)}`,
-    `Phone: ${printable(s.phoneNumber)}`,
-    `Date: ${printable(s.date)}`,
-    `Name/Address: ${printable(s.nameAddress)}`,
-    `Bay: ${printable(s.bay)}`,
-    `Completed At: ${formatDateOrDash(t.completedAt)}`,
-    `Notes: ${t.notes || '-'}`,
-    `Sheet Updated At: ${formatDateOrDash(t.sheetUpdatedAt)}`,
-  ];
-  if (s.notes && String(s.notes).trim()) {
-    lines.push(`Sheet Notes: ${String(s.notes).trim()}`);
-  }
-  if (t.sheetData != null) {
-    appendTakeoffItems(lines, s);
-  }
-  return lines.join('\n');
-}
-
-async function upsertGeneratedTextDocument({
-  customerId,
-  jobId,
-  kind,
-  folderId,
-  createdBy,
-  originalName,
-  content,
-}) {
-  const marker = `[AUTO_DOC:${kind}] customer:${String(customerId)} job:${String(jobId)}`;
-  const existing = await File.findOne({
-    customerId,
-    jobId: null,
-    taskId: null,
-    description: marker,
-  });
-
-  fs.mkdirSync(DOCUMENT_TEXT_DIR, { recursive: true });
-
-  if (existing) {
-    const filePath = findLocalFilePath(existing) || existing.path;
-    if (filePath && path.isAbsolute(filePath)) {
-      fs.writeFileSync(filePath, content, 'utf8');
-      existing.path = filePath;
-    }
-    existing.originalName = originalName;
-    existing.folderId = folderId;
-    existing.size = Buffer.byteLength(content, 'utf8');
-    existing.description = marker;
-    await existing.save();
-    return;
-  }
-
-  const baseName = sanitizePathSegment(originalName.replace(/\.txt$/i, '')) || `${kind}-summary`;
-  const diskName = `${baseName}-${Date.now()}.txt`;
-  const diskPath = path.join(DOCUMENT_TEXT_DIR, diskName);
-  fs.writeFileSync(diskPath, content, 'utf8');
-
-  await File.create({
-    jobId: undefined,
-    taskId: undefined,
-    customerId,
-    folderId,
-    filename: diskName,
-    originalName,
-    mimetype: 'text/plain',
-    size: Buffer.byteLength(content, 'utf8'),
-    path: diskPath,
-    fileType: 'other',
-    uploadedBy: createdBy,
-    description: marker,
-  });
-}
-
-async function ensureCustomerDocumentLibrary(createdBy) {
-  if (!createdBy) return;
-
-  const customers = await Customer.find({}, '_id name').sort({ name: 1 }).lean();
-  if (!customers.length) return;
-
-  const customersRoot = await findOrCreateFolderByName(null, 'Customers', createdBy);
-  const foldersUnderRoot = await DocumentFolder.find({ parentId: customersRoot._id }, '_id name').lean();
-  const folderByName = new Map(foldersUnderRoot.map((f) => [f.name, String(f._id)]));
-  const customerFolderById = new Map();
-  const usedNames = new Set(foldersUnderRoot.map((f) => f.name));
-
-  for (const customer of customers) {
-    const preferred = sanitizePathSegment(customer.name) || `Customer-${String(customer._id).slice(-6)}`;
-    let folderName = preferred;
-    if (usedNames.has(folderName) && !folderByName.has(folderName)) {
-      folderName = `${preferred} (${String(customer._id).slice(-6)})`;
-    }
-    if (!folderByName.has(folderName) && usedNames.has(folderName)) {
-      folderName = `${preferred} (${String(customer._id).slice(-6)})`;
-    }
-    if (!folderByName.has(folderName)) {
-      const folder = await findOrCreateFolderByName(customersRoot._id, folderName, createdBy);
-      folderByName.set(folderName, String(folder._id));
-      usedNames.add(folderName);
-    }
-    customerFolderById.set(String(customer._id), folderByName.get(folderName));
-  }
-
-  const filesWithCustomer = await File.find(
-    {
-      customerId: { $in: customers.map((c) => c._id) },
-      folderId: null,
-    },
-    '_id customerId'
-  ).lean();
-  if (filesWithCustomer.length) {
-    const bulk = filesWithCustomer
-      .map((f) => {
-        const folderId = customerFolderById.get(String(f.customerId));
-        if (!folderId) return null;
-        return {
-          updateOne: {
-            filter: { _id: f._id },
-            update: { $set: { folderId } },
-          },
-        };
-      })
-      .filter(Boolean);
-    if (bulk.length) await File.bulkWrite(bulk);
-  }
-
-  // Remove legacy autogenerated text summaries for estimate/contract/invoices.
-  // These should be represented by real uploaded artifacts (PDFs), not synthetic .txt files.
-  const legacyAutoDocs = await File.find({
-    jobId: null,
-    taskId: null,
-    mimetype: 'text/plain',
-    description: { $regex: AUTO_TEXT_SUMMARY_DESC_REGEX },
-  });
-  if (legacyAutoDocs.length) {
-    for (const file of legacyAutoDocs) {
-      await deleteStoredFileBinary(file);
-    }
-    await File.deleteMany({ _id: { $in: legacyAutoDocs.map((f) => f._id) } });
-  }
-
-  const jobs = await Job.find(
-    { customerId: { $in: customers.map((c) => c._id) } },
-    'customerId title takeoff'
-  ).lean();
-
-  for (const job of jobs) {
-    const folderId = customerFolderById.get(String(job.customerId));
-    if (!folderId) continue;
-    if (hasAnyValue(job.takeoff)) {
-      await upsertGeneratedTextDocument({
-        customerId: job.customerId,
-        jobId: job._id,
-        kind: 'takeoff',
-        folderId,
-        createdBy,
-        originalName: `${sanitizePathSegment(job.title) || 'Job'} - Takeoff.txt`,
-        content: buildTakeoffSummary(job),
-      });
-    }
-  }
-}
-
 // Helper function to check if file is stored in S3
 function isS3File(file) {
   if (file.s3Key) return true;
@@ -805,7 +486,7 @@ async function uploadDocument(req, res) {
       return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, TXT, PNG, JPG, WEBP, GIF, DOC, DOCX, XLS, XLSX' });
     }
 
-    const { fileType = 'other', folderId } = req.body;
+    const { fileType = 'other' } = req.body;
 
     // Handle createdBy
     let createdBy = req.user?._id || req.body.createdBy;
@@ -854,21 +535,6 @@ async function uploadDocument(req, res) {
       console.log('Upload Document - File stored locally:', filePath);
     }
 
-    let resolvedFolderId = null;
-    if (folderId) {
-      const folder = await DocumentFolder.findById(folderId).select('_id');
-      if (!folder) {
-        await deleteStoredFileBinary({
-          ...req.file,
-          path: filePath,
-          s3Key,
-          filename: req.file.filename || (req.file.key ? req.file.key.split('/').pop() : 'unknown'),
-        });
-        return res.status(404).json({ error: 'Folder not found' });
-      }
-      resolvedFolderId = folder._id;
-    }
-
     const filename = req.file.filename || (req.file.key ? req.file.key.split('/').pop() : 'unknown');
     
     const file = new File({
@@ -883,7 +549,6 @@ async function uploadDocument(req, res) {
       s3Key: s3Key,
       fileType: fileType,
       uploadedBy: createdBy,
-      folderId: resolvedFolderId,
       description: req.body.description ? String(req.body.description).trim() : undefined,
     });
 
@@ -897,259 +562,6 @@ async function uploadDocument(req, res) {
       fs.unlinkSync(req.file.path);
     }
     res.status(500).json({ error: error.message });
-  }
-}
-
-// Get all standalone documents (not tied to jobs or tasks)
-async function getDocuments(req, res) {
-  try {
-    const { folderId = null } = req.query;
-    const query = {};
-    if (folderId === 'root' || folderId === '' || folderId === 'null' || folderId === null) {
-      query.jobId = null;
-      query.taskId = null;
-      query.folderId = null;
-    } else if (folderId) {
-      query.folderId = folderId;
-    }
-
-    const files = await File.find({
-      ...query,
-    })
-      .populate('uploadedBy', 'name email')
-      .populate('folderId', 'name parentId')
-      .sort({ createdAt: -1 });
-
-    res.json(files);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-}
-
-async function createTextDocument(req, res) {
-  try {
-    const rawPath = String(req.body.path || '').trim();
-    if (!rawPath) return res.status(400).json({ error: 'Path is required' });
-
-    const createdBy = await resolveCreatedBy(req);
-    if (!createdBy) return res.status(400).json({ error: 'No user available' });
-
-    const parts = rawPath.split('/').map((p) => sanitizePathSegment(p)).filter(Boolean);
-    if (parts.length === 0) return res.status(400).json({ error: 'Path is invalid' });
-
-    const fileNameRaw = ensureTxtExtension(parts.pop());
-    const folderPath = parts.join('/');
-    const folderId = await resolveFolderPath(folderPath, createdBy);
-
-    const now = Date.now();
-    const safeBase = sanitizePathSegment(fileNameRaw.replace(/\.txt$/i, '')) || 'untitled';
-    const diskName = `${safeBase}-${now}.txt`;
-    const content = String(req.body.content || '');
-
-    fs.mkdirSync(DOCUMENT_TEXT_DIR, { recursive: true });
-    const diskPath = path.join(DOCUMENT_TEXT_DIR, diskName);
-    fs.writeFileSync(diskPath, content, 'utf8');
-
-    const file = await File.create({
-      jobId: undefined,
-      taskId: undefined,
-      customerId: undefined,
-      folderId: folderId || null,
-      filename: diskName,
-      originalName: fileNameRaw,
-      mimetype: 'text/plain',
-      size: Buffer.byteLength(content, 'utf8'),
-      path: diskPath,
-      fileType: 'other',
-      uploadedBy: createdBy,
-      description: req.body.description ? String(req.body.description).trim() : undefined,
-    });
-
-    await file.populate('uploadedBy', 'name email');
-    await file.populate('folderId', 'name parentId');
-    return res.status(201).json(file);
-  } catch (error) {
-    if (error?.code === 11000) return res.status(409).json({ error: 'A folder with this name already exists in that location' });
-    return res.status(500).json({ error: error.message || 'Failed to create file' });
-  }
-}
-
-async function getTextDocument(req, res) {
-  try {
-    const file = await File.findById(req.params.id);
-    if (!file) return res.status(404).json({ error: 'File not found' });
-    if (file.mimetype !== 'text/plain') return res.status(400).json({ error: 'Only text documents are editable' });
-
-    const filePath = findLocalFilePath(file);
-    if (!filePath) return res.status(404).json({ error: 'File not found on server' });
-    const content = fs.readFileSync(filePath, 'utf8');
-    return res.json({
-      _id: file._id,
-      originalName: file.originalName,
-      folderId: file.folderId || null,
-      content,
-      updatedAt: file.updatedAt,
-    });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || 'Failed to load file content' });
-  }
-}
-
-async function updateTextDocument(req, res) {
-  try {
-    const file = await File.findById(req.params.id);
-    if (!file) return res.status(404).json({ error: 'File not found' });
-    if (file.mimetype !== 'text/plain') return res.status(400).json({ error: 'Only text documents are editable' });
-
-    const content = String(req.body.content || '');
-    const filePath = findLocalFilePath(file);
-    if (!filePath) return res.status(404).json({ error: 'File not found on server' });
-    fs.writeFileSync(filePath, content, 'utf8');
-
-    file.size = Buffer.byteLength(content, 'utf8');
-    if (req.body.originalName !== undefined) {
-      const nextName = ensureTxtExtension(sanitizePathSegment(req.body.originalName));
-      if (!nextName || nextName === '.txt') return res.status(400).json({ error: 'File name cannot be empty' });
-      file.originalName = nextName;
-    }
-    if (req.body.description !== undefined) {
-      file.description = req.body.description ? String(req.body.description).trim() : '';
-    }
-    await file.save();
-    await file.populate('uploadedBy', 'name email');
-    await file.populate('folderId', 'name parentId');
-    return res.json(file);
-  } catch (error) {
-    return res.status(500).json({ error: error.message || 'Failed to save file' });
-  }
-}
-
-async function getDocumentTree(req, res) {
-  try {
-    const createdBy = await resolveCreatedBy(req);
-    await ensureCustomerDocumentLibrary(createdBy);
-
-    const [folders, files] = await Promise.all([
-      DocumentFolder.find({})
-        .populate('createdBy', 'name email')
-        .sort({ name: 1 })
-        .lean(),
-      File.find({
-        $or: [
-          { jobId: null, taskId: null },
-          { folderId: { $ne: null } },
-        ],
-      })
-        .populate('uploadedBy', 'name email')
-        .populate('folderId', 'name parentId')
-        .sort({ createdAt: -1 })
-        .lean(),
-    ]);
-
-    res.json({ folders, files });
-  } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to load document tree' });
-  }
-}
-
-async function createDocumentFolder(req, res) {
-  try {
-    const name = String(req.body.name || '').trim();
-    const parentId = req.body.parentId || null;
-    if (!name) return res.status(400).json({ error: 'Folder name is required' });
-
-    if (parentId) {
-      const parent = await DocumentFolder.findById(parentId).select('_id');
-      if (!parent) return res.status(404).json({ error: 'Parent folder not found' });
-    }
-
-    const createdBy = await resolveCreatedBy(req);
-    if (!createdBy) return res.status(400).json({ error: 'No user available' });
-
-    const folder = await DocumentFolder.create({ name, parentId, createdBy });
-    await folder.populate('createdBy', 'name email');
-    res.status(201).json(folder);
-  } catch (error) {
-    if (error?.code === 11000) return res.status(409).json({ error: 'A folder with this name already exists in that location' });
-    res.status(500).json({ error: error.message || 'Failed to create folder' });
-  }
-}
-
-async function updateDocumentFolder(req, res) {
-  try {
-    const folder = await DocumentFolder.findById(req.params.id);
-    if (!folder) return res.status(404).json({ error: 'Folder not found' });
-
-    const updates = {};
-    if (req.body.name !== undefined) {
-      const name = String(req.body.name || '').trim();
-      if (!name) return res.status(400).json({ error: 'Folder name cannot be empty' });
-      updates.name = name;
-    }
-
-    if (req.body.parentId !== undefined) {
-      const nextParent = req.body.parentId || null;
-      if (nextParent && String(nextParent) === String(folder._id)) {
-        return res.status(400).json({ error: 'Folder cannot be its own parent' });
-      }
-      if (nextParent) {
-        const parent = await DocumentFolder.findById(nextParent).select('_id');
-        if (!parent) return res.status(404).json({ error: 'Parent folder not found' });
-
-        const descendants = await getDescendantFolderIds(folder._id);
-        if (descendants.includes(String(nextParent))) {
-          return res.status(400).json({ error: 'Cannot move a folder into its own descendant' });
-        }
-      }
-      updates.parentId = nextParent;
-    }
-
-    Object.assign(folder, updates);
-    await folder.save();
-    await folder.populate('createdBy', 'name email');
-    res.json(folder);
-  } catch (error) {
-    if (error?.code === 11000) return res.status(409).json({ error: 'A folder with this name already exists in that location' });
-    res.status(500).json({ error: error.message || 'Failed to update folder' });
-  }
-}
-
-async function deleteDocumentFolder(req, res) {
-  try {
-    const folder = await DocumentFolder.findById(req.params.id);
-    if (!folder) return res.status(404).json({ error: 'Folder not found' });
-
-    const recursive = req.query.recursive === 'true' || req.body?.recursive === true;
-
-    if (!recursive) {
-      const [childFoldersCount, childFilesCount] = await Promise.all([
-        DocumentFolder.countDocuments({ parentId: folder._id }),
-        File.countDocuments({ folderId: folder._id }),
-      ]);
-      if (childFoldersCount > 0 || childFilesCount > 0) {
-        return res.status(400).json({ error: 'Folder is not empty. Use recursive delete.' });
-      }
-      await DocumentFolder.findByIdAndDelete(folder._id);
-      return res.json({ message: 'Folder deleted' });
-    }
-
-    const folderIds = await getDescendantFolderIds(folder._id);
-    const filesToDelete = await File.find({
-      folderId: { $in: folderIds },
-    });
-    for (const file of filesToDelete) {
-      await deleteStoredFileBinary(file);
-    }
-    await File.deleteMany({ _id: { $in: filesToDelete.map((f) => f._id) } });
-    await DocumentFolder.deleteMany({ _id: { $in: folderIds } });
-
-    res.json({
-      message: 'Folder and descendants deleted',
-      deletedFolders: folderIds.length,
-      deletedFiles: filesToDelete.length,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to delete folder' });
   }
 }
 
@@ -1191,7 +603,7 @@ async function getFile(req, res) {
   }
 }
 
-// Update file (e.g., description, move, display name for standalone library files)
+// Update file metadata (description only)
 async function updateFile(req, res) {
   try {
     const existing = await File.findById(req.params.id);
@@ -1203,33 +615,14 @@ async function updateFile(req, res) {
     if (req.body.description !== undefined) {
       update.description = req.body.description ? String(req.body.description).trim() : '';
     }
-    if (req.body.folderId !== undefined) {
-      const nextFolderId = req.body.folderId || null;
-      if (nextFolderId) {
-        const folder = await DocumentFolder.findById(nextFolderId).select('_id');
-        if (!folder) return res.status(404).json({ error: 'Folder not found' });
-      }
-      update.folderId = nextFolderId;
+    if (!Object.keys(update).length) {
+      return res.status(400).json({ error: 'No supported fields to update' });
     }
 
-    if (req.body.originalName !== undefined) {
-      const isStandalone = !existing.jobId && !existing.taskId;
-      if (!isStandalone) {
-        return res.status(400).json({ error: 'Renaming is only supported for library documents' });
-      }
-      let next = sanitizeDisplayFilename(req.body.originalName);
-      if (!next) return res.status(400).json({ error: 'Invalid file name' });
-      if (existing.mimetype === 'text/plain') {
-        next = ensureTxtExtension(sanitizePathSegment(next.replace(/\.txt$/i, '')) || 'untitled');
-      }
-      update.originalName = next;
-    }
     const file = await File.findByIdAndUpdate(req.params.id, update, {
       new: true,
       runValidators: true,
-    })
-      .populate('uploadedBy', 'name email')
-      .populate('folderId', 'name parentId');
+    }).populate('uploadedBy', 'name email');
 
     res.json(file);
   } catch (error) {
@@ -1289,14 +682,6 @@ module.exports = {
   getJobFiles,
   getTaskFiles,
   uploadDocument,
-  getDocuments,
-  createTextDocument,
-  getTextDocument,
-  updateTextDocument,
-  getDocumentTree,
-  createDocumentFolder,
-  updateDocumentFolder,
-  deleteDocumentFolder,
   downloadFile,
   getFile,
   deleteFile,

@@ -11,6 +11,10 @@ Tracked removals so we do not re-introduce duplicate or legacy paths.
 | `pages/CompletedAppointmentsPage.tsx` | Redundant with `CompletedTasksPage` (same data, weekly view) |
 | `assets/react.svg` | Vite default asset, never referenced |
 | `DashboardPage` `renderSummaryBlocks` / `renderInlineMarkdown` | Duplicated `utils/summaryMarkdown.tsx` (~80 lines) |
+| **Documents page** + `components/documents/fileExplorer/*` | Unused file-browser UI (~2k+ lines) |
+| **Backend** `/files/documents/*`, folder tree, text doc routes | Only served Documents page |
+| **`syncTakeoffToDocuments`** (`jobController`) | Auto `.txt` sync into document folders |
+| **`ensureCustomerDocumentLibrary`** (`fileController`) | Folder backfill on tree load |
 
 ## Redirects (bookmarks still work)
 
@@ -18,6 +22,7 @@ Tracked removals so we do not re-introduce duplicate or legacy paths.
 |-----------|------------|
 | `/completed-appointments` | `/completed-tasks` |
 | `/dead-estimates` | `/archive` |
+| `/documents` | `/dashboard` |
 
 ## Kept on purpose
 

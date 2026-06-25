@@ -5,7 +5,6 @@ const ALLOWED_PATHNAMES = new Set([
   '/customers',
   '/calendar',
   '/tasks',
-  '/documents',
   '/archive',
   '/dead-estimates',
   '/completed-tasks',
@@ -42,7 +41,6 @@ Main app routes (path → purpose):
 - /customers — customer list and records
 - /calendar — calendar and scheduling
 - /tasks — projects and tasks
-- /documents — document browser
 - /archive — job archive (also /dead-estimates)
 - /completed-tasks — completed tasks and appointments
 - /completed-jobs — finished closed-out jobs

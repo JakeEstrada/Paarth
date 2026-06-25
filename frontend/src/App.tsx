@@ -32,7 +32,6 @@ import UsersPage from './pages/UsersPage';
 import BillsPage from './pages/BillsPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
 import DashboardPage from './pages/DashboardPage';
-import DocumentsPage from './pages/DocumentsPage';
 import PdfViewerPage from './pages/PdfViewerPage';
 import PictureViewerPage from './pages/PictureViewerPage';
 import FinanceHubPage from './pages/FinanceHubPage';
@@ -135,7 +134,7 @@ function App(): JSX.Element | null {
                   <Route path="/customers" element={<CustomersPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/tasks" element={<TasksPage />} />
-                  <Route path="/documents" element={<DocumentsPage />} />
+                  <Route path="/documents" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/messages" element={<MessagePage />} />
                   <Route path="/rfid" element={<RfidPage />} />
                   <Route path="/dead-estimates" element={<Navigate to="/archive" replace />} />

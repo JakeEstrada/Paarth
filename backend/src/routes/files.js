@@ -6,14 +6,6 @@ const {
   getJobFiles,
   getTaskFiles,
   uploadDocument,
-  getDocuments,
-  createTextDocument,
-  getTextDocument,
-  updateTextDocument,
-  getDocumentTree,
-  createDocumentFolder,
-  updateDocumentFolder,
-  deleteDocumentFolder,
   downloadFile,
   getFile,
   deleteFile,
@@ -23,15 +15,8 @@ const {
 //router.use(requireAuth);
 
 router.post('/upload', upload.single('file'), uploadFile);
+/** Standalone file upload (e.g. Finance Hub PDF artifacts, payroll PDFs) — not the removed Documents browser */
 router.post('/upload-document', upload.single('file'), uploadDocument);
-router.post('/documents/text', createTextDocument);
-router.get('/documents/text/:id', getTextDocument);
-router.put('/documents/text/:id', updateTextDocument);
-router.get('/documents', getDocuments);
-router.get('/documents/tree', getDocumentTree);
-router.post('/documents/folders', createDocumentFolder);
-router.patch('/documents/folders/:id', updateDocumentFolder);
-router.delete('/documents/folders/:id', deleteDocumentFolder);
 router.get('/job/:jobId', getJobFiles);
 router.get('/task/:taskId', getTaskFiles);
 router.get('/:id/download', downloadFile);
@@ -40,4 +25,3 @@ router.patch('/:id', updateFile);
 router.delete('/:id', deleteFile);
 
 module.exports = router;
-

@@ -1,31 +1,6 @@
-/** In-memory caches for file lists — survives page/modal unmount (same session). */
+/** In-memory cache for job file lists — survives page/modal unmount (same session). */
 
-export type DocumentsTreeCache = {
-  folders: unknown[];
-  files: unknown[];
-};
-
-let documentsTreeCache: DocumentsTreeCache | null = null;
 const jobFilesCache = new Map<string, unknown[]>();
-
-export function getDocumentsTreeCache(): DocumentsTreeCache | null {
-  if (!documentsTreeCache) return null;
-  return {
-    folders: [...documentsTreeCache.folders],
-    files: [...documentsTreeCache.files],
-  };
-}
-
-export function setDocumentsTreeCache(data: DocumentsTreeCache): void {
-  documentsTreeCache = {
-    folders: Array.isArray(data.folders) ? [...data.folders] : [],
-    files: Array.isArray(data.files) ? [...data.files] : [],
-  };
-}
-
-export function invalidateDocumentsTreeCache(): void {
-  documentsTreeCache = null;
-}
 
 export function getJobFilesCache(jobId: string | null | undefined): unknown[] | null {
   if (!jobId) return null;

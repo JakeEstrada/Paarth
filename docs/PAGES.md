@@ -88,12 +88,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 - **Purpose:** Projects & tasks — open/completed, optional job/customer link.
 - **APIs:** `GET /tasks`, `POST /tasks`, `PATCH /tasks/:id`
 
-### DocumentsPage.tsx
-- **Route:** `/documents`
-- **Purpose:** File explorer — folders, uploads, move, link to jobs/customers.
-- **APIs:** `GET /files/…`, `POST /files/upload-document`
-
-### MessagePage.tsx
+### TasksPage.tsx
 - **Route:** `/messages`
 - **Purpose:** SMS inbox — sent, scheduled, received; Twilio integration.
 - **APIs:** `GET /twilio/messages`, `POST /twilio/send-sms`, `POST /twilio/schedule-sms`
@@ -192,7 +187,6 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 | `/customers` | CustomersPage |
 | `/calendar` | CalendarPage |
 | `/tasks` | TasksPage |
-| `/documents` | DocumentsPage |
 | `/messages` | MessagePage |
 | `/rfid` | RfidPage |
 | `/finance` | FinanceHubPage |

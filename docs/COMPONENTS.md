@@ -46,10 +46,7 @@ Reusable UI outside `pages/`. Pages compose these; business rules often live in 
 
 ## Documents
 
-| Component | Path | Role |
-|-----------|------|------|
-| `FileExplorer` | `components/documents/fileExplorer/FileExplorer.tsx` | Folder tree + file table |
-| `useDocumentsApi` | `components/documents/fileExplorer/useDocumentsApi.ts` | API hooks for documents page |
+Job and customer file uploads live on **job detail modal** and related flows (`POST /files/upload`, `GET /files/job/:id`). The standalone Documents browser page was removed.
 
 ## Finance
 

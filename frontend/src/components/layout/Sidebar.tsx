@@ -29,7 +29,6 @@ import {
   Person as UsersIcon,
   Receipt as ReceiptIcon,
   TableChart as TableChartIcon,
-  Description as DocumentsIcon,
   ViewWeek as PipelineViewKioskIcon,
   AccountBalanceWallet as FinanceHubIcon,
   TableRows as TakeoffIcon,
@@ -59,7 +58,6 @@ const financeItems = [
 ];
 
 const operationsItems = [
-  { text: 'Documents', icon: <DocumentsIcon />, path: '/documents' },
   { text: 'Take Off Sheet', icon: <TakeoffIcon />, path: '/takeoff-sheet' },
   { text: 'Users', icon: <UsersIcon />, path: '/users', adminOnly: true },
 ];
