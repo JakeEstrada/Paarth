@@ -49,6 +49,12 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import {
+  formatScheduleItemLabel,
+  getContractBase,
+  resolvePaymentSchedule,
+  validatePaymentSchedule,
+} from '../utils/paymentSchedule';
 import RegisterLedgerSection from '../components/finance/RegisterLedgerSection';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -382,6 +388,8 @@ function FinanceHubPage() {
   const [switchingEstimate, setSwitchingEstimate] = useState(false);
   const [changeOrdersList, setChangeOrdersList] = useState([]);
   const [loadingChangeOrders, setLoadingChangeOrders] = useState(false);
+  const [paymentScheduleJobs, setPaymentScheduleJobs] = useState([]);
+  const [loadingPaymentSchedules, setLoadingPaymentSchedules] = useState(false);
   /** Full job JSON (consumer context only). */
   const [loadedEstimateJob, setLoadedEstimateJob] = useState(null);
   /** First-class estimate source of truth for current job context. */
@@ -1224,6 +1232,32 @@ function FinanceHubPage() {
     };
   }, [activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== 'payment-schedules') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingPaymentSchedules(true);
+        const { data } = await axios.get(`${API_URL}/jobs`, {
+          params: { limit: 500, includeCompletedClosedOut: true, includeArchived: true },
+        });
+        const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
+        if (!cancelled) setPaymentScheduleJobs(jobs);
+      } catch (error) {
+        console.error('Error loading payment schedules:', error);
+        if (!cancelled) {
+          setPaymentScheduleJobs([]);
+          toast.error(error.response?.data?.error || 'Failed to load payment schedules');
+        }
+      } finally {
+        if (!cancelled) setLoadingPaymentSchedules(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
   const estimateFormIsDirty = useMemo(() => {
     return (
       JSON.stringify(normalizeEstimateFormForCompare(estimateForm)) !==
@@ -1752,6 +1786,87 @@ function FinanceHubPage() {
                           </TableCell>
                         </TableRow>
                       ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          ) : activeTab === 'payment-schedules' ? (
+            <Card>
+              <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+                  Payment Schedules
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Planned payment milestones per job (base contract only — change orders are tracked separately).
+                  Edit schedules from a job&apos;s Files tab.
+                </Typography>
+                {loadingPaymentSchedules ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress size={32} />
+                  </Box>
+                ) : paymentScheduleJobs.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No jobs found.
+                  </Typography>
+                ) : (
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 700 }}>Job</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Customer</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">
+                          Contract
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Schedule</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">
+                          Scheduled
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">
+                          Remaining
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {paymentScheduleJobs.map((row) => {
+                        const contractBase = getContractBase(row);
+                        const schedule = resolvePaymentSchedule(row);
+                        const validation = validatePaymentSchedule(schedule, contractBase);
+                        const customerName =
+                          isPopulatedDocRef(row.customerId) && row.customerId?.name
+                            ? row.customerId.name
+                            : '—';
+                        return (
+                          <TableRow key={row._id}>
+                            <TableCell>
+                              <Link href={`/finance?tab=estimates&jobId=${row._id}`} underline="hover">
+                                {row.title || 'Untitled'}
+                              </Link>
+                            </TableCell>
+                            <TableCell>{customerName}</TableCell>
+                            <TableCell align="right">${formatInvoiceMoney(contractBase)}</TableCell>
+                            <TableCell>
+                              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                                {schedule.type === 'custom' ? 'Custom' : '40 / 60'}
+                                {schedule.isFallback ? ' (default)' : ''}
+                              </Typography>
+                              {schedule.items.map((item, idx) => (
+                                <Typography key={`${row._id}-${idx}`} variant="caption" display="block" color="text.secondary">
+                                  {formatScheduleItemLabel(item)}
+                                  {item.status === 'paid' ? ' · Paid' : ''}
+                                </Typography>
+                              ))}
+                              {validation.warnings.map((warning) => (
+                                <Typography key={warning} variant="caption" display="block" color="warning.main">
+                                  {warning}
+                                </Typography>
+                              ))}
+                            </TableCell>
+                            <TableCell align="right">${formatInvoiceMoney(validation.scheduledTotal)}</TableCell>
+                            <TableCell align="right">${formatInvoiceMoney(validation.remaining)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 )}

@@ -607,6 +607,7 @@ function DashboardPage() {
       'estimate_updated': 'warning',
       'contract_signed': 'success',
       'deposit_received': 'success',
+      'payment_schedule_updated': 'info',
       'payment_received': 'success',
       'calendar_sync': 'info',
       // Developer tasks

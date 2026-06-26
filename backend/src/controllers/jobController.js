@@ -457,6 +457,13 @@ async function updateJob(req, res) {
     delete changesWithoutSchedule['schedule.startDate'];
     delete changesWithoutSchedule['schedule.endDate'];
     delete changesWithoutSchedule['schedule'];
+    delete changesWithoutSchedule['paymentSchedule'];
+    delete changesWithoutSchedule['paymentSchedule.type'];
+    Object.keys(changesWithoutSchedule).forEach((key) => {
+      if (key.startsWith('paymentSchedule.items')) {
+        delete changesWithoutSchedule[key];
+      }
+    });
     
     if (Object.keys(changesWithoutSchedule).length > 0) {
       // Create a readable description of changes

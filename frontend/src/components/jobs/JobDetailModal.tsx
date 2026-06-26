@@ -61,6 +61,7 @@ import AddNoteModal from './AddNoteModal';
 import AddJobTaskModal from './AddJobTaskModal';
 import AddAppointmentModal from '../appointments/AddAppointmentModal';
 import JobChangeOrderDialog from './JobChangeOrderDialog';
+import JobPaymentScheduleEditor from './JobPaymentScheduleEditor';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
@@ -71,6 +72,11 @@ import {
   setJobFilesCache,
 } from '../../utils/fileListCache';
 import { renderSummaryBlocks } from '../../utils/summaryMarkdown';
+import {
+  formatScheduleItemLabel,
+  resolvePaymentSchedule,
+  validatePaymentSchedule,
+} from '../../utils/paymentSchedule';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -197,6 +203,7 @@ function JobDetailModal({
   const [jobTasks, setJobTasks] = useState([]);
   const [jobEstimates, setJobEstimates] = useState([]);
   const [changeOrderOpen, setChangeOrderOpen] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
   const hideFinancials = hideSensitive;
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareSmsRecipient, setShareSmsRecipient] = useState('');
@@ -367,10 +374,15 @@ function JobDetailModal({
   };
 
   const headerBaseEstimatedValue = Number((isEditing ? editedJob?.valueEstimated : job?.valueEstimated) || 0);
+  const headerContractedValue = Number((isEditing ? editedJob?.valueContracted : job?.valueContracted) || 0);
+  const headerContractBase = headerContractedValue > 0 ? headerContractedValue : headerBaseEstimatedValue;
   const headerChangeOrderValue = jobTasks.reduce((sum, task) => sum + (Number(task.amount) || 0), 0);
-  const headerEstimatedValue = headerBaseEstimatedValue + headerChangeOrderValue;
-  const headerDepositValue = headerEstimatedValue * 0.4;
-  const headerFinalValue = headerEstimatedValue * 0.6;
+  const headerScheduleSource = isEditing ? editedJob || job : job;
+  const headerPaymentSchedule = resolvePaymentSchedule({
+    ...headerScheduleSource,
+    valueEstimated: headerBaseEstimatedValue,
+    valueContracted: headerContractedValue,
+  });
   const jobCardId = job?._id ? String(job._id).slice(-6).toUpperCase() : 'N/A';
 
   const handleFileDelete = async (fileId) => {
@@ -431,6 +443,23 @@ function JobDetailModal({
   const handleCancel = () => {
     setIsEditing(false);
     setEditedJob({ ...job });
+  };
+
+  const handleSavePaymentSchedule = async (paymentSchedule) => {
+    try {
+      setScheduleSaving(true);
+      await onJobUpdate(jobId, { paymentSchedule });
+      await fetchJobDetails();
+      if (paymentSchedule) {
+        toast.success('Payment schedule saved');
+      }
+    } catch (error) {
+      console.error('Error saving payment schedule:', error);
+      toast.error('Failed to save payment schedule');
+      throw error;
+    } finally {
+      setScheduleSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -916,10 +945,10 @@ function JobDetailModal({
               ) : isEditing ? (
                 <>
                   <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
-                    {formatCurrency(headerEstimatedValue)}
+                    {formatCurrency(headerContractBase)}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    Total Price
+                    Contract / Estimate
                   </Typography>
                   <TextField
                     type="number"
@@ -935,26 +964,39 @@ function JobDetailModal({
                 </>
               ) : (
                 <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
-                  {formatCurrency(headerEstimatedValue)}
+                  {formatCurrency(headerContractBase)}
                 </Typography>
               )}
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                {isEditing ? 'Base Estimate' : 'Total Price'}
+                {isEditing ? 'Base Estimate' : 'Contract / Estimate'}
               </Typography>
               {!hideFinancials && (
                 <>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
                     Base Estimate: {formatCurrency(headerBaseEstimatedValue)}
                   </Typography>
+                  {headerContractedValue > 0 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
+                      Contracted: {formatCurrency(headerContractedValue)}
+                    </Typography>
+                  )}
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
                     Change Orders: {formatCurrency(headerChangeOrderValue)}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
-                    Deposit (40%): {formatCurrency(headerDepositValue)}
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75, fontWeight: 600 }}>
+                    Payment schedule
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
-                    Final (60%): {formatCurrency(headerFinalValue)}
-                  </Typography>
+                  {headerPaymentSchedule.items.map((item, idx) => (
+                    <Typography
+                      key={`${item.label}-${idx}`}
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', lineHeight: 1.25 }}
+                    >
+                      {formatScheduleItemLabel(item)}
+                      {item.status === 'paid' ? ' · Paid' : ''}
+                    </Typography>
+                  ))}
                 </>
               )}
             </Box>
@@ -1408,6 +1450,13 @@ function JobDetailModal({
                       </Button>
                     </Box>
                   </Paper>
+                </Grid>
+                <Grid item xs={12}>
+                  <JobPaymentScheduleEditor
+                    job={job}
+                    onSave={handleSavePaymentSchedule}
+                    saving={scheduleSaving}
+                  />
                 </Grid>
               </Grid>
             )}
