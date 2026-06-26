@@ -1970,5 +1970,4 @@ function JobDetailModal({
 }
 
 export default JobDetailModal;
-export { JOB_MODAL_TAB };
 
