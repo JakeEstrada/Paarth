@@ -25,6 +25,7 @@ import {
   Delete as DeleteIcon,
   Save as SaveIcon,
 } from '@mui/icons-material';
+import { format } from 'date-fns';
 import {
   buildCustomScheduleFromItems,
   buildStandardSchedule,
@@ -43,6 +44,12 @@ const DUE_TYPE_OPTIONS = [
   { value: 'custom', label: 'Custom' },
 ];
 
+const STATUS_OPTIONS = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'invoiced', label: 'Invoiced' },
+  { value: 'paid', label: 'Paid' },
+];
+
 const STATUS_COLORS = {
   pending: 'default',
   invoiced: 'warning',
@@ -56,6 +63,15 @@ function formatMoney(value) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(Number(value) || 0);
+}
+
+function toDateInputValue(value) {
+  if (!value) return '';
+  try {
+    return format(new Date(value), 'yyyy-MM-dd');
+  } catch {
+    return '';
+  }
 }
 
 function cloneItems(items) {
@@ -132,13 +148,44 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
     setDirty(true);
   };
 
-  const markPaid = (index) => {
+  const handleStatusChange = (index, status) => {
     const item = computedItems[index];
     if (!item) return;
+
+    if (status === 'paid') {
+      updateItem(index, {
+        status: 'paid',
+        paidAmount: item.paidAmount > 0 ? item.paidAmount : item.amount,
+        paidAt: item.paidAt || new Date().toISOString(),
+      });
+      return;
+    }
+
+    if (status === 'invoiced') {
+      updateItem(index, {
+        status: 'invoiced',
+        paidAmount: 0,
+        paidAt: null,
+      });
+      return;
+    }
+
     updateItem(index, {
-      status: 'paid',
-      paidAmount: item.amount,
-      paidAt: new Date().toISOString(),
+      status: 'pending',
+      paidAmount: 0,
+      paidAt: null,
+    });
+  };
+
+  const markPaid = (index) => {
+    handleStatusChange(index, 'paid');
+  };
+
+  const clearPayment = (index) => {
+    updateItem(index, {
+      status: 'pending',
+      paidAmount: 0,
+      paidAt: null,
     });
   };
 
@@ -156,7 +203,7 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 1, flexWrap: 'wrap' }}>
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-            Payment Schedule
+            Payment Schedule & History
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Base contract: {formatMoney(contractBase)} (change orders excluded)
@@ -185,7 +232,7 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
               onClick={handleSave}
               disabled={!dirty || saving}
             >
-              Save schedule
+              Save
             </Button>
           </Box>
         )}
@@ -213,141 +260,193 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
         </Typography>
       </Box>
 
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell sx={{ fontWeight: 700 }}>Label</TableCell>
-            <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
-            <TableCell sx={{ fontWeight: 700 }} align="right">
-              Value
-            </TableCell>
-            <TableCell sx={{ fontWeight: 700 }} align="right">
-              Amount
-            </TableCell>
-            <TableCell sx={{ fontWeight: 700 }}>Due</TableCell>
-            <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-            {!readOnly && <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {computedItems.map((item, index) => (
-            <TableRow key={`${item.label}-${index}`}>
-              <TableCell>
-                {readOnly ? (
-                  item.label
-                ) : (
-                  <TextField
-                    size="small"
-                    value={item.label}
-                    onChange={(e) => updateItem(index, { label: e.target.value })}
-                    placeholder="Deposit, Bending Rail, etc."
-                    fullWidth
-                  />
-                )}
+      <Box sx={{ overflowX: 'auto' }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 700 }}>Label</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
+              <TableCell sx={{ fontWeight: 700 }} align="right">
+                Amount
               </TableCell>
-              <TableCell>
-                {readOnly ? (
-                  item.amountType === 'percentage' ? `${item.percentage}%` : 'Fixed'
-                ) : (
-                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <TableCell sx={{ fontWeight: 700 }}>Due</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Paid</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Paid date</TableCell>
+              {!readOnly && <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {computedItems.map((item, index) => (
+              <TableRow key={`${item.label}-${index}`}>
+                <TableCell>
+                  {readOnly ? (
+                    item.label
+                  ) : (
+                    <TextField
+                      size="small"
+                      value={item.label}
+                      onChange={(e) => updateItem(index, { label: e.target.value })}
+                      placeholder="Deposit, Bending Rail, etc."
+                      fullWidth
+                    />
+                  )}
+                </TableCell>
+                <TableCell>
+                  {readOnly ? (
+                    item.amountType === 'percentage' ? `${item.percentage}%` : 'Fixed'
+                  ) : (
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 150 }}>
+                      <Select
+                        size="small"
+                        value={item.amountType}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            amountType: e.target.value,
+                            percentage: e.target.value === 'percentage' ? item.percentage || 0 : undefined,
+                          })
+                        }
+                      >
+                        <MenuItem value="percentage">%</MenuItem>
+                        <MenuItem value="fixed">$</MenuItem>
+                      </Select>
+                      {item.amountType === 'percentage' ? (
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={item.percentage ?? ''}
+                          onChange={(e) =>
+                            updateItem(index, { percentage: parseFloat(e.target.value) || 0 })
+                          }
+                          sx={{ width: 72 }}
+                        />
+                      ) : (
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={item.amount ?? ''}
+                          onChange={(e) =>
+                            updateItem(index, { amount: parseFloat(e.target.value) || 0 })
+                          }
+                          sx={{ width: 100 }}
+                        />
+                      )}
+                    </Box>
+                  )}
+                </TableCell>
+                <TableCell align="right">{formatMoney(item.amount)}</TableCell>
+                <TableCell>
+                  {readOnly ? (
+                    item.dueType
+                  ) : (
                     <Select
                       size="small"
-                      value={item.amountType}
+                      value={item.dueType || 'custom'}
+                      onChange={(e) => updateItem(index, { dueType: e.target.value })}
+                    >
+                      {DUE_TYPE_OPTIONS.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {readOnly ? (
+                    <Chip
+                      size="small"
+                      label={item.status || 'pending'}
+                      color={STATUS_COLORS[item.status] || 'default'}
+                    />
+                  ) : (
+                    <Select
+                      size="small"
+                      value={item.status || 'pending'}
+                      onChange={(e) => handleStatusChange(index, e.target.value)}
+                      sx={{ minWidth: 110 }}
+                    >
+                      {STATUS_OPTIONS.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {readOnly ? (
+                    item.status === 'paid' ? formatMoney(item.paidAmount || item.amount) : '—'
+                  ) : item.status === 'paid' ? (
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={item.paidAmount ?? item.amount ?? ''}
+                      onChange={(e) =>
+                        updateItem(index, { paidAmount: parseFloat(e.target.value) || 0 })
+                      }
+                      sx={{ width: 110 }}
+                    />
+                  ) : (
+                    '—'
+                  )}
+                </TableCell>
+                <TableCell>
+                  {readOnly ? (
+                    item.paidAt ? format(new Date(item.paidAt), 'MMM dd, yyyy') : '—'
+                  ) : item.status === 'paid' ? (
+                    <TextField
+                      size="small"
+                      type="date"
+                      value={toDateInputValue(item.paidAt)}
                       onChange={(e) =>
                         updateItem(index, {
-                          amountType: e.target.value,
-                          percentage: e.target.value === 'percentage' ? item.percentage || 0 : undefined,
+                          paidAt: e.target.value ? new Date(`${e.target.value}T12:00:00`).toISOString() : null,
                         })
                       }
-                    >
-                      <MenuItem value="percentage">%</MenuItem>
-                      <MenuItem value="fixed">$</MenuItem>
-                    </Select>
-                    {item.amountType === 'percentage' ? (
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={item.percentage ?? ''}
-                        onChange={(e) =>
-                          updateItem(index, { percentage: parseFloat(e.target.value) || 0 })
-                        }
-                        sx={{ width: 72 }}
-                      />
-                    ) : (
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={item.amount ?? ''}
-                        onChange={(e) =>
-                          updateItem(index, { amount: parseFloat(e.target.value) || 0 })
-                        }
-                        sx={{ width: 100 }}
-                      />
-                    )}
-                  </Box>
-                )}
-              </TableCell>
-              <TableCell align="right">
-                {item.amountType === 'percentage' && Number.isFinite(Number(item.percentage))
-                  ? `${item.percentage}%`
-                  : formatMoney(item.amount)}
-              </TableCell>
-              <TableCell align="right">{formatMoney(item.amount)}</TableCell>
-              <TableCell>
-                {readOnly ? (
-                  item.dueType
-                ) : (
-                  <Select
-                    size="small"
-                    value={item.dueType || 'custom'}
-                    onChange={(e) => updateItem(index, { dueType: e.target.value })}
-                  >
-                    {DUE_TYPE_OPTIONS.map((opt) => (
-                      <MenuItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                )}
-              </TableCell>
-              <TableCell>
-                <Chip
-                  size="small"
-                  label={item.status || 'pending'}
-                  color={STATUS_COLORS[item.status] || 'default'}
-                />
-              </TableCell>
-              {!readOnly && (
-                <TableCell align="right">
-                  <IconButton size="small" onClick={() => moveItem(index, -1)} disabled={index === 0}>
-                    <ArrowUpIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    onClick={() => moveItem(index, 1)}
-                    disabled={index === computedItems.length - 1}
-                  >
-                    <ArrowDownIcon fontSize="small" />
-                  </IconButton>
-                  {item.status !== 'paid' && (
-                    <Button size="small" onClick={() => markPaid(index)}>
-                      Mark paid
-                    </Button>
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  ) : (
+                    '—'
                   )}
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={() => removeItem(index)}
-                    disabled={computedItems.length <= 1}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
                 </TableCell>
-              )}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                {!readOnly && (
+                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                    <IconButton size="small" onClick={() => moveItem(index, -1)} disabled={index === 0}>
+                      <ArrowUpIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => moveItem(index, 1)}
+                      disabled={index === computedItems.length - 1}
+                    >
+                      <ArrowDownIcon fontSize="small" />
+                    </IconButton>
+                    {item.status !== 'paid' && (
+                      <Button size="small" onClick={() => markPaid(index)}>
+                        Mark paid
+                      </Button>
+                    )}
+                    {(item.status === 'paid' || item.status === 'invoiced') && (
+                      <Button size="small" color="warning" onClick={() => clearPayment(index)}>
+                        Clear
+                      </Button>
+                    )}
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => removeItem(index)}
+                      disabled={computedItems.length <= 1}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Box>
     </Paper>
   );
 }

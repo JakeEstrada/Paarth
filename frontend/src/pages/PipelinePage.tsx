@@ -32,7 +32,7 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import PipelineBoard from '../components/pipeline/PipelineBoard';
-import JobDetailModal from '../components/jobs/JobDetailModal';
+import JobDetailModal, { JOB_MODAL_TAB } from '../components/jobs/JobDetailModal';
 import AppointmentList from '../components/appointments/AppointmentList';
 import AddAppointmentModal from '../components/appointments/AddAppointmentModal';
 import TodoList from '../components/todos/TodoList';
@@ -68,6 +68,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
+  const [jobModalInitialTab, setJobModalInitialTab] = useState(JOB_MODAL_TAB.overview);
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
   const [editAppointmentOpen, setEditAppointmentOpen] = useState(false);
   const [editingAppointmentId, setEditingAppointmentId] = useState(null);
@@ -669,7 +670,10 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
             jobs={filteredJobs}
             onJobUpdate={handleJobUpdate}
             onStageChange={handleStageChange}
-            onJobClick={setSelectedJobId}
+            onJobClick={(jobId) => {
+              setJobModalInitialTab(JOB_MODAL_TAB.overview);
+              setSelectedJobId(jobId);
+            }}
             onNewJobClick={() => {
               setAddJobOpen(true);
             }}
@@ -697,7 +701,11 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
         <JobDetailModal
           jobId={selectedJobId}
           open={!!selectedJobId}
-          onClose={() => setSelectedJobId(null)}
+          initialTab={jobModalInitialTab}
+          onClose={() => {
+            setSelectedJobId(null);
+            setJobModalInitialTab(JOB_MODAL_TAB.overview);
+          }}
           onJobUpdate={handleJobUpdate}
           onJobDelete={handleJobDelete}
           onJobArchive={handleJobArchive}
@@ -778,6 +786,12 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
             if (contextMenuJob) {
               setSelectedJobForTask(contextMenuJob);
               setAddJobTaskOpen(true);
+            }
+          }}
+          onEditPayments={() => {
+            if (contextMenuJob?._id) {
+              setJobModalInitialTab(JOB_MODAL_TAB.payments);
+              setSelectedJobId(contextMenuJob._id);
             }
           }}
           onArchive={async () => {

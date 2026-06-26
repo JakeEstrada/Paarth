@@ -173,6 +173,19 @@ function renderTextWithLinks(text) {
   });
 }
 
+export const JOB_MODAL_TAB = {
+  overview: 0,
+  payments: 1,
+  files: 2,
+  notes: 3,
+};
+
+function resolveJobModalTab(tab) {
+  if (typeof tab === 'number' && tab >= 0 && tab <= 3) return tab;
+  if (typeof tab === 'string' && tab in JOB_MODAL_TAB) return JOB_MODAL_TAB[tab];
+  return JOB_MODAL_TAB.overview;
+}
+
 function JobDetailModal({
   jobId,
   open,
@@ -181,11 +194,12 @@ function JobDetailModal({
   onJobDelete,
   onJobArchive,
   onAppointmentCreated = () => {},
+  initialTab = 'overview',
   sx = {},
   hideSensitive = false,
   onRequestSensitiveUnlock = () => {},
 }) {
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(() => resolveJobModalTab(initialTab));
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -270,13 +284,14 @@ function JobDetailModal({
 
   useEffect(() => {
     if (open && jobId) {
+      setActiveTab(resolveJobModalTab(initialTab));
       fetchJobDetails();
       fetchJobFiles();
     } else {
       setIsEditing(false);
       setEditedJob(null);
     }
-  }, [open, jobId, fetchJobDetails, fetchJobFiles]);
+  }, [open, jobId, initialTab, fetchJobDetails, fetchJobFiles]);
 
   const validateUploadFile = (file) => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
@@ -997,6 +1012,14 @@ function JobDetailModal({
                       {item.status === 'paid' ? ' · Paid' : ''}
                     </Typography>
                   ))}
+                  <Button
+                    size="small"
+                    variant="text"
+                    sx={{ mt: 0.5, p: 0, minWidth: 0, textTransform: 'none' }}
+                    onClick={() => setActiveTab(JOB_MODAL_TAB.payments)}
+                  >
+                    Edit payments
+                  </Button>
                 </>
               )}
             </Box>
@@ -1050,6 +1073,7 @@ function JobDetailModal({
       <DialogContent sx={{ pt: 2 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
           <Tab label="Overview" />
+          <Tab label="Payments" />
           <Tab label="Files" />
           <Tab label="Notes" />
         </Tabs>
@@ -1379,7 +1403,30 @@ function JobDetailModal({
           </Grid>
         )}
 
-        {activeTab === 1 && (
+        {activeTab === JOB_MODAL_TAB.payments && (
+          <Box>
+            {hideFinancials ? (
+              <Paper sx={{ p: 3, textAlign: 'center' }}>
+                <Typography variant="body1" sx={{ mb: 1 }}>
+                  Financial details are locked in Shop View.
+                </Typography>
+                {onRequestSensitiveUnlock && (
+                  <Button variant="contained" onClick={() => onRequestSensitiveUnlock?.()}>
+                    Unlock with PIN
+                  </Button>
+                )}
+              </Paper>
+            ) : (
+              <JobPaymentScheduleEditor
+                job={job}
+                onSave={handleSavePaymentSchedule}
+                saving={scheduleSaving}
+              />
+            )}
+          </Box>
+        )}
+
+        {activeTab === JOB_MODAL_TAB.files && (
           <Box>
             {hideFinancials ? (
               <Paper sx={{ p: 3, textAlign: 'center' }}>
@@ -1450,13 +1497,6 @@ function JobDetailModal({
                       </Button>
                     </Box>
                   </Paper>
-                </Grid>
-                <Grid item xs={12}>
-                  <JobPaymentScheduleEditor
-                    job={job}
-                    onSave={handleSavePaymentSchedule}
-                    saving={scheduleSaving}
-                  />
                 </Grid>
               </Grid>
             )}
@@ -1661,7 +1701,7 @@ function JobDetailModal({
           </Box>
         )}
 
-        {activeTab === 2 && (
+        {activeTab === JOB_MODAL_TAB.notes && (
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2 }}>
               <Button
@@ -1930,4 +1970,5 @@ function JobDetailModal({
 }
 
 export default JobDetailModal;
+export { JOB_MODAL_TAB };
 

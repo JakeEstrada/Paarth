@@ -10,9 +10,19 @@ import {
   SwapHoriz as MoveIcon,
   AddTask as AddTaskIcon,
   Archive as ArchiveIcon,
+  AttachMoney as PaymentsIcon,
 } from '@mui/icons-material';
 
-function JobContextMenu({ anchorEl, open, onClose, onMoveStage, onAddTask, onArchive, job }) {
+function JobContextMenu({
+  anchorEl,
+  open,
+  onClose,
+  onMoveStage,
+  onAddTask,
+  onEditPayments,
+  onArchive,
+  job,
+}) {
   const handleMoveStage = () => {
     onMoveStage();
     onClose();
@@ -20,6 +30,11 @@ function JobContextMenu({ anchorEl, open, onClose, onMoveStage, onAddTask, onArc
 
   const handleAddTask = () => {
     onAddTask();
+    onClose();
+  };
+
+  const handleEditPayments = () => {
+    if (onEditPayments) onEditPayments();
     onClose();
   };
 
@@ -57,6 +72,14 @@ function JobContextMenu({ anchorEl, open, onClose, onMoveStage, onAddTask, onArc
         </ListItemIcon>
         <ListItemText>Add Change Order / Task</ListItemText>
       </MenuItem>
+      {onEditPayments && (
+        <MenuItem onClick={handleEditPayments}>
+          <ListItemIcon>
+            <PaymentsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Edit payments</ListItemText>
+        </MenuItem>
+      )}
       {canArchive && (
         <>
           <Divider />

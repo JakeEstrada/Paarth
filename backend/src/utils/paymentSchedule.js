@@ -233,6 +233,10 @@ function describeScheduleItem(item) {
   return `${item.label}: $${roundMoney(item.amount).toFixed(2)}`;
 }
 
+function scheduleItemKey(item) {
+  return `${item.label}|${item.sortOrder}|${item.dueType}`;
+}
+
 function diffPaymentScheduleActivities(oldSchedule, newSchedule) {
   const oldItems = Array.isArray(oldSchedule?.items) ? oldSchedule.items : [];
   const newItems = Array.isArray(newSchedule?.items) ? newSchedule.items : [];
@@ -249,21 +253,50 @@ function diffPaymentScheduleActivities(oldSchedule, newSchedule) {
     activities.push({ type: 'payment_schedule_updated', note: 'Payment schedule updated' });
   }
 
-  const oldPaidKeys = new Set(
-    oldItems
-      .filter((i) => i.status === 'paid')
-      .map((i) => `${i.label}|${i.sortOrder}|${i.dueType}`)
-  );
+  const oldByKey = new Map(oldItems.map((item) => [scheduleItemKey(item), item]));
 
-  for (const item of newItems) {
-    const key = `${item.label}|${item.sortOrder}|${item.dueType}`;
-    if (item.status === 'paid' && !oldPaidKeys.has(key)) {
+  for (const newItem of newItems) {
+    const key = scheduleItemKey(newItem);
+    const oldItem = oldByKey.get(key);
+
+    if (!oldItem) {
+      if (newItem.status === 'paid') {
+        activities.push({
+          type: 'payment_received',
+          note: `Payment received: ${describeScheduleItem(newItem)}`,
+          amount: roundMoney(newItem.paidAmount || newItem.amount),
+          paymentType: newItem.dueType || 'milestone',
+        });
+      }
+      continue;
+    }
+
+    if (oldItem.status === 'paid' && newItem.status !== 'paid') {
+      activities.push({
+        type: 'payment_schedule_updated',
+        note: `Payment status reset: ${newItem.label || 'item'}`,
+      });
+    } else if (newItem.status === 'paid' && oldItem.status !== 'paid') {
       activities.push({
         type: 'payment_received',
-        note: `Payment received: ${describeScheduleItem(item)}`,
-        amount: roundMoney(item.paidAmount || item.amount),
-        paymentType: item.dueType || 'milestone',
+        note: `Payment received: ${describeScheduleItem(newItem)}`,
+        amount: roundMoney(newItem.paidAmount || newItem.amount),
+        paymentType: newItem.dueType || 'milestone',
       });
+    } else if (newItem.status === 'paid' && oldItem.status === 'paid') {
+      const amountChanged =
+        roundMoney(oldItem.paidAmount || oldItem.amount) !==
+        roundMoney(newItem.paidAmount || newItem.amount);
+      const oldPaidAt = oldItem.paidAt ? new Date(oldItem.paidAt).toISOString() : '';
+      const newPaidAt = newItem.paidAt ? new Date(newItem.paidAt).toISOString() : '';
+      if (amountChanged || oldPaidAt !== newPaidAt) {
+        activities.push({
+          type: 'payment_schedule_updated',
+          note: `Payment record updated: ${describeScheduleItem(newItem)}`,
+          amount: roundMoney(newItem.paidAmount || newItem.amount),
+          paymentType: newItem.dueType || 'milestone',
+        });
+      }
     }
   }
 
