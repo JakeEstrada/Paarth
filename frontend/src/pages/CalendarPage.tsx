@@ -2166,9 +2166,27 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
             zIndex: 20,
             display: 'flex',
             alignItems: 'center',
-            gap: 1,
+            gap: 0.5,
           }}
         >
+          <Tooltip title="Installer order settings">
+            <IconButton
+              onClick={(e) => {
+                e.stopPropagation();
+                openInstallerSettings();
+              }}
+              size="small"
+              sx={{
+                backgroundColor: theme.palette.background.paper,
+                border: `1px solid ${theme.palette.divider}`,
+                '&:hover': {
+                  backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5',
+                },
+              }}
+            >
+              <SettingsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <IconButton
             onClick={() => {
               setIsBenchMinimized(!isBenchMinimized);
@@ -2503,15 +2521,6 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
               >
                 Calendar view
               </Button>
-              <Tooltip title="Installer default order settings">
-                <IconButton
-                  size="small"
-                  onClick={openInstallerSettings}
-                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-                >
-                  <SettingsIcon />
-                </IconButton>
-              </Tooltip>
             </>
           ) : null}
           {tvMode && (
