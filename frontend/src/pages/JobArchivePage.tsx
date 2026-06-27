@@ -160,16 +160,11 @@ function JobArchivePage() {
     try {
       const response = await axios.post(`${API_URL}/jobs/${contextMenuJob._id}/unarchive`);
       const restored = response.data;
-      const jobTitle = contextMenuJob.title || restored?.title || '';
       const stageLabel = restored?.stage ? restored.stage.replace(/_/g, ' ') : 'pipeline';
-      toast.success(`Job restored — opening pipeline (${stageLabel})`);
+      toast.success(`Job restored to ${stageLabel}`);
       handleCloseContextMenu();
       await fetchArchivedJobs();
-      if (jobTitle.trim()) {
-        navigate(`/pipeline?search=${encodeURIComponent(jobTitle.trim())}`);
-      } else {
-        navigate('/pipeline');
-      }
+      navigate('/pipeline');
     } catch (error) {
       console.error('Error unarchiving job:', error);
       const message =

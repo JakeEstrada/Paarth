@@ -183,15 +183,6 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
 
   // Check for jobId in URL query params and open that job's modal
   useEffect(() => {
-    const q = searchParams.get('search');
-    if (!q) return;
-    setPipelineSearch(q);
-    const next = new URLSearchParams(searchParams);
-    next.delete('search');
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
-
-  useEffect(() => {
     const jobIdFromUrl = searchParams.get('jobId');
     if (jobIdFromUrl && jobs.length > 0) {
       // Verify the job exists in the current jobs list (normalize ids — API may return string or object)
