@@ -169,13 +169,47 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
   const theme = useTheme();
   const GROUP_ACCENTS = ['#1976D2', '#9C27B0', '#FF9800', '#4CAF50', '#3F51B5'];
   const getGroupAccent = (idx) => GROUP_ACCENTS[idx % GROUP_ACCENTS.length];
+  const newEntryLocalId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const withEntryLocalIds = (entries = []) =>
+    entries.map((entry) => ({
+      ...entry,
+      _localId: entry?._localId || newEntryLocalId(),
+    }));
+  const isCompleteIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
   const sortScheduleEntries = (entries = []) =>
     [...entries].sort((a, b) => {
-      const aDate = a?.startDate ? new Date(`${a.startDate}T00:00:00`).getTime() : Number.POSITIVE_INFINITY;
-      const bDate = b?.startDate ? new Date(`${b.startDate}T00:00:00`).getTime() : Number.POSITIVE_INFINITY;
+      const aDate = isCompleteIsoDate(a?.startDate)
+        ? new Date(`${a.startDate}T00:00:00`).getTime()
+        : Number.POSITIVE_INFINITY;
+      const bDate = isCompleteIsoDate(b?.startDate)
+        ? new Date(`${b.startDate}T00:00:00`).getTime()
+        : Number.POSITIVE_INFINITY;
       if (aDate !== bDate) return aDate - bDate;
       return String(a?.installer || '').localeCompare(String(b?.installer || ''));
     });
+  const defaultScheduleDateStr = () => {
+    const date = selectedDate || (job?.schedule?.startDate ? new Date(job.schedule.startDate) : new Date());
+    return format(date, 'yyyy-MM-dd');
+  };
+  const updateEntryAt = (idx, patch) => {
+    setFormData((prev) => ({
+      ...prev,
+      entries: (prev.entries || []).map((entry, i) => (i === idx ? { ...entry, ...patch } : entry)),
+    }));
+  };
+  const commitEntryOrder = (idx, field) => {
+    setFormData((prev) => {
+      let entries = [...(prev.entries || [])];
+      const entry = entries[idx];
+      if (!entry) return prev;
+
+      if (field === 'startDate' && isCompleteIsoDate(entry.startDate) && !isCompleteIsoDate(entry.endDate)) {
+        entries[idx] = { ...entry, endDate: entry.startDate };
+      }
+
+      return { ...prev, entries: sortScheduleEntries(entries) };
+    });
+  };
 
   const [formData, setFormData] = useState({
     title: '',
@@ -189,7 +223,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
     color: '#1976D2', // Default blue
     // Each entry is an independent "group":
     // { installer, start date, end date }
-    entries: [{ installer: '', startDate: '', endDate: '' }],
+    entries: [{ _localId: newEntryLocalId(), installer: '', startDate: '', endDate: '' }],
   });
   const [availableJobs, setAvailableJobs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -344,7 +378,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
         description: job?.customerId?.name ? `Customer: ${job.customerId.name}` : '',
         jobId: job?._id || null,
         color: job?.color || '#1976D2',
-        entries: sortScheduleEntries(computedEntries),
+        entries: sortScheduleEntries(withEntryLocalIds(computedEntries)),
       });
 
       // Fetch available jobs
@@ -385,7 +419,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
 
       // If jobId is selected, update the job's schedule
       if (formData.jobId) {
-        const normalizedEntries = (formData.entries || [])
+        const normalizedEntries = sortScheduleEntries(formData.entries || [])
           .map((entry) => {
             const installer = String(entry?.installer || '').trim();
             const startDate = entry?.startDate || '';
@@ -695,12 +729,18 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
               <IconButton
                 size="small"
                 onClick={() => {
+                  const dateStr = defaultScheduleDateStr();
                   setFormData((prev) => ({
                     ...prev,
-                    entries: sortScheduleEntries([
+                    entries: [
                       ...(Array.isArray(prev.entries) ? prev.entries : []),
-                      { installer: '', startDate: '', endDate: '' }, // empty group (as requested)
-                    ]),
+                      {
+                        _localId: newEntryLocalId(),
+                        installer: '',
+                        startDate: dateStr,
+                        endDate: dateStr,
+                      },
+                    ],
                   }));
                 }}
                 title="Add another installer/date group"
@@ -715,7 +755,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
 
             {(formData.entries || []).map((entry, idx) => (
               <Box
-                key={idx}
+                key={entry._localId || idx}
                 sx={{
                   border: `1px solid ${theme.palette.divider}`,
                   borderLeft: `6px solid ${getGroupAccent(idx)}`,
@@ -743,7 +783,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                       onClick={() => {
                         setFormData((prev) => ({
                           ...prev,
-                          entries: sortScheduleEntries(prev.entries.filter((_, i) => i !== idx)),
+                          entries: prev.entries.filter((_, i) => i !== idx),
                         }));
                       }}
                       title="Remove this group"
@@ -764,21 +804,11 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                   value={entry.installer || ''}
                   onChange={(_, newValue) => {
                     const next = typeof newValue === 'string' ? newValue : (newValue || '').toString();
-                    setFormData((prev) => ({
-                      ...prev,
-                      entries: sortScheduleEntries(
-                        prev.entries.map((e, i) => (i === idx ? { ...e, installer: next } : e))
-                      ),
-                    }));
+                    updateEntryAt(idx, { installer: next });
                   }}
                   inputValue={entry.installer || ''}
                   onInputChange={(_, newInputValue) => {
-                    setFormData((prev) => ({
-                      ...prev,
-                      entries: sortScheduleEntries(
-                        prev.entries.map((e, i) => (i === idx ? { ...e, installer: newInputValue || '' } : e))
-                      ),
-                    }));
+                    updateEntryAt(idx, { installer: newInputValue || '' });
                   }}
                   renderInput={(params) => (
                     <TextField {...params} label="Installer" fullWidth />
@@ -789,34 +819,22 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                   <TextField
                     label="Start Date"
                     type="date"
-                    value={entry.startDate}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setFormData((prev) => ({
-                        ...prev,
-                        entries: sortScheduleEntries(
-                          prev.entries.map((en, i) => (i === idx ? { ...en, startDate: next } : en))
-                        ),
-                      }));
-                    }}
+                    value={entry.startDate || ''}
+                    onChange={(e) => updateEntryAt(idx, { startDate: e.target.value })}
+                    onBlur={() => commitEntryOrder(idx, 'startDate')}
                     InputLabelProps={{ shrink: true }}
+                    inputProps={{ min: '2000-01-01', max: '2099-12-31' }}
                     sx={{ flex: 1, minWidth: 160 }}
                   />
 
                   <TextField
                     label="End Date"
                     type="date"
-                    value={entry.endDate}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setFormData((prev) => ({
-                        ...prev,
-                        entries: sortScheduleEntries(
-                          prev.entries.map((en, i) => (i === idx ? { ...en, endDate: next } : en))
-                        ),
-                      }));
-                    }}
+                    value={entry.endDate || ''}
+                    onChange={(e) => updateEntryAt(idx, { endDate: e.target.value })}
+                    onBlur={() => commitEntryOrder(idx, 'endDate')}
                     InputLabelProps={{ shrink: true }}
+                    inputProps={{ min: '2000-01-01', max: '2099-12-31' }}
                     sx={{ flex: 1, minWidth: 160 }}
                   />
                 </Box>
