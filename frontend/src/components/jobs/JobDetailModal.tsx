@@ -818,7 +818,7 @@ function JobDetailModal({
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth="md"
+      maxWidth="lg"
       fullWidth
       sx={sx}
       PaperProps={{

@@ -261,34 +261,53 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
       </Box>
 
       <Box sx={{ overflowX: 'auto' }}>
-        <Table size="small">
+        <Table
+          size="medium"
+          sx={{
+            tableLayout: 'fixed',
+            minWidth: 960,
+            '& .MuiTableCell-root': { verticalAlign: 'middle' },
+          }}
+        >
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 700 }}>Label</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
-              <TableCell sx={{ fontWeight: 700 }} align="right">
-                Amount
+              <TableCell sx={{ fontWeight: 700, width: '26%', minWidth: 260 }}>Label</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: '14%', minWidth: 140 }}>Type</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: '10%', minWidth: 96 }} align="right">
+                Total
               </TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Due</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Paid</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Paid date</TableCell>
-              {!readOnly && <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>}
+              <TableCell sx={{ fontWeight: 700, width: '12%', minWidth: 120 }}>Due</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: '12%', minWidth: 120 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: '10%', minWidth: 100 }}>Paid</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: '12%', minWidth: 148 }}>Paid date</TableCell>
+              {!readOnly && (
+                <TableCell sx={{ fontWeight: 700, width: '14%', minWidth: 160 }} align="right">
+                  Actions
+                </TableCell>
+              )}
             </TableRow>
           </TableHead>
           <TableBody>
             {computedItems.map((item, index) => (
               <TableRow key={`${item.label}-${index}`}>
-                <TableCell>
+                <TableCell sx={{ minWidth: 260, pr: 2 }}>
                   {readOnly ? (
-                    item.label
+                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                      {item.label}
+                    </Typography>
                   ) : (
                     <TextField
-                      size="small"
+                      label="Payment label"
+                      size="medium"
                       value={item.label}
                       onChange={(e) => updateItem(index, { label: e.target.value })}
-                      placeholder="Deposit, Bending Rail, etc."
+                      placeholder="Deposit, Bending Rail, Final Balance…"
                       fullWidth
+                      sx={{
+                        minWidth: 240,
+                        '& .MuiInputBase-root': { fontSize: '1rem' },
+                        '& .MuiInputBase-input': { py: 1.25 },
+                      }}
                     />
                   )}
                 </TableCell>
