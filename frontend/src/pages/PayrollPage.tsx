@@ -58,7 +58,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function PayrollPage() {
   const theme = useTheme();
-  const [employeeName, setEmployeeName] = useState('Dave');
+  const [employeeName, setEmployeeName] = useState('');
   const [ratePerHour, setRatePerHour] = useState('');
   const [date, setDate] = useState(new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }));
   const [presetSelect, setPresetSelect] = useState('');
@@ -72,12 +72,12 @@ function PayrollPage() {
   const [payrollSmsRecipient, setPayrollSmsRecipient] = useState('');
   const [sendingPayrollText, setSendingPayrollText] = useState(false);
   
-  // Work hours - default 6:00 AM - 2:30 PM (600 - 1430)
+  // Work hours - default 6:45 AM - 3:00 PM (645 - 1500)
   const [workHours, setWorkHours] = useState(
     DAYS.map(day => ({
       day,
-      in: day === 'Saturday' || day === 'Sunday' ? '0' : '600',
-      out: day === 'Saturday' || day === 'Sunday' ? '0' : '1430',
+      in: day === 'Saturday' || day === 'Sunday' ? '0' : '645',
+      out: day === 'Saturday' || day === 'Sunday' ? '0' : '1500',
       breaks: day === 'Saturday' || day === 'Sunday' ? '0' : '30',
     }))
   );
@@ -253,14 +253,14 @@ function PayrollPage() {
         }))
       );
     } else if (preset === 'standard') {
-      // Friday and Mon-Thurs: 600-1430 with 30min break
+      // Friday and Mon-Thurs: 645-1500 with 30min break
       setWorkHours(
         DAYS.map(day => {
           if (day === 'Friday' || day === 'Monday' || day === 'Tuesday' || day === 'Wednesday' || day === 'Thursday') {
             return {
               day,
-              in: '600',
-              out: '1430',
+              in: '645',
+              out: '1500',
               breaks: '30',
             };
           } else {
@@ -787,7 +787,7 @@ function PayrollPage() {
                 sx={{ textTransform: 'none' }}
               >
                 <MenuItem value="zero">Clear All (Set to Zero)</MenuItem>
-                <MenuItem value="standard">Standard Week (Mon-Thurs & Fri: 6:00-14:30, 30min break)</MenuItem>
+                <MenuItem value="standard">Standard Week (Mon-Thurs & Fri: 6:45-15:00, 30min break)</MenuItem>
                 {savedPresets.length > 0 && (
                   <>
                     <Divider sx={{ my: 0.5 }} />
@@ -961,7 +961,7 @@ function PayrollPage() {
                             value={day.in}
                             onChange={(e) => handleWorkHoursChange(index, 'in', e.target.value)}
                             size="small"
-                            placeholder="600"
+                            placeholder="645"
                             fullWidth
                             inputProps={{ 
                               style: { textAlign: 'center', padding: '8px' },
@@ -977,7 +977,7 @@ function PayrollPage() {
                             value={day.out}
                             onChange={(e) => handleWorkHoursChange(index, 'out', e.target.value)}
                             size="small"
-                            placeholder="1430"
+                            placeholder="1500"
                             fullWidth
                             inputProps={{ 
                               style: { textAlign: 'center', padding: '8px' },
