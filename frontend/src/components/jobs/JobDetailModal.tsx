@@ -1656,7 +1656,7 @@ function JobDetailModal({
                     {dragActive ? 'Drop files here' : 'Upload Files'}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Drag & drop multiple files or click to browse • Images and PDFs • Max 10MB each
+                    Drag & drop multiple files or click to browse • Images and PDFs supported • Max 10MB each
                   </Typography>
                 </Box>
                 <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
@@ -1678,7 +1678,6 @@ function JobDetailModal({
                   id="file-upload"
                   type="file"
                   multiple
-                  accept="image/*,application/pdf"
                   onChange={handleFileInputChange}
                   disabled={uploading}
                 />
