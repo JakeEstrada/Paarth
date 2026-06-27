@@ -176,6 +176,16 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
       _localId: entry?._localId || newEntryLocalId(),
     }));
   const isCompleteIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+  const PAST_YEAR_CONFIRM_MESSAGE = 'Are you sure you want to edit an event from this time?';
+  const isBeforeCurrentYear = (value) => {
+    if (!isCompleteIsoDate(value)) return false;
+    const year = Number(String(value).slice(0, 4));
+    return Number.isFinite(year) && year < new Date().getFullYear();
+  };
+  const entriesHavePastYearDates = (entries = []) =>
+    entries.some(
+      (entry) => isBeforeCurrentYear(entry?.startDate) || isBeforeCurrentYear(entry?.endDate)
+    );
   const sortScheduleEntries = (entries = []) =>
     [...entries].sort((a, b) => {
       const aDate = isCompleteIsoDate(a?.startDate)
@@ -197,11 +207,28 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
       entries: (prev.entries || []).map((entry, i) => (i === idx ? { ...entry, ...patch } : entry)),
     }));
   };
-  const commitEntryOrder = (idx, field) => {
+  const dateFieldSnapshotRef = useRef(null);
+  const handleDateFocus = (idx, field) => {
+    const entry = formData.entries?.[idx];
+    dateFieldSnapshotRef.current = { idx, field, value: entry?.[field] || '' };
+  };
+  const handleDateBlur = (idx, field) => {
     setFormData((prev) => {
-      let entries = [...(prev.entries || [])];
+      const entries = [...(prev.entries || [])];
       const entry = entries[idx];
       if (!entry) return prev;
+
+      const value = entry[field] || '';
+      const snapshot = dateFieldSnapshotRef.current;
+
+      if (isBeforeCurrentYear(value)) {
+        if (!window.confirm(PAST_YEAR_CONFIRM_MESSAGE)) {
+          const revertValue =
+            snapshot?.idx === idx && snapshot?.field === field ? snapshot.value : '';
+          entries[idx] = { ...entry, [field]: revertValue };
+          return { ...prev, entries };
+        }
+      }
 
       if (field === 'startDate' && isCompleteIsoDate(entry.startDate) && !isCompleteIsoDate(entry.endDate)) {
         entries[idx] = { ...entry, endDate: entry.startDate };
@@ -412,6 +439,12 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
     if (!formData.title.trim()) {
       toast.error('Please enter a title');
       return;
+    }
+
+    if (entriesHavePastYearDates(formData.entries)) {
+      if (!window.confirm(PAST_YEAR_CONFIRM_MESSAGE)) {
+        return;
+      }
     }
 
     try {
@@ -821,7 +854,8 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                     type="date"
                     value={entry.startDate || ''}
                     onChange={(e) => updateEntryAt(idx, { startDate: e.target.value })}
-                    onBlur={() => commitEntryOrder(idx, 'startDate')}
+                    onFocus={() => handleDateFocus(idx, 'startDate')}
+                    onBlur={() => handleDateBlur(idx, 'startDate')}
                     InputLabelProps={{ shrink: true }}
                     inputProps={{ min: '2000-01-01', max: '2099-12-31' }}
                     sx={{ flex: 1, minWidth: 160 }}
@@ -832,7 +866,8 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                     type="date"
                     value={entry.endDate || ''}
                     onChange={(e) => updateEntryAt(idx, { endDate: e.target.value })}
-                    onBlur={() => commitEntryOrder(idx, 'endDate')}
+                    onFocus={() => handleDateFocus(idx, 'endDate')}
+                    onBlur={() => handleDateBlur(idx, 'endDate')}
                     InputLabelProps={{ shrink: true }}
                     inputProps={{ min: '2000-01-01', max: '2099-12-31' }}
                     sx={{ flex: 1, minWidth: 160 }}
