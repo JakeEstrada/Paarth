@@ -136,6 +136,7 @@ export function buildStandardSchedule(contractBase) {
 
 export function createEmptyScheduleItem(sortOrder = 0) {
   return {
+    localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     label: '',
     amountType: 'fixed',
     percentage: undefined,

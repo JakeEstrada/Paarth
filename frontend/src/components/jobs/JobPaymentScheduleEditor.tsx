@@ -74,8 +74,19 @@ function toDateInputValue(value) {
   }
 }
 
+function newItemLocalId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function withItemLocalIds(items) {
+  return (items || []).map((item) => ({
+    ...item,
+    localId: item?.localId || newItemLocalId(),
+  }));
+}
+
 function cloneItems(items) {
-  return (items || []).map((item) => ({ ...item }));
+  return withItemLocalIds(items);
 }
 
 export default function JobPaymentScheduleEditor({ job, onSave, saving = false, readOnly = false }) {
@@ -94,7 +105,16 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
     );
     setItems(cloneItems(nextResolved.items));
     setDirty(false);
-  }, [job?._id, job?.paymentSchedule, job?.valueEstimated, job?.valueContracted]);
+  }, [job?._id]);
+
+  useEffect(() => {
+    if (dirty) return;
+    const nextResolved = resolvePaymentSchedule(job);
+    setScheduleType(
+      hasStoredPaymentSchedule(job) ? job.paymentSchedule.type || 'custom' : 'standard_40_60'
+    );
+    setItems(cloneItems(nextResolved.items));
+  }, [job?.paymentSchedule, job?.valueEstimated, job?.valueContracted, dirty, job]);
 
   const computedItems = useMemo(
     () =>
@@ -190,10 +210,11 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
   };
 
   const handleSave = async () => {
+    const itemsForSave = items.map(({ localId, ...item }) => item);
     const payload =
       scheduleType === 'standard_40_60'
         ? buildStandardSchedule(contractBase)
-        : buildCustomScheduleFromItems(items, contractBase);
+        : buildCustomScheduleFromItems(itemsForSave, contractBase);
     await onSave(payload);
     setDirty(false);
   };
@@ -289,7 +310,7 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
           </TableHead>
           <TableBody>
             {computedItems.map((item, index) => (
-              <TableRow key={`${item.label}-${index}`}>
+              <TableRow key={item.localId || index}>
                 <TableCell sx={{ minWidth: 260, pr: 2 }}>
                   {readOnly ? (
                     <Typography variant="body1" sx={{ fontWeight: 500 }}>
