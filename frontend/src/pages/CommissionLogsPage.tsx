@@ -3,7 +3,7 @@
  * Route: /commission-logs
  * Docs: ../../../docs/PAGES.md#commissionlogspagetsx
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   alpha,
   Box,
@@ -229,12 +229,16 @@ function paymentCardStyles(theme, status: string) {
   }
   return {
     borderColor: 'divider',
-    bgcolor: alpha(theme.palette.action.hover, 0.6),
+    bgcolor: 'background.paper',
   };
 }
 
 function CommissionLogsPage() {
   const theme = useTheme();
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const bottomScrollRef = useRef<HTMLDivElement>(null);
+  const tableInnerRef = useRef<HTMLDivElement>(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState(1100);
   const [loadingCommissionLogs, setLoadingCommissionLogs] = useState(false);
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
   const [showAllJobs, setShowAllJobs] = useState(false);
@@ -389,6 +393,36 @@ function CommissionLogsPage() {
         return String(a.customerName || '').localeCompare(String(b.customerName || ''));
       });
   }, [commissionSourceJobs, commissionLogRows, showAllJobs, joeFilter, defaultCommissionRate]);
+
+  useEffect(() => {
+    const tableEl = tableInnerRef.current;
+    if (!tableEl) return;
+    const updateWidth = () => setTableScrollWidth(tableEl.scrollWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(tableEl);
+    return () => observer.disconnect();
+  }, [commissionTableRows, loadingCommissionLogs]);
+
+  useEffect(() => {
+    const tableScroll = tableScrollRef.current;
+    const bottomScroll = bottomScrollRef.current;
+    if (!tableScroll || !bottomScroll) return;
+
+    const syncFromTable = () => {
+      bottomScroll.scrollLeft = tableScroll.scrollLeft;
+    };
+    const syncFromBottom = () => {
+      tableScroll.scrollLeft = bottomScroll.scrollLeft;
+    };
+
+    tableScroll.addEventListener('scroll', syncFromTable);
+    bottomScroll.addEventListener('scroll', syncFromBottom);
+    return () => {
+      tableScroll.removeEventListener('scroll', syncFromTable);
+      bottomScroll.removeEventListener('scroll', syncFromBottom);
+    };
+  }, [commissionTableRows, loadingCommissionLogs]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -547,11 +581,21 @@ function CommissionLogsPage() {
                 border: 1,
                 borderColor: 'divider',
                 borderRadius: 1.5,
-                overflow: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
                 maxHeight: 'calc(100vh - 240px)',
               }}
             >
-              <Table stickyHeader size="small" sx={{ minWidth: 1100 }}>
+              <Box
+                ref={tableScrollRef}
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: 'auto',
+                }}
+              >
+                <Box ref={tableInnerRef} sx={{ display: 'inline-block', minWidth: '100%' }}>
+                  <Table stickyHeader size="small" sx={{ minWidth: 1100 }}>
                 <TableHead>
                   <TableRow>
                     <TableCell
@@ -649,7 +693,6 @@ function CommissionLogsPage() {
                             display: 'flex',
                             alignItems: 'flex-start',
                             gap: 1,
-                            overflowX: 'auto',
                             pb: 0.5,
                           }}
                         >
@@ -681,6 +724,7 @@ function CommissionLogsPage() {
                                   </Typography>
                                   <Chip
                                     size="small"
+                                    variant={payment.status === 'pending' ? 'outlined' : 'filled'}
                                     label={PAYMENT_STATUS_LABELS[payment.status] || payment.status}
                                     color={
                                       payment.status === 'paid'
@@ -789,6 +833,27 @@ function CommissionLogsPage() {
                   ))}
                 </TableBody>
               </Table>
+                </Box>
+              </Box>
+              <Box
+                ref={bottomScrollRef}
+                sx={{
+                  overflowX: 'scroll',
+                  overflowY: 'hidden',
+                  flexShrink: 0,
+                  minHeight: 14,
+                  borderTop: 1,
+                  borderColor: 'divider',
+                  bgcolor: 'background.paper',
+                  '&::-webkit-scrollbar': { height: 12 },
+                  '&::-webkit-scrollbar-thumb': {
+                    bgcolor: 'action.disabled',
+                    borderRadius: 6,
+                  },
+                }}
+              >
+                <Box sx={{ width: tableScrollWidth, height: 1 }} />
+              </Box>
             </Box>
           )}
         </CardContent>
