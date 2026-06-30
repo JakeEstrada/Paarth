@@ -153,6 +153,8 @@ export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
         share: 1,
         scheduledAmount: base,
         amount: due,
+        status: 'pending',
+        paidAt: null,
       },
     ];
   }
@@ -170,6 +172,8 @@ export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
         share: evenShare,
         scheduledAmount: 0,
         amount,
+        status: item.status || 'pending',
+        paidAt: item.paidAt || null,
       };
     });
   }
@@ -187,6 +191,8 @@ export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
       share,
       scheduledAmount,
       amount,
+      status: item.status || 'pending',
+      paidAt: item.paidAt || null,
     };
   });
 }
