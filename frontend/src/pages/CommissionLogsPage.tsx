@@ -7,7 +7,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   alpha,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -241,8 +240,6 @@ function CommissionLogsPage() {
   const [tableScrollWidth, setTableScrollWidth] = useState(1100);
   const [loadingCommissionLogs, setLoadingCommissionLogs] = useState(false);
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
-  const [showAllJobs, setShowAllJobs] = useState(false);
-  const [joeFilter, setJoeFilter] = useState('joe');
   const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
     () => readCommissionLogRows(),
@@ -311,14 +308,7 @@ function CommissionLogsPage() {
   };
 
   const commissionTableRows = useMemo((): CommissionTableRow[] => {
-    const needle = String(joeFilter || '').trim().toLowerCase();
     return commissionSourceJobs
-      .filter((row) => {
-        if (showAllJobs) return true;
-        const assignee = String(row.assignedToName || '').toLowerCase();
-        if (!needle) return assignee.includes('joe');
-        return assignee.includes(needle);
-      })
       .map((row) => {
         const local = migrateLocalRow(commissionLogRows[String(row.jobId)] || {});
         const rateOverridden = hasRateOverride(local);
@@ -392,7 +382,7 @@ function CommissionLogsPage() {
         }
         return String(a.customerName || '').localeCompare(String(b.customerName || ''));
       });
-  }, [commissionSourceJobs, commissionLogRows, showAllJobs, joeFilter, defaultCommissionRate]);
+  }, [commissionSourceJobs, commissionLogRows, defaultCommissionRate]);
 
   useEffect(() => {
     const tableEl = tableInnerRef.current;
@@ -547,25 +537,8 @@ function CommissionLogsPage() {
                 }}
                 sx={{ width: 130 }}
               />
-              <Button
-                variant={showAllJobs ? 'contained' : 'outlined'}
-                onClick={() => setShowAllJobs((prev) => !prev)}
-              >
-                All Jobs
-              </Button>
             </Box>
           </Box>
-
-          {!showAllJobs && (
-            <TextField
-              size="small"
-              label="Salesperson filter"
-              value={joeFilter}
-              onChange={(e) => setJoeFilter(e.target.value)}
-              helperText="Leave as joe to track Joe's jobs, or type another name."
-              sx={{ mb: 2, minWidth: 280 }}
-            />
-          )}
 
           {loadingCommissionLogs ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -573,7 +546,7 @@ function CommissionLogsPage() {
             </Box>
           ) : commissionTableRows.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No jobs matched this filter.
+              No jobs found.
             </Typography>
           ) : (
             <Box
