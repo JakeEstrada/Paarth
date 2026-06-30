@@ -134,6 +134,49 @@ export function buildStandardSchedule(contractBase) {
   };
 }
 
+export function getCommissionPaymentSplitShares(job, contractBase) {
+  const base = roundMoney(contractBase);
+  const resolved = resolvePaymentSchedule({
+    ...(job || {}),
+    valueEstimated: base,
+    valueContracted: base,
+  });
+  const items = resolved.items || [];
+  const scheduledTotal = roundMoney(items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0));
+  const denominator = base > 0 ? base : scheduledTotal;
+  if (!denominator) {
+    return { payment1Share: 0.4, payment2Share: 0.6 };
+  }
+
+  let payment1Amount = 0;
+  let payment2Amount = 0;
+  for (const item of items) {
+    const amt = roundMoney(item.amount);
+    if (item.dueType === 'final') payment2Amount += amt;
+    else payment1Amount += amt;
+  }
+
+  if (payment1Amount <= 0 && payment2Amount <= 0) {
+    return { payment1Share: 0.4, payment2Share: 0.6 };
+  }
+  if (payment2Amount <= 0) {
+    payment2Amount = Math.max(0, denominator - payment1Amount);
+  }
+  if (payment1Amount <= 0) {
+    payment1Amount = Math.max(0, denominator - payment2Amount);
+  }
+
+  const splitTotal = payment1Amount + payment2Amount;
+  if (splitTotal <= 0) {
+    return { payment1Share: 0.4, payment2Share: 0.6 };
+  }
+
+  return {
+    payment1Share: payment1Amount / splitTotal,
+    payment2Share: payment2Amount / splitTotal,
+  };
+}
+
 export function createEmptyScheduleItem(sortOrder = 0) {
   return {
     localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,

@@ -13,6 +13,7 @@ import {
   CircularProgress,
   Container,
   FormControlLabel,
+  IconButton,
   InputAdornment,
   Table,
   TableBody,
@@ -20,13 +21,18 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import axios, { isAxiosError } from 'axios';
 import toast from 'react-hot-toast';
+import { getCommissionPaymentSplitShares, roundMoney } from '../utils/paymentSchedule';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const COMMISSION_LOGS_STORAGE_KEY = 'financeHubCommissionLogsRows';
+const DEFAULT_COMMISSION_RATE_KEY = 'financeHubCommissionDefaultRate';
+const DEFAULT_COMMISSION_RATE = 5;
 
 const ESTIMATE_STAGE_LABELS: Record<string, string> = {
   APPOINTMENT_SCHEDULED: 'Appointment',
@@ -44,12 +50,6 @@ const ESTIMATE_STAGE_LABELS: Record<string, string> = {
   INSTALLED: 'Installed',
   FINAL_PAYMENT_CLOSED: 'Final payment closed',
 };
-
-function roundMoneyClient(value: unknown): number {
-  const x = Number(value);
-  if (!Number.isFinite(x)) return 0;
-  return Math.round((x + Number.EPSILON) * 100) / 100;
-}
 
 function formatMoney(value: unknown): string {
   return Number(value || 0).toLocaleString('en-US', {
@@ -69,11 +69,36 @@ function jobTitleAfterPipe(rawTitle: unknown): string {
   return t;
 }
 
+function readDefaultCommissionRate(): number {
+  if (typeof window === 'undefined') return DEFAULT_COMMISSION_RATE;
+  try {
+    const raw = window.localStorage.getItem(DEFAULT_COMMISSION_RATE_KEY);
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : DEFAULT_COMMISSION_RATE;
+  } catch {
+    return DEFAULT_COMMISSION_RATE;
+  }
+}
+
+function isPaymentsManual(local: CommissionLogLocalRow): boolean {
+  if (local.paymentsManual) return true;
+  const p1 = local.payment1;
+  const p2 = local.payment2;
+  if (typeof p1 === 'string' && p1.trim() !== '') return true;
+  if (typeof p2 === 'string' && p2.trim() !== '') return true;
+  if (Number(p1) > 0 || Number(p2) > 0) return true;
+  return false;
+}
+
 interface CommissionLogLocalRow {
   payment1?: string | number;
   payment2?: string | number;
   payment1Check?: string;
   payment2Check?: string;
+  payment1Date?: string;
+  payment2Date?: string;
+  commissionRate?: string | number;
+  paymentsManual?: boolean;
   isPaid?: boolean;
   updatedAt?: string;
 }
@@ -91,6 +116,18 @@ function readCommissionLogRows(): Record<string, CommissionLogLocalRow> {
   }
 }
 
+interface PaymentScheduleDoc {
+  type?: string;
+  items?: Array<{
+    label?: string;
+    amountType?: string;
+    percentage?: number;
+    amount?: number;
+    dueType?: string;
+    sortOrder?: number;
+  }>;
+}
+
 interface JobDoc {
   _id?: string;
   title?: string;
@@ -99,6 +136,7 @@ interface JobDoc {
   stage?: string;
   valueContracted?: number;
   valueEstimated?: number;
+  paymentSchedule?: PaymentScheduleDoc;
 }
 
 interface EstimateDoc {
@@ -114,19 +152,36 @@ interface CommissionSourceJobRow {
   assignedToName: string;
   stageLabel: string;
   jobTotal: number;
+  paymentSchedule?: PaymentScheduleDoc;
 }
 
 interface CommissionTableRow extends CommissionSourceJobRow {
+  commissionRate: number;
+  commissionDue: number;
   payment1: number;
   payment1Check: string;
+  payment1Date: string;
   payment2: number;
   payment2Check: string;
+  payment2Date: string;
+  paymentsManual: boolean;
   isPaid: boolean;
   balance: number;
 }
 
 type CommissionRowPatch = Partial<
-  Pick<CommissionLogLocalRow, 'payment1' | 'payment2' | 'payment1Check' | 'payment2Check' | 'isPaid'>
+  Pick<
+    CommissionLogLocalRow,
+    | 'payment1'
+    | 'payment2'
+    | 'payment1Check'
+    | 'payment2Check'
+    | 'payment1Date'
+    | 'payment2Date'
+    | 'commissionRate'
+    | 'paymentsManual'
+    | 'isPaid'
+  >
 >;
 
 function CommissionLogsPage() {
@@ -134,6 +189,7 @@ function CommissionLogsPage() {
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
   const [showJoesJobsOnly, setShowJoesJobsOnly] = useState(true);
   const [joeFilter, setJoeFilter] = useState('joe');
+  const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
     () => readCommissionLogRows(),
   );
@@ -154,6 +210,14 @@ function CommissionLogsPage() {
     });
   };
 
+  const resetPaymentSplit = (jobId: string) => {
+    updateCommissionRow(jobId, {
+      paymentsManual: false,
+      payment1: '',
+      payment2: '',
+    });
+  };
+
   const commissionTableRows = useMemo((): CommissionTableRow[] => {
     const needle = String(joeFilter || '').trim().toLowerCase();
     return commissionSourceJobs
@@ -165,18 +229,48 @@ function CommissionLogsPage() {
       })
       .map((row) => {
         const local = commissionLogRows[String(row.jobId)] || {};
-        const payment1 = Number(local.payment1 || 0);
-        const payment2 = Number(local.payment2 || 0);
-        const paidTotal = roundMoneyClient(payment1 + payment2);
-        const balance = roundMoneyClient(Number(row.jobTotal || 0) - paidTotal);
+        const manual = isPaymentsManual(local);
+        const rateRaw = local.commissionRate ?? defaultCommissionRate;
+        const commissionRate = Number(rateRaw);
+        const safeRate = Number.isFinite(commissionRate) && commissionRate >= 0 ? commissionRate : 0;
+        const jobTotal = roundMoney(row.jobTotal);
+        const commissionDue = roundMoney(jobTotal * (safeRate / 100));
+
+        const { payment1Share, payment2Share } = getCommissionPaymentSplitShares(
+          {
+            paymentSchedule: row.paymentSchedule,
+            valueContracted: jobTotal,
+            valueEstimated: jobTotal,
+          },
+          jobTotal,
+        );
+
+        let payment1: number;
+        let payment2: number;
+        if (manual) {
+          payment1 = roundMoney(Number(local.payment1 || 0));
+          payment2 = roundMoney(Number(local.payment2 || 0));
+        } else {
+          payment1 = roundMoney(commissionDue * payment1Share);
+          payment2 = roundMoney(commissionDue - payment1);
+        }
+
+        const paidTotal = roundMoney(payment1 + payment2);
+        const balance = roundMoney(commissionDue - paidTotal);
         const normalizedBalance = balance < 0 ? 0 : balance;
         const markedPaid = Boolean(local.isPaid) || normalizedBalance <= 0;
+
         return {
           ...row,
+          commissionRate: safeRate,
+          commissionDue,
           payment1,
           payment1Check: String(local.payment1Check || ''),
+          payment1Date: String(local.payment1Date || ''),
           payment2,
           payment2Check: String(local.payment2Check || ''),
+          payment2Date: String(local.payment2Date || ''),
+          paymentsManual: manual,
           isPaid: markedPaid,
           balance: normalizedBalance,
         };
@@ -185,12 +279,17 @@ function CommissionLogsPage() {
         if (a.isPaid !== b.isPaid) return a.isPaid ? 1 : -1;
         return String(a.customerName || '').localeCompare(String(b.customerName || ''));
       });
-  }, [commissionSourceJobs, commissionLogRows, showJoesJobsOnly, joeFilter]);
+  }, [commissionSourceJobs, commissionLogRows, showJoesJobsOnly, joeFilter, defaultCommissionRate]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(COMMISSION_LOGS_STORAGE_KEY, JSON.stringify(commissionLogRows || {}));
   }, [commissionLogRows]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(DEFAULT_COMMISSION_RATE_KEY, String(defaultCommissionRate));
+  }, [defaultCommissionRate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -229,7 +328,8 @@ function CommissionLogsPage() {
               (typeof job?.assignedTo === 'object' && job?.assignedTo?.name) ||
               String(job?.assignedTo || ''),
             stageLabel: ESTIMATE_STAGE_LABELS[job?.stage ?? ''] || String(job?.stage || ''),
-            jobTotal: roundMoneyClient(fullAmount),
+            jobTotal: roundMoney(fullAmount),
+            paymentSchedule: job?.paymentSchedule,
           };
         });
         if (!cancelled) setCommissionSourceJobs(rows);
@@ -274,11 +374,25 @@ function CommissionLogsPage() {
                 Commission Logs
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Spreadsheet view of each job&apos;s full amount, payments, check numbers, and
-                remaining balance.
+                Commission due is job total × rate. Payment 1 and 2 auto-split from each job&apos;s
+                payment schedule (deposit/milestones vs final); edit amounts to override.
               </Typography>
             </Box>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+              <TextField
+                size="small"
+                label="Default rate"
+                value={defaultCommissionRate}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setDefaultCommissionRate(Number.isFinite(n) && n >= 0 ? n : 0);
+                }}
+                InputProps={{
+                  endAdornment: <InputAdornment position="end">%</InputAdornment>,
+                  inputProps: { inputMode: 'decimal', min: 0, step: 0.1 },
+                }}
+                sx={{ width: 130 }}
+              />
               <Button
                 variant={showJoesJobsOnly ? 'contained' : 'outlined'}
                 onClick={() => setShowJoesJobsOnly(true)}
@@ -315,7 +429,7 @@ function CommissionLogsPage() {
             </Typography>
           ) : (
             <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1.5, overflowX: 'auto' }}>
-              <Table size="small" sx={{ minWidth: 1100 }}>
+              <Table size="small" sx={{ minWidth: 1500 }}>
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 700 }}>Customer</TableCell>
@@ -324,9 +438,17 @@ function CommissionLogsPage() {
                     <TableCell sx={{ fontWeight: 700 }} align="right">
                       Job Total
                     </TableCell>
+                    <TableCell sx={{ fontWeight: 700 }} align="right">
+                      Rate
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700 }} align="right">
+                      Commission
+                    </TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Payment 1</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Check #</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Payment 2</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Check #</TableCell>
                     <TableCell sx={{ fontWeight: 700 }} align="right">
                       Balance
@@ -348,18 +470,64 @@ function CommissionLogsPage() {
                       </TableCell>
                       <TableCell>{row.assignedToName || '-'}</TableCell>
                       <TableCell align="right">${formatMoney(row.jobTotal)}</TableCell>
-                      <TableCell sx={{ minWidth: 130 }}>
+                      <TableCell align="right" sx={{ minWidth: 90 }}>
                         <TextField
                           size="small"
-                          value={row.payment1 || ''}
-                          onChange={(e) => updateCommissionRow(row.jobId, { payment1: e.target.value })}
+                          value={row.commissionRate}
+                          onChange={(e) =>
+                            updateCommissionRow(row.jobId, { commissionRate: e.target.value })
+                          }
                           InputProps={{
-                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                            inputProps: { inputMode: 'decimal' },
+                            endAdornment: <InputAdornment position="end">%</InputAdornment>,
+                            inputProps: { inputMode: 'decimal', min: 0, step: 0.1 },
                           }}
                         />
                       </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>
+                        ${formatMoney(row.commissionDue)}
+                      </TableCell>
                       <TableCell sx={{ minWidth: 120 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <TextField
+                            size="small"
+                            value={row.paymentsManual ? row.payment1 || '' : row.payment1 || ''}
+                            onChange={(e) =>
+                              updateCommissionRow(row.jobId, {
+                                payment1: e.target.value,
+                                paymentsManual: true,
+                              })
+                            }
+                            InputProps={{
+                              startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                              inputProps: { inputMode: 'decimal' },
+                            }}
+                            sx={{ flex: 1 }}
+                          />
+                          {row.paymentsManual && (
+                            <Tooltip title="Reset to schedule split">
+                              <IconButton
+                                size="small"
+                                onClick={() => resetPaymentSplit(row.jobId)}
+                                aria-label="Reset payment split"
+                              >
+                                <RefreshIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </Box>
+                      </TableCell>
+                      <TableCell sx={{ minWidth: 140 }}>
+                        <TextField
+                          size="small"
+                          type="date"
+                          value={row.payment1Date}
+                          onChange={(e) =>
+                            updateCommissionRow(row.jobId, { payment1Date: e.target.value })
+                          }
+                          InputLabelProps={{ shrink: true }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ minWidth: 100 }}>
                         <TextField
                           size="small"
                           value={row.payment1Check}
@@ -368,18 +536,34 @@ function CommissionLogsPage() {
                           }
                         />
                       </TableCell>
-                      <TableCell sx={{ minWidth: 130 }}>
+                      <TableCell sx={{ minWidth: 120 }}>
                         <TextField
                           size="small"
                           value={row.payment2 || ''}
-                          onChange={(e) => updateCommissionRow(row.jobId, { payment2: e.target.value })}
+                          onChange={(e) =>
+                            updateCommissionRow(row.jobId, {
+                              payment2: e.target.value,
+                              paymentsManual: true,
+                            })
+                          }
                           InputProps={{
                             startAdornment: <InputAdornment position="start">$</InputAdornment>,
                             inputProps: { inputMode: 'decimal' },
                           }}
                         />
                       </TableCell>
-                      <TableCell sx={{ minWidth: 120 }}>
+                      <TableCell sx={{ minWidth: 140 }}>
+                        <TextField
+                          size="small"
+                          type="date"
+                          value={row.payment2Date}
+                          onChange={(e) =>
+                            updateCommissionRow(row.jobId, { payment2Date: e.target.value })
+                          }
+                          InputLabelProps={{ shrink: true }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ minWidth: 100 }}>
                         <TextField
                           size="small"
                           value={row.payment2Check}
