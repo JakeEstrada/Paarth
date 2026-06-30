@@ -182,6 +182,58 @@ interface EstimateDoc {
   createdAt?: string;
 }
 
+interface JobsListResponse {
+  jobs?: JobDoc[];
+  totalPages?: number;
+}
+
+interface CompletedJobsGroup {
+  jobs?: JobDoc[];
+}
+
+async function fetchAllCommissionJobs(): Promise<JobDoc[]> {
+  const jobsById = new Map<string, JobDoc>();
+  const limit = 500;
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages) {
+    const { data } = await axios.get<JobsListResponse>(`${API_URL}/jobs`, {
+      params: {
+        page,
+        limit,
+        includeCompletedClosedOut: true,
+        includeArchived: true,
+      },
+    });
+    const batch = Array.isArray(data?.jobs) ? data.jobs : [];
+    for (const job of batch) {
+      jobsById.set(String(job._id || ''), job);
+    }
+    totalPages = Math.max(1, Number(data?.totalPages) || 1);
+    page += 1;
+  }
+
+  try {
+    const { data: completedGroups } = await axios.get<CompletedJobsGroup[]>(
+      `${API_URL}/jobs/completed`,
+    );
+    if (Array.isArray(completedGroups)) {
+      for (const group of completedGroups) {
+        const groupJobs = Array.isArray(group?.jobs) ? group.jobs : [];
+        for (const job of groupJobs) {
+          const id = String(job._id || '');
+          if (id && !jobsById.has(id)) jobsById.set(id, job);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Could not merge completed jobs into commission logs:', error);
+  }
+
+  return Array.from(jobsById.values());
+}
+
 interface CommissionSourceJobRow {
   jobId: string;
   customerName: string;
@@ -427,15 +479,12 @@ function CommissionLogsPage() {
   const loadCommissionJobs = useCallback(async (signal?: { cancelled: boolean }) => {
     try {
       setLoadingCommissionLogs(true);
-      const [{ data: jobsData }, { data: estimatesData }] = await Promise.all([
-        axios.get<{ jobs?: JobDoc[] }>(`${API_URL}/jobs`, {
-          params: { limit: 1000, includeCompletedClosedOut: true },
-        }),
+      const [jobs, estimatesData] = await Promise.all([
+        fetchAllCommissionJobs(),
         axios.get<EstimateDoc[]>(`${API_URL}/estimates`),
       ]);
       if (signal?.cancelled) return;
-      const jobs = Array.isArray(jobsData?.jobs) ? jobsData.jobs : [];
-      const estimates = Array.isArray(estimatesData) ? estimatesData : [];
+      const estimates = Array.isArray(estimatesData.data) ? estimatesData.data : [];
       const latestEstimateByJob = new Map<string, EstimateDoc>();
       for (const est of estimates) {
         const jid = est?.jobId;
