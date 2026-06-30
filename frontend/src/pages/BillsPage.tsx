@@ -35,8 +35,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
+  Close as CloseIcon,
   Receipt as ReceiptIcon,
   Link as LinkIcon,
 } from '@mui/icons-material';
@@ -263,7 +262,12 @@ function BillsPage() {
               </TableRow>
             ) : (
               sortedBills.map((bill) => (
-                <TableRow key={bill._id} hover>
+                <TableRow
+                  key={bill._id}
+                  hover
+                  onClick={() => handleOpenDialog(bill)}
+                  sx={{ cursor: 'pointer' }}
+                >
                   <TableCell>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {bill.title}
@@ -282,7 +286,7 @@ function BillsPage() {
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     {bill.billUrl ? (
                       <Link
                         href={bill.billUrl}
@@ -302,21 +306,17 @@ function BillsPage() {
                       {bill.description || '-'}
                     </Typography>
                   </TableCell>
-                  <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleOpenDialog(bill)}
-                      color="primary"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDelete(bill._id)}
-                      color="error"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                    <Tooltip title="Remove bill">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleDelete(bill._id)}
+                        aria-label="Remove bill"
+                        sx={{ color: 'text.secondary' }}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))
