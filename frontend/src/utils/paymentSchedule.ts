@@ -134,6 +134,63 @@ export function buildStandardSchedule(contractBase) {
   };
 }
 
+export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
+  const base = roundMoney(contractBase);
+  const due = roundMoney(commissionDue);
+  const resolved = resolvePaymentSchedule({
+    ...(job || {}),
+    valueEstimated: base,
+    valueContracted: base,
+  });
+  const items = resolved.items || [];
+  const scheduledTotal = roundMoney(items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0));
+
+  if (!items.length) {
+    return [
+      {
+        label: 'Commission',
+        dueType: 'milestone',
+        share: 1,
+        scheduledAmount: base,
+        amount: due,
+      },
+    ];
+  }
+
+  if (scheduledTotal <= 0) {
+    const evenShare = 1 / items.length;
+    let running = 0;
+    return items.map((item, idx) => {
+      const amount =
+        idx === items.length - 1 ? roundMoney(due - running) : roundMoney(due * evenShare);
+      running += amount;
+      return {
+        label: item.label || `Payment ${idx + 1}`,
+        dueType: item.dueType,
+        share: evenShare,
+        scheduledAmount: 0,
+        amount,
+      };
+    });
+  }
+
+  let running = 0;
+  return items.map((item, idx) => {
+    const scheduledAmount = roundMoney(item.amount);
+    const share = scheduledAmount / scheduledTotal;
+    const amount =
+      idx === items.length - 1 ? roundMoney(due - running) : roundMoney(due * share);
+    running += amount;
+    return {
+      label: item.label || `Payment ${idx + 1}`,
+      dueType: item.dueType,
+      share,
+      scheduledAmount,
+      amount,
+    };
+  });
+}
+
 export function getCommissionPaymentSplitShares(job, contractBase) {
   const base = roundMoney(contractBase);
   const resolved = resolvePaymentSchedule({
