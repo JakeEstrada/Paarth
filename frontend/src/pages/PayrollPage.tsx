@@ -460,7 +460,7 @@ function PayrollPage() {
     const employee = (employeeName || '-').trim() || '-';
     const payrollDate = (date || '-').trim() || '-';
     const lines = [
-      'PAYROLL SUMMARY',
+      'TIMESHEET SUMMARY',
       `Employee: ${employee}`,
       `Date: ${payrollDate}`,
       '',
@@ -488,12 +488,12 @@ function PayrollPage() {
         ...parseSmsRecipientSelection(payrollSmsRecipient),
         message: buildPayrollSmsMessage(),
       });
-      toast.success('Payroll text sent');
+      toast.success('Text sent');
       setPayrollTextDialogOpen(false);
       setPayrollSmsRecipient('');
     } catch (error) {
       console.error('Failed to text payroll:', error);
-      toast.error(error.response?.data?.error || 'Failed to send payroll text');
+      toast.error(error.response?.data?.error || 'Failed to send text');
     } finally {
       setSendingPayrollText(false);
     }
@@ -769,7 +769,7 @@ function PayrollPage() {
               SAN CLEMENTE WOODWORKING
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-              Payroll Timesheet
+              Timesheet
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 1, sm: 2 }, alignItems: 'stretch', width: { xs: '100%', md: 'auto' } }}>
@@ -861,7 +861,7 @@ function PayrollPage() {
               disabled={sendingPayrollText}
               sx={{ textTransform: 'none', borderRadius: 2 }}
             >
-              Text Payroll
+              Send Text
             </Button>
           </Box>
         </Box>
@@ -1349,10 +1349,10 @@ function PayrollPage() {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Send Payroll Text</DialogTitle>
+        <DialogTitle>Send Text</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-            Choose an employee with a mobile number on file. We send the payroll summary to their phone.
+            Choose an employee with a mobile number on file. We send the timesheet summary to their phone.
           </Typography>
           <EmployeeSmsRecipientField
             dialogOpen={payrollTextDialogOpen}
@@ -1373,7 +1373,7 @@ function PayrollPage() {
             Cancel
           </Button>
           <Button onClick={handleSendPayrollText} variant="contained" disabled={sendingPayrollText}>
-            {sendingPayrollText ? 'Sending...' : 'Send Payroll Text'}
+            {sendingPayrollText ? 'Sending...' : 'Send Text'}
           </Button>
         </DialogActions>
       </Dialog>
