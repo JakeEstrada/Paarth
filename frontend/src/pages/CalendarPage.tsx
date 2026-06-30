@@ -39,6 +39,7 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Close as CloseIcon,
   Today as TodayIcon,
   CheckCircle as CheckCircleIcon,
   DragIndicator as DragIndicatorIcon,
@@ -1462,9 +1463,9 @@ function BenchJobCard({ job, onJobClick, onViewJob, onRemoveFromBench }) {
                 onRemoveFromBench(job);
               }}
               title="Remove from bench (move to dead estimates)"
-              sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+              sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: 'text.primary' } }}
             >
-              <DeleteIcon sx={{ fontSize: 18 }} />
+              <CloseIcon sx={{ fontSize: 18 }} />
             </IconButton>
           )}
         </Box>
@@ -1526,15 +1527,10 @@ function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob }) {
                 e.stopPropagation();
                 onJobDelete(job);
               }}
-              sx={{
-                padding: 0.5,
-                '&:hover': {
-                  backgroundColor: 'error.light',
-                  color: 'error.main',
-                },
-              }}
+              title="Remove from schedule"
+              sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: 'text.primary' } }}
             >
-              <DeleteIcon fontSize="small" />
+              <CloseIcon sx={{ fontSize: 18 }} />
             </IconButton>
           )}
         </Box>
