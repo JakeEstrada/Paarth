@@ -44,6 +44,7 @@ import axios, { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { getCommissionPaymentSplits, roundMoney } from '../utils/paymentSchedule';
+import { isCommissionEligibleJob } from '../utils/commissionJobEligibility';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const COMMISSION_LOGS_STORAGE_KEY = 'financeHubCommissionLogsRows';
@@ -109,6 +110,13 @@ function readDefaultCommissionRate(): number {
   } catch {
     return DEFAULT_COMMISSION_RATE;
   }
+}
+
+function hasExplicitManualAmount(saved: CommissionPaymentLocal): boolean {
+  if (!saved.amountManual) return false;
+  if (saved.amount === undefined || saved.amount === null) return false;
+  if (typeof saved.amount === 'string') return saved.amount.trim() !== '';
+  return true;
 }
 
 interface CommissionPaymentLocal {
@@ -188,9 +196,18 @@ interface JobDoc {
   customerId?: string | { name?: string };
   assignedTo?: string | { name?: string };
   stage?: string;
+  isDeadEstimate?: boolean;
   valueContracted?: number;
   valueEstimated?: number;
   paymentSchedule?: PaymentScheduleDoc;
+  contract?: {
+    depositReceived?: number;
+    depositReceivedAt?: string;
+  };
+  finalPayment?: {
+    amountPaid?: number;
+    paidAt?: string;
+  };
 }
 
 interface EstimateDoc {
@@ -259,6 +276,8 @@ interface CommissionSourceJobRow {
   stageLabel: string;
   jobTotal: number;
   paymentSchedule?: PaymentScheduleDoc;
+  contract?: JobDoc['contract'];
+  finalPayment?: JobDoc['finalPayment'];
 }
 
 interface CommissionPaymentDisplay {
@@ -668,6 +687,8 @@ function CommissionLogsPage() {
         const splits = getCommissionPaymentSplits(
           {
             paymentSchedule: row.paymentSchedule,
+            contract: row.contract,
+            finalPayment: row.finalPayment,
             valueContracted: jobTotal,
             valueEstimated: jobTotal,
           },
@@ -686,12 +707,12 @@ function CommissionLogsPage() {
           let displayAmount: string | number = '';
           const amountManual = Boolean(saved.amountManual);
 
-          if (amountManual) {
+          if (amountManual && hasExplicitManualAmount(saved)) {
             displayAmount = saved.amount ?? '';
             amount = roundMoney(Number(saved.amount || 0));
           } else if (status === 'paid') {
             amount = potentialAmount;
-            displayAmount = potentialAmount || '';
+            displayAmount = potentialAmount > 0 ? potentialAmount : '';
           }
 
           const payment: CommissionPaymentDisplay = {
@@ -796,23 +817,27 @@ function CommissionLogsPage() {
         const prevTime = prev ? new Date(prev?.createdAt || 0).getTime() : -1;
         if (!prev || estTime > prevTime) latestEstimateByJob.set(jobId, est);
       }
-      const rows: CommissionSourceJobRow[] = jobs.map((job) => {
-        const estimate = latestEstimateByJob.get(String(job?._id || ''));
-        const fullAmount =
-          Number(estimate?.grandTotal ?? job?.valueContracted ?? job?.valueEstimated ?? 0) || 0;
-        return {
-          jobId: String(job?._id || ''),
-          customerName:
-            (typeof job?.customerId === 'object' && job?.customerId?.name) || 'Unknown customer',
-          jobLabel: jobTitleAfterPipe(job?.title),
-          assignedToName:
-            (typeof job?.assignedTo === 'object' && job?.assignedTo?.name) ||
-            String(job?.assignedTo || ''),
-          stageLabel: ESTIMATE_STAGE_LABELS[job?.stage ?? ''] || String(job?.stage || ''),
-          jobTotal: roundMoney(fullAmount),
-          paymentSchedule: job?.paymentSchedule,
-        };
-      });
+      const rows: CommissionSourceJobRow[] = jobs
+        .filter((job) => isCommissionEligibleJob(job))
+        .map((job) => {
+          const estimate = latestEstimateByJob.get(String(job?._id || ''));
+          const fullAmount =
+            Number(estimate?.grandTotal ?? job?.valueContracted ?? job?.valueEstimated ?? 0) || 0;
+          return {
+            jobId: String(job?._id || ''),
+            customerName:
+              (typeof job?.customerId === 'object' && job?.customerId?.name) || 'Unknown customer',
+            jobLabel: jobTitleAfterPipe(job?.title),
+            assignedToName:
+              (typeof job?.assignedTo === 'object' && job?.assignedTo?.name) ||
+              String(job?.assignedTo || ''),
+            stageLabel: ESTIMATE_STAGE_LABELS[job?.stage ?? ''] || String(job?.stage || ''),
+            jobTotal: roundMoney(fullAmount),
+            paymentSchedule: job?.paymentSchedule,
+            contract: job?.contract,
+            finalPayment: job?.finalPayment,
+          };
+        });
       setCommissionSourceJobs(rows);
     } catch (error) {
       console.error('Error loading commission logs:', error);
@@ -867,8 +892,8 @@ function CommissionLogsPage() {
                 Commission Logs
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Amounts auto-fill when a job payment is marked paid in the job modal. Default rate
-                applies to all rows unless you override rate or amount.
+                Shows accepted jobs only (deposit pending and beyond). Amounts auto-fill when a job
+                payment is marked paid in the job modal.
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>

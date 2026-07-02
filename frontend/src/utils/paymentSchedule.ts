@@ -81,6 +81,45 @@ export function resolvePaymentSchedule(job) {
   };
 }
 
+/** Merge legacy deposit/final fields when job has no stored payment schedule yet. */
+export function resolvePaymentScheduleForCommission(job) {
+  const resolved = resolvePaymentSchedule(job);
+  if (hasStoredPaymentSchedule(job)) return resolved;
+
+  const depositReceivedAt = job?.contract?.depositReceivedAt;
+  const depositReceived = Number(job?.contract?.depositReceived);
+  const finalPaidAt = job?.finalPayment?.paidAt;
+  const finalPaidAmount = Number(job?.finalPayment?.amountPaid);
+
+  const items = (resolved.items || []).map((item) => {
+    if (item.dueType === 'deposit' && depositReceivedAt) {
+      return {
+        ...item,
+        status: 'paid',
+        paidAt: depositReceivedAt,
+        paidAmount:
+          Number.isFinite(depositReceived) && depositReceived > 0
+            ? roundMoney(depositReceived)
+            : item.amount,
+      };
+    }
+    if (item.dueType === 'final' && finalPaidAt) {
+      return {
+        ...item,
+        status: 'paid',
+        paidAt: finalPaidAt,
+        paidAmount:
+          Number.isFinite(finalPaidAmount) && finalPaidAmount > 0
+            ? roundMoney(finalPaidAmount)
+            : item.amount,
+      };
+    }
+    return item;
+  });
+
+  return { ...resolved, items };
+}
+
 export function validatePaymentSchedule(schedule, contractBase) {
   const items = schedule?.items || [];
   const scheduledTotal = roundMoney(
@@ -166,7 +205,7 @@ export function buildSchedulePayloadFromItems(items, contractBase) {
 export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
   const base = roundMoney(contractBase);
   const due = roundMoney(commissionDue);
-  const resolved = resolvePaymentSchedule({
+  const resolved = resolvePaymentScheduleForCommission({
     ...(job || {}),
     valueEstimated: base,
     valueContracted: base,
