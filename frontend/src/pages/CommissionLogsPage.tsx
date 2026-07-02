@@ -628,7 +628,7 @@ function JobPaymentCards({
   };
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, pb: 0.5 }}>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, pb: 0.5, width: 'max-content' }}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={sortableIds} strategy={horizontalListSortingStrategy}>
           {activePayments.map((payment) => (
@@ -1112,44 +1112,74 @@ function CommissionLogsPage() {
                       </TableBody>
                     </Table>
                   ) : (
-                  <Table stickyHeader size="small" sx={{ minWidth: 1100 }}>
+                  <Table
+                    stickyHeader
+                    size="small"
+                    sx={{
+                      minWidth: 1280,
+                      tableLayout: 'fixed',
+                      width: '100%',
+                    }}
+                  >
                 <TableHead>
                   <TableRow>
                     <TableCell
                       sx={{
                         fontWeight: 700,
-                        minWidth: 140,
+                        width: '12%',
+                        minWidth: 130,
                         bgcolor: 'background.paper',
                       }}
                     >
                       Customer
                     </TableCell>
-                    <TableCell sx={{ fontWeight: 700, minWidth: 160, bgcolor: 'background.paper' }}>
+                    <TableCell
+                      sx={{ fontWeight: 700, width: '14%', minWidth: 150, bgcolor: 'background.paper' }}
+                    >
                       Job
                     </TableCell>
                     <TableCell
-                      sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }}
+                      sx={{ fontWeight: 700, width: '9%', minWidth: 96, bgcolor: 'background.paper' }}
                       align="right"
                     >
                       Job Total
                     </TableCell>
                     <TableCell
-                      sx={{ fontWeight: 700, minWidth: 90, bgcolor: 'background.paper' }}
+                      sx={{ fontWeight: 700, width: '8%', minWidth: 88, bgcolor: 'background.paper' }}
                       align="right"
                     >
                       Rate
                     </TableCell>
                     <TableCell
-                      sx={{ fontWeight: 700, minWidth: 110, bgcolor: 'background.paper' }}
+                      sx={{ fontWeight: 700, width: '10%', minWidth: 104, bgcolor: 'background.paper' }}
                       align="right"
                     >
                       Commission
                     </TableCell>
-                    <TableCell sx={{ fontWeight: 700, minWidth: 360, bgcolor: 'background.paper' }}>
+                    <TableCell
+                      sx={{
+                        fontWeight: 700,
+                        width: 'auto',
+                        minWidth: 420,
+                        bgcolor: 'background.paper',
+                      }}
+                    >
                       Payments
                     </TableCell>
                     <TableCell
-                      sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }}
+                      sx={{
+                        fontWeight: 700,
+                        width: 120,
+                        minWidth: 120,
+                        pl: 3,
+                        bgcolor: 'background.paper',
+                        position: 'sticky',
+                        right: 0,
+                        zIndex: 3,
+                        whiteSpace: 'nowrap',
+                        boxShadow: (t) =>
+                          `-6px 0 10px ${alpha(t.palette.common.black, t.palette.mode === 'dark' ? 0.35 : 0.08)}`,
+                      }}
                       align="right"
                     >
                       Balance
@@ -1217,21 +1247,44 @@ function CommissionLogsPage() {
                       <TableCell align="right" sx={{ fontWeight: 600 }}>
                         ${formatMoney(row.commissionDue)}
                       </TableCell>
-                      <TableCell sx={{ p: 1 }}>
-                        <JobPaymentCards
-                          row={row}
-                          onReorder={reorderPayments}
-                          onUpdateAmount={handlePaymentAmountChange}
-                          onUpdateDate={(jobId, scheduleIndex, value) =>
-                            updateCommissionPayment(jobId, scheduleIndex, { date: value })
-                          }
-                          onUpdateCheck={(jobId, scheduleIndex, value) =>
-                            updateCommissionPayment(jobId, scheduleIndex, { check: value })
-                          }
-                          onResetOverrides={resetPaymentOverrides}
-                        />
+                      <TableCell sx={{ p: 1, overflow: 'hidden', verticalAlign: 'top' }}>
+                        <Box sx={{ overflowX: 'auto', maxWidth: '100%', pr: 1 }}>
+                          <JobPaymentCards
+                            row={row}
+                            onReorder={reorderPayments}
+                            onUpdateAmount={handlePaymentAmountChange}
+                            onUpdateDate={(jobId, scheduleIndex, value) =>
+                              updateCommissionPayment(jobId, scheduleIndex, { date: value })
+                            }
+                            onUpdateCheck={(jobId, scheduleIndex, value) =>
+                              updateCommissionPayment(jobId, scheduleIndex, { check: value })
+                            }
+                            onResetOverrides={resetPaymentOverrides}
+                          />
+                        </Box>
                       </TableCell>
-                      <TableCell align="right">
+                      <TableCell
+                        align="right"
+                        sx={{
+                          width: 120,
+                          minWidth: 120,
+                          pl: 3,
+                          pr: 2,
+                          whiteSpace: 'nowrap',
+                          verticalAlign: 'top',
+                          position: 'sticky',
+                          right: 0,
+                          zIndex: 1,
+                          bgcolor: row.isRowSettled
+                            ? alpha(
+                                theme.palette.success.main,
+                                theme.palette.mode === 'dark' ? 0.14 : 0.08,
+                              )
+                            : 'background.paper',
+                          boxShadow: (t) =>
+                            `-6px 0 10px ${alpha(t.palette.common.black, t.palette.mode === 'dark' ? 0.35 : 0.08)}`,
+                        }}
+                      >
                         <Typography
                           variant="body2"
                           sx={{
