@@ -134,6 +134,35 @@ export function buildStandardSchedule(contractBase) {
   };
 }
 
+export function matchesStandard4060Template(items) {
+  if (!Array.isArray(items) || items.length !== 2) return false;
+  return STANDARD_4060_TEMPLATE.every((template, idx) => {
+    const item = items[idx];
+    if (!item) return false;
+    return (
+      item.amountType === template.amountType &&
+      Number(item.percentage) === template.percentage &&
+      item.dueType === template.dueType &&
+      String(item.label || '').trim() === template.label
+    );
+  });
+}
+
+export function buildSchedulePayloadFromItems(items, contractBase) {
+  const itemsForSave = (items || []).map(({ localId, ...item }) => item);
+  if (matchesStandard4060Template(itemsForSave)) {
+    const standard = buildStandardSchedule(contractBase);
+    standard.items = standard.items.map((template, idx) => ({
+      ...template,
+      status: itemsForSave[idx]?.status || template.status,
+      paidAmount: itemsForSave[idx]?.paidAmount ?? 0,
+      paidAt: itemsForSave[idx]?.paidAt ?? null,
+    }));
+    return standard;
+  }
+  return buildCustomScheduleFromItems(itemsForSave, contractBase);
+}
+
 export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
   const base = roundMoney(contractBase);
   const due = roundMoney(commissionDue);

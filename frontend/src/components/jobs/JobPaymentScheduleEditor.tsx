@@ -4,9 +4,7 @@ import {
   Box,
   Button,
   Chip,
-  FormControl,
   IconButton,
-  InputLabel,
   MenuItem,
   Paper,
   Select,
@@ -27,12 +25,10 @@ import {
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import {
-  buildCustomScheduleFromItems,
-  buildStandardSchedule,
+  buildSchedulePayloadFromItems,
   computeItemAmount,
   createEmptyScheduleItem,
   getContractBase,
-  hasStoredPaymentSchedule,
   resolvePaymentSchedule,
   validatePaymentSchedule,
 } from '../../utils/paymentSchedule';
@@ -92,17 +88,11 @@ function cloneItems(items) {
 export default function JobPaymentScheduleEditor({ job, onSave, saving = false, readOnly = false }) {
   const contractBase = getContractBase(job);
   const resolved = useMemo(() => resolvePaymentSchedule(job), [job]);
-  const [scheduleType, setScheduleType] = useState(
-    hasStoredPaymentSchedule(job) ? job.paymentSchedule.type || 'custom' : 'standard_40_60'
-  );
   const [items, setItems] = useState(() => cloneItems(resolved.items));
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     const nextResolved = resolvePaymentSchedule(job);
-    setScheduleType(
-      hasStoredPaymentSchedule(job) ? job.paymentSchedule.type || 'custom' : 'standard_40_60'
-    );
     setItems(cloneItems(nextResolved.items));
     setDirty(false);
   }, [job?._id]);
@@ -110,9 +100,6 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
   useEffect(() => {
     if (dirty) return;
     const nextResolved = resolvePaymentSchedule(job);
-    setScheduleType(
-      hasStoredPaymentSchedule(job) ? job.paymentSchedule.type || 'custom' : 'standard_40_60'
-    );
     setItems(cloneItems(nextResolved.items));
   }, [job?.paymentSchedule, job?.valueEstimated, job?.valueContracted, dirty, job]);
 
@@ -131,16 +118,6 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
     [computedItems, contractBase]
   );
 
-  const handleScheduleTypeChange = (nextType) => {
-    setScheduleType(nextType);
-    if (nextType === 'standard_40_60') {
-      setItems(cloneItems(buildStandardSchedule(contractBase).items));
-    } else if (items.length <= 2 && items.every((i) => i.amountType === 'percentage')) {
-      setItems(cloneItems(buildStandardSchedule(contractBase).items));
-    }
-    setDirty(true);
-  };
-
   const updateItem = (index, patch) => {
     setItems((prev) => prev.map((item, idx) => (idx === index ? { ...item, ...patch } : item)));
     setDirty(true);
@@ -148,7 +125,6 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
 
   const addItem = () => {
     setItems((prev) => [...prev, createEmptyScheduleItem(prev.length)]);
-    setScheduleType('custom');
     setDirty(true);
   };
 
@@ -210,11 +186,7 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
   };
 
   const handleSave = async () => {
-    const itemsForSave = items.map(({ localId, ...item }) => item);
-    const payload =
-      scheduleType === 'standard_40_60'
-        ? buildStandardSchedule(contractBase)
-        : buildCustomScheduleFromItems(itemsForSave, contractBase);
+    const payload = buildSchedulePayloadFromItems(items, contractBase);
     await onSave(payload);
     setDirty(false);
   };
@@ -227,22 +199,12 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
             Payment Schedule & History
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Base contract: {formatMoney(contractBase)} (change orders excluded)
+            Base contract: {formatMoney(contractBase)} (change orders excluded). Defaults to 40% /
+            60% until you edit the schedule.
           </Typography>
         </Box>
         {!readOnly && (
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel>Schedule type</InputLabel>
-              <Select
-                label="Schedule type"
-                value={scheduleType}
-                onChange={(e) => handleScheduleTypeChange(e.target.value)}
-              >
-                <MenuItem value="standard_40_60">Standard 40 / 60</MenuItem>
-                <MenuItem value="custom">Custom</MenuItem>
-              </Select>
-            </FormControl>
             <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={addItem}>
               Add item
             </Button>
