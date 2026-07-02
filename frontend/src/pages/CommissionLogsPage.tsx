@@ -3,7 +3,7 @@
  * Route: /commission-logs
  * Docs: ../../../docs/PAGES.md#commissionlogspagetsx
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   alpha,
   Box,
@@ -24,6 +24,22 @@ import {
   useTheme,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import axios, { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -104,6 +120,7 @@ interface CommissionPaymentLocal {
 
 interface CommissionLogLocalRow {
   payments?: CommissionPaymentLocal[];
+  paymentOrder?: number[];
   payment1?: string | number;
   payment2?: string | number;
   payment1Check?: string;
@@ -245,6 +262,7 @@ interface CommissionSourceJobRow {
 }
 
 interface CommissionPaymentDisplay {
+  scheduleIndex: number;
   label: string;
   scheduledAmount: number;
   potentialAmount: number;
@@ -254,6 +272,7 @@ interface CommissionPaymentDisplay {
   date: string;
   status: string;
   amountManual: boolean;
+  isSettled: boolean;
 }
 
 interface CommissionTableRow extends CommissionSourceJobRow {
@@ -263,16 +282,59 @@ interface CommissionTableRow extends CommissionSourceJobRow {
   payments: CommissionPaymentDisplay[];
   hasManualPayments: boolean;
   balance: number;
+  isRowSettled: boolean;
 }
 
-function paymentCardStyles(theme, status: string) {
-  if (status === 'paid') {
+function isSettledPayment(
+  payment: Pick<CommissionPaymentDisplay, 'status' | 'potentialAmount' | 'amount'>,
+  commissionRate: number,
+): boolean {
+  if (commissionRate <= 0) return true;
+  if (payment.status === 'paid') return true;
+  if (payment.potentialAmount <= 0 && payment.amount <= 0) return true;
+  return false;
+}
+
+function orderPaymentsForDisplay(
+  payments: CommissionPaymentDisplay[],
+  paymentOrder: number[] | undefined,
+): CommissionPaymentDisplay[] {
+  const active = payments.filter((payment) => !payment.isSettled);
+  const settled = payments.filter((payment) => payment.isSettled);
+
+  const settledSorted = [...settled].sort((a, b) =>
+    String(a.label || '').localeCompare(String(b.label || '')),
+  );
+
+  let activeSorted: CommissionPaymentDisplay[];
+  if (Array.isArray(paymentOrder) && paymentOrder.length > 0) {
+    const orderMap = new Map(paymentOrder.map((idx, order) => [idx, order]));
+    activeSorted = [...active].sort((a, b) => {
+      const aOrder = orderMap.get(a.scheduleIndex);
+      const bOrder = orderMap.get(b.scheduleIndex);
+      if (aOrder !== undefined && bOrder !== undefined) return aOrder - bOrder;
+      if (aOrder !== undefined) return -1;
+      if (bOrder !== undefined) return 1;
+      return a.scheduleIndex - b.scheduleIndex;
+    });
+  } else {
+    activeSorted = [...active].sort((a, b) => a.scheduleIndex - b.scheduleIndex);
+  }
+
+  return [...activeSorted, ...settledSorted];
+}
+
+function paymentCardStyles(
+  theme: ReturnType<typeof useTheme>,
+  payment: CommissionPaymentDisplay,
+) {
+  if (payment.isSettled) {
     return {
       borderColor: 'success.main',
-      bgcolor: alpha(theme.palette.success.main, theme.palette.mode === 'dark' ? 0.18 : 0.1),
+      bgcolor: alpha(theme.palette.success.main, theme.palette.mode === 'dark' ? 0.32 : 0.2),
     };
   }
-  if (status === 'invoiced') {
+  if (payment.status === 'invoiced') {
     return {
       borderColor: 'warning.main',
       bgcolor: alpha(theme.palette.warning.main, theme.palette.mode === 'dark' ? 0.18 : 0.12),
@@ -282,6 +344,227 @@ function paymentCardStyles(theme, status: string) {
     borderColor: 'divider',
     bgcolor: 'background.paper',
   };
+}
+
+interface SortablePaymentCardProps {
+  payment: CommissionPaymentDisplay;
+  jobId: string;
+  draggable: boolean;
+  onUpdateAmount: (scheduleIndex: number, value: string) => void;
+  onUpdateDate: (scheduleIndex: number, value: string) => void;
+  onUpdateCheck: (scheduleIndex: number, value: string) => void;
+}
+
+function SortablePaymentCard({
+  payment,
+  jobId,
+  draggable,
+  onUpdateAmount,
+  onUpdateDate,
+  onUpdateCheck,
+}: SortablePaymentCardProps) {
+  const theme = useTheme();
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: `${jobId}-${payment.scheduleIndex}`,
+    disabled: !draggable,
+  });
+
+  const cardStyle = paymentCardStyles(theme, payment);
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.85 : 1,
+  };
+
+  return (
+    <Box
+      ref={setNodeRef}
+      style={style}
+      sx={{
+        minWidth: 196,
+        flex: '0 0 auto',
+        p: 1,
+        border: 1,
+        borderRadius: 1,
+        ...cardStyle,
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 0.5,
+          mb: 0.5,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, minWidth: 0 }}>
+          {draggable && (
+            <Box
+              {...attributes}
+              {...listeners}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'grab',
+                color: 'text.secondary',
+                touchAction: 'none',
+                '&:active': { cursor: 'grabbing' },
+              }}
+              aria-label="Drag to reorder payment"
+            >
+              <DragIndicatorIcon sx={{ fontSize: 16 }} />
+            </Box>
+          )}
+          <Typography variant="caption" sx={{ fontWeight: 700 }} noWrap>
+            {payment.label}
+          </Typography>
+        </Box>
+        <Chip
+          size="small"
+          variant={payment.isSettled || payment.status === 'paid' ? 'filled' : 'outlined'}
+          label={PAYMENT_STATUS_LABELS[payment.status] || payment.status}
+          color={
+            payment.isSettled || payment.status === 'paid'
+              ? 'success'
+              : payment.status === 'invoiced'
+                ? 'warning'
+                : 'default'
+          }
+          sx={{ height: 20, fontSize: '0.65rem', flexShrink: 0 }}
+        />
+      </Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+        Job: ${formatMoney(payment.scheduledAmount)}
+        {!payment.isSettled && payment.potentialAmount > 0
+          ? ` · Due: $${formatMoney(payment.potentialAmount)}`
+          : ''}
+      </Typography>
+      <TextField
+        size="small"
+        fullWidth
+        value={payment.displayAmount}
+        onChange={(e) => onUpdateAmount(payment.scheduleIndex, e.target.value)}
+        placeholder={
+          payment.status === 'paid'
+            ? 'Amount'
+            : payment.potentialAmount > 0
+              ? `Auto: $${formatMoney(payment.potentialAmount)}`
+              : 'Amount'
+        }
+        sx={{ mb: 0.75 }}
+        InputProps={{
+          startAdornment: <InputAdornment position="start">$</InputAdornment>,
+          inputProps: { inputMode: 'decimal' },
+        }}
+      />
+      <TextField
+        size="small"
+        fullWidth
+        type="date"
+        value={payment.date}
+        onChange={(e) => onUpdateDate(payment.scheduleIndex, e.target.value)}
+        sx={{ mb: 0.75 }}
+        InputLabelProps={{ shrink: true }}
+      />
+      <TextField
+        size="small"
+        fullWidth
+        value={payment.check}
+        onChange={(e) => onUpdateCheck(payment.scheduleIndex, e.target.value)}
+        placeholder="Check #"
+      />
+    </Box>
+  );
+}
+
+interface JobPaymentCardsProps {
+  row: CommissionTableRow;
+  onReorder: (jobId: string, order: number[]) => void;
+  onUpdateAmount: (jobId: string, scheduleIndex: number, value: string) => void;
+  onUpdateDate: (jobId: string, scheduleIndex: number, value: string) => void;
+  onUpdateCheck: (jobId: string, scheduleIndex: number, value: string) => void;
+  onResetOverrides: (jobId: string) => void;
+}
+
+function JobPaymentCards({
+  row,
+  onReorder,
+  onUpdateAmount,
+  onUpdateDate,
+  onUpdateCheck,
+  onResetOverrides,
+}: JobPaymentCardsProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  const activePayments = row.payments.filter((payment) => !payment.isSettled);
+  const settledPayments = row.payments.filter((payment) => payment.isSettled);
+  const sortableIds = activePayments.map((payment) => `${row.jobId}-${payment.scheduleIndex}`);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeIdx = sortableIds.indexOf(String(active.id));
+    const overIdx = sortableIds.indexOf(String(over.id));
+    if (activeIdx < 0 || overIdx < 0) return;
+
+    const currentOrder = activePayments.map((payment) => payment.scheduleIndex);
+    const nextOrder = arrayMove(currentOrder, activeIdx, overIdx);
+    onReorder(row.jobId, nextOrder);
+  };
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, pb: 0.5 }}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={sortableIds} strategy={horizontalListSortingStrategy}>
+          {activePayments.map((payment) => (
+            <SortablePaymentCard
+              key={`${row.jobId}-${payment.scheduleIndex}`}
+              payment={payment}
+              jobId={row.jobId}
+              draggable
+              onUpdateAmount={(scheduleIndex, value) => onUpdateAmount(row.jobId, scheduleIndex, value)}
+              onUpdateDate={(scheduleIndex, value) => onUpdateDate(row.jobId, scheduleIndex, value)}
+              onUpdateCheck={(scheduleIndex, value) => onUpdateCheck(row.jobId, scheduleIndex, value)}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+      {settledPayments.map((payment) => (
+        <SortablePaymentCard
+          key={`${row.jobId}-${payment.scheduleIndex}-settled`}
+          payment={payment}
+          jobId={row.jobId}
+          draggable={false}
+          onUpdateAmount={(scheduleIndex, value) => onUpdateAmount(row.jobId, scheduleIndex, value)}
+          onUpdateDate={(scheduleIndex, value) => onUpdateDate(row.jobId, scheduleIndex, value)}
+          onUpdateCheck={(scheduleIndex, value) => onUpdateCheck(row.jobId, scheduleIndex, value)}
+        />
+      ))}
+      {row.hasManualPayments && (
+        <Tooltip title="Reset manual amounts to job payment status">
+          <IconButton
+            size="small"
+            onClick={() => onResetOverrides(row.jobId)}
+            aria-label="Reset payment overrides"
+            sx={{ mt: 0.5 }}
+          >
+            <RefreshIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
+    </Box>
+  );
 }
 
 function CommissionLogsPage() {
@@ -328,14 +611,14 @@ function CommissionLogsPage() {
 
   const updateCommissionPayment = (
     jobId: string,
-    index: number,
+    scheduleIndex: number,
     patch: Partial<CommissionPaymentLocal>,
     options?: { manual?: boolean },
   ) => {
     setCommissionLogRows((prev) => {
       const current = migrateLocalRow(prev[jobId] || {});
       const payments = [...(current.payments || [])];
-      while (payments.length <= index) payments.push({});
+      while (payments.length <= scheduleIndex) payments.push({});
       const nextPatch = { ...patch };
       if (options?.manual === true) {
         nextPatch.amountManual = true;
@@ -343,7 +626,7 @@ function CommissionLogsPage() {
       if (options?.manual === false) {
         nextPatch.amountManual = false;
       }
-      payments[index] = { ...payments[index], ...nextPatch };
+      payments[scheduleIndex] = { ...payments[scheduleIndex], ...nextPatch };
       return {
         ...prev,
         [jobId]: {
@@ -355,8 +638,20 @@ function CommissionLogsPage() {
     });
   };
 
+  const reorderPayments = (jobId: string, order: number[]) => {
+    updateCommissionRow(jobId, { paymentOrder: order });
+  };
+
+  const handlePaymentAmountChange = (jobId: string, scheduleIndex: number, value: string) => {
+    if (value === '') {
+      updateCommissionPayment(jobId, scheduleIndex, { amount: '', amountManual: false }, { manual: false });
+    } else {
+      updateCommissionPayment(jobId, scheduleIndex, { amount: value }, { manual: true });
+    }
+  };
+
   const resetPaymentOverrides = (jobId: string) => {
-    updateCommissionRow(jobId, { payments: [] });
+    updateCommissionRow(jobId, { payments: [], paymentOrder: [] });
   };
 
   const commissionTableRows = useMemo((): CommissionTableRow[] => {
@@ -381,7 +676,7 @@ function CommissionLogsPage() {
         );
 
         const savedPayments = local.payments || [];
-        const payments: CommissionPaymentDisplay[] = splits.map((split, idx) => {
+        const builtPayments: CommissionPaymentDisplay[] = splits.map((split, idx) => {
           const saved = savedPayments[idx] || {};
           const status = split.status || 'pending';
           const potentialAmount = split.amount;
@@ -399,7 +694,8 @@ function CommissionLogsPage() {
             displayAmount = potentialAmount || '';
           }
 
-          return {
+          const payment: CommissionPaymentDisplay = {
+            scheduleIndex: idx,
             label: split.label,
             scheduledAmount: split.scheduledAmount,
             potentialAmount,
@@ -409,13 +705,19 @@ function CommissionLogsPage() {
             date: String(saved.date || autoDate),
             status,
             amountManual,
+            isSettled: false,
           };
+          payment.isSettled = isSettledPayment(payment, safeRate);
+          return payment;
         });
+
+        const payments = orderPaymentsForDisplay(builtPayments, local.paymentOrder);
 
         const paidTotal = roundMoney(payments.reduce((sum, payment) => sum + payment.amount, 0));
         const balance = roundMoney(commissionDue - paidTotal);
         const normalizedBalance = balance < 0 ? 0 : balance;
         const hasManualPayments = payments.some((payment) => payment.amountManual);
+        const isRowSettled = safeRate <= 0 || normalizedBalance <= 0;
 
         return {
           ...row,
@@ -425,13 +727,11 @@ function CommissionLogsPage() {
           payments,
           hasManualPayments,
           balance: normalizedBalance,
+          isRowSettled,
         };
       })
       .sort((a, b) => {
-        if (a.balance !== b.balance) {
-          if (a.balance <= 0 && b.balance > 0) return 1;
-          if (b.balance <= 0 && a.balance > 0) return -1;
-        }
+        if (a.isRowSettled !== b.isRowSettled) return a.isRowSettled ? 1 : -1;
         return String(a.customerName || '').localeCompare(String(b.customerName || ''));
       });
   }, [commissionSourceJobs, commissionLogRows, defaultCommissionRate]);
@@ -663,7 +963,20 @@ function CommissionLogsPage() {
                 </TableHead>
                 <TableBody>
                   {commissionTableRows.map((row) => (
-                    <TableRow key={row.jobId} hover>
+                    <TableRow
+                      key={row.jobId}
+                      hover
+                      sx={
+                        row.isRowSettled
+                          ? {
+                              bgcolor: alpha(
+                                theme.palette.success.main,
+                                theme.palette.mode === 'dark' ? 0.14 : 0.08,
+                              ),
+                            }
+                          : undefined
+                      }
+                    >
                       <TableCell>{row.customerName}</TableCell>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -710,135 +1023,18 @@ function CommissionLogsPage() {
                         ${formatMoney(row.commissionDue)}
                       </TableCell>
                       <TableCell sx={{ p: 1 }}>
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: 1,
-                            pb: 0.5,
-                          }}
-                        >
-                          {row.payments.map((payment, idx) => {
-                            const cardStyle = paymentCardStyles(theme, payment.status);
-                            return (
-                              <Box
-                                key={`${row.jobId}-${idx}`}
-                                sx={{
-                                  minWidth: 196,
-                                  flex: '0 0 auto',
-                                  p: 1,
-                                  border: 1,
-                                  borderRadius: 1,
-                                  ...cardStyle,
-                                }}
-                              >
-                                <Box
-                                  sx={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    gap: 0.5,
-                                    mb: 0.5,
-                                  }}
-                                >
-                                  <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                                    {payment.label}
-                                  </Typography>
-                                  <Chip
-                                    size="small"
-                                    variant={payment.status === 'pending' ? 'outlined' : 'filled'}
-                                    label={PAYMENT_STATUS_LABELS[payment.status] || payment.status}
-                                    color={
-                                      payment.status === 'paid'
-                                        ? 'success'
-                                        : payment.status === 'invoiced'
-                                          ? 'warning'
-                                          : 'default'
-                                    }
-                                    sx={{ height: 20, fontSize: '0.65rem' }}
-                                  />
-                                </Box>
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ display: 'block', mb: 0.75 }}
-                                >
-                                  Job: ${formatMoney(payment.scheduledAmount)}
-                                  {payment.status !== 'paid' && payment.potentialAmount > 0
-                                    ? ` · Due: $${formatMoney(payment.potentialAmount)}`
-                                    : ''}
-                                </Typography>
-                                <TextField
-                                  size="small"
-                                  fullWidth
-                                  value={payment.displayAmount}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (value === '') {
-                                      updateCommissionPayment(
-                                        row.jobId,
-                                        idx,
-                                        { amount: '', amountManual: false },
-                                        { manual: false },
-                                      );
-                                    } else {
-                                      updateCommissionPayment(
-                                        row.jobId,
-                                        idx,
-                                        { amount: value },
-                                        { manual: true },
-                                      );
-                                    }
-                                  }}
-                                  placeholder={
-                                    payment.status === 'paid'
-                                      ? 'Amount'
-                                      : payment.potentialAmount > 0
-                                        ? `Auto: $${formatMoney(payment.potentialAmount)}`
-                                        : 'Amount'
-                                  }
-                                  sx={{ mb: 0.75 }}
-                                  InputProps={{
-                                    startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                                    inputProps: { inputMode: 'decimal' },
-                                  }}
-                                />
-                                <TextField
-                                  size="small"
-                                  fullWidth
-                                  type="date"
-                                  value={payment.date}
-                                  onChange={(e) =>
-                                    updateCommissionPayment(row.jobId, idx, { date: e.target.value })
-                                  }
-                                  sx={{ mb: 0.75 }}
-                                  InputLabelProps={{ shrink: true }}
-                                />
-                                <TextField
-                                  size="small"
-                                  fullWidth
-                                  value={payment.check}
-                                  onChange={(e) =>
-                                    updateCommissionPayment(row.jobId, idx, { check: e.target.value })
-                                  }
-                                  placeholder="Check #"
-                                />
-                              </Box>
-                            );
-                          })}
-                          {row.hasManualPayments && (
-                            <Tooltip title="Reset manual amounts to job payment status">
-                              <IconButton
-                                size="small"
-                                onClick={() => resetPaymentOverrides(row.jobId)}
-                                aria-label="Reset payment overrides"
-                                sx={{ mt: 0.5 }}
-                              >
-                                <RefreshIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                        </Box>
+                        <JobPaymentCards
+                          row={row}
+                          onReorder={reorderPayments}
+                          onUpdateAmount={handlePaymentAmountChange}
+                          onUpdateDate={(jobId, scheduleIndex, value) =>
+                            updateCommissionPayment(jobId, scheduleIndex, { date: value })
+                          }
+                          onUpdateCheck={(jobId, scheduleIndex, value) =>
+                            updateCommissionPayment(jobId, scheduleIndex, { check: value })
+                          }
+                          onResetOverrides={resetPaymentOverrides}
+                        />
                       </TableCell>
                       <TableCell align="right">
                         <Typography
