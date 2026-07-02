@@ -19,12 +19,16 @@ import {
   TableHead,
   TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
   useTheme,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import ViewListIcon from '@mui/icons-material/ViewList';
+import GridViewIcon from '@mui/icons-material/GridView';
 import {
   DndContext,
   PointerSensor,
@@ -49,7 +53,10 @@ import { isCommissionEligibleJob } from '../utils/commissionJobEligibility';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const COMMISSION_LOGS_STORAGE_KEY = 'financeHubCommissionLogsRows';
 const DEFAULT_COMMISSION_RATE_KEY = 'financeHubCommissionDefaultRate';
+const COMMISSION_VIEW_MODE_KEY = 'financeHubCommissionViewMode';
 const DEFAULT_COMMISSION_RATE = 5;
+
+type CommissionViewMode = 'detail' | 'overview';
 
 const ESTIMATE_STAGE_LABELS: Record<string, string> = {
   APPOINTMENT_SCHEDULED: 'Appointment',
@@ -110,6 +117,84 @@ function readDefaultCommissionRate(): number {
   } catch {
     return DEFAULT_COMMISSION_RATE;
   }
+}
+
+function readCommissionViewMode(): CommissionViewMode {
+  if (typeof window === 'undefined') return 'detail';
+  try {
+    const raw = window.localStorage.getItem(COMMISSION_VIEW_MODE_KEY);
+    return raw === 'overview' ? 'overview' : 'detail';
+  } catch {
+    return 'detail';
+  }
+}
+
+function tierChipStyles(
+  theme: ReturnType<typeof useTheme>,
+  payment: CommissionPaymentDisplay,
+) {
+  if (payment.status === 'paid' || payment.isSettled) {
+    return {
+      borderColor: 'success.main',
+      bgcolor: alpha(theme.palette.success.main, theme.palette.mode === 'dark' ? 0.32 : 0.18),
+      color: theme.palette.success.main,
+    };
+  }
+  if (payment.status === 'invoiced') {
+    return {
+      borderColor: 'warning.main',
+      bgcolor: alpha(theme.palette.warning.main, theme.palette.mode === 'dark' ? 0.22 : 0.14),
+      color: theme.palette.warning.main,
+    };
+  }
+  return {
+    borderColor: 'divider',
+    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+    color: 'text.secondary',
+  };
+}
+
+interface CommissionOverviewTiersProps {
+  payments: CommissionPaymentDisplay[];
+}
+
+function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
+  const theme = useTheme();
+  const ordered = [...payments].sort((a, b) => a.scheduleIndex - b.scheduleIndex);
+
+  return (
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+      {ordered.map((payment) => {
+        const styles = tierChipStyles(theme, payment);
+        const dueAmount = payment.amount > 0 ? payment.amount : payment.potentialAmount;
+        const paid = payment.status === 'paid' || payment.isSettled;
+        return (
+          <Tooltip
+            key={payment.scheduleIndex}
+            title={`${payment.label}: ${paid ? 'Paid' : PAYMENT_STATUS_LABELS[payment.status] || payment.status} · $${formatMoney(dueAmount)} commission`}
+          >
+            <Box
+              sx={{
+                px: 1.25,
+                py: 0.75,
+                borderRadius: 1,
+                border: 1,
+                minWidth: 88,
+                ...styles,
+              }}
+            >
+              <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', lineHeight: 1.2 }}>
+                {payment.label}
+              </Typography>
+              <Typography variant="caption" sx={{ display: 'block', opacity: 0.9 }}>
+                ${formatMoney(dueAmount)}
+              </Typography>
+            </Box>
+          </Tooltip>
+        );
+      })}
+    </Box>
+  );
 }
 
 function hasExplicitManualAmount(saved: CommissionPaymentLocal): boolean {
@@ -595,6 +680,7 @@ function CommissionLogsPage() {
   const [loadingCommissionLogs, setLoadingCommissionLogs] = useState(false);
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
   const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());
+  const [viewMode, setViewMode] = useState<CommissionViewMode>(() => readCommissionViewMode());
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
     () => readCommissionLogRows(),
   );
@@ -797,6 +883,11 @@ function CommissionLogsPage() {
     window.localStorage.setItem(DEFAULT_COMMISSION_RATE_KEY, String(defaultCommissionRate));
   }, [defaultCommissionRate]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(COMMISSION_VIEW_MODE_KEY, viewMode);
+  }, [viewMode]);
+
   const loadCommissionJobs = useCallback(async (signal?: { cancelled: boolean }) => {
     try {
       setLoadingCommissionLogs(true);
@@ -897,6 +988,24 @@ function CommissionLogsPage() {
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={viewMode}
+                onChange={(_, next: CommissionViewMode | null) => {
+                  if (next) setViewMode(next);
+                }}
+                aria-label="Commission view mode"
+              >
+                <ToggleButton value="detail" aria-label="Detail view">
+                  <ViewListIcon fontSize="small" sx={{ mr: 0.5 }} />
+                  Detail
+                </ToggleButton>
+                <ToggleButton value="overview" aria-label="Overview view">
+                  <GridViewIcon fontSize="small" sx={{ mr: 0.5 }} />
+                  Overview
+                </ToggleButton>
+              </ToggleButtonGroup>
               <TextField
                 size="small"
                 label="Default rate"
@@ -942,6 +1051,67 @@ function CommissionLogsPage() {
                 }}
               >
                 <Box ref={tableInnerRef} sx={{ display: 'inline-block', minWidth: '100%' }}>
+                  {viewMode === 'overview' ? (
+                    <Table stickyHeader size="small" sx={{ minWidth: 640 }}>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
+                            Customer
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
+                            Job
+                          </TableCell>
+                          <TableCell
+                            sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }}
+                            align="right"
+                          >
+                            Job Total
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: 700, minWidth: 280, bgcolor: 'background.paper' }}>
+                            Payment tiers
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {commissionTableRows.map((row) => (
+                          <TableRow
+                            key={row.jobId}
+                            hover
+                            sx={
+                              row.isRowSettled
+                                ? {
+                                    bgcolor: alpha(
+                                      theme.palette.success.main,
+                                      theme.palette.mode === 'dark' ? 0.1 : 0.06,
+                                    ),
+                                  }
+                                : undefined
+                            }
+                          >
+                            <TableCell>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {row.customerName}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {row.jobLabel || 'Untitled'}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {row.stageLabel || '-'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>
+                              ${formatMoney(row.jobTotal)}
+                            </TableCell>
+                            <TableCell sx={{ py: 1 }}>
+                              <CommissionOverviewTiers payments={row.payments} />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
                   <Table stickyHeader size="small" sx={{ minWidth: 1100 }}>
                 <TableHead>
                   <TableRow>
@@ -1076,6 +1246,7 @@ function CommissionLogsPage() {
                   ))}
                 </TableBody>
               </Table>
+                  )}
                 </Box>
               </Box>
               <Box
