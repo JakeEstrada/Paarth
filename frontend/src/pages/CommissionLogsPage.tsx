@@ -42,6 +42,7 @@ import {
   arrayMove,
   horizontalListSortingStrategy,
   useSortable,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import axios, { isAxiosError } from 'axios';
@@ -54,6 +55,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const COMMISSION_LOGS_STORAGE_KEY = 'financeHubCommissionLogsRows';
 const DEFAULT_COMMISSION_RATE_KEY = 'financeHubCommissionDefaultRate';
 const COMMISSION_VIEW_MODE_KEY = 'financeHubCommissionViewMode';
+const COMMISSION_OVERVIEW_JOB_ORDER_KEY = 'financeHubCommissionOverviewJobOrder';
 const DEFAULT_COMMISSION_RATE = 5;
 
 type CommissionViewMode = 'detail' | 'overview';
@@ -129,6 +131,17 @@ function readCommissionViewMode(): CommissionViewMode {
   }
 }
 
+function readOverviewJobOrder(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(COMMISSION_OVERVIEW_JOB_ORDER_KEY);
+    const parsed: unknown = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 function tierChipStyles(
   theme: ReturnType<typeof useTheme>,
   payment: CommissionPaymentDisplay,
@@ -194,6 +207,139 @@ function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
         );
       })}
     </Box>
+  );
+}
+
+interface SortableOverviewRowProps {
+  row: CommissionTableRow;
+}
+
+function SortableOverviewRow({ row }: SortableOverviewRowProps) {
+  const theme = useTheme();
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: row.jobId });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.85 : 1,
+  };
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      hover
+      sx={
+        row.isRowSettled
+          ? {
+              bgcolor: alpha(
+                theme.palette.success.main,
+                theme.palette.mode === 'dark' ? 0.1 : 0.06,
+              ),
+            }
+          : undefined
+      }
+    >
+      <TableCell sx={{ width: 40, px: 0.5, verticalAlign: 'middle' }}>
+        <IconButton
+          size="small"
+          {...attributes}
+          {...listeners}
+          sx={{
+            cursor: 'grab',
+            touchAction: 'none',
+            color: 'text.secondary',
+            '&:active': { cursor: 'grabbing' },
+          }}
+          aria-label={`Drag to reorder ${row.customerName}`}
+        >
+          <DragIndicatorIcon fontSize="small" />
+        </IconButton>
+      </TableCell>
+      <TableCell>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {row.customerName}
+        </Typography>
+      </TableCell>
+      <TableCell>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {row.jobLabel || 'Untitled'}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {row.stageLabel || '-'}
+        </Typography>
+      </TableCell>
+      <TableCell align="right" sx={{ fontWeight: 600 }}>
+        ${formatMoney(row.jobTotal)}
+      </TableCell>
+      <TableCell sx={{ py: 1 }}>
+        <CommissionOverviewTiers payments={row.payments} />
+      </TableCell>
+    </TableRow>
+  );
+}
+
+interface CommissionOverviewTableProps {
+  rows: CommissionTableRow[];
+  onReorder: (order: string[]) => void;
+}
+
+function CommissionOverviewTable({ rows, onReorder }: CommissionOverviewTableProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+  const rowIds = rows.map((row) => row.jobId);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = rowIds.indexOf(String(active.id));
+    const newIndex = rowIds.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    onReorder(arrayMove(rowIds, oldIndex, newIndex));
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <Table stickyHeader size="small" sx={{ minWidth: 680 }}>
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ width: 40, bgcolor: 'background.paper' }} />
+            <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
+              Customer
+            </TableCell>
+            <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
+              Job
+            </TableCell>
+            <TableCell
+              sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }}
+              align="right"
+            >
+              Job Total
+            </TableCell>
+            <TableCell sx={{ fontWeight: 700, minWidth: 280, bgcolor: 'background.paper' }}>
+              Payment tiers
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
+            {rows.map((row) => (
+              <SortableOverviewRow key={row.jobId} row={row} />
+            ))}
+          </SortableContext>
+        </TableBody>
+      </Table>
+    </DndContext>
   );
 }
 
@@ -387,6 +533,35 @@ interface CommissionTableRow extends CommissionSourceJobRow {
   hasManualPayments: boolean;
   balance: number;
   isRowSettled: boolean;
+}
+
+function defaultCommissionRowSort(a: CommissionTableRow, b: CommissionTableRow): number {
+  if (a.isRowSettled !== b.isRowSettled) return a.isRowSettled ? 1 : -1;
+  return String(a.customerName || '').localeCompare(String(b.customerName || ''));
+}
+
+function applyOverviewJobOrder(
+  rows: CommissionTableRow[],
+  order: string[] | undefined,
+): CommissionTableRow[] {
+  if (!order?.length) {
+    return [...rows].sort(defaultCommissionRowSort);
+  }
+
+  const rowById = new Map(rows.map((row) => [row.jobId, row]));
+  const ordered: CommissionTableRow[] = [];
+  const seen = new Set<string>();
+
+  for (const id of order) {
+    const row = rowById.get(id);
+    if (row) {
+      ordered.push(row);
+      seen.add(id);
+    }
+  }
+
+  const remaining = rows.filter((row) => !seen.has(row.jobId)).sort(defaultCommissionRowSort);
+  return [...ordered, ...remaining];
 }
 
 function isSettledPayment(
@@ -681,6 +856,7 @@ function CommissionLogsPage() {
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
   const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());
   const [viewMode, setViewMode] = useState<CommissionViewMode>(() => readCommissionViewMode());
+  const [overviewJobOrder, setOverviewJobOrder] = useState<string[]>(() => readOverviewJobOrder());
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
     () => readCommissionLogRows(),
   );
@@ -836,12 +1012,18 @@ function CommissionLogsPage() {
           balance: normalizedBalance,
           isRowSettled,
         };
-      })
-      .sort((a, b) => {
-        if (a.isRowSettled !== b.isRowSettled) return a.isRowSettled ? 1 : -1;
-        return String(a.customerName || '').localeCompare(String(b.customerName || ''));
       });
   }, [commissionSourceJobs, commissionLogRows, defaultCommissionRate]);
+
+  const detailTableRows = useMemo(
+    () => [...commissionTableRows].sort(defaultCommissionRowSort),
+    [commissionTableRows],
+  );
+
+  const overviewTableRows = useMemo(
+    () => applyOverviewJobOrder(commissionTableRows, overviewJobOrder),
+    [commissionTableRows, overviewJobOrder],
+  );
 
   useEffect(() => {
     const tableEl = tableInnerRef.current;
@@ -887,6 +1069,11 @@ function CommissionLogsPage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(COMMISSION_VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(COMMISSION_OVERVIEW_JOB_ORDER_KEY, JSON.stringify(overviewJobOrder));
+  }, [overviewJobOrder]);
 
   const loadCommissionJobs = useCallback(async (signal?: { cancelled: boolean }) => {
     try {
@@ -983,8 +1170,9 @@ function CommissionLogsPage() {
                 Commission Logs
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Shows accepted jobs only (deposit pending and beyond). Amounts auto-fill when a job
-                payment is marked paid in the job modal.
+                {viewMode === 'overview'
+                  ? 'Drag rows to reorder. Shows accepted jobs only (deposit pending and beyond).'
+                  : 'Shows accepted jobs only (deposit pending and beyond). Amounts auto-fill when a job payment is marked paid in the job modal.'}
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1052,65 +1240,10 @@ function CommissionLogsPage() {
               >
                 <Box ref={tableInnerRef} sx={{ display: 'inline-block', minWidth: '100%' }}>
                   {viewMode === 'overview' ? (
-                    <Table stickyHeader size="small" sx={{ minWidth: 640 }}>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
-                            Customer
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
-                            Job
-                          </TableCell>
-                          <TableCell
-                            sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }}
-                            align="right"
-                          >
-                            Job Total
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: 700, minWidth: 280, bgcolor: 'background.paper' }}>
-                            Payment tiers
-                          </TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {commissionTableRows.map((row) => (
-                          <TableRow
-                            key={row.jobId}
-                            hover
-                            sx={
-                              row.isRowSettled
-                                ? {
-                                    bgcolor: alpha(
-                                      theme.palette.success.main,
-                                      theme.palette.mode === 'dark' ? 0.1 : 0.06,
-                                    ),
-                                  }
-                                : undefined
-                            }
-                          >
-                            <TableCell>
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {row.customerName}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {row.jobLabel || 'Untitled'}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {row.stageLabel || '-'}
-                              </Typography>
-                            </TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600 }}>
-                              ${formatMoney(row.jobTotal)}
-                            </TableCell>
-                            <TableCell sx={{ py: 1 }}>
-                              <CommissionOverviewTiers payments={row.payments} />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                    <CommissionOverviewTable
+                      rows={overviewTableRows}
+                      onReorder={setOverviewJobOrder}
+                    />
                   ) : (
                   <Table
                     stickyHeader
@@ -1187,7 +1320,7 @@ function CommissionLogsPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {commissionTableRows.map((row) => (
+                  {detailTableRows.map((row) => (
                     <TableRow
                       key={row.jobId}
                       hover
