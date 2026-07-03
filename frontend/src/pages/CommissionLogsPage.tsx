@@ -246,6 +246,7 @@ function SortableOverviewRow({ row, onOpenPayments }: SortableOverviewRowProps) 
       onClick={() => onOpenPayments(row)}
       sx={{
         cursor: 'pointer',
+        borderLeft: `4px solid ${row.accentColor}`,
         ...(row.isRowSettled
           ? {
               bgcolor: alpha(
@@ -370,6 +371,7 @@ interface CommissionPaymentLocal {
 interface CommissionLogLocalRow {
   payments?: CommissionPaymentLocal[];
   paymentOrder?: number[];
+  accentColor?: string;
   payment1?: string | number;
   payment2?: string | number;
   payment1Check?: string;
@@ -434,6 +436,7 @@ interface PaymentScheduleDoc {
 interface JobDoc {
   _id?: string;
   title?: string;
+  color?: string;
   customerId?: string | { name?: string };
   assignedTo?: string | { name?: string };
   stage?: string;
@@ -516,6 +519,7 @@ interface CommissionSourceJobRow {
   assignedToName: string;
   stageLabel: string;
   jobTotal: number;
+  jobColor?: string;
   paymentSchedule?: PaymentScheduleDoc;
   contract?: JobDoc['contract'];
   finalPayment?: JobDoc['finalPayment'];
@@ -543,6 +547,17 @@ interface CommissionTableRow extends CommissionSourceJobRow {
   hasManualPayments: boolean;
   balance: number;
   isRowSettled: boolean;
+  accentColor: string;
+}
+
+const DEFAULT_ACCENT_COLOR = '#1976D2';
+
+function resolveAccentColor(local: CommissionLogLocalRow, jobColor?: string): string {
+  const localColor = String(local.accentColor || '').trim();
+  if (localColor) return localColor;
+  const fromJob = String(jobColor || '').trim();
+  if (fromJob) return fromJob;
+  return DEFAULT_ACCENT_COLOR;
 }
 
 function defaultCommissionRowSort(a: CommissionTableRow, b: CommissionTableRow): number {
@@ -862,6 +877,7 @@ interface CommissionPaymentModalProps {
   onClose: () => void;
   onClearRateOverride: (jobId: string) => void;
   onUpdateRate: (jobId: string, value: string) => void;
+  onUpdateAccentColor: (jobId: string, color: string) => void;
   onReorder: (jobId: string, order: number[]) => void;
   onUpdateAmount: (jobId: string, scheduleIndex: number, value: string) => void;
   onUpdateDate: (jobId: string, scheduleIndex: number, value: string) => void;
@@ -875,23 +891,74 @@ function CommissionPaymentModal({
   onClose,
   onClearRateOverride,
   onUpdateRate,
+  onUpdateAccentColor,
   onReorder,
   onUpdateAmount,
   onUpdateDate,
   onUpdateCheck,
   onResetOverrides,
 }: CommissionPaymentModalProps) {
+  const theme = useTheme();
   if (!row) return null;
 
+  const accent = row.accentColor || DEFAULT_ACCENT_COLOR;
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
-      <DialogTitle sx={{ pr: 6 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
-          {row.customerName}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          {row.jobLabel || 'Untitled'} · {row.stageLabel || '-'}
-        </Typography>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="xl"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 2,
+          minHeight: { xs: '88vh', sm: '80vh' },
+          maxHeight: '94vh',
+          borderTop: `5px solid ${accent}`,
+        },
+      }}
+    >
+      <DialogTitle
+        sx={{
+          pr: 6,
+          pt: 2.5,
+          pb: 2,
+          bgcolor: alpha(accent, theme.palette.mode === 'dark' ? 0.14 : 0.08),
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ flex: 1, minWidth: 200 }}>
+            <Typography variant="h5" sx={{ fontWeight: 700 }}>
+              {row.customerName}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+              {row.jobLabel || 'Untitled'} · {row.stageLabel || '-'}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="caption" color="text.secondary">
+              Row color
+            </Typography>
+            <Tooltip title="Pick a color to organize this job">
+              <Box
+                component="input"
+                type="color"
+                value={accent}
+                onChange={(e) => onUpdateAccentColor(row.jobId, e.target.value)}
+                sx={{
+                  width: 40,
+                  height: 36,
+                  p: 0.25,
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  cursor: 'pointer',
+                  bgcolor: 'background.paper',
+                }}
+              />
+            </Tooltip>
+          </Box>
+        </Box>
         <IconButton
           aria-label="Close"
           onClick={onClose}
@@ -900,14 +967,19 @@ function CommissionPaymentModal({
           <CloseIcon />
         </IconButton>
       </DialogTitle>
-      <DialogContent dividers>
+      <DialogContent dividers sx={{ px: { xs: 2, sm: 3 }, py: 2.5, minHeight: 360 }}>
         <Box
           sx={{
             display: 'flex',
             flexWrap: 'wrap',
-            gap: 2,
-            mb: 2,
-            alignItems: 'center',
+            gap: 3,
+            mb: 3,
+            alignItems: 'flex-end',
+            p: 2,
+            borderRadius: 1.5,
+            border: 1,
+            borderColor: alpha(accent, 0.35),
+            bgcolor: alpha(accent, theme.palette.mode === 'dark' ? 0.06 : 0.04),
           }}
         >
           <Box>
@@ -969,7 +1041,7 @@ function CommissionPaymentModal({
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ overflowX: 'auto', pb: 1 }}>
+        <Box sx={{ overflowX: 'auto', pb: 1, minHeight: 280 }}>
           <JobPaymentCards
             row={row}
             onReorder={onReorder}
@@ -1153,6 +1225,7 @@ function CommissionLogsPage() {
           hasManualPayments,
           balance: normalizedBalance,
           isRowSettled,
+          accentColor: resolveAccentColor(local, row.jobColor),
         };
       });
   }, [commissionSourceJobs, commissionLogRows, defaultCommissionRate]);
@@ -1266,6 +1339,7 @@ function CommissionLogsPage() {
               String(job?.assignedTo || ''),
             stageLabel: ESTIMATE_STAGE_LABELS[job?.stage ?? ''] || String(job?.stage || ''),
             jobTotal: roundMoney(fullAmount),
+            jobColor: job?.color,
             paymentSchedule: job?.paymentSchedule,
             contract: job?.contract,
             finalPayment: job?.finalPayment,
@@ -1621,6 +1695,7 @@ function CommissionLogsPage() {
         onClose={() => setPaymentModalJobId(null)}
         onClearRateOverride={clearRateOverride}
         onUpdateRate={handleUpdateRate}
+        onUpdateAccentColor={(jobId, color) => updateCommissionRow(jobId, { accentColor: color })}
         onReorder={reorderPayments}
         onUpdateAmount={handlePaymentAmountChange}
         onUpdateDate={(jobId, scheduleIndex, value) =>
