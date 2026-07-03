@@ -7,10 +7,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import {
   alpha,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   InputAdornment,
   Table,
@@ -27,6 +32,7 @@ import {
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import CloseIcon from '@mui/icons-material/Close';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import GridViewIcon from '@mui/icons-material/GridView';
 import {
@@ -212,9 +218,10 @@ function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
 
 interface SortableOverviewRowProps {
   row: CommissionTableRow;
+  onOpenPayments: (row: CommissionTableRow) => void;
 }
 
-function SortableOverviewRow({ row }: SortableOverviewRowProps) {
+function SortableOverviewRow({ row, onOpenPayments }: SortableOverviewRowProps) {
   const theme = useTheme();
   const {
     attributes,
@@ -236,18 +243,20 @@ function SortableOverviewRow({ row }: SortableOverviewRowProps) {
       ref={setNodeRef}
       style={style}
       hover
-      sx={
-        row.isRowSettled
+      onClick={() => onOpenPayments(row)}
+      sx={{
+        cursor: 'pointer',
+        ...(row.isRowSettled
           ? {
               bgcolor: alpha(
                 theme.palette.success.main,
                 theme.palette.mode === 'dark' ? 0.1 : 0.06,
               ),
             }
-          : undefined
-      }
+          : undefined),
+      }}
     >
-      <TableCell sx={{ width: 40, px: 0.5, verticalAlign: 'middle' }}>
+      <TableCell sx={{ width: 40, px: 0.5, verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
         <IconButton
           size="small"
           {...attributes}
@@ -289,9 +298,10 @@ function SortableOverviewRow({ row }: SortableOverviewRowProps) {
 interface CommissionOverviewTableProps {
   rows: CommissionTableRow[];
   onReorder: (order: string[]) => void;
+  onOpenPayments: (row: CommissionTableRow) => void;
 }
 
-function CommissionOverviewTable({ rows, onReorder }: CommissionOverviewTableProps) {
+function CommissionOverviewTable({ rows, onReorder, onOpenPayments }: CommissionOverviewTableProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
@@ -334,7 +344,7 @@ function CommissionOverviewTable({ rows, onReorder }: CommissionOverviewTablePro
         <TableBody>
           <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
             {rows.map((row) => (
-              <SortableOverviewRow key={row.jobId} row={row} />
+              <SortableOverviewRow key={row.jobId} row={row} onOpenPayments={onOpenPayments} />
             ))}
           </SortableContext>
         </TableBody>
@@ -846,6 +856,137 @@ function JobPaymentCards({
   );
 }
 
+interface CommissionPaymentModalProps {
+  row: CommissionTableRow | null;
+  open: boolean;
+  onClose: () => void;
+  onClearRateOverride: (jobId: string) => void;
+  onUpdateRate: (jobId: string, value: string) => void;
+  onReorder: (jobId: string, order: number[]) => void;
+  onUpdateAmount: (jobId: string, scheduleIndex: number, value: string) => void;
+  onUpdateDate: (jobId: string, scheduleIndex: number, value: string) => void;
+  onUpdateCheck: (jobId: string, scheduleIndex: number, value: string) => void;
+  onResetOverrides: (jobId: string) => void;
+}
+
+function CommissionPaymentModal({
+  row,
+  open,
+  onClose,
+  onClearRateOverride,
+  onUpdateRate,
+  onReorder,
+  onUpdateAmount,
+  onUpdateDate,
+  onUpdateCheck,
+  onResetOverrides,
+}: CommissionPaymentModalProps) {
+  if (!row) return null;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle sx={{ pr: 6 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          {row.customerName}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {row.jobLabel || 'Untitled'} · {row.stageLabel || '-'}
+        </Typography>
+        <IconButton
+          aria-label="Close"
+          onClick={onClose}
+          sx={{ position: 'absolute', right: 12, top: 12 }}
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 2,
+            mb: 2,
+            alignItems: 'center',
+          }}
+        >
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              Job total
+            </Typography>
+            <Typography variant="body1" sx={{ fontWeight: 700 }}>
+              ${formatMoney(row.jobTotal)}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              Rate
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <TextField
+                size="small"
+                value={row.commissionRate}
+                onChange={(e) => onUpdateRate(row.jobId, e.target.value)}
+                InputProps={{
+                  endAdornment: <InputAdornment position="end">%</InputAdornment>,
+                  inputProps: { inputMode: 'decimal', min: 0, step: 0.1 },
+                }}
+                sx={{ width: 88 }}
+              />
+              {row.rateOverridden && (
+                <Tooltip title="Use default rate">
+                  <IconButton
+                    size="small"
+                    onClick={() => onClearRateOverride(row.jobId)}
+                    aria-label="Reset rate to default"
+                  >
+                    <RefreshIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Box>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              Commission
+            </Typography>
+            <Typography variant="body1" sx={{ fontWeight: 700 }}>
+              ${formatMoney(row.commissionDue)}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              Balance
+            </Typography>
+            <Typography
+              variant="body1"
+              sx={{
+                fontWeight: 700,
+                color: row.balance <= 0 ? 'success.main' : 'text.primary',
+              }}
+            >
+              ${formatMoney(row.balance)}
+            </Typography>
+          </Box>
+        </Box>
+        <Box sx={{ overflowX: 'auto', pb: 1 }}>
+          <JobPaymentCards
+            row={row}
+            onReorder={onReorder}
+            onUpdateAmount={onUpdateAmount}
+            onUpdateDate={onUpdateDate}
+            onUpdateCheck={onUpdateCheck}
+            onResetOverrides={onResetOverrides}
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 function CommissionLogsPage() {
   const theme = useTheme();
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -857,6 +998,7 @@ function CommissionLogsPage() {
   const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());
   const [viewMode, setViewMode] = useState<CommissionViewMode>(() => readCommissionViewMode());
   const [overviewJobOrder, setOverviewJobOrder] = useState<string[]>(() => readOverviewJobOrder());
+  const [paymentModalJobId, setPaymentModalJobId] = useState<string | null>(null);
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
     () => readCommissionLogRows(),
   );
@@ -1025,6 +1167,19 @@ function CommissionLogsPage() {
     [commissionTableRows, overviewJobOrder],
   );
 
+  const paymentModalRow = useMemo(
+    () => commissionTableRows.find((row) => row.jobId === paymentModalJobId) ?? null,
+    [commissionTableRows, paymentModalJobId],
+  );
+
+  const handleUpdateRate = (jobId: string, value: string) => {
+    if (value === '') {
+      clearRateOverride(jobId);
+    } else {
+      updateCommissionRow(jobId, { commissionRate: value });
+    }
+  };
+
   useEffect(() => {
     const tableEl = tableInnerRef.current;
     if (!tableEl) return;
@@ -1171,7 +1326,7 @@ function CommissionLogsPage() {
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {viewMode === 'overview'
-                  ? 'Drag rows to reorder. Shows accepted jobs only (deposit pending and beyond).'
+                  ? 'Drag rows to reorder. Click a row to edit payments.'
                   : 'Shows accepted jobs only (deposit pending and beyond). Amounts auto-fill when a job payment is marked paid in the job modal.'}
               </Typography>
             </Box>
@@ -1243,6 +1398,7 @@ function CommissionLogsPage() {
                     <CommissionOverviewTable
                       rows={overviewTableRows}
                       onReorder={setOverviewJobOrder}
+                      onOpenPayments={(row) => setPaymentModalJobId(row.jobId)}
                     />
                   ) : (
                   <Table
@@ -1458,6 +1614,23 @@ function CommissionLogsPage() {
           )}
         </CardContent>
       </Card>
+
+      <CommissionPaymentModal
+        row={paymentModalRow}
+        open={Boolean(paymentModalJobId && paymentModalRow)}
+        onClose={() => setPaymentModalJobId(null)}
+        onClearRateOverride={clearRateOverride}
+        onUpdateRate={handleUpdateRate}
+        onReorder={reorderPayments}
+        onUpdateAmount={handlePaymentAmountChange}
+        onUpdateDate={(jobId, scheduleIndex, value) =>
+          updateCommissionPayment(jobId, scheduleIndex, { date: value })
+        }
+        onUpdateCheck={(jobId, scheduleIndex, value) =>
+          updateCommissionPayment(jobId, scheduleIndex, { check: value })
+        }
+        onResetOverrides={resetPaymentOverrides}
+      />
     </Box>
   );
 }
