@@ -10,12 +10,14 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   InputAdornment,
   Table,
@@ -205,11 +207,18 @@ function tierChipStyles(
   theme: ReturnType<typeof useTheme>,
   payment: CommissionPaymentDisplay,
 ) {
-  if (payment.status === 'paid' || payment.isSettled) {
+  if (payment.salesmanPaid) {
     return {
       borderColor: 'success.main',
       bgcolor: alpha(theme.palette.success.main, theme.palette.mode === 'dark' ? 0.32 : 0.18),
       color: theme.palette.success.main,
+    };
+  }
+  if (payment.customerPaid) {
+    return {
+      borderColor: 'grey.500',
+      bgcolor: alpha(theme.palette.grey[500], theme.palette.mode === 'dark' ? 0.24 : 0.14),
+      color: theme.palette.text.secondary,
     };
   }
   if (payment.status === 'invoiced') {
@@ -239,11 +248,15 @@ function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
       {ordered.map((payment) => {
         const styles = tierChipStyles(theme, payment);
         const dueAmount = payment.amount > 0 ? payment.amount : payment.potentialAmount;
-        const paid = payment.status === 'paid' || payment.isSettled;
+        const statusLabel = payment.salesmanPaid
+          ? 'Salesman paid'
+          : payment.customerPaid
+            ? 'Customer paid — commission owed'
+            : PAYMENT_STATUS_LABELS[payment.status] || payment.status;
         return (
           <Tooltip
             key={payment.scheduleIndex}
-            title={`${payment.label}: ${paid ? 'Paid' : PAYMENT_STATUS_LABELS[payment.status] || payment.status} · $${formatMoney(dueAmount)} commission`}
+            title={`${payment.label}: ${statusLabel} · $${formatMoney(dueAmount)} commission`}
           >
             <Box
               sx={{
@@ -419,6 +432,7 @@ interface CommissionPaymentLocal {
   check?: string;
   date?: string;
   amountManual?: boolean;
+  salesmanPaid?: boolean;
 }
 
 interface CommissionLogLocalRow {
@@ -589,7 +603,8 @@ interface CommissionPaymentDisplay {
   date: string;
   status: string;
   amountManual: boolean;
-  isSettled: boolean;
+  customerPaid: boolean;
+  salesmanPaid: boolean;
 }
 
 interface CommissionTableRow extends CommissionSourceJobRow {
@@ -658,22 +673,12 @@ function applyOverviewJobOrder(
   return [...ordered, ...remaining];
 }
 
-function isSettledPayment(
-  payment: Pick<CommissionPaymentDisplay, 'status' | 'potentialAmount' | 'amount'>,
-  commissionRate: number,
-): boolean {
-  if (commissionRate <= 0) return true;
-  if (payment.status === 'paid') return true;
-  if (payment.potentialAmount <= 0 && payment.amount <= 0) return true;
-  return false;
-}
-
 function orderPaymentsForDisplay(
   payments: CommissionPaymentDisplay[],
   paymentOrder: number[] | undefined,
 ): CommissionPaymentDisplay[] {
-  const active = payments.filter((payment) => !payment.isSettled);
-  const settled = payments.filter((payment) => payment.isSettled);
+  const active = payments.filter((payment) => !payment.salesmanPaid);
+  const settled = payments.filter((payment) => payment.salesmanPaid);
 
   const settledSorted = [...settled].sort((a, b) =>
     String(a.label || '').localeCompare(String(b.label || '')),
@@ -701,10 +706,16 @@ function paymentCardStyles(
   theme: ReturnType<typeof useTheme>,
   payment: CommissionPaymentDisplay,
 ) {
-  if (payment.isSettled) {
+  if (payment.salesmanPaid) {
     return {
       borderColor: 'success.main',
       bgcolor: alpha(theme.palette.success.main, theme.palette.mode === 'dark' ? 0.32 : 0.2),
+    };
+  }
+  if (payment.customerPaid) {
+    return {
+      borderColor: 'grey.500',
+      bgcolor: alpha(theme.palette.grey[500], theme.palette.mode === 'dark' ? 0.2 : 0.1),
     };
   }
   if (payment.status === 'invoiced') {
@@ -719,6 +730,27 @@ function paymentCardStyles(
   };
 }
 
+function paymentStatusChipProps(payment: CommissionPaymentDisplay): {
+  label: string;
+  color: 'success' | 'warning' | 'default';
+  variant: 'filled' | 'outlined';
+} {
+  if (payment.salesmanPaid) {
+    return { label: 'Salesman paid', color: 'success', variant: 'filled' };
+  }
+  if (payment.customerPaid) {
+    return { label: 'Customer paid', color: 'default', variant: 'filled' };
+  }
+  if (payment.status === 'invoiced') {
+    return { label: PAYMENT_STATUS_LABELS.invoiced, color: 'warning', variant: 'outlined' };
+  }
+  return {
+    label: PAYMENT_STATUS_LABELS[payment.status] || payment.status,
+    color: 'default',
+    variant: 'outlined',
+  };
+}
+
 interface SortablePaymentCardProps {
   payment: CommissionPaymentDisplay;
   jobId: string;
@@ -726,6 +758,7 @@ interface SortablePaymentCardProps {
   onUpdateAmount: (scheduleIndex: number, value: string) => void;
   onUpdateDate: (scheduleIndex: number, value: string) => void;
   onUpdateCheck: (scheduleIndex: number, value: string) => void;
+  onUpdateSalesmanPaid: (scheduleIndex: number, paid: boolean) => void;
 }
 
 function SortablePaymentCard({
@@ -735,6 +768,7 @@ function SortablePaymentCard({
   onUpdateAmount,
   onUpdateDate,
   onUpdateCheck,
+  onUpdateSalesmanPaid,
 }: SortablePaymentCardProps) {
   const theme = useTheme();
   const {
@@ -750,6 +784,7 @@ function SortablePaymentCard({
   });
 
   const cardStyle = paymentCardStyles(theme, payment);
+  const statusChip = paymentStatusChipProps(payment);
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -802,22 +837,16 @@ function SortablePaymentCard({
         </Box>
         <Chip
           size="small"
-          variant={payment.isSettled || payment.status === 'paid' ? 'filled' : 'outlined'}
-          label={PAYMENT_STATUS_LABELS[payment.status] || payment.status}
-          color={
-            payment.isSettled || payment.status === 'paid'
-              ? 'success'
-              : payment.status === 'invoiced'
-                ? 'warning'
-                : 'default'
-          }
+          variant={statusChip.variant}
+          label={statusChip.label}
+          color={statusChip.color}
           sx={{ height: 20, fontSize: '0.65rem', flexShrink: 0 }}
         />
       </Box>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-        Job: ${formatMoney(payment.scheduledAmount)}
-        {!payment.isSettled && payment.potentialAmount > 0
-          ? ` · Due: $${formatMoney(payment.potentialAmount)}`
+        Job payment: ${formatMoney(payment.scheduledAmount)}
+        {!payment.salesmanPaid && payment.potentialAmount > 0
+          ? ` · Commission due: $${formatMoney(payment.potentialAmount)}`
           : ''}
       </Typography>
       <TextField
@@ -854,6 +883,21 @@ function SortablePaymentCard({
         onChange={(e) => onUpdateCheck(payment.scheduleIndex, e.target.value)}
         placeholder="Check #"
       />
+      <FormControlLabel
+        sx={{ mt: 0.75, ml: 0, mr: 0 }}
+        control={
+          <Checkbox
+            size="small"
+            checked={payment.salesmanPaid}
+            onChange={(e) => onUpdateSalesmanPaid(payment.scheduleIndex, e.target.checked)}
+          />
+        }
+        label={
+          <Typography variant="caption" sx={{ fontWeight: 600 }}>
+            Salesman paid
+          </Typography>
+        }
+      />
     </Box>
   );
 }
@@ -864,6 +908,7 @@ interface JobPaymentCardsProps {
   onUpdateAmount: (jobId: string, scheduleIndex: number, value: string) => void;
   onUpdateDate: (jobId: string, scheduleIndex: number, value: string) => void;
   onUpdateCheck: (jobId: string, scheduleIndex: number, value: string) => void;
+  onUpdateSalesmanPaid: (jobId: string, scheduleIndex: number, paid: boolean) => void;
   onResetOverrides: (jobId: string) => void;
 }
 
@@ -873,14 +918,15 @@ function JobPaymentCards({
   onUpdateAmount,
   onUpdateDate,
   onUpdateCheck,
+  onUpdateSalesmanPaid,
   onResetOverrides,
 }: JobPaymentCardsProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
 
-  const activePayments = row.payments.filter((payment) => !payment.isSettled);
-  const settledPayments = row.payments.filter((payment) => payment.isSettled);
+  const activePayments = row.payments.filter((payment) => !payment.salesmanPaid);
+  const settledPayments = row.payments.filter((payment) => payment.salesmanPaid);
   const sortableIds = activePayments.map((payment) => `${row.jobId}-${payment.scheduleIndex}`);
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -909,6 +955,9 @@ function JobPaymentCards({
               onUpdateAmount={(scheduleIndex, value) => onUpdateAmount(row.jobId, scheduleIndex, value)}
               onUpdateDate={(scheduleIndex, value) => onUpdateDate(row.jobId, scheduleIndex, value)}
               onUpdateCheck={(scheduleIndex, value) => onUpdateCheck(row.jobId, scheduleIndex, value)}
+              onUpdateSalesmanPaid={(scheduleIndex, paid) =>
+                onUpdateSalesmanPaid(row.jobId, scheduleIndex, paid)
+              }
             />
           ))}
         </SortableContext>
@@ -922,6 +971,9 @@ function JobPaymentCards({
           onUpdateAmount={(scheduleIndex, value) => onUpdateAmount(row.jobId, scheduleIndex, value)}
           onUpdateDate={(scheduleIndex, value) => onUpdateDate(row.jobId, scheduleIndex, value)}
           onUpdateCheck={(scheduleIndex, value) => onUpdateCheck(row.jobId, scheduleIndex, value)}
+          onUpdateSalesmanPaid={(scheduleIndex, paid) =>
+            onUpdateSalesmanPaid(row.jobId, scheduleIndex, paid)
+          }
         />
       ))}
       {row.hasManualPayments && (
@@ -951,6 +1003,7 @@ interface CommissionPaymentModalProps {
   onUpdateAmount: (jobId: string, scheduleIndex: number, value: string) => void;
   onUpdateDate: (jobId: string, scheduleIndex: number, value: string) => void;
   onUpdateCheck: (jobId: string, scheduleIndex: number, value: string) => void;
+  onUpdateSalesmanPaid: (jobId: string, scheduleIndex: number, paid: boolean) => void;
   onResetOverrides: (jobId: string) => void;
 }
 
@@ -965,6 +1018,7 @@ function CommissionPaymentModal({
   onUpdateAmount,
   onUpdateDate,
   onUpdateCheck,
+  onUpdateSalesmanPaid,
   onResetOverrides,
 }: CommissionPaymentModalProps) {
   const theme = useTheme();
@@ -1117,6 +1171,7 @@ function CommissionPaymentModal({
             onUpdateAmount={onUpdateAmount}
             onUpdateDate={onUpdateDate}
             onUpdateCheck={onUpdateCheck}
+            onUpdateSalesmanPaid={onUpdateSalesmanPaid}
             onResetOverrides={onResetOverrides}
           />
         </Box>
@@ -1215,6 +1270,10 @@ function CommissionLogsPage() {
     }
   };
 
+  const handleSalesmanPaidChange = (jobId: string, scheduleIndex: number, paid: boolean) => {
+    updateCommissionPayment(jobId, scheduleIndex, { salesmanPaid: paid });
+  };
+
   const resetPaymentOverrides = (jobId: string) => {
     updateCommissionRow(jobId, { payments: [], paymentOrder: [] });
   };
@@ -1261,7 +1320,10 @@ function CommissionLogsPage() {
             displayAmount = potentialAmount > 0 ? potentialAmount : '';
           }
 
-          const payment: CommissionPaymentDisplay = {
+          const customerPaid = status === 'paid';
+          const salesmanPaid = safeRate <= 0 ? true : Boolean(saved.salesmanPaid);
+
+          return {
             scheduleIndex: idx,
             label: split.label,
             scheduledAmount: split.scheduledAmount,
@@ -1272,15 +1334,19 @@ function CommissionLogsPage() {
             date: String(saved.date || autoDate),
             status,
             amountManual,
-            isSettled: false,
+            customerPaid,
+            salesmanPaid,
           };
-          payment.isSettled = isSettledPayment(payment, safeRate);
-          return payment;
         });
 
         const payments = orderPaymentsForDisplay(builtPayments, local.paymentOrder);
 
-        const paidTotal = roundMoney(payments.reduce((sum, payment) => sum + payment.amount, 0));
+        const paidTotal = roundMoney(
+          payments.reduce(
+            (sum, payment) => sum + (payment.salesmanPaid ? payment.amount : 0),
+            0,
+          ),
+        );
         const balance = roundMoney(commissionDue - paidTotal);
         const normalizedBalance = balance < 0 ? 0 : balance;
         const hasManualPayments = payments.some((payment) => payment.amountManual);
@@ -1728,6 +1794,7 @@ function CommissionLogsPage() {
                             onUpdateCheck={(jobId, scheduleIndex, value) =>
                               updateCommissionPayment(jobId, scheduleIndex, { check: value })
                             }
+                            onUpdateSalesmanPaid={handleSalesmanPaidChange}
                             onResetOverrides={resetPaymentOverrides}
                           />
                         </Box>
@@ -1810,6 +1877,7 @@ function CommissionLogsPage() {
         onUpdateCheck={(jobId, scheduleIndex, value) =>
           updateCommissionPayment(jobId, scheduleIndex, { check: value })
         }
+        onUpdateSalesmanPaid={handleSalesmanPaidChange}
         onResetOverrides={resetPaymentOverrides}
       />
     </Box>
