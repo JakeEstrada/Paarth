@@ -5,9 +5,7 @@ import {
   Button,
   Chip,
   IconButton,
-  MenuItem,
   Paper,
-  Select,
   Table,
   TableBody,
   TableCell,
@@ -37,37 +35,27 @@ import {
   validatePaymentSchedule,
 } from '../../utils/paymentSchedule';
 
-const DUE_TYPE_OPTIONS = [
-  { value: 'deposit', label: 'Deposit' },
-  { value: 'milestone', label: 'Milestone' },
-  { value: 'final', label: 'Final' },
-  { value: 'custom', label: 'Custom' },
-];
+function inferDueTypeFromLabel(label) {
+  const text = String(label || '').trim().toLowerCase();
+  if (/\bdeposit\b/.test(text)) return 'deposit';
+  if (/\bfinal\b/.test(text) || /\bbalance\b/.test(text)) return 'final';
+  return 'milestone';
+}
 
-const STATUS_OPTIONS = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'invoiced', label: 'Invoiced' },
-  { value: 'paid', label: 'Paid' },
-];
+function statusChipProps(status) {
+  if (status === 'paid') return { label: 'Paid', color: 'success' };
+  if (status === 'invoiced') return { label: 'Invoiced', color: 'warning' };
+  return { label: 'Pending', color: 'default' };
+}
 
-const STATUS_COLORS = {
-  pending: 'default',
-  invoiced: 'warning',
-  paid: 'success',
-};
-
-/** Menus must sit above JobDetailModal when opened from Customers (elevated z-index). */
-const SCHEDULE_SELECT_MENU_PROPS = {
-  disableScrollLock: true,
-  slotProps: {
-    paper: {
-      sx: (theme) => ({
-        zIndex: theme.zIndex.modal + 10,
-        maxHeight: 320,
-      }),
-    },
-  },
-};
+function formatMoney(value) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Number(value) || 0);
+}
 
 const noSpinnerNumberInputSx = (width) => ({
   width,
@@ -80,15 +68,6 @@ const noSpinnerNumberInputSx = (width) => ({
       margin: 0,
     },
 });
-
-function formatMoney(value) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Number(value) || 0);
-}
 
 function toDateInputValue(value) {
   if (!value) return '';
@@ -121,7 +100,7 @@ function normalizeItemForEditor(item, contractBase) {
   const normalized = {
     ...item,
     amountType,
-    dueType: item?.dueType || 'milestone',
+    dueType: inferDueTypeFromLabel(item?.label),
     label: item?.label ?? '',
   };
   if (amountType === 'fixed') {
@@ -299,8 +278,8 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
             Payment Schedule & History
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Base contract: {formatMoney(contractBase)} (change orders excluded). Defaults to 40% /
-            60% until you edit the schedule.
+            Base contract: {formatMoney(contractBase)} (change orders excluded). Use labels like
+            Deposit or Final for special types; everything else is a milestone.
           </Typography>
         </Box>
         {!readOnly && (
@@ -348,23 +327,21 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
           size="medium"
           sx={{
             tableLayout: 'fixed',
-            minWidth: 960,
+            minWidth: 820,
             '& .MuiTableCell-root': { verticalAlign: 'middle' },
           }}
         >
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 700, width: '26%', minWidth: 260 }}>Label</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: '14%', minWidth: 140 }}>Type</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: '30%', minWidth: 260 }}>Label</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: '16%', minWidth: 160 }}>Type</TableCell>
               <TableCell sx={{ fontWeight: 700, width: '10%', minWidth: 96 }} align="right">
                 Total
               </TableCell>
-              <TableCell sx={{ fontWeight: 700, width: '12%', minWidth: 120 }}>Due</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: '12%', minWidth: 120 }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: '10%', minWidth: 100 }}>Paid</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: '12%', minWidth: 148 }}>Paid date</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: '12%', minWidth: 120 }}>Paid</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: '14%', minWidth: 148 }}>Paid date</TableCell>
               {!readOnly && (
-                <TableCell sx={{ fontWeight: 700, width: '14%', minWidth: 160 }} align="right">
+                <TableCell sx={{ fontWeight: 700, width: '18%', minWidth: 200 }} align="right">
                   Actions
                 </TableCell>
               )}
@@ -373,7 +350,7 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
           <TableBody>
             {computedItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={readOnly ? 7 : 8}>
+                <TableCell colSpan={readOnly ? 5 : 6}>
                   <Typography variant="body2" color="text.secondary">
                     No payment items yet. Add milestones with fixed dollar amounts or percentages.
                   </Typography>
@@ -384,16 +361,30 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
               <TableRow key={item.localId || index}>
                 <TableCell sx={{ minWidth: 260, pr: 2 }}>
                   {readOnly ? (
-                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                      {item.label}
-                    </Typography>
+                    <Box>
+                      <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                        {item.label}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        {...statusChipProps(item.status || 'pending')}
+                        sx={{ mt: 0.5, height: 22 }}
+                      />
+                    </Box>
                   ) : (
                     <TextField
                       label="Payment label"
                       size="medium"
                       value={item.label}
-                      onChange={(e) => updateItem(index, { label: e.target.value })}
-                      placeholder="Deposit, Bending Rail, Final Balance…"
+                      onChange={(e) => {
+                        const label = e.target.value;
+                        updateItem(index, {
+                          label,
+                          dueType: inferDueTypeFromLabel(label),
+                        });
+                      }}
+                      placeholder="Signing, Deposit, Final…"
                       fullWidth
                       sx={{
                         minWidth: 240,
@@ -453,47 +444,6 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                 <TableCell align="right">{formatMoney(item.amount)}</TableCell>
                 <TableCell>
                   {readOnly ? (
-                    item.dueType
-                  ) : (
-                    <Select
-                      size="small"
-                      value={item.dueType || 'custom'}
-                      onChange={(e) => updateItem(index, { dueType: e.target.value })}
-                      MenuProps={SCHEDULE_SELECT_MENU_PROPS}
-                    >
-                      {DUE_TYPE_OPTIONS.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {readOnly ? (
-                    <Chip
-                      size="small"
-                      label={item.status || 'pending'}
-                      color={STATUS_COLORS[item.status] || 'default'}
-                    />
-                  ) : (
-                    <Select
-                      size="small"
-                      value={item.status || 'pending'}
-                      onChange={(e) => handleStatusChange(index, e.target.value)}
-                      sx={{ minWidth: 110 }}
-                      MenuProps={SCHEDULE_SELECT_MENU_PROPS}
-                    >
-                      {STATUS_OPTIONS.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {readOnly ? (
                     item.status === 'paid' ? formatMoney(item.paidAmount || item.amount) : '—'
                   ) : item.status === 'paid' ? (
                     <TextField
@@ -531,34 +481,50 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                 </TableCell>
                 {!readOnly && (
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                    <IconButton size="small" onClick={() => moveItem(index, -1)} disabled={index === 0}>
-                      <ArrowUpIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => moveItem(index, 1)}
-                      disabled={index === computedItems.length - 1}
+                    <Box
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        flexWrap: 'wrap',
+                        justifyContent: 'flex-end',
+                      }}
                     >
-                      <ArrowDownIcon fontSize="small" />
-                    </IconButton>
-                    {item.status !== 'paid' && (
-                      <Button size="small" onClick={() => markPaid(index)}>
-                        Mark paid
-                      </Button>
-                    )}
-                    {(item.status === 'paid' || item.status === 'invoiced') && (
-                      <Button size="small" color="warning" onClick={() => clearPayment(index)}>
-                        Clear
-                      </Button>
-                    )}
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => removeItem(index)}
-                      aria-label={`Remove ${item.label || 'payment item'}`}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                      <Chip
+                        size="small"
+                        variant={item.status === 'paid' ? 'filled' : 'outlined'}
+                        {...statusChipProps(item.status || 'pending')}
+                        sx={{ height: 24, mr: 0.5 }}
+                      />
+                      <IconButton size="small" onClick={() => moveItem(index, -1)} disabled={index === 0}>
+                        <ArrowUpIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => moveItem(index, 1)}
+                        disabled={index === computedItems.length - 1}
+                      >
+                        <ArrowDownIcon fontSize="small" />
+                      </IconButton>
+                      {item.status !== 'paid' && (
+                        <Button size="small" variant="contained" onClick={() => markPaid(index)}>
+                          Mark paid
+                        </Button>
+                      )}
+                      {(item.status === 'paid' || item.status === 'invoiced') && (
+                        <Button size="small" color="warning" onClick={() => clearPayment(index)}>
+                          Clear
+                        </Button>
+                      )}
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => removeItem(index)}
+                        aria-label={`Remove ${item.label || 'payment item'}`}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
                   </TableCell>
                 )}
               </TableRow>
