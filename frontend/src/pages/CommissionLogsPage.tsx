@@ -107,6 +107,58 @@ function jobTitleAfterPipe(rawTitle: unknown): string {
   return t;
 }
 
+/** Prefer contracted/estimated job values; ignore zero-dollar estimate drafts. */
+function resolveCommissionJobTotal(job: JobDoc, estimate?: EstimateDoc): number {
+  const contracted = Number(job?.valueContracted);
+  if (Number.isFinite(contracted) && contracted > 0) return roundMoney(contracted);
+
+  const estimated = Number(job?.valueEstimated);
+  if (Number.isFinite(estimated) && estimated > 0) return roundMoney(estimated);
+
+  const estimateTotal = Number(estimate?.grandTotal);
+  if (Number.isFinite(estimateTotal) && estimateTotal > 0) return roundMoney(estimateTotal);
+
+  const scheduleItems = job?.paymentSchedule?.items;
+  if (Array.isArray(scheduleItems) && scheduleItems.length > 0) {
+    let scheduleSum = 0;
+    for (const item of scheduleItems) {
+      const paid = Number(item.paidAmount);
+      const fixed = Number(item.amount);
+      if (Number.isFinite(paid) && paid > 0) scheduleSum += paid;
+      else if (Number.isFinite(fixed) && fixed > 0) scheduleSum += fixed;
+    }
+    if (scheduleSum > 0) return roundMoney(scheduleSum);
+  }
+
+  const deposit = Number(job?.contract?.depositReceived);
+  const finalPaid = Number(job?.finalPayment?.amountPaid);
+  const legacyTotal =
+    (Number.isFinite(deposit) && deposit > 0 ? deposit : 0) +
+    (Number.isFinite(finalPaid) && finalPaid > 0 ? finalPaid : 0);
+  if (legacyTotal > 0) return roundMoney(legacyTotal);
+
+  return 0;
+}
+
+function pickLatestPositiveEstimateByJob(estimates: EstimateDoc[]): Map<string, EstimateDoc> {
+  const latestEstimateByJob = new Map<string, EstimateDoc>();
+  for (const est of estimates) {
+    const jid = est?.jobId;
+    const jobIdRaw = typeof jid === 'object' && jid !== null ? jid._id : jid;
+    const jobId = String(jobIdRaw || '');
+    if (!jobId) continue;
+
+    const grandTotal = Number(est?.grandTotal) || 0;
+    if (grandTotal <= 0) continue;
+
+    const prev = latestEstimateByJob.get(jobId);
+    const estTime = new Date(est?.createdAt || 0).getTime();
+    const prevTime = prev ? new Date(prev?.createdAt || 0).getTime() : -1;
+    if (!prev || estTime > prevTime) latestEstimateByJob.set(jobId, est);
+  }
+  return latestEstimateByJob;
+}
+
 function toDateInputValue(value: unknown): string {
   if (!value) return '';
   try {
@@ -1214,7 +1266,8 @@ function CommissionLogsPage() {
         const balance = roundMoney(commissionDue - paidTotal);
         const normalizedBalance = balance < 0 ? 0 : balance;
         const hasManualPayments = payments.some((payment) => payment.amountManual);
-        const isRowSettled = safeRate <= 0 || normalizedBalance <= 0;
+        const isRowSettled =
+          safeRate <= 0 || (jobTotal > 0 && normalizedBalance <= 0);
 
         return {
           ...row,
@@ -1312,23 +1365,12 @@ function CommissionLogsPage() {
       ]);
       if (signal?.cancelled) return;
       const estimates = Array.isArray(estimatesData.data) ? estimatesData.data : [];
-      const latestEstimateByJob = new Map<string, EstimateDoc>();
-      for (const est of estimates) {
-        const jid = est?.jobId;
-        const jobIdRaw = typeof jid === 'object' && jid !== null ? jid._id : jid;
-        const jobId = String(jobIdRaw || '');
-        if (!jobId) continue;
-        const prev = latestEstimateByJob.get(jobId);
-        const estTime = new Date(est?.createdAt || 0).getTime();
-        const prevTime = prev ? new Date(prev?.createdAt || 0).getTime() : -1;
-        if (!prev || estTime > prevTime) latestEstimateByJob.set(jobId, est);
-      }
+      const latestEstimateByJob = pickLatestPositiveEstimateByJob(estimates);
       const rows: CommissionSourceJobRow[] = jobs
         .filter((job) => isCommissionEligibleJob(job))
         .map((job) => {
           const estimate = latestEstimateByJob.get(String(job?._id || ''));
-          const fullAmount =
-            Number(estimate?.grandTotal ?? job?.valueContracted ?? job?.valueEstimated ?? 0) || 0;
+          const fullAmount = resolveCommissionJobTotal(job, estimate);
           return {
             jobId: String(job?._id || ''),
             customerName:
