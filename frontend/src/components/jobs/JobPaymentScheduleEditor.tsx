@@ -69,6 +69,18 @@ const SCHEDULE_SELECT_MENU_PROPS = {
   },
 };
 
+const noSpinnerNumberInputSx = (width) => ({
+  width,
+  '& input[type=number]': {
+    MozAppearance: 'textfield',
+  },
+  '& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button':
+    {
+      WebkitAppearance: 'none',
+      margin: 0,
+    },
+});
+
 function formatMoney(value) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -420,7 +432,8 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                           onChange={(e) =>
                             updateItem(index, { percentage: parseFloat(e.target.value) || 0 })
                           }
-                          sx={{ width: 72 }}
+                          sx={noSpinnerNumberInputSx(96)}
+                          inputProps={{ inputMode: 'decimal' }}
                         />
                       ) : (
                         <TextField
@@ -430,7 +443,8 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                           onChange={(e) =>
                             updateItem(index, { amount: parseFloat(e.target.value) || 0 })
                           }
-                          sx={{ width: 100 }}
+                          sx={noSpinnerNumberInputSx(120)}
+                          inputProps={{ inputMode: 'decimal' }}
                         />
                       )}
                     </Box>
@@ -489,7 +503,8 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                       onChange={(e) =>
                         updateItem(index, { paidAmount: parseFloat(e.target.value) || 0 })
                       }
-                      sx={{ width: 110 }}
+                      sx={noSpinnerNumberInputSx(120)}
+                      inputProps={{ inputMode: 'decimal' }}
                     />
                   ) : (
                     '—'
