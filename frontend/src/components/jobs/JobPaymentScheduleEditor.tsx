@@ -24,12 +24,14 @@ import {
   Save as SaveIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 import {
   buildSchedulePayloadFromItems,
   computeItemAmount,
   createEmptyScheduleItem,
   getContractBase,
   resolvePaymentSchedule,
+  roundMoney,
   validatePaymentSchedule,
 } from '../../utils/paymentSchedule';
 
@@ -85,23 +87,55 @@ function cloneItems(items) {
   return withItemLocalIds(items);
 }
 
+/** Ensure editor state always has a valid amountType and dueType. */
+function normalizeItemForEditor(item, contractBase) {
+  const amountType = item?.amountType === 'fixed' ? 'fixed' : 'percentage';
+  const computed = computeItemAmount({ ...item, amountType }, contractBase);
+  const normalized = {
+    ...item,
+    amountType,
+    dueType: item?.dueType || 'milestone',
+    label: item?.label ?? '',
+  };
+  if (amountType === 'fixed') {
+    normalized.amount = roundMoney(Number(item?.amount) || computed);
+    normalized.percentage = undefined;
+  } else {
+    normalized.percentage = Number.isFinite(Number(item?.percentage))
+      ? Number(item.percentage)
+      : contractBase > 0
+        ? roundMoney((computed / contractBase) * 100)
+        : 0;
+    normalized.amount = computed;
+  }
+  return normalized;
+}
+
+function cloneItemsFromJob(job) {
+  const resolved = resolvePaymentSchedule(job);
+  const base = getContractBase(job);
+  return withItemLocalIds(resolved.items.map((item) => normalizeItemForEditor(item, base)));
+}
+
 export default function JobPaymentScheduleEditor({ job, onSave, saving = false, readOnly = false }) {
   const contractBase = getContractBase(job);
-  const resolved = useMemo(() => resolvePaymentSchedule(job), [job]);
-  const [items, setItems] = useState(() => cloneItems(resolved.items));
+  const [items, setItems] = useState(() => cloneItemsFromJob(job));
   const [dirty, setDirty] = useState(false);
 
+  const scheduleSyncKey = useMemo(
+    () => JSON.stringify(job?.paymentSchedule ?? null),
+    [job?.paymentSchedule],
+  );
+
   useEffect(() => {
-    const nextResolved = resolvePaymentSchedule(job);
-    setItems(cloneItems(nextResolved.items));
+    setItems(cloneItemsFromJob(job));
     setDirty(false);
   }, [job?._id]);
 
   useEffect(() => {
     if (dirty) return;
-    const nextResolved = resolvePaymentSchedule(job);
-    setItems(cloneItems(nextResolved.items));
-  }, [job?.paymentSchedule, job?.valueEstimated, job?.valueContracted, dirty, job]);
+    setItems(cloneItemsFromJob(job));
+  }, [scheduleSyncKey, dirty, job]);
 
   const computedItems = useMemo(
     () =>
@@ -119,7 +153,42 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
   );
 
   const updateItem = (index, patch) => {
-    setItems((prev) => prev.map((item, idx) => (idx === index ? { ...item, ...patch } : item)));
+    setItems((prev) =>
+      prev.map((item, idx) => (idx === index ? normalizeItemForEditor({ ...item, ...patch }, contractBase) : item)),
+    );
+    setDirty(true);
+  };
+
+  const setItemAmountType = (index, nextType) => {
+    setItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        const computed = computeItemAmount(item, contractBase);
+        if (nextType === 'fixed') {
+          return normalizeItemForEditor(
+            {
+              ...item,
+              amountType: 'fixed',
+              amount: computed,
+              percentage: undefined,
+            },
+            contractBase,
+          );
+        }
+        const pct =
+          contractBase > 0
+            ? roundMoney((computed / contractBase) * 100)
+            : Number(item.percentage) || 0;
+        return normalizeItemForEditor(
+          {
+            ...item,
+            amountType: 'percentage',
+            percentage: pct,
+          },
+          contractBase,
+        );
+      }),
+    );
     setDirty(true);
   };
 
@@ -186,6 +255,10 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
   };
 
   const handleSave = async () => {
+    if (!items.length) {
+      toast.error('Add at least one payment item before saving.');
+      return;
+    }
     const payload = buildSchedulePayloadFromItems(items, contractBase);
     await onSave(payload);
     setDirty(false);
@@ -271,7 +344,16 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
             </TableRow>
           </TableHead>
           <TableBody>
-            {computedItems.map((item, index) => (
+            {computedItems.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={readOnly ? 7 : 8}>
+                  <Typography variant="body2" color="text.secondary">
+                    No payment items yet. Add milestones with fixed dollar amounts or percentages.
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+            computedItems.map((item, index) => (
               <TableRow key={item.localId || index}>
                 <TableCell sx={{ minWidth: 260, pr: 2 }}>
                   {readOnly ? (
@@ -301,13 +383,8 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 150 }}>
                       <Select
                         size="small"
-                        value={item.amountType}
-                        onChange={(e) =>
-                          updateItem(index, {
-                            amountType: e.target.value,
-                            percentage: e.target.value === 'percentage' ? item.percentage || 0 : undefined,
-                          })
-                        }
+                        value={item.amountType === 'fixed' ? 'fixed' : 'percentage'}
+                        onChange={(e) => setItemAmountType(index, e.target.value)}
                       >
                         <MenuItem value="percentage">%</MenuItem>
                         <MenuItem value="fixed">$</MenuItem>
@@ -438,14 +515,15 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                       size="small"
                       color="error"
                       onClick={() => removeItem(index)}
-                      disabled={computedItems.length <= 1}
+                      aria-label={`Remove ${item.label || 'payment item'}`}
                     >
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </TableCell>
                 )}
               </TableRow>
-            ))}
+            ))
+            )}
           </TableBody>
         </Table>
       </Box>

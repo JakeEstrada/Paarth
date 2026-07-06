@@ -189,17 +189,9 @@ export function matchesStandard4060Template(items) {
 
 export function buildSchedulePayloadFromItems(items, contractBase) {
   const itemsForSave = (items || []).map(({ localId, ...item }) => item);
-  if (matchesStandard4060Template(itemsForSave)) {
-    const standard = buildStandardSchedule(contractBase);
-    standard.items = standard.items.map((template, idx) => ({
-      ...template,
-      status: itemsForSave[idx]?.status || template.status,
-      paidAmount: itemsForSave[idx]?.paidAmount ?? 0,
-      paidAt: itemsForSave[idx]?.paidAt ?? null,
-    }));
-    return standard;
-  }
-  return buildCustomScheduleFromItems(itemsForSave, contractBase);
+  const payload = buildCustomScheduleFromItems(itemsForSave, contractBase);
+  payload.type = matchesStandard4060Template(itemsForSave) ? 'standard_40_60' : 'custom';
+  return payload;
 }
 
 export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
