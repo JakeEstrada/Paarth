@@ -14,6 +14,8 @@ import {
   TableHead,
   TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import {
@@ -52,6 +54,19 @@ const STATUS_COLORS = {
   pending: 'default',
   invoiced: 'warning',
   paid: 'success',
+};
+
+/** Menus must sit above JobDetailModal when opened from Customers (elevated z-index). */
+const SCHEDULE_SELECT_MENU_PROPS = {
+  disableScrollLock: true,
+  slotProps: {
+    paper: {
+      sx: (theme) => ({
+        zIndex: theme.zIndex.modal + 10,
+        maxHeight: 320,
+      }),
+    },
+  },
 };
 
 function formatMoney(value) {
@@ -381,14 +396,22 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                     item.amountType === 'percentage' ? `${item.percentage}%` : 'Fixed'
                   ) : (
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 150 }}>
-                      <Select
+                      <ToggleButtonGroup
                         size="small"
+                        exclusive
                         value={item.amountType === 'fixed' ? 'fixed' : 'percentage'}
-                        onChange={(e) => setItemAmountType(index, e.target.value)}
+                        onChange={(_, nextType) => {
+                          if (nextType) setItemAmountType(index, nextType);
+                        }}
+                        aria-label="Amount type"
                       >
-                        <MenuItem value="percentage">%</MenuItem>
-                        <MenuItem value="fixed">$</MenuItem>
-                      </Select>
+                        <ToggleButton value="percentage" sx={{ px: 1.25, minWidth: 40 }}>
+                          %
+                        </ToggleButton>
+                        <ToggleButton value="fixed" sx={{ px: 1.25, minWidth: 40 }}>
+                          $
+                        </ToggleButton>
+                      </ToggleButtonGroup>
                       {item.amountType === 'percentage' ? (
                         <TextField
                           size="small"
@@ -422,6 +445,7 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                       size="small"
                       value={item.dueType || 'custom'}
                       onChange={(e) => updateItem(index, { dueType: e.target.value })}
+                      MenuProps={SCHEDULE_SELECT_MENU_PROPS}
                     >
                       {DUE_TYPE_OPTIONS.map((opt) => (
                         <MenuItem key={opt.value} value={opt.value}>
@@ -444,6 +468,7 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                       value={item.status || 'pending'}
                       onChange={(e) => handleStatusChange(index, e.target.value)}
                       sx={{ minWidth: 110 }}
+                      MenuProps={SCHEDULE_SELECT_MENU_PROPS}
                     >
                       {STATUS_OPTIONS.map((opt) => (
                         <MenuItem key={opt.value} value={opt.value}>
