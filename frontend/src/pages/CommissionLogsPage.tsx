@@ -31,6 +31,7 @@ import {
   useTheme,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import CloseIcon from '@mui/icons-material/Close';
 import ViewListIcon from '@mui/icons-material/ViewList';
@@ -617,6 +618,22 @@ function defaultCommissionRowSort(a: CommissionTableRow, b: CommissionTableRow):
   return String(a.customerName || '').localeCompare(String(b.customerName || ''));
 }
 
+function matchesCommissionSearch(row: CommissionTableRow, rawQuery: string): boolean {
+  const q = String(rawQuery || '').trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    row.customerName,
+    row.jobLabel,
+    row.assignedToName,
+    row.stageLabel,
+    ...row.payments.map((payment) => payment.check),
+    ...row.payments.map((payment) => payment.label),
+  ]
+    .map((value) => String(value || '').toLowerCase())
+    .join(' ');
+  return haystack.includes(q);
+}
+
 function applyOverviewJobOrder(
   rows: CommissionTableRow[],
   order: string[] | undefined,
@@ -1123,6 +1140,7 @@ function CommissionLogsPage() {
   const [viewMode, setViewMode] = useState<CommissionViewMode>(() => readCommissionViewMode());
   const [overviewJobOrder, setOverviewJobOrder] = useState<string[]>(() => readOverviewJobOrder());
   const [paymentModalJobId, setPaymentModalJobId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
     () => readCommissionLogRows(),
   );
@@ -1293,6 +1311,19 @@ function CommissionLogsPage() {
     [commissionTableRows, overviewJobOrder],
   );
 
+  const filteredDetailTableRows = useMemo(
+    () => detailTableRows.filter((row) => matchesCommissionSearch(row, searchQuery)),
+    [detailTableRows, searchQuery],
+  );
+
+  const filteredOverviewTableRows = useMemo(
+    () => overviewTableRows.filter((row) => matchesCommissionSearch(row, searchQuery)),
+    [overviewTableRows, searchQuery],
+  );
+
+  const visibleTableRows =
+    viewMode === 'overview' ? filteredOverviewTableRows : filteredDetailTableRows;
+
   const paymentModalRow = useMemo(
     () => commissionTableRows.find((row) => row.jobId === paymentModalJobId) ?? null,
     [commissionTableRows, paymentModalJobId],
@@ -1314,7 +1345,7 @@ function CommissionLogsPage() {
     const observer = new ResizeObserver(updateWidth);
     observer.observe(tableEl);
     return () => observer.disconnect();
-  }, [commissionTableRows, loadingCommissionLogs]);
+  }, [visibleTableRows, loadingCommissionLogs, viewMode]);
 
   useEffect(() => {
     const tableScroll = tableScrollRef.current;
@@ -1334,7 +1365,7 @@ function CommissionLogsPage() {
       tableScroll.removeEventListener('scroll', syncFromTable);
       bottomScroll.removeEventListener('scroll', syncFromBottom);
     };
-  }, [commissionTableRows, loadingCommissionLogs]);
+  }, [visibleTableRows, loadingCommissionLogs, viewMode]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1482,6 +1513,35 @@ function CommissionLogsPage() {
             </Box>
           </Box>
 
+          <TextField
+            size="small"
+            fullWidth
+            label="Search commission logs"
+            placeholder="Customer, job, stage, check #..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            sx={{ mb: 2, maxWidth: 420 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setSearchQuery('')}
+                    aria-label="Clear search"
+                    edge="end"
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ) : undefined,
+            }}
+          />
+
           {loadingCommissionLogs ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress size={32} />
@@ -1489,6 +1549,10 @@ function CommissionLogsPage() {
           ) : commissionTableRows.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               No jobs found.
+            </Typography>
+          ) : visibleTableRows.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No jobs match &ldquo;{searchQuery.trim()}&rdquo;. Try a different search or clear the filter.
             </Typography>
           ) : (
             <Box
@@ -1512,7 +1576,7 @@ function CommissionLogsPage() {
                 <Box ref={tableInnerRef} sx={{ display: 'inline-block', minWidth: '100%' }}>
                   {viewMode === 'overview' ? (
                     <CommissionOverviewTable
-                      rows={overviewTableRows}
+                      rows={filteredOverviewTableRows}
                       onReorder={setOverviewJobOrder}
                       onOpenPayments={(row) => setPaymentModalJobId(row.jobId)}
                     />
@@ -1592,7 +1656,7 @@ function CommissionLogsPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {detailTableRows.map((row) => (
+                  {filteredDetailTableRows.map((row) => (
                     <TableRow
                       key={row.jobId}
                       hover
