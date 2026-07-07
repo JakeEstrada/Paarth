@@ -47,7 +47,6 @@ const workspaceItems = [
   { text: 'Projects & Tasks', icon: <TasksIcon />, path: '/tasks' },
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
   { text: 'Messages', icon: <SmsIcon />, path: '/messages' },
-  { text: 'RFID scans', icon: <NfcIcon />, path: '/rfid' },
 ];
 
 const financeItems = [
@@ -312,6 +311,29 @@ function Sidebar({ mobileOpen, onMobileClose }) {
       </Box>
 
       <List>
+        <ListItem disablePadding>
+          <ListItemButton
+            onClick={() => handleNavigation('/rfid')}
+            selected={isActive('/rfid')}
+            sx={navButtonSx}
+          >
+            <ListItemIcon
+              sx={{
+                minWidth: 40,
+                color: isActive('/rfid') ? theme.palette.primary.main : 'inherit',
+              }}
+            >
+              <NfcIcon />
+            </ListItemIcon>
+            <ListItemText
+              primary="RFID scans"
+              primaryTypographyProps={{
+                fontSize: '0.9375rem',
+                fontWeight: isActive('/rfid') ? 600 : 400,
+              }}
+            />
+          </ListItemButton>
+        </ListItem>
         <ListItem disablePadding>
           <ListItemButton
             onClick={() => handleNavigation('/developer')}
