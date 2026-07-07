@@ -1,15 +1,6 @@
 import { useMemo } from 'react';
 import { Box, Paper, Typography } from '@mui/material';
-import { getJobPaymentSummary } from '../../utils/paymentSchedule';
-
-function formatMoney(value: unknown) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Number(value) || 0);
-}
+import { formatMoney, getJobPaymentSummary } from '../../utils/paymentSchedule';
 
 export default function JobPaymentsSummary({ job }) {
   const summary = useMemo(() => getJobPaymentSummary(job), [job]);

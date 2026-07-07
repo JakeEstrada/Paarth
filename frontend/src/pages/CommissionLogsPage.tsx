@@ -57,7 +57,7 @@ import { CSS } from '@dnd-kit/utilities';
 import axios, { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import { getCommissionPaymentSplits, getJobTotalWithChangeOrders, roundMoney } from '../utils/paymentSchedule';
+import { getCommissionPaymentSplits, getJobTotalWithChangeOrders, formatMoney, formatMoneyInput, roundMoney } from '../utils/paymentSchedule';
 import { isCommissionEligibleJob } from '../utils/commissionJobEligibility';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -91,13 +91,6 @@ const PAYMENT_STATUS_LABELS: Record<string, string> = {
   invoiced: 'Invoiced',
   paid: 'Paid',
 };
-
-function formatMoney(value: unknown): string {
-  return Number(value || 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 function jobTitleAfterPipe(rawTitle: unknown): string {
   const t = String(rawTitle || '').trim();
@@ -268,7 +261,7 @@ function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
         return (
           <Tooltip
             key={payment.scheduleIndex}
-            title={`${payment.label}: ${statusLabel} · $${formatMoney(dueAmount)} commission`}
+            title={`${payment.label}: ${statusLabel} · ${formatMoney(dueAmount)} commission`}
           >
             <Box
               sx={{
@@ -284,7 +277,7 @@ function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
                 {payment.label}
               </Typography>
               <Typography variant="caption" sx={{ display: 'block', opacity: 0.9 }}>
-                ${formatMoney(dueAmount)}
+                {formatMoney(dueAmount)}
               </Typography>
             </Box>
           </Tooltip>
@@ -365,7 +358,7 @@ function SortableOverviewRow({ row, onOpenPayments }: SortableOverviewRowProps) 
         </Typography>
       </TableCell>
       <TableCell align="right" sx={{ fontWeight: 600 }}>
-        ${formatMoney(row.jobTotal)}
+        {formatMoney(row.jobTotal)}
       </TableCell>
       <TableCell sx={{ py: 1 }}>
         <CommissionOverviewTiers payments={row.payments} />
@@ -874,9 +867,9 @@ function SortablePaymentCard({
         color="text.secondary"
         sx={{ display: 'block', mb: isVertical ? 1.25 : 0.75 }}
       >
-        Job payment: ${formatMoney(payment.scheduledAmount)}
+        Job payment: {formatMoney(payment.scheduledAmount)}
         {!payment.salesmanPaid && payment.potentialAmount > 0
-          ? ` · Commission due: $${formatMoney(payment.potentialAmount)}`
+          ? ` · Commission due: ${formatMoney(payment.potentialAmount)}`
           : ''}
       </Typography>
       <Box
@@ -905,7 +898,7 @@ function SortablePaymentCard({
             payment.status === 'paid'
               ? 'Amount'
               : payment.potentialAmount > 0
-                ? `Auto: $${formatMoney(payment.potentialAmount)}`
+                ? `Auto: ${formatMoney(payment.potentialAmount)}`
                 : 'Amount'
           }
           sx={{ ...(isVertical ? paymentFieldSx : {}), mb: isVertical ? 0 : 0.75 }}
@@ -1192,7 +1185,7 @@ function CommissionPaymentModal({
               Job total
             </Typography>
             <Typography variant="body1" sx={{ fontWeight: 700 }}>
-              ${formatMoney(row.jobTotal)}
+              {formatMoney(row.jobTotal)}
             </Typography>
           </Box>
           <Box>
@@ -1228,7 +1221,7 @@ function CommissionPaymentModal({
               Commission
             </Typography>
             <Typography variant="body1" sx={{ fontWeight: 700 }}>
-              ${formatMoney(row.commissionDue)}
+              {formatMoney(row.commissionDue)}
             </Typography>
           </Box>
           <Box>
@@ -1242,7 +1235,7 @@ function CommissionPaymentModal({
                 color: row.balance <= 0 ? 'success.main' : 'text.primary',
               }}
             >
-              ${formatMoney(row.balance)}
+              {formatMoney(row.balance)}
             </Typography>
           </Box>
         </Box>
@@ -1400,7 +1393,7 @@ function CommissionLogsPage() {
             amount = roundMoney(Number(saved.amount || 0));
           } else if (status === 'paid') {
             amount = potentialAmount;
-            displayAmount = potentialAmount > 0 ? potentialAmount : '';
+            displayAmount = potentialAmount > 0 ? formatMoneyInput(potentialAmount) : '';
           }
 
           const customerPaid = status === 'paid';
@@ -1829,7 +1822,7 @@ function CommissionLogsPage() {
                           {row.stageLabel || '-'}
                         </Typography>
                       </TableCell>
-                      <TableCell align="right">${formatMoney(row.jobTotal)}</TableCell>
+                      <TableCell align="right">{formatMoney(row.jobTotal)}</TableCell>
                       <TableCell align="right">
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
                           <TextField
@@ -1863,7 +1856,7 @@ function CommissionLogsPage() {
                         </Box>
                       </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 600 }}>
-                        ${formatMoney(row.commissionDue)}
+                        {formatMoney(row.commissionDue)}
                       </TableCell>
                       <TableCell sx={{ p: 1, overflow: 'hidden', verticalAlign: 'top' }}>
                         <Box sx={{ overflowX: 'auto', maxWidth: '100%', pr: 1 }}>
@@ -1911,7 +1904,7 @@ function CommissionLogsPage() {
                             color: row.balance <= 0 ? 'success.main' : 'text.primary',
                           }}
                         >
-                          ${formatMoney(row.balance)}
+                          {formatMoney(row.balance)}
                         </Typography>
                       </TableCell>
                     </TableRow>

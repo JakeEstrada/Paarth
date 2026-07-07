@@ -20,19 +20,13 @@ import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { APP_LOGO_LIGHT } from '../../utils/tenantBranding';
+import { formatMoney } from '../../utils/paymentSchedule';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const COMPANY_PHONE = '(951)491-1137';
 const COMPANY_EMAIL = 'office@sanclementewoodworking.com';
 const COMPANY_WEBSITE = 'www.sanclementewoodworking.com';
-
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 function buildCustomerAddress(job) {
   const ja = job?.jobAddress;
@@ -786,7 +780,7 @@ export default function JobChangeOrderDialog({ open, onClose, job, onCreated }) 
               <Typography variant="caption" color="text.secondary">
                 Change order total (lines + tax − discount)
               </Typography>
-              <Typography variant="h6">${formatMoney(previewTotals.grandTotal)}</Typography>
+              <Typography variant="h6">{formatMoney(previewTotals.grandTotal)}</Typography>
             </Box>
 
             <TextField

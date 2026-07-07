@@ -4,6 +4,26 @@ export function roundMoney(n) {
   return Math.round((x + Number.EPSILON) * 100) / 100;
 }
 
+/** Always show amounts to the penny — never round to whole dollars for display. */
+export function formatMoney(value) {
+  const n = Number(value);
+  const safe = Number.isFinite(n) ? n : 0;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(safe);
+}
+
+/** Format a numeric value for editable money fields (no currency symbol). */
+export function formatMoneyInput(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return n.toFixed(2);
+}
+
 export const STANDARD_4060_TEMPLATE = [
   {
     label: 'Deposit',
@@ -180,7 +200,7 @@ export function validatePaymentSchedule(schedule, contractBase, jobTotal) {
   if (target > 0 && Math.abs(remaining) > 0.01) {
     const diffLabel = remaining > 0 ? 'under-scheduled' : 'over-scheduled';
     warnings.push(
-      `Payment schedule is ${diffLabel} by $${Math.abs(remaining).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+      `Payment schedule is ${diffLabel} by ${formatMoney(Math.abs(remaining))}`
     );
   }
 
@@ -191,9 +211,9 @@ export function formatScheduleItemLabel(item) {
   if (!item) return '';
   const amount = roundMoney(item.amount);
   if (item.amountType === 'percentage' && Number.isFinite(Number(item.percentage))) {
-    return `${item.label} (${item.percentage}%): $${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+    return `${item.label} (${item.percentage}%): ${formatMoney(amount)}`;
   }
-  return `${item.label}: $${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  return `${item.label}: ${formatMoney(amount)}`;
 }
 
 export function buildCustomScheduleFromItems(items, contractBase) {

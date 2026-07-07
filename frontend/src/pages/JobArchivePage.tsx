@@ -29,6 +29,7 @@ import {
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, Unarchive as UnarchiveIcon } from '@mui/icons-material';
 import axios from 'axios';
+import { formatMoney } from '../utils/paymentSchedule';
 import toast from 'react-hot-toast';
 import JobCard from '../components/pipeline/JobCard';
 import JobDetailModal from '../components/jobs/JobDetailModal';
@@ -94,15 +95,7 @@ function JobArchivePage() {
     }
   };
 
-  const formatCurrency = (value) => {
-    if (!value) return '$0';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
+  const formatCurrency = formatMoney;
 
   const getTotalValue = (jobs) => {
     return jobs.reduce((sum, job) => sum + (job.valueEstimated || 0), 0);

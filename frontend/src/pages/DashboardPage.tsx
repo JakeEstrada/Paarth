@@ -44,6 +44,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { formatMoney } from '../utils/paymentSchedule';
 import toast from 'react-hot-toast';
 import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
@@ -394,14 +395,7 @@ function DashboardPage() {
     }
   };
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
+  const formatCurrency = formatMoney;
 
   const formatDate = (dateString) => {
     if (!dateString) return '';

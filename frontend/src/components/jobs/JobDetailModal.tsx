@@ -73,6 +73,7 @@ import {
 } from '../../utils/fileListCache';
 import { renderSummaryBlocks } from '../../utils/summaryMarkdown';
 import {
+  formatMoney,
   formatScheduleItemLabel,
   getJobTotalWithChangeOrders,
   resolvePaymentSchedule,
@@ -596,15 +597,7 @@ function JobDetailModal({
     }
   };
 
-  const formatCurrency = (value) => {
-    if (!value) return '$0';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
+  const formatCurrency = formatMoney;
 
   const formatDate = (date) => {
     if (!date) return 'Not set';

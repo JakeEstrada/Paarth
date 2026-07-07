@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon, Save as SaveIcon } from '@mui/icons-material';
 import toast from 'react-hot-toast';
-import { roundMoney, sumChangeOrders } from '../../utils/paymentSchedule';
+import { formatMoney, roundMoney, sumChangeOrders } from '../../utils/paymentSchedule';
 
 const BILLING_OPTIONS = [
   { value: 'separate', label: 'In payment schedule' },
@@ -34,15 +34,6 @@ const SCHEDULE_SELECT_MENU_PROPS = {
     },
   },
 };
-
-function formatMoney(value: unknown) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Number(value) || 0);
-}
 
 function newRowLocalId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;

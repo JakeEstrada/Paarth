@@ -34,6 +34,7 @@ import {
   Restore as RestoreIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { formatMoney } from '../utils/paymentSchedule';
 import toast from 'react-hot-toast';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useAuth } from '../context/AuthContext';
@@ -85,15 +86,7 @@ function CompletedJobsPage() {
     }
   };
 
-  const formatCurrency = (value) => {
-    if (!value) return '$0';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
+  const formatCurrency = formatMoney;
 
   const getTotalValue = (jobs) => {
     return jobs.reduce((sum, job) => sum + (job.valueContracted || job.valueEstimated || 0), 0);

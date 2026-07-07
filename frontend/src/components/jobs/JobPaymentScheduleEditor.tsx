@@ -29,6 +29,7 @@ import {
   buildSchedulePayloadFromItems,
   computeItemAmount,
   createEmptyScheduleItem,
+  formatMoney,
   getContractBase,
   getJobPaymentSummary,
   getJobTotalWithChangeOrders,
@@ -55,14 +56,6 @@ function statusChipProps(status) {
   return { label: 'Pending', color: 'default' };
 }
 
-function formatMoney(value) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Number(value) || 0);
-}
 
 const noSpinnerNumberInputSx = (width) => ({
   width,
