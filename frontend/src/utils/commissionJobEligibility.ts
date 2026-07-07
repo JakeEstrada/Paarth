@@ -14,8 +14,9 @@ export const COMMISSION_ELIGIBLE_STAGES = [
 export function isCommissionEligibleJob(job: {
   stage?: string;
   isDeadEstimate?: boolean;
+  isArchived?: boolean;
 } | null | undefined): boolean {
-  if (!job || job.isDeadEstimate) return false;
+  if (!job || job.isDeadEstimate || job.isArchived) return false;
   const stage = String(job.stage || '').trim();
   if (!stage) return false;
   return (COMMISSION_ELIGIBLE_STAGES as readonly string[]).includes(stage);

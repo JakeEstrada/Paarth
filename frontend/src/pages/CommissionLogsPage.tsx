@@ -3,7 +3,7 @@
  * Route: /commission-logs
  * Docs: ../../../docs/PAGES.md#commissionlogspagetsx
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
   alpha,
   Box,
@@ -26,8 +26,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Tooltip,
   Typography,
   useTheme,
@@ -36,8 +34,6 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import CloseIcon from '@mui/icons-material/Close';
-import ViewListIcon from '@mui/icons-material/ViewList';
-import GridViewIcon from '@mui/icons-material/GridView';
 import {
   DndContext,
   PointerSensor,
@@ -63,11 +59,8 @@ import { isCommissionEligibleJob } from '../utils/commissionJobEligibility';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const COMMISSION_LOGS_STORAGE_KEY = 'financeHubCommissionLogsRows';
 const DEFAULT_COMMISSION_RATE_KEY = 'financeHubCommissionDefaultRate';
-const COMMISSION_VIEW_MODE_KEY = 'financeHubCommissionViewMode';
 const COMMISSION_OVERVIEW_JOB_ORDER_KEY = 'financeHubCommissionOverviewJobOrder';
 const DEFAULT_COMMISSION_RATE = 5;
-
-type CommissionViewMode = 'detail' | 'overview';
 
 const ESTIMATE_STAGE_LABELS: Record<string, string> = {
   APPOINTMENT_SCHEDULED: 'Appointment',
@@ -187,16 +180,6 @@ function readDefaultCommissionRate(): number {
   }
 }
 
-function readCommissionViewMode(): CommissionViewMode {
-  if (typeof window === 'undefined') return 'detail';
-  try {
-    const raw = window.localStorage.getItem(COMMISSION_VIEW_MODE_KEY);
-    return raw === 'overview' ? 'overview' : 'detail';
-  } catch {
-    return 'detail';
-  }
-}
-
 function readOverviewJobOrder(): string[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -206,6 +189,382 @@ function readOverviewJobOrder(): string[] {
   } catch {
     return [];
   }
+}
+
+function hasExplicitManualAmount(saved: CommissionPaymentLocal): boolean {
+  if (!saved.amountManual) return false;
+  if (saved.amount === undefined || saved.amount === null) return false;
+  if (typeof saved.amount === 'string') return saved.amount.trim() !== '';
+  return true;
+}
+
+interface CommissionPaymentLocal {
+  amount?: string | number;
+  check?: string;
+  date?: string;
+  amountManual?: boolean;
+  salesmanPaid?: boolean;
+}
+
+interface CommissionLogLocalRow {
+  payments?: CommissionPaymentLocal[];
+  paymentOrder?: number[];
+  accentColor?: string;
+  payment1?: string | number;
+  payment2?: string | number;
+  payment1Check?: string;
+  payment2Check?: string;
+  payment1Date?: string;
+  payment2Date?: string;
+  commissionRate?: string | number;
+  updatedAt?: string;
+}
+
+function migrateLocalRow(local: CommissionLogLocalRow): CommissionLogLocalRow {
+  if (Array.isArray(local.payments)) return local;
+  const payments: CommissionPaymentLocal[] = [];
+  const legacy = [
+    { amount: local.payment1, check: local.payment1Check, date: local.payment1Date },
+    { amount: local.payment2, check: local.payment2Check, date: local.payment2Date },
+  ];
+  for (const entry of legacy) {
+    if (entry.amount !== undefined || entry.check || entry.date) {
+      payments.push({
+        ...entry,
+        amountManual: entry.amount !== undefined,
+      });
+    }
+  }
+  if (!payments.length) return local;
+  return { ...local, payments };
+}
+
+function hasRateOverride(local: CommissionLogLocalRow): boolean {
+  return local.commissionRate !== undefined && local.commissionRate !== '';
+}
+
+function readCommissionLogRows(): Record<string, CommissionLogLocalRow> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(COMMISSION_LOGS_STORAGE_KEY);
+    const parsed: unknown = JSON.parse(raw || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, CommissionLogLocalRow>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+interface PaymentScheduleDoc {
+  type?: string;
+  items?: Array<{
+    label?: string;
+    amountType?: string;
+    percentage?: number;
+    amount?: number;
+    dueType?: string;
+    sortOrder?: number;
+    status?: string;
+    paidAt?: string | null;
+    paidAmount?: number;
+  }>;
+}
+
+interface JobDoc {
+  _id?: string;
+  title?: string;
+  color?: string;
+  isArchived?: boolean;
+  customerId?: string | {
+    name?: string;
+    primaryPhone?: string;
+    primaryEmail?: string;
+    address?: {
+      street?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+    };
+  };
+  assignedTo?: string | { name?: string };
+  stage?: string;
+  isDeadEstimate?: boolean;
+  valueContracted?: number;
+  valueEstimated?: number;
+  changeOrders?: Array<{ description?: string; amount?: number }>;
+  paymentSchedule?: PaymentScheduleDoc;
+  contract?: {
+    depositReceived?: number;
+    depositReceivedAt?: string;
+  };
+  finalPayment?: {
+    amountPaid?: number;
+    paidAt?: string;
+  };
+  jobAddress?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  };
+  jobContact?: {
+    phone?: string;
+    email?: string;
+  };
+  notes?: Array<{ content?: string }>;
+}
+
+interface EstimateDoc {
+  jobId?: string | { _id?: string };
+  grandTotal?: number;
+  createdAt?: string;
+}
+
+interface JobsListResponse {
+  jobs?: JobDoc[];
+  totalPages?: number;
+}
+
+interface CompletedJobsGroup {
+  jobs?: JobDoc[];
+}
+
+async function fetchAllCommissionJobs(): Promise<JobDoc[]> {
+  const jobsById = new Map<string, JobDoc>();
+  const limit = 500;
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages) {
+    const { data } = await axios.get<JobsListResponse>(`${API_URL}/jobs`, {
+      params: {
+        page,
+        limit,
+        includeCompletedClosedOut: true,
+        includeArchived: false,
+      },
+    });
+    const batch = Array.isArray(data?.jobs) ? data.jobs : [];
+    for (const job of batch) {
+      jobsById.set(String(job._id || ''), job);
+    }
+    totalPages = Math.max(1, Number(data?.totalPages) || 1);
+    page += 1;
+  }
+
+  try {
+    const { data: completedGroups } = await axios.get<CompletedJobsGroup[]>(
+      `${API_URL}/jobs/completed`,
+    );
+    if (Array.isArray(completedGroups)) {
+      for (const group of completedGroups) {
+        const groupJobs = Array.isArray(group?.jobs) ? group.jobs : [];
+        for (const job of groupJobs) {
+          const id = String(job._id || '');
+          if (id && !job.isArchived && !jobsById.has(id)) jobsById.set(id, job);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Could not merge completed jobs into commission logs:', error);
+  }
+
+  return Array.from(jobsById.values());
+}
+
+interface CommissionSourceJobRow {
+  jobId: string;
+  customerName: string;
+  jobLabel: string;
+  assignedToName: string;
+  stageLabel: string;
+  jobTotal: number;
+  jobColor?: string;
+  searchText: string;
+  paymentSchedule?: PaymentScheduleDoc;
+  contract?: JobDoc['contract'];
+  finalPayment?: JobDoc['finalPayment'];
+}
+
+interface CommissionPaymentDisplay {
+  scheduleIndex: number;
+  label: string;
+  scheduledAmount: number;
+  potentialAmount: number;
+  amount: number;
+  displayAmount: string | number;
+  check: string;
+  date: string;
+  status: string;
+  amountManual: boolean;
+  customerPaid: boolean;
+  salesmanPaid: boolean;
+}
+
+interface CommissionTableRow extends CommissionSourceJobRow {
+  commissionRate: number;
+  rateOverridden: boolean;
+  commissionDue: number;
+  payments: CommissionPaymentDisplay[];
+  hasManualPayments: boolean;
+  balance: number;
+  isRowSettled: boolean;
+  accentColor: string;
+}
+
+const DEFAULT_ACCENT_COLOR = '#1976D2';
+
+function resolveAccentColor(local: CommissionLogLocalRow, jobColor?: string): string {
+  const localColor = String(local.accentColor || '').trim();
+  if (localColor) return localColor;
+  const fromJob = String(jobColor || '').trim();
+  if (fromJob) return fromJob;
+  return DEFAULT_ACCENT_COLOR;
+}
+
+function isOverviewPaidRow(row: CommissionTableRow): boolean {
+  if (row.payments.length > 0 && row.payments.every((payment) => payment.salesmanPaid)) {
+    return true;
+  }
+  return row.isRowSettled;
+}
+
+function compareCustomerName(a: CommissionTableRow, b: CommissionTableRow): number {
+  return String(a.customerName || '').localeCompare(String(b.customerName || ''));
+}
+
+function defaultCommissionRowSort(a: CommissionTableRow, b: CommissionTableRow): number {
+  const aPaid = isOverviewPaidRow(a);
+  const bPaid = isOverviewPaidRow(b);
+  if (aPaid !== bPaid) return aPaid ? 1 : -1;
+  return compareCustomerName(a, b);
+}
+
+function joinAddressParts(
+  addr?: { street?: string; city?: string; state?: string; zip?: string } | null,
+): string {
+  if (!addr) return '';
+  return [addr.street, addr.city, addr.state, addr.zip]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function moneySearchTokens(value: unknown): string[] {
+  const n = roundMoney(Number(value));
+  if (!Number.isFinite(n) || n === 0) return [];
+  return [String(n), n.toFixed(2), formatMoney(n)];
+}
+
+function buildCommissionJobSearchText(job: JobDoc, jobTotal: number): string {
+  const parts: string[] = [];
+  const customer = typeof job?.customerId === 'object' ? job.customerId : null;
+
+  parts.push(
+    String(job?.title || ''),
+    String(customer?.name || ''),
+    joinAddressParts(job?.jobAddress),
+    joinAddressParts(customer?.address),
+    String(job?.jobContact?.phone || ''),
+    String(job?.jobContact?.email || ''),
+    String(customer?.primaryPhone || ''),
+    String(customer?.primaryEmail || ''),
+  );
+
+  for (const token of moneySearchTokens(jobTotal)) parts.push(token);
+  for (const token of moneySearchTokens(job?.valueContracted)) parts.push(token);
+  for (const token of moneySearchTokens(job?.valueEstimated)) parts.push(token);
+  for (const token of moneySearchTokens(job?.contract?.depositReceived)) parts.push(token);
+  for (const token of moneySearchTokens(job?.finalPayment?.amountPaid)) parts.push(token);
+
+  for (const item of job?.paymentSchedule?.items || []) {
+    parts.push(String(item?.label || ''));
+    for (const token of moneySearchTokens(item?.amount)) parts.push(token);
+    for (const token of moneySearchTokens(item?.paidAmount)) parts.push(token);
+  }
+
+  for (const co of job?.changeOrders || []) {
+    parts.push(String(co?.description || ''));
+    for (const token of moneySearchTokens(co?.amount)) parts.push(token);
+  }
+
+  for (const note of job?.notes || []) {
+    parts.push(String(note?.content || ''));
+  }
+
+  return parts
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function matchesCommissionSearch(row: CommissionTableRow, rawQuery: string): boolean {
+  const q = String(rawQuery || '').trim().toLowerCase();
+  if (!q) return true;
+
+  const qNormalized = q.replace(/[,$]/g, '');
+  const haystackParts: unknown[] = [
+    row.searchText,
+    row.customerName,
+    row.jobLabel,
+    row.assignedToName,
+    row.stageLabel,
+    ...moneySearchTokens(row.jobTotal),
+    ...moneySearchTokens(row.commissionDue),
+    ...moneySearchTokens(row.balance),
+    String(row.commissionRate),
+    ...row.payments.flatMap((payment) => [
+      payment.label,
+      payment.check,
+      payment.date,
+      payment.status,
+      payment.displayAmount,
+      ...moneySearchTokens(payment.scheduledAmount),
+      ...moneySearchTokens(payment.potentialAmount),
+      ...moneySearchTokens(payment.amount),
+    ]),
+  ];
+
+  const haystack = haystackParts
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  const haystackNormalized = haystack.replace(/[,$]/g, '');
+
+  if (haystack.includes(q)) return true;
+  return qNormalized.length > 0 && haystackNormalized.includes(qNormalized);
+}
+
+function applyOverviewJobOrder(
+  rows: CommissionTableRow[],
+  order: string[] | undefined,
+): CommissionTableRow[] {
+  const unpaid = rows.filter((row) => !isOverviewPaidRow(row));
+  const paid = rows.filter((row) => isOverviewPaidRow(row)).sort(compareCustomerName);
+
+  let orderedUnpaid: CommissionTableRow[];
+  if (!order?.length) {
+    orderedUnpaid = [...unpaid].sort(compareCustomerName);
+  } else {
+    const unpaidById = new Map(unpaid.map((row) => [row.jobId, row]));
+    const ordered: CommissionTableRow[] = [];
+    const seen = new Set<string>();
+
+    for (const id of order) {
+      const row = unpaidById.get(id);
+      if (row) {
+        ordered.push(row);
+        seen.add(id);
+      }
+    }
+
+    const remaining = unpaid.filter((row) => !seen.has(row.jobId)).sort(compareCustomerName);
+    orderedUnpaid = [...ordered, ...remaining];
+  }
+
+  return [...orderedUnpaid, ...paid];
 }
 
 function tierChipStyles(
@@ -427,381 +786,6 @@ function CommissionOverviewTable({ rows, onReorder, onOpenPayments }: Commission
       </Table>
     </DndContext>
   );
-}
-
-function hasExplicitManualAmount(saved: CommissionPaymentLocal): boolean {
-  if (!saved.amountManual) return false;
-  if (saved.amount === undefined || saved.amount === null) return false;
-  if (typeof saved.amount === 'string') return saved.amount.trim() !== '';
-  return true;
-}
-
-interface CommissionPaymentLocal {
-  amount?: string | number;
-  check?: string;
-  date?: string;
-  amountManual?: boolean;
-  salesmanPaid?: boolean;
-}
-
-interface CommissionLogLocalRow {
-  payments?: CommissionPaymentLocal[];
-  paymentOrder?: number[];
-  accentColor?: string;
-  payment1?: string | number;
-  payment2?: string | number;
-  payment1Check?: string;
-  payment2Check?: string;
-  payment1Date?: string;
-  payment2Date?: string;
-  commissionRate?: string | number;
-  updatedAt?: string;
-}
-
-function migrateLocalRow(local: CommissionLogLocalRow): CommissionLogLocalRow {
-  if (Array.isArray(local.payments)) return local;
-  const payments: CommissionPaymentLocal[] = [];
-  const legacy = [
-    { amount: local.payment1, check: local.payment1Check, date: local.payment1Date },
-    { amount: local.payment2, check: local.payment2Check, date: local.payment2Date },
-  ];
-  for (const entry of legacy) {
-    if (entry.amount !== undefined || entry.check || entry.date) {
-      payments.push({
-        ...entry,
-        amountManual: entry.amount !== undefined,
-      });
-    }
-  }
-  if (!payments.length) return local;
-  return { ...local, payments };
-}
-
-function hasRateOverride(local: CommissionLogLocalRow): boolean {
-  return local.commissionRate !== undefined && local.commissionRate !== '';
-}
-
-function readCommissionLogRows(): Record<string, CommissionLogLocalRow> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(COMMISSION_LOGS_STORAGE_KEY);
-    const parsed: unknown = JSON.parse(raw || '{}');
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, CommissionLogLocalRow>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-interface PaymentScheduleDoc {
-  type?: string;
-  items?: Array<{
-    label?: string;
-    amountType?: string;
-    percentage?: number;
-    amount?: number;
-    dueType?: string;
-    sortOrder?: number;
-    status?: string;
-    paidAt?: string | null;
-    paidAmount?: number;
-  }>;
-}
-
-interface JobDoc {
-  _id?: string;
-  title?: string;
-  color?: string;
-  customerId?: string | {
-    name?: string;
-    primaryPhone?: string;
-    primaryEmail?: string;
-    address?: {
-      street?: string;
-      city?: string;
-      state?: string;
-      zip?: string;
-    };
-  };
-  assignedTo?: string | { name?: string };
-  stage?: string;
-  isDeadEstimate?: boolean;
-  valueContracted?: number;
-  valueEstimated?: number;
-  changeOrders?: Array<{ description?: string; amount?: number }>;
-  paymentSchedule?: PaymentScheduleDoc;
-  contract?: {
-    depositReceived?: number;
-    depositReceivedAt?: string;
-  };
-  finalPayment?: {
-    amountPaid?: number;
-    paidAt?: string;
-  };
-  jobAddress?: {
-    street?: string;
-    city?: string;
-    state?: string;
-    zip?: string;
-  };
-  jobContact?: {
-    phone?: string;
-    email?: string;
-  };
-  notes?: Array<{ content?: string }>;
-}
-
-interface EstimateDoc {
-  jobId?: string | { _id?: string };
-  grandTotal?: number;
-  createdAt?: string;
-}
-
-interface JobsListResponse {
-  jobs?: JobDoc[];
-  totalPages?: number;
-}
-
-interface CompletedJobsGroup {
-  jobs?: JobDoc[];
-}
-
-async function fetchAllCommissionJobs(): Promise<JobDoc[]> {
-  const jobsById = new Map<string, JobDoc>();
-  const limit = 500;
-  let page = 1;
-  let totalPages = 1;
-
-  while (page <= totalPages) {
-    const { data } = await axios.get<JobsListResponse>(`${API_URL}/jobs`, {
-      params: {
-        page,
-        limit,
-        includeCompletedClosedOut: true,
-        includeArchived: true,
-      },
-    });
-    const batch = Array.isArray(data?.jobs) ? data.jobs : [];
-    for (const job of batch) {
-      jobsById.set(String(job._id || ''), job);
-    }
-    totalPages = Math.max(1, Number(data?.totalPages) || 1);
-    page += 1;
-  }
-
-  try {
-    const { data: completedGroups } = await axios.get<CompletedJobsGroup[]>(
-      `${API_URL}/jobs/completed`,
-    );
-    if (Array.isArray(completedGroups)) {
-      for (const group of completedGroups) {
-        const groupJobs = Array.isArray(group?.jobs) ? group.jobs : [];
-        for (const job of groupJobs) {
-          const id = String(job._id || '');
-          if (id && !jobsById.has(id)) jobsById.set(id, job);
-        }
-      }
-    }
-  } catch (error) {
-    console.warn('Could not merge completed jobs into commission logs:', error);
-  }
-
-  return Array.from(jobsById.values());
-}
-
-interface CommissionSourceJobRow {
-  jobId: string;
-  customerName: string;
-  jobLabel: string;
-  assignedToName: string;
-  stageLabel: string;
-  jobTotal: number;
-  jobColor?: string;
-  searchText: string;
-  paymentSchedule?: PaymentScheduleDoc;
-  contract?: JobDoc['contract'];
-  finalPayment?: JobDoc['finalPayment'];
-}
-
-interface CommissionPaymentDisplay {
-  scheduleIndex: number;
-  label: string;
-  scheduledAmount: number;
-  potentialAmount: number;
-  amount: number;
-  displayAmount: string | number;
-  check: string;
-  date: string;
-  status: string;
-  amountManual: boolean;
-  customerPaid: boolean;
-  salesmanPaid: boolean;
-}
-
-interface CommissionTableRow extends CommissionSourceJobRow {
-  commissionRate: number;
-  rateOverridden: boolean;
-  commissionDue: number;
-  payments: CommissionPaymentDisplay[];
-  hasManualPayments: boolean;
-  balance: number;
-  isRowSettled: boolean;
-  accentColor: string;
-}
-
-const DEFAULT_ACCENT_COLOR = '#1976D2';
-
-function resolveAccentColor(local: CommissionLogLocalRow, jobColor?: string): string {
-  const localColor = String(local.accentColor || '').trim();
-  if (localColor) return localColor;
-  const fromJob = String(jobColor || '').trim();
-  if (fromJob) return fromJob;
-  return DEFAULT_ACCENT_COLOR;
-}
-
-function isOverviewPaidRow(row: CommissionTableRow): boolean {
-  if (row.payments.length > 0 && row.payments.every((payment) => payment.salesmanPaid)) {
-    return true;
-  }
-  return row.isRowSettled;
-}
-
-function compareCustomerName(a: CommissionTableRow, b: CommissionTableRow): number {
-  return String(a.customerName || '').localeCompare(String(b.customerName || ''));
-}
-
-function defaultCommissionRowSort(a: CommissionTableRow, b: CommissionTableRow): number {
-  const aPaid = isOverviewPaidRow(a);
-  const bPaid = isOverviewPaidRow(b);
-  if (aPaid !== bPaid) return aPaid ? 1 : -1;
-  return compareCustomerName(a, b);
-}
-
-function joinAddressParts(
-  addr?: { street?: string; city?: string; state?: string; zip?: string } | null,
-): string {
-  if (!addr) return '';
-  return [addr.street, addr.city, addr.state, addr.zip]
-    .map((part) => String(part || '').trim())
-    .filter(Boolean)
-    .join(' ');
-}
-
-function moneySearchTokens(value: unknown): string[] {
-  const n = roundMoney(Number(value));
-  if (!Number.isFinite(n) || n === 0) return [];
-  return [String(n), n.toFixed(2), formatMoney(n)];
-}
-
-function buildCommissionJobSearchText(job: JobDoc, jobTotal: number): string {
-  const parts: string[] = [];
-  const customer = typeof job?.customerId === 'object' ? job.customerId : null;
-
-  parts.push(
-    String(job?.title || ''),
-    String(customer?.name || ''),
-    joinAddressParts(job?.jobAddress),
-    joinAddressParts(customer?.address),
-    String(job?.jobContact?.phone || ''),
-    String(job?.jobContact?.email || ''),
-    String(customer?.primaryPhone || ''),
-    String(customer?.primaryEmail || ''),
-  );
-
-  for (const token of moneySearchTokens(jobTotal)) parts.push(token);
-  for (const token of moneySearchTokens(job?.valueContracted)) parts.push(token);
-  for (const token of moneySearchTokens(job?.valueEstimated)) parts.push(token);
-  for (const token of moneySearchTokens(job?.contract?.depositReceived)) parts.push(token);
-  for (const token of moneySearchTokens(job?.finalPayment?.amountPaid)) parts.push(token);
-
-  for (const item of job?.paymentSchedule?.items || []) {
-    parts.push(String(item?.label || ''));
-    for (const token of moneySearchTokens(item?.amount)) parts.push(token);
-    for (const token of moneySearchTokens(item?.paidAmount)) parts.push(token);
-  }
-
-  for (const co of job?.changeOrders || []) {
-    parts.push(String(co?.description || ''));
-    for (const token of moneySearchTokens(co?.amount)) parts.push(token);
-  }
-
-  for (const note of job?.notes || []) {
-    parts.push(String(note?.content || ''));
-  }
-
-  return parts
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-}
-
-function matchesCommissionSearch(row: CommissionTableRow, rawQuery: string): boolean {
-  const q = String(rawQuery || '').trim().toLowerCase();
-  if (!q) return true;
-
-  const qNormalized = q.replace(/[,$]/g, '');
-  const haystackParts: unknown[] = [
-    row.searchText,
-    row.customerName,
-    row.jobLabel,
-    row.assignedToName,
-    row.stageLabel,
-    ...moneySearchTokens(row.jobTotal),
-    ...moneySearchTokens(row.commissionDue),
-    ...moneySearchTokens(row.balance),
-    String(row.commissionRate),
-    ...row.payments.flatMap((payment) => [
-      payment.label,
-      payment.check,
-      payment.date,
-      payment.status,
-      payment.displayAmount,
-      ...moneySearchTokens(payment.scheduledAmount),
-      ...moneySearchTokens(payment.potentialAmount),
-      ...moneySearchTokens(payment.amount),
-    ]),
-  ];
-
-  const haystack = haystackParts
-    .map((value) => String(value || '').trim().toLowerCase())
-    .filter(Boolean)
-    .join(' ');
-  const haystackNormalized = haystack.replace(/[,$]/g, '');
-
-  if (haystack.includes(q)) return true;
-  return qNormalized.length > 0 && haystackNormalized.includes(qNormalized);
-}
-
-function applyOverviewJobOrder(
-  rows: CommissionTableRow[],
-  order: string[] | undefined,
-): CommissionTableRow[] {
-  const unpaid = rows.filter((row) => !isOverviewPaidRow(row));
-  const paid = rows.filter((row) => isOverviewPaidRow(row)).sort(compareCustomerName);
-
-  let orderedUnpaid: CommissionTableRow[];
-  if (!order?.length) {
-    orderedUnpaid = [...unpaid].sort(compareCustomerName);
-  } else {
-    const unpaidById = new Map(unpaid.map((row) => [row.jobId, row]));
-    const ordered: CommissionTableRow[] = [];
-    const seen = new Set<string>();
-
-    for (const id of order) {
-      const row = unpaidById.get(id);
-      if (row) {
-        ordered.push(row);
-        seen.add(id);
-      }
-    }
-
-    const remaining = unpaid.filter((row) => !seen.has(row.jobId)).sort(compareCustomerName);
-    orderedUnpaid = [...ordered, ...remaining];
-  }
-
-  return [...orderedUnpaid, ...paid];
 }
 
 function orderPaymentsForDisplay(
@@ -1407,15 +1391,9 @@ function CommissionPaymentModal({
 }
 
 function CommissionLogsPage() {
-  const theme = useTheme();
-  const tableScrollRef = useRef<HTMLDivElement>(null);
-  const bottomScrollRef = useRef<HTMLDivElement>(null);
-  const tableInnerRef = useRef<HTMLDivElement>(null);
-  const [tableScrollWidth, setTableScrollWidth] = useState(1100);
   const [loadingCommissionLogs, setLoadingCommissionLogs] = useState(false);
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
   const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());
-  const [viewMode, setViewMode] = useState<CommissionViewMode>(() => readCommissionViewMode());
   const [overviewJobOrder, setOverviewJobOrder] = useState<string[]>(() => readOverviewJobOrder());
   const [paymentModalJobId, setPaymentModalJobId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1590,28 +1568,15 @@ function CommissionLogsPage() {
       });
   }, [commissionSourceJobs, commissionLogRows, defaultCommissionRate]);
 
-  const detailTableRows = useMemo(
-    () => [...commissionTableRows].sort(defaultCommissionRowSort),
-    [commissionTableRows],
-  );
-
   const overviewTableRows = useMemo(
     () => applyOverviewJobOrder(commissionTableRows, overviewJobOrder),
     [commissionTableRows, overviewJobOrder],
   );
 
-  const filteredDetailTableRows = useMemo(
-    () => detailTableRows.filter((row) => matchesCommissionSearch(row, searchQuery)),
-    [detailTableRows, searchQuery],
-  );
-
-  const filteredOverviewTableRows = useMemo(
+  const visibleTableRows = useMemo(
     () => overviewTableRows.filter((row) => matchesCommissionSearch(row, searchQuery)),
     [overviewTableRows, searchQuery],
   );
-
-  const visibleTableRows =
-    viewMode === 'overview' ? filteredOverviewTableRows : filteredDetailTableRows;
 
   const paymentModalRow = useMemo(
     () => commissionTableRows.find((row) => row.jobId === paymentModalJobId) ?? null,
@@ -1627,36 +1592,6 @@ function CommissionLogsPage() {
   };
 
   useEffect(() => {
-    const tableEl = tableInnerRef.current;
-    if (!tableEl) return;
-    const updateWidth = () => setTableScrollWidth(tableEl.scrollWidth);
-    updateWidth();
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(tableEl);
-    return () => observer.disconnect();
-  }, [visibleTableRows, loadingCommissionLogs, viewMode]);
-
-  useEffect(() => {
-    const tableScroll = tableScrollRef.current;
-    const bottomScroll = bottomScrollRef.current;
-    if (!tableScroll || !bottomScroll) return;
-
-    const syncFromTable = () => {
-      bottomScroll.scrollLeft = tableScroll.scrollLeft;
-    };
-    const syncFromBottom = () => {
-      tableScroll.scrollLeft = bottomScroll.scrollLeft;
-    };
-
-    tableScroll.addEventListener('scroll', syncFromTable);
-    bottomScroll.addEventListener('scroll', syncFromBottom);
-    return () => {
-      tableScroll.removeEventListener('scroll', syncFromTable);
-      bottomScroll.removeEventListener('scroll', syncFromBottom);
-    };
-  }, [visibleTableRows, loadingCommissionLogs, viewMode]);
-
-  useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(COMMISSION_LOGS_STORAGE_KEY, JSON.stringify(commissionLogRows || {}));
   }, [commissionLogRows]);
@@ -1665,11 +1600,6 @@ function CommissionLogsPage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(DEFAULT_COMMISSION_RATE_KEY, String(defaultCommissionRate));
   }, [defaultCommissionRate]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(COMMISSION_VIEW_MODE_KEY, viewMode);
-  }, [viewMode]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1762,45 +1692,23 @@ function CommissionLogsPage() {
                 Commission Logs
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {viewMode === 'overview'
-                  ? 'Drag rows to reorder. Click a row to edit payments.'
-                  : 'Shows accepted jobs only (deposit pending and beyond). Amounts auto-fill when a job payment is marked paid in the job modal.'}
+                Active and completed jobs only. Drag rows to reorder. Click a row to edit payments.
               </Typography>
             </Box>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                value={viewMode}
-                onChange={(_, next: CommissionViewMode | null) => {
-                  if (next) setViewMode(next);
-                }}
-                aria-label="Commission view mode"
-              >
-                <ToggleButton value="detail" aria-label="Detail view">
-                  <ViewListIcon fontSize="small" sx={{ mr: 0.5 }} />
-                  Detail
-                </ToggleButton>
-                <ToggleButton value="overview" aria-label="Overview view">
-                  <GridViewIcon fontSize="small" sx={{ mr: 0.5 }} />
-                  Overview
-                </ToggleButton>
-              </ToggleButtonGroup>
-              <TextField
-                size="small"
-                label="Default rate"
-                value={defaultCommissionRate}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  setDefaultCommissionRate(Number.isFinite(n) && n >= 0 ? n : 0);
-                }}
-                InputProps={{
-                  endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                  inputProps: { inputMode: 'decimal', min: 0, step: 0.1 },
-                }}
-                sx={{ width: 130 }}
-              />
-            </Box>
+            <TextField
+              size="small"
+              label="Default rate"
+              value={defaultCommissionRate}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setDefaultCommissionRate(Number.isFinite(n) && n >= 0 ? n : 0);
+              }}
+              InputProps={{
+                endAdornment: <InputAdornment position="end">%</InputAdornment>,
+                inputProps: { inputMode: 'decimal', min: 0, step: 0.1 },
+              }}
+              sx={{ width: 130 }}
+            />
           </Box>
 
           <TextField
@@ -1850,237 +1758,15 @@ function CommissionLogsPage() {
                 border: 1,
                 borderColor: 'divider',
                 borderRadius: 1.5,
-                display: 'flex',
-                flexDirection: 'column',
+                overflow: 'auto',
                 maxHeight: 'calc(100vh - 240px)',
               }}
             >
-              <Box
-                ref={tableScrollRef}
-                sx={{
-                  flex: 1,
-                  minHeight: 0,
-                  overflow: 'auto',
-                }}
-              >
-                <Box ref={tableInnerRef} sx={{ display: 'inline-block', minWidth: '100%' }}>
-                  {viewMode === 'overview' ? (
-                    <CommissionOverviewTable
-                      rows={filteredOverviewTableRows}
-                      onReorder={setOverviewJobOrder}
-                      onOpenPayments={(row) => setPaymentModalJobId(row.jobId)}
-                    />
-                  ) : (
-                  <Table
-                    stickyHeader
-                    size="small"
-                    sx={{
-                      minWidth: 1280,
-                      tableLayout: 'fixed',
-                      width: '100%',
-                    }}
-                  >
-                <TableHead>
-                  <TableRow>
-                    <TableCell
-                      sx={{
-                        fontWeight: 700,
-                        width: '12%',
-                        minWidth: 130,
-                        bgcolor: 'background.paper',
-                      }}
-                    >
-                      Customer
-                    </TableCell>
-                    <TableCell
-                      sx={{ fontWeight: 700, width: '14%', minWidth: 150, bgcolor: 'background.paper' }}
-                    >
-                      Job
-                    </TableCell>
-                    <TableCell
-                      sx={{ fontWeight: 700, width: '9%', minWidth: 96, bgcolor: 'background.paper' }}
-                      align="right"
-                    >
-                      Job Total
-                    </TableCell>
-                    <TableCell
-                      sx={{ fontWeight: 700, width: '8%', minWidth: 88, bgcolor: 'background.paper' }}
-                      align="right"
-                    >
-                      Rate
-                    </TableCell>
-                    <TableCell
-                      sx={{ fontWeight: 700, width: '10%', minWidth: 104, bgcolor: 'background.paper' }}
-                      align="right"
-                    >
-                      Commission
-                    </TableCell>
-                    <TableCell
-                      sx={{
-                        fontWeight: 700,
-                        width: 'auto',
-                        minWidth: 420,
-                        bgcolor: 'background.paper',
-                      }}
-                    >
-                      Payments
-                    </TableCell>
-                    <TableCell
-                      sx={{
-                        fontWeight: 700,
-                        width: 120,
-                        minWidth: 120,
-                        pl: 3,
-                        bgcolor: 'background.paper',
-                        position: 'sticky',
-                        right: 0,
-                        zIndex: 3,
-                        whiteSpace: 'nowrap',
-                        boxShadow: (t) =>
-                          `-6px 0 10px ${alpha(t.palette.common.black, t.palette.mode === 'dark' ? 0.35 : 0.08)}`,
-                      }}
-                      align="right"
-                    >
-                      Balance
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredDetailTableRows.map((row) => (
-                    <TableRow
-                      key={row.jobId}
-                      hover
-                      sx={
-                        row.isRowSettled
-                          ? {
-                              bgcolor: alpha(
-                                theme.palette.success.main,
-                                theme.palette.mode === 'dark' ? 0.14 : 0.08,
-                              ),
-                            }
-                          : undefined
-                      }
-                    >
-                      <TableCell>{row.customerName}</TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {row.jobLabel || 'Untitled'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {row.stageLabel || '-'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">{formatMoney(row.jobTotal)}</TableCell>
-                      <TableCell align="right">
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
-                          <TextField
-                            size="small"
-                            value={row.commissionRate}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === '') {
-                                clearRateOverride(row.jobId);
-                              } else {
-                                updateCommissionRow(row.jobId, { commissionRate: value });
-                              }
-                            }}
-                            InputProps={{
-                              endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                              inputProps: { inputMode: 'decimal', min: 0, step: 0.1 },
-                            }}
-                            sx={{ width: 88 }}
-                          />
-                          {row.rateOverridden && (
-                            <Tooltip title="Use default rate">
-                              <IconButton
-                                size="small"
-                                onClick={() => clearRateOverride(row.jobId)}
-                                aria-label="Reset rate to default"
-                              >
-                                <RefreshIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>
-                        {formatMoney(row.commissionDue)}
-                      </TableCell>
-                      <TableCell sx={{ p: 1, overflow: 'hidden', verticalAlign: 'top' }}>
-                        <Box sx={{ overflowX: 'auto', maxWidth: '100%', pr: 1 }}>
-                          <JobPaymentCards
-                            row={row}
-                            onReorder={reorderPayments}
-                            onUpdateAmount={handlePaymentAmountChange}
-                            onUpdateDate={(jobId, scheduleIndex, value) =>
-                              updateCommissionPayment(jobId, scheduleIndex, { date: value })
-                            }
-                            onUpdateCheck={(jobId, scheduleIndex, value) =>
-                              updateCommissionPayment(jobId, scheduleIndex, { check: value })
-                            }
-                            onUpdateSalesmanPaid={handleSalesmanPaidChange}
-                            onResetOverrides={resetPaymentOverrides}
-                          />
-                        </Box>
-                      </TableCell>
-                      <TableCell
-                        align="right"
-                        sx={{
-                          width: 120,
-                          minWidth: 120,
-                          pl: 3,
-                          pr: 2,
-                          whiteSpace: 'nowrap',
-                          verticalAlign: 'top',
-                          position: 'sticky',
-                          right: 0,
-                          zIndex: 1,
-                          bgcolor: row.isRowSettled
-                            ? alpha(
-                                theme.palette.success.main,
-                                theme.palette.mode === 'dark' ? 0.14 : 0.08,
-                              )
-                            : 'background.paper',
-                          boxShadow: (t) =>
-                            `-6px 0 10px ${alpha(t.palette.common.black, t.palette.mode === 'dark' ? 0.35 : 0.08)}`,
-                        }}
-                      >
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontWeight: 700,
-                            color: row.balance <= 0 ? 'success.main' : 'text.primary',
-                          }}
-                        >
-                          {formatMoney(row.balance)}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-                  )}
-                </Box>
-              </Box>
-              <Box
-                ref={bottomScrollRef}
-                sx={{
-                  overflowX: 'scroll',
-                  overflowY: 'hidden',
-                  flexShrink: 0,
-                  minHeight: 14,
-                  borderTop: 1,
-                  borderColor: 'divider',
-                  bgcolor: 'background.paper',
-                  '&::-webkit-scrollbar': { height: 12 },
-                  '&::-webkit-scrollbar-thumb': {
-                    bgcolor: 'action.disabled',
-                    borderRadius: 6,
-                  },
-                }}
-              >
-                <Box sx={{ width: tableScrollWidth, height: 1 }} />
-              </Box>
+              <CommissionOverviewTable
+                rows={visibleTableRows}
+                onReorder={setOverviewJobOrder}
+                onOpenPayments={(row) => setPaymentModalJobId(row.jobId)}
+              />
             </Box>
           )}
         </CardContent>
