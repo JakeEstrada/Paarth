@@ -49,7 +49,6 @@ import {
   Image as ImageIcon,
   InsertDriveFile as InsertDriveFileIcon,
   Share as ShareIcon,
-  PostAdd as PostAddIcon,
   AutoAwesome as AutoAwesomeIcon,
   ContentCopy as ContentCopyIcon,
 } from '@mui/icons-material';
@@ -60,8 +59,8 @@ import toast from 'react-hot-toast';
 import AddNoteModal from './AddNoteModal';
 import AddJobTaskModal from './AddJobTaskModal';
 import AddAppointmentModal from '../appointments/AddAppointmentModal';
-import JobChangeOrderDialog from './JobChangeOrderDialog';
 import JobPaymentScheduleEditor from './JobPaymentScheduleEditor';
+import JobChangeOrdersEditor from './JobChangeOrdersEditor';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
@@ -74,7 +73,9 @@ import {
 import { renderSummaryBlocks } from '../../utils/summaryMarkdown';
 import {
   formatScheduleItemLabel,
+  getJobTotalWithChangeOrders,
   resolvePaymentSchedule,
+  sumChangeOrders,
   validatePaymentSchedule,
 } from '../../utils/paymentSchedule';
 
@@ -216,8 +217,8 @@ function JobDetailModal({
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
   const [jobTasks, setJobTasks] = useState([]);
   const [jobEstimates, setJobEstimates] = useState([]);
-  const [changeOrderOpen, setChangeOrderOpen] = useState(false);
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [changeOrdersSaving, setChangeOrdersSaving] = useState(false);
   const hideFinancials = hideSensitive;
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareSmsRecipient, setShareSmsRecipient] = useState('');
@@ -391,8 +392,13 @@ function JobDetailModal({
   const headerBaseEstimatedValue = Number((isEditing ? editedJob?.valueEstimated : job?.valueEstimated) || 0);
   const headerContractedValue = Number((isEditing ? editedJob?.valueContracted : job?.valueContracted) || 0);
   const headerContractBase = headerContractedValue > 0 ? headerContractedValue : headerBaseEstimatedValue;
-  const headerChangeOrderValue = jobTasks.reduce((sum, task) => sum + (Number(task.amount) || 0), 0);
   const headerScheduleSource = isEditing ? editedJob || job : job;
+  const headerChangeOrderValue = sumChangeOrders(headerScheduleSource);
+  const headerFullTotal = getJobTotalWithChangeOrders({
+    ...headerScheduleSource,
+    valueEstimated: headerBaseEstimatedValue,
+    valueContracted: headerContractedValue,
+  });
   const headerPaymentSchedule = resolvePaymentSchedule({
     ...headerScheduleSource,
     valueEstimated: headerBaseEstimatedValue,
@@ -474,6 +480,21 @@ function JobDetailModal({
       throw error;
     } finally {
       setScheduleSaving(false);
+    }
+  };
+
+  const handleSaveChangeOrders = async (changeOrders) => {
+    try {
+      setChangeOrdersSaving(true);
+      await onJobUpdate(jobId, { changeOrders });
+      await fetchJobDetails();
+      toast.success('Change orders saved');
+    } catch (error) {
+      console.error('Error saving change orders:', error);
+      toast.error('Failed to save change orders');
+      throw error;
+    } finally {
+      setChangeOrdersSaving(false);
     }
   };
 
@@ -960,10 +981,10 @@ function JobDetailModal({
               ) : isEditing ? (
                 <>
                   <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
-                    {formatCurrency(headerContractBase)}
+                    {formatCurrency(headerFullTotal)}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    Contract / Estimate
+                    Job total (base + change orders)
                   </Typography>
                   <TextField
                     type="number"
@@ -979,22 +1000,17 @@ function JobDetailModal({
                 </>
               ) : (
                 <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
-                  {formatCurrency(headerContractBase)}
+                  {formatCurrency(headerFullTotal)}
                 </Typography>
               )}
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                {isEditing ? 'Base Estimate' : 'Contract / Estimate'}
+                {isEditing ? 'Job total (base + change orders)' : 'Job total (base + change orders)'}
               </Typography>
               {!hideFinancials && (
                 <>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
-                    Base Estimate: {formatCurrency(headerBaseEstimatedValue)}
+                    Base contract: {formatCurrency(headerContractBase)}
                   </Typography>
-                  {headerContractedValue > 0 && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
-                      Contracted: {formatCurrency(headerContractedValue)}
-                    </Typography>
-                  )}
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
                     Change Orders: {formatCurrency(headerChangeOrderValue)}
                   </Typography>
@@ -1417,11 +1433,18 @@ function JobDetailModal({
                 )}
               </Paper>
             ) : (
-              <JobPaymentScheduleEditor
-                job={job}
-                onSave={handleSavePaymentSchedule}
-                saving={scheduleSaving}
-              />
+              <>
+                <JobPaymentScheduleEditor
+                  job={job}
+                  onSave={handleSavePaymentSchedule}
+                  saving={scheduleSaving}
+                />
+                <JobChangeOrdersEditor
+                  job={job}
+                  onSave={handleSaveChangeOrders}
+                  saving={changeOrdersSaving}
+                />
+              </>
             )}
           </Box>
         )}
@@ -1479,14 +1502,6 @@ function JobDetailModal({
                           Create estimate
                         </Button>
                       )}
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<PostAddIcon />}
-                        onClick={() => setChangeOrderOpen(true)}
-                      >
-                        Change order
-                      </Button>
                       <Button
                         size="small"
                         variant="outlined"
@@ -1860,17 +1875,6 @@ function JobDetailModal({
         }}
         job={job}
       />
-
-      {job && (
-        <JobChangeOrderDialog
-          open={changeOrderOpen}
-          onClose={() => setChangeOrderOpen(false)}
-          job={job}
-          onCreated={() => {
-            fetchJobDetails();
-          }}
-        />
-      )}
 
       <Dialog open={shareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Share Customer by Text</DialogTitle>

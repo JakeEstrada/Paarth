@@ -95,6 +95,16 @@ const jobSchema = new mongoose.Schema({
       },
     ],
   },
+
+  /** Simple change orders (amount + description) added on top of the base contract total. */
+  changeOrders: [
+    {
+      description: { type: String, trim: true, default: '' },
+      amount: { type: Number, default: 0 },
+      createdAt: { type: Date, default: Date.now },
+    },
+  ],
+
   source: {
     type: String,
     enum: ['referral', 'yelp', 'instagram', 'facebook', 'website', 'repeat', 'other'],

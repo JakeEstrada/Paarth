@@ -352,6 +352,9 @@ async function updateJob(req, res) {
     if (jobUpdateData.paymentSchedule !== undefined) {
       job.markModified('paymentSchedule');
     }
+    if (jobUpdateData.changeOrders !== undefined) {
+      job.markModified('changeOrders');
+    }
     await job.save();
 
     for (const activity of paymentScheduleActivities) {

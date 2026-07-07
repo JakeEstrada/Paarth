@@ -57,7 +57,7 @@ import { CSS } from '@dnd-kit/utilities';
 import axios, { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import { getCommissionPaymentSplits, roundMoney } from '../utils/paymentSchedule';
+import { getCommissionPaymentSplits, getJobTotalWithChangeOrders, roundMoney } from '../utils/paymentSchedule';
 import { isCommissionEligibleJob } from '../utils/commissionJobEligibility';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -110,37 +110,49 @@ function jobTitleAfterPipe(rawTitle: unknown): string {
   return t;
 }
 
-/** Prefer contracted/estimated job values; ignore zero-dollar estimate drafts. */
+/** Prefer contracted/estimated job values; ignore zero-dollar estimate drafts. Includes change orders. */
 function resolveCommissionJobTotal(job: JobDoc, estimate?: EstimateDoc): number {
+  let base = 0;
+
   const contracted = Number(job?.valueContracted);
-  if (Number.isFinite(contracted) && contracted > 0) return roundMoney(contracted);
-
-  const estimated = Number(job?.valueEstimated);
-  if (Number.isFinite(estimated) && estimated > 0) return roundMoney(estimated);
-
-  const estimateTotal = Number(estimate?.grandTotal);
-  if (Number.isFinite(estimateTotal) && estimateTotal > 0) return roundMoney(estimateTotal);
-
-  const scheduleItems = job?.paymentSchedule?.items;
-  if (Array.isArray(scheduleItems) && scheduleItems.length > 0) {
-    let scheduleSum = 0;
-    for (const item of scheduleItems) {
-      const paid = Number(item.paidAmount);
-      const fixed = Number(item.amount);
-      if (Number.isFinite(paid) && paid > 0) scheduleSum += paid;
-      else if (Number.isFinite(fixed) && fixed > 0) scheduleSum += fixed;
+  if (Number.isFinite(contracted) && contracted > 0) base = roundMoney(contracted);
+  else {
+    const estimated = Number(job?.valueEstimated);
+    if (Number.isFinite(estimated) && estimated > 0) base = roundMoney(estimated);
+    else {
+      const estimateTotal = Number(estimate?.grandTotal);
+      if (Number.isFinite(estimateTotal) && estimateTotal > 0) base = roundMoney(estimateTotal);
     }
-    if (scheduleSum > 0) return roundMoney(scheduleSum);
   }
 
-  const deposit = Number(job?.contract?.depositReceived);
-  const finalPaid = Number(job?.finalPayment?.amountPaid);
-  const legacyTotal =
-    (Number.isFinite(deposit) && deposit > 0 ? deposit : 0) +
-    (Number.isFinite(finalPaid) && finalPaid > 0 ? finalPaid : 0);
-  if (legacyTotal > 0) return roundMoney(legacyTotal);
+  if (base <= 0) {
+    const scheduleItems = job?.paymentSchedule?.items;
+    if (Array.isArray(scheduleItems) && scheduleItems.length > 0) {
+      let scheduleSum = 0;
+      for (const item of scheduleItems) {
+        const paid = Number(item.paidAmount);
+        const fixed = Number(item.amount);
+        if (Number.isFinite(paid) && paid > 0) scheduleSum += paid;
+        else if (Number.isFinite(fixed) && fixed > 0) scheduleSum += fixed;
+      }
+      if (scheduleSum > 0) base = roundMoney(scheduleSum);
+    }
+  }
 
-  return 0;
+  if (base <= 0) {
+    const deposit = Number(job?.contract?.depositReceived);
+    const finalPaid = Number(job?.finalPayment?.amountPaid);
+    const legacyTotal =
+      (Number.isFinite(deposit) && deposit > 0 ? deposit : 0) +
+      (Number.isFinite(finalPaid) && finalPaid > 0 ? finalPaid : 0);
+    if (legacyTotal > 0) base = roundMoney(legacyTotal);
+  }
+
+  return getJobTotalWithChangeOrders({
+    ...job,
+    valueContracted: base,
+    valueEstimated: base,
+  });
 }
 
 function pickLatestPositiveEstimateByJob(estimates: EstimateDoc[]): Map<string, EstimateDoc> {
@@ -510,6 +522,7 @@ interface JobDoc {
   isDeadEstimate?: boolean;
   valueContracted?: number;
   valueEstimated?: number;
+  changeOrders?: Array<{ description?: string; amount?: number }>;
   paymentSchedule?: PaymentScheduleDoc;
   contract?: {
     depositReceived?: number;

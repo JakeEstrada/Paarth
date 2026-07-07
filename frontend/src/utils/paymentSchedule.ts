@@ -35,6 +35,15 @@ export function getContractBase(job) {
   return 0;
 }
 
+export function sumChangeOrders(job) {
+  const rows = Array.isArray(job?.changeOrders) ? job.changeOrders : [];
+  return roundMoney(rows.reduce((sum, row) => sum + (Number(row?.amount) || 0), 0));
+}
+
+export function getJobTotalWithChangeOrders(job) {
+  return roundMoney(getContractBase(job) + sumChangeOrders(job));
+}
+
 export function hasStoredPaymentSchedule(job) {
   return Array.isArray(job?.paymentSchedule?.items) && job.paymentSchedule.items.length > 0;
 }
