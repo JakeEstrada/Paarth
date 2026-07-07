@@ -768,16 +768,24 @@ interface SortablePaymentCardProps {
   payment: CommissionPaymentDisplay;
   jobId: string;
   draggable: boolean;
+  layout?: 'vertical' | 'horizontal';
   onUpdateAmount: (scheduleIndex: number, value: string) => void;
   onUpdateDate: (scheduleIndex: number, value: string) => void;
   onUpdateCheck: (scheduleIndex: number, value: string) => void;
   onUpdateSalesmanPaid: (scheduleIndex: number, paid: boolean) => void;
 }
 
+const paymentFieldSx = {
+  '& input[type=number]': { MozAppearance: 'textfield' },
+  '& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button':
+    { WebkitAppearance: 'none', margin: 0 },
+};
+
 function SortablePaymentCard({
   payment,
   jobId,
   draggable,
+  layout = 'horizontal',
   onUpdateAmount,
   onUpdateDate,
   onUpdateCheck,
@@ -804,16 +812,17 @@ function SortablePaymentCard({
     opacity: isDragging ? 0.85 : 1,
   };
 
+  const isVertical = layout === 'vertical';
+
   return (
     <Box
       ref={setNodeRef}
       style={style}
       sx={{
-        minWidth: 196,
-        flex: '0 0 auto',
-        p: 1,
+        ...(isVertical
+          ? { width: '100%', p: 1.5, borderRadius: 1.5 }
+          : { minWidth: 196, flex: '0 0 auto', p: 1, borderRadius: 1 }),
         border: 1,
-        borderRadius: 1,
         ...cardStyle,
       }}
     >
@@ -823,10 +832,10 @@ function SortablePaymentCard({
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 0.5,
-          mb: 0.5,
+          mb: isVertical ? 1 : 0.5,
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
           {draggable && (
             <Box
               {...attributes}
@@ -841,10 +850,14 @@ function SortablePaymentCard({
               }}
               aria-label="Drag to reorder payment"
             >
-              <DragIndicatorIcon sx={{ fontSize: 16 }} />
+              <DragIndicatorIcon sx={{ fontSize: isVertical ? 20 : 16 }} />
             </Box>
           )}
-          <Typography variant="caption" sx={{ fontWeight: 700 }} noWrap>
+          <Typography
+            variant={isVertical ? 'subtitle2' : 'caption'}
+            sx={{ fontWeight: 700 }}
+            noWrap={!isVertical}
+          >
             {payment.label}
           </Typography>
         </Box>
@@ -853,70 +866,101 @@ function SortablePaymentCard({
           variant={statusChip.variant}
           label={statusChip.label}
           color={statusChip.color}
-          sx={{ height: 20, fontSize: '0.65rem', flexShrink: 0 }}
+          sx={{ height: 22, fontSize: '0.7rem', flexShrink: 0 }}
         />
       </Box>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: 'block', mb: isVertical ? 1.25 : 0.75 }}
+      >
         Job payment: ${formatMoney(payment.scheduledAmount)}
         {!payment.salesmanPaid && payment.potentialAmount > 0
           ? ` · Commission due: $${formatMoney(payment.potentialAmount)}`
           : ''}
       </Typography>
-      <TextField
-        size="small"
-        fullWidth
-        value={payment.displayAmount}
-        onChange={(e) => onUpdateAmount(payment.scheduleIndex, e.target.value)}
-        placeholder={
-          payment.status === 'paid'
-            ? 'Amount'
-            : payment.potentialAmount > 0
-              ? `Auto: $${formatMoney(payment.potentialAmount)}`
-              : 'Amount'
+      <Box
+        sx={
+          isVertical
+            ? {
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  sm: 'repeat(2, minmax(0, 1fr))',
+                  md: 'minmax(140px, 1fr) minmax(148px, 1fr) minmax(120px, 1fr) auto',
+                },
+                gap: 1.5,
+                alignItems: 'center',
+              }
+            : undefined
         }
-        sx={{ mb: 0.75 }}
-        InputProps={{
-          startAdornment: <InputAdornment position="start">$</InputAdornment>,
-          inputProps: { inputMode: 'decimal' },
-        }}
-      />
-      <TextField
-        size="small"
-        fullWidth
-        type="date"
-        value={payment.date}
-        onChange={(e) => onUpdateDate(payment.scheduleIndex, e.target.value)}
-        sx={{ mb: 0.75 }}
-        InputLabelProps={{ shrink: true }}
-      />
-      <TextField
-        size="small"
-        fullWidth
-        value={payment.check}
-        onChange={(e) => onUpdateCheck(payment.scheduleIndex, e.target.value)}
-        placeholder="Check #"
-      />
-      <FormControlLabel
-        sx={{ mt: 0.75, ml: 0, mr: 0 }}
-        control={
-          <Checkbox
-            size="small"
-            checked={payment.salesmanPaid}
-            onChange={(e) => onUpdateSalesmanPaid(payment.scheduleIndex, e.target.checked)}
-          />
-        }
-        label={
-          <Typography variant="caption" sx={{ fontWeight: 600 }}>
-            Salesman paid
-          </Typography>
-        }
-      />
+      >
+        <TextField
+          size="small"
+          fullWidth
+          label={isVertical ? 'Commission amount' : undefined}
+          value={payment.displayAmount}
+          onChange={(e) => onUpdateAmount(payment.scheduleIndex, e.target.value)}
+          placeholder={
+            payment.status === 'paid'
+              ? 'Amount'
+              : payment.potentialAmount > 0
+                ? `Auto: $${formatMoney(payment.potentialAmount)}`
+                : 'Amount'
+          }
+          sx={{ ...(isVertical ? paymentFieldSx : {}), mb: isVertical ? 0 : 0.75 }}
+          InputProps={{
+            startAdornment: <InputAdornment position="start">$</InputAdornment>,
+            inputProps: { inputMode: 'decimal' },
+          }}
+        />
+        <TextField
+          size="small"
+          fullWidth
+          type="date"
+          label={isVertical ? 'Paid date' : undefined}
+          value={payment.date}
+          onChange={(e) => onUpdateDate(payment.scheduleIndex, e.target.value)}
+          sx={{ mb: isVertical ? 0 : 0.75 }}
+          InputLabelProps={{ shrink: true }}
+        />
+        <TextField
+          size="small"
+          fullWidth
+          label={isVertical ? 'Check #' : undefined}
+          value={payment.check}
+          onChange={(e) => onUpdateCheck(payment.scheduleIndex, e.target.value)}
+          placeholder="Check #"
+          sx={isVertical ? paymentFieldSx : undefined}
+        />
+        <FormControlLabel
+          sx={{
+            mt: isVertical ? 0 : 0.75,
+            ml: 0,
+            mr: 0,
+            justifySelf: isVertical ? { md: 'start' } : undefined,
+          }}
+          control={
+            <Checkbox
+              size="small"
+              checked={payment.salesmanPaid}
+              onChange={(e) => onUpdateSalesmanPaid(payment.scheduleIndex, e.target.checked)}
+            />
+          }
+          label={
+            <Typography variant={isVertical ? 'body2' : 'caption'} sx={{ fontWeight: 600 }}>
+              Salesman paid
+            </Typography>
+          }
+        />
+      </Box>
     </Box>
   );
 }
 
 interface JobPaymentCardsProps {
   row: CommissionTableRow;
+  layout?: 'vertical' | 'horizontal';
   onReorder: (jobId: string, order: number[]) => void;
   onUpdateAmount: (jobId: string, scheduleIndex: number, value: string) => void;
   onUpdateDate: (jobId: string, scheduleIndex: number, value: string) => void;
@@ -927,6 +971,7 @@ interface JobPaymentCardsProps {
 
 function JobPaymentCards({
   row,
+  layout = 'horizontal',
   onReorder,
   onUpdateAmount,
   onUpdateDate,
@@ -938,9 +983,11 @@ function JobPaymentCards({
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
 
+  const isVertical = layout === 'vertical';
   const activePayments = row.payments.filter((payment) => !payment.salesmanPaid);
   const settledPayments = row.payments.filter((payment) => payment.salesmanPaid);
   const sortableIds = activePayments.map((payment) => `${row.jobId}-${payment.scheduleIndex}`);
+  const sortStrategy = isVertical ? verticalListSortingStrategy : horizontalListSortingStrategy;
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -956,14 +1003,24 @@ function JobPaymentCards({
   };
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, pb: 0.5, width: 'max-content' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: isVertical ? 'column' : 'row',
+        alignItems: 'flex-start',
+        gap: isVertical ? 1.5 : 1,
+        pb: 0.5,
+        width: isVertical ? '100%' : 'max-content',
+      }}
+    >
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={sortableIds} strategy={horizontalListSortingStrategy}>
+        <SortableContext items={sortableIds} strategy={sortStrategy}>
           {activePayments.map((payment) => (
             <SortablePaymentCard
               key={`${row.jobId}-${payment.scheduleIndex}`}
               payment={payment}
               jobId={row.jobId}
+              layout={layout}
               draggable
               onUpdateAmount={(scheduleIndex, value) => onUpdateAmount(row.jobId, scheduleIndex, value)}
               onUpdateDate={(scheduleIndex, value) => onUpdateDate(row.jobId, scheduleIndex, value)}
@@ -980,6 +1037,7 @@ function JobPaymentCards({
           key={`${row.jobId}-${payment.scheduleIndex}-settled`}
           payment={payment}
           jobId={row.jobId}
+          layout={layout}
           draggable={false}
           onUpdateAmount={(scheduleIndex, value) => onUpdateAmount(row.jobId, scheduleIndex, value)}
           onUpdateDate={(scheduleIndex, value) => onUpdateDate(row.jobId, scheduleIndex, value)}
@@ -1051,6 +1109,8 @@ function CommissionPaymentModal({
           minHeight: { xs: '88vh', sm: '80vh' },
           maxHeight: '94vh',
           borderTop: `5px solid ${accent}`,
+          display: 'flex',
+          flexDirection: 'column',
         },
       }}
     >
@@ -1103,7 +1163,16 @@ function CommissionPaymentModal({
           <CloseIcon />
         </IconButton>
       </DialogTitle>
-      <DialogContent dividers sx={{ px: { xs: 2, sm: 3 }, py: 2.5, minHeight: 360 }}>
+      <DialogContent
+        dividers
+        sx={{
+          px: { xs: 2, sm: 3 },
+          py: 2.5,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
         <Box
           sx={{
             display: 'flex',
@@ -1139,7 +1208,7 @@ function CommissionPaymentModal({
                   endAdornment: <InputAdornment position="end">%</InputAdornment>,
                   inputProps: { inputMode: 'decimal', min: 0, step: 0.1 },
                 }}
-                sx={{ width: 88 }}
+                sx={{ width: 96, ...paymentFieldSx }}
               />
               {row.rateOverridden && (
                 <Tooltip title="Use default rate">
@@ -1177,9 +1246,10 @@ function CommissionPaymentModal({
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ overflowX: 'auto', pb: 1, minHeight: 280 }}>
+        <Box sx={{ flex: 1, overflowY: 'auto', width: '100%', minHeight: 0, pr: 0.5 }}>
           <JobPaymentCards
             row={row}
+            layout="vertical"
             onReorder={onReorder}
             onUpdateAmount={onUpdateAmount}
             onUpdateDate={onUpdateDate}
