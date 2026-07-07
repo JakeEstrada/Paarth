@@ -25,6 +25,8 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  Tab,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -61,7 +63,10 @@ const COMMISSION_LOGS_STORAGE_KEY = 'financeHubCommissionLogsRows';
 const DEFAULT_COMMISSION_RATE_KEY = 'financeHubCommissionDefaultRate';
 const COMMISSION_OVERVIEW_JOB_ORDER_KEY = 'financeHubCommissionOverviewJobOrder';
 const COMMISSION_SHOW_ZERO_RATE_KEY = 'financeHubCommissionShowZeroRate';
+const COMMISSION_PAGE_TAB_KEY = 'financeHubCommissionPageTab';
 const DEFAULT_COMMISSION_RATE = 5;
+
+type CommissionPageTab = 'jobs' | 'checks';
 
 const ESTIMATE_STAGE_LABELS: Record<string, string> = {
   APPOINTMENT_SCHEDULED: 'Appointment',
@@ -199,6 +204,188 @@ function readShowZeroCommissionJobs(): boolean {
   } catch {
     return false;
   }
+}
+
+function readCommissionPageTab(): CommissionPageTab {
+  if (typeof window === 'undefined') return 'jobs';
+  try {
+    return window.localStorage.getItem(COMMISSION_PAGE_TAB_KEY) === 'checks' ? 'checks' : 'jobs';
+  } catch {
+    return 'jobs';
+  }
+}
+
+function parseDateSortValue(value: string): number {
+  if (!value) return 0;
+  const time = new Date(`${value}T12:00:00`).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function formatCheckDisplayDate(value: string): string {
+  if (!value) return '—';
+  try {
+    return format(new Date(`${value}T12:00:00`), 'MMM dd, yyyy');
+  } catch {
+    return value;
+  }
+}
+
+interface CommissionCheckEntry {
+  jobId: string;
+  customerName: string;
+  jobLabel: string;
+  paymentLabel: string;
+  amount: number;
+  check: string;
+  date: string;
+  salesmanPaid: boolean;
+}
+
+function buildCheckEntries(rows: CommissionTableRow[]): CommissionCheckEntry[] {
+  const entries: CommissionCheckEntry[] = [];
+
+  for (const row of rows) {
+    for (const payment of row.payments) {
+      const check = String(payment.check || '').trim();
+      const date = String(payment.date || '').trim();
+      const amount =
+        payment.amount > 0
+          ? payment.amount
+          : payment.potentialAmount > 0
+            ? payment.potentialAmount
+            : 0;
+
+      if (!payment.salesmanPaid && !check && !date) continue;
+
+      entries.push({
+        jobId: row.jobId,
+        customerName: row.customerName,
+        jobLabel: row.jobLabel,
+        paymentLabel: payment.label,
+        amount: roundMoney(amount),
+        check,
+        date,
+        salesmanPaid: payment.salesmanPaid,
+      });
+    }
+  }
+
+  return entries.sort((a, b) => {
+    const dateDiff = parseDateSortValue(b.date) - parseDateSortValue(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    return compareCustomerName(
+      { customerName: a.customerName } as CommissionTableRow,
+      { customerName: b.customerName } as CommissionTableRow,
+    );
+  });
+}
+
+function matchesCheckSearch(entry: CommissionCheckEntry, rawQuery: string): boolean {
+  const q = String(rawQuery || '').trim().toLowerCase();
+  if (!q) return true;
+
+  const qNormalized = q.replace(/[,$]/g, '');
+  const haystackParts: unknown[] = [
+    entry.customerName,
+    entry.jobLabel,
+    entry.paymentLabel,
+    entry.check,
+    entry.date,
+    formatCheckDisplayDate(entry.date),
+    ...moneySearchTokens(entry.amount),
+    entry.salesmanPaid ? 'salesman paid' : 'unpaid',
+  ];
+
+  const haystack = haystackParts
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  const haystackNormalized = haystack.replace(/[,$]/g, '');
+
+  if (haystack.includes(q)) return true;
+  return qNormalized.length > 0 && haystackNormalized.includes(qNormalized);
+}
+
+interface CommissionChecksTableProps {
+  entries: CommissionCheckEntry[];
+  onOpenJob: (jobId: string) => void;
+}
+
+function CommissionChecksTable({ entries, onOpenJob }: CommissionChecksTableProps) {
+  const theme = useTheme();
+
+  return (
+    <Table stickyHeader size="small" sx={{ minWidth: 900 }}>
+      <TableHead>
+        <TableRow>
+          <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
+            Paid date
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
+            Customer
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
+            Job
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
+            Payment
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 110, bgcolor: 'background.paper' }} align="right">
+            Amount
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
+            Check / cash
+          </TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {entries.map((entry, index) => {
+          const isCash = /^cash$/i.test(entry.check);
+          return (
+            <TableRow
+              key={`${entry.jobId}-${entry.paymentLabel}-${index}`}
+              hover
+              onClick={() => onOpenJob(entry.jobId)}
+              sx={{
+                cursor: 'pointer',
+                ...(entry.salesmanPaid
+                  ? {
+                      bgcolor: alpha(
+                        theme.palette.success.main,
+                        theme.palette.mode === 'dark' ? 0.08 : 0.05,
+                      ),
+                    }
+                  : undefined),
+              }}
+            >
+              <TableCell>{formatCheckDisplayDate(entry.date)}</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>{entry.customerName}</TableCell>
+              <TableCell>{entry.jobLabel || 'Untitled'}</TableCell>
+              <TableCell>{entry.paymentLabel}</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600 }}>
+                {formatMoney(entry.amount)}
+              </TableCell>
+              <TableCell>
+                {entry.check ? (
+                  isCash ? (
+                    <Chip size="small" label="Cash" color="default" sx={{ height: 24 }} />
+                  ) : (
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {entry.check}
+                    </Typography>
+                  )
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    —
+                  </Typography>
+                )}
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
 }
 
 function hasExplicitManualAmount(saved: CommissionPaymentLocal): boolean {
@@ -1403,6 +1590,7 @@ function CommissionLogsPage() {
   const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());
   const [overviewJobOrder, setOverviewJobOrder] = useState<string[]>(() => readOverviewJobOrder());
   const [showZeroCommissionJobs, setShowZeroCommissionJobs] = useState(() => readShowZeroCommissionJobs());
+  const [pageTab, setPageTab] = useState<CommissionPageTab>(() => readCommissionPageTab());
   const [paymentModalJobId, setPaymentModalJobId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
@@ -1579,11 +1767,33 @@ function CommissionLogsPage() {
     [commissionTableRows, overviewJobOrder],
   );
 
-  const visibleTableRows = useMemo(() => {
+  const filteredJobRows = useMemo(() => {
     const searched = overviewTableRows.filter((row) => matchesCommissionSearch(row, searchQuery));
     if (showZeroCommissionJobs) return searched;
     return searched.filter((row) => !isZeroCommissionJob(row));
   }, [overviewTableRows, searchQuery, showZeroCommissionJobs]);
+
+  const visibleTableRows = filteredJobRows;
+
+  const checkSourceRows = useMemo(() => {
+    if (showZeroCommissionJobs) return commissionTableRows;
+    return commissionTableRows.filter((row) => !isZeroCommissionJob(row));
+  }, [commissionTableRows, showZeroCommissionJobs]);
+
+  const checkEntries = useMemo(
+    () => buildCheckEntries(checkSourceRows),
+    [checkSourceRows],
+  );
+
+  const filteredCheckEntries = useMemo(
+    () => checkEntries.filter((entry) => matchesCheckSearch(entry, searchQuery)),
+    [checkEntries, searchQuery],
+  );
+
+  const checkEntriesTotal = useMemo(
+    () => roundMoney(filteredCheckEntries.reduce((sum, entry) => sum + entry.amount, 0)),
+    [filteredCheckEntries],
+  );
 
   const paymentModalRow = useMemo(
     () => commissionTableRows.find((row) => row.jobId === paymentModalJobId) ?? null,
@@ -1617,6 +1827,11 @@ function CommissionLogsPage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(COMMISSION_SHOW_ZERO_RATE_KEY, String(showZeroCommissionJobs));
   }, [showZeroCommissionJobs]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(COMMISSION_PAGE_TAB_KEY, pageTab);
+  }, [pageTab]);
 
   const loadCommissionJobs = useCallback(async (signal?: { cancelled: boolean }) => {
     try {
@@ -1704,8 +1919,9 @@ function CommissionLogsPage() {
                 Commission Logs
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Active jobs on top. At the bottom: underpaid (all tiers paid), then overpaid (red),
-                then settled (green). Click a row to edit.
+                {pageTab === 'checks'
+                  ? 'All commission checks and cash payments by date — click a row to open the job.'
+                  : 'Active jobs on top. At the bottom: underpaid (all tiers paid), then overpaid (red), then settled (green). Click a row to edit.'}
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1740,11 +1956,24 @@ function CommissionLogsPage() {
             </Box>
           </Box>
 
+          <Tabs
+            value={pageTab}
+            onChange={(_, value: CommissionPageTab) => setPageTab(value)}
+            sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+          >
+            <Tab value="jobs" label="Jobs" />
+            <Tab value="checks" label="Checks / cash" />
+          </Tabs>
+
           <TextField
             size="small"
             fullWidth
-            label="Search commission logs"
-            placeholder="Customer, address, job, amount, payment, check #..."
+            label={pageTab === 'checks' ? 'Search checks / cash' : 'Search commission logs'}
+            placeholder={
+              pageTab === 'checks'
+                ? 'Customer, job, check #, cash, date, amount...'
+                : 'Customer, address, job, amount, payment, check #...'
+            }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             sx={{ mb: 2, maxWidth: 420 }}
@@ -1777,7 +2006,8 @@ function CommissionLogsPage() {
             <Typography variant="body2" color="text.secondary">
               No jobs found.
             </Typography>
-          ) : visibleTableRows.length === 0 ? (
+          ) : pageTab === 'jobs' ? (
+            visibleTableRows.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               No jobs match &ldquo;{searchQuery.trim()}&rdquo;. Try a different search or clear the filter.
             </Typography>
@@ -1788,7 +2018,7 @@ function CommissionLogsPage() {
                 borderColor: 'divider',
                 borderRadius: 1.5,
                 overflow: 'auto',
-                maxHeight: 'calc(100vh - 240px)',
+                maxHeight: 'calc(100vh - 280px)',
               }}
             >
               <CommissionOverviewTable
@@ -1796,6 +2026,34 @@ function CommissionLogsPage() {
                 onReorder={setOverviewJobOrder}
                 onOpenPayments={(row) => setPaymentModalJobId(row.jobId)}
               />
+            </Box>
+          )
+          ) : filteredCheckEntries.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              {checkEntries.length === 0
+                ? 'No checks or cash payments recorded yet.'
+                : `No checks match "${searchQuery.trim()}". Try a different search or clear the filter.`}
+            </Typography>
+          ) : (
+            <Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                {filteredCheckEntries.length} payment{filteredCheckEntries.length === 1 ? '' : 's'} ·{' '}
+                Total {formatMoney(checkEntriesTotal)}
+              </Typography>
+              <Box
+                sx={{
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 1.5,
+                  overflow: 'auto',
+                  maxHeight: 'calc(100vh - 300px)',
+                }}
+              >
+                <CommissionChecksTable
+                  entries={filteredCheckEntries}
+                  onOpenJob={(jobId) => setPaymentModalJobId(jobId)}
+                />
+              </Box>
             </Box>
           )}
         </CardContent>
