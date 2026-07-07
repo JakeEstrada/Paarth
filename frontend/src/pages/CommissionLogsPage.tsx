@@ -3,7 +3,7 @@
  * Route: /commission-logs
  * Docs: ../../../docs/PAGES.md#commissionlogspagetsx
  */
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, Fragment, type CSSProperties } from 'react';
 import {
   alpha,
   Box,
@@ -27,6 +27,7 @@ import {
   TableRow,
   Tab,
   Tabs,
+  Collapse,
   TextField,
   Tooltip,
   Typography,
@@ -36,6 +37,8 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import CloseIcon from '@mui/icons-material/Close';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
   DndContext,
   PointerSensor,
@@ -241,6 +244,70 @@ interface CommissionCheckEntry {
   salesmanPaid: boolean;
 }
 
+interface CommissionCheckGroup {
+  id: string;
+  checkKey: string;
+  checkDisplay: string;
+  isCash: boolean;
+  date: string;
+  totalAmount: number;
+  entries: CommissionCheckEntry[];
+}
+
+function normalizeCheckKey(check: string): string {
+  const trimmed = String(check || '').trim();
+  if (!trimmed) return '__none__';
+  if (/^cash$/i.test(trimmed)) return '__cash__';
+  return trimmed;
+}
+
+function getCheckDisplayLabel(checkKey: string, rawCheck: string): string {
+  if (checkKey === '__cash__') return 'Cash';
+  if (checkKey === '__none__') return 'No check #';
+  return rawCheck || checkKey;
+}
+
+function groupCheckEntries(entries: CommissionCheckEntry[]): CommissionCheckGroup[] {
+  const map = new Map<string, CommissionCheckGroup>();
+
+  for (const entry of entries) {
+    const checkKey = normalizeCheckKey(entry.check);
+    let group = map.get(checkKey);
+    if (!group) {
+      group = {
+        id: checkKey,
+        checkKey,
+        checkDisplay: getCheckDisplayLabel(checkKey, entry.check),
+        isCash: checkKey === '__cash__',
+        date: entry.date,
+        totalAmount: 0,
+        entries: [],
+      };
+      map.set(checkKey, group);
+    }
+
+    group.entries.push(entry);
+    group.totalAmount = roundMoney(group.totalAmount + entry.amount);
+    if (parseDateSortValue(entry.date) > parseDateSortValue(group.date)) {
+      group.date = entry.date;
+    }
+  }
+
+  for (const group of map.values()) {
+    group.entries.sort((a, b) => {
+      const dateDiff = parseDateSortValue(b.date) - parseDateSortValue(a.date);
+      if (dateDiff !== 0) return dateDiff;
+      return String(a.customerName || '').localeCompare(String(b.customerName || ''));
+    });
+  }
+
+  return Array.from(map.values()).sort((a, b) => {
+    const dateDiff = parseDateSortValue(b.date) - parseDateSortValue(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    return a.checkDisplay.localeCompare(b.checkDisplay);
+  });
+}
+
 function buildCheckEntries(rows: CommissionTableRow[]): CommissionCheckEntry[] {
   const entries: CommissionCheckEntry[] = [];
 
@@ -306,81 +373,145 @@ function matchesCheckSearch(entry: CommissionCheckEntry, rawQuery: string): bool
   return qNormalized.length > 0 && haystackNormalized.includes(qNormalized);
 }
 
+function matchesCheckGroup(group: CommissionCheckGroup, rawQuery: string): boolean {
+  const q = String(rawQuery || '').trim();
+  if (!q) return true;
+
+  const groupHaystack = [
+    group.checkDisplay,
+    group.date,
+    formatCheckDisplayDate(group.date),
+    String(group.entries.length),
+    ...moneySearchTokens(group.totalAmount),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .join(' ');
+
+  if (groupHaystack.includes(q.toLowerCase())) return true;
+  return group.entries.some((entry) => matchesCheckSearch(entry, rawQuery));
+}
+
 interface CommissionChecksTableProps {
-  entries: CommissionCheckEntry[];
+  groups: CommissionCheckGroup[];
   onOpenJob: (jobId: string) => void;
 }
 
-function CommissionChecksTable({ entries, onOpenJob }: CommissionChecksTableProps) {
+function CommissionChecksTable({ groups, onOpenJob }: CommissionChecksTableProps) {
   const theme = useTheme();
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const toggleGroup = (groupId: string) => {
+    setExpanded((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
 
   return (
-    <Table stickyHeader size="small" sx={{ minWidth: 900 }}>
+    <Table stickyHeader size="small" sx={{ minWidth: 760 }}>
       <TableHead>
         <TableRow>
+          <TableCell sx={{ width: 44, bgcolor: 'background.paper' }} />
           <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
             Paid date
-          </TableCell>
-          <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
-            Customer
-          </TableCell>
-          <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
-            Job
-          </TableCell>
-          <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
-            Payment
-          </TableCell>
-          <TableCell sx={{ fontWeight: 700, minWidth: 110, bgcolor: 'background.paper' }} align="right">
-            Amount
           </TableCell>
           <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
             Check / cash
           </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }}>
+            Payments
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }} align="right">
+            Total
+          </TableCell>
         </TableRow>
       </TableHead>
       <TableBody>
-        {entries.map((entry, index) => {
-          const isCash = /^cash$/i.test(entry.check);
+        {groups.map((group) => {
+          const isOpen = Boolean(expanded[group.id]);
           return (
-            <TableRow
-              key={`${entry.jobId}-${entry.paymentLabel}-${index}`}
-              hover
-              onClick={() => onOpenJob(entry.jobId)}
-              sx={{
-                cursor: 'pointer',
-                ...(entry.salesmanPaid
-                  ? {
-                      bgcolor: alpha(
-                        theme.palette.success.main,
-                        theme.palette.mode === 'dark' ? 0.08 : 0.05,
-                      ),
-                    }
-                  : undefined),
-              }}
-            >
-              <TableCell>{formatCheckDisplayDate(entry.date)}</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>{entry.customerName}</TableCell>
-              <TableCell>{entry.jobLabel || 'Untitled'}</TableCell>
-              <TableCell>{entry.paymentLabel}</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 600 }}>
-                {formatMoney(entry.amount)}
-              </TableCell>
-              <TableCell>
-                {entry.check ? (
-                  isCash ? (
-                    <Chip size="small" label="Cash" color="default" sx={{ height: 24 }} />
+            <Fragment key={group.id}>
+              <TableRow
+                hover
+                onClick={() => toggleGroup(group.id)}
+                sx={{
+                  cursor: 'pointer',
+                  bgcolor: alpha(
+                    theme.palette.primary.main,
+                    theme.palette.mode === 'dark' ? 0.08 : 0.04,
+                  ),
+                }}
+              >
+                <TableCell sx={{ py: 0.75 }}>
+                  <IconButton
+                    size="small"
+                    aria-label={isOpen ? 'Collapse check details' : 'Expand check details'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleGroup(group.id);
+                    }}
+                  >
+                    {isOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                  </IconButton>
+                </TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{formatCheckDisplayDate(group.date)}</TableCell>
+                <TableCell>
+                  {group.isCash ? (
+                    <Chip size="small" label="Cash" sx={{ height: 24, fontWeight: 600 }} />
                   ) : (
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {entry.check}
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      {group.checkDisplay}
                     </Typography>
-                  )
-                ) : (
+                  )}
+                </TableCell>
+                <TableCell>
                   <Typography variant="body2" color="text.secondary">
-                    —
+                    {group.entries.length} payment{group.entries.length === 1 ? '' : 's'}
                   </Typography>
-                )}
-              </TableCell>
-            </TableRow>
+                </TableCell>
+                <TableCell align="right">
+                  <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                    {formatMoney(group.totalAmount)}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+              <TableRow key={`${group.id}-details`}>
+                <TableCell colSpan={5} sx={{ py: 0, borderBottom: isOpen ? undefined : 0 }}>
+                  <Collapse in={isOpen} timeout="auto" unmountOnExit>
+                    <Box sx={{ py: 1, pl: 1, pr: 1 }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 600 }}>Paid date</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Customer</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Job</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Payment</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">
+                              Amount
+                            </TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {group.entries.map((entry, index) => (
+                            <TableRow
+                              key={`${entry.jobId}-${entry.paymentLabel}-${index}`}
+                              hover
+                              onClick={() => onOpenJob(entry.jobId)}
+                              sx={{ cursor: 'pointer' }}
+                            >
+                              <TableCell>{formatCheckDisplayDate(entry.date)}</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>{entry.customerName}</TableCell>
+                              <TableCell>{entry.jobLabel || 'Untitled'}</TableCell>
+                              <TableCell>{entry.paymentLabel}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 600 }}>
+                                {formatMoney(entry.amount)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </Box>
+                  </Collapse>
+                </TableCell>
+              </TableRow>
+            </Fragment>
           );
         })}
       </TableBody>
@@ -1785,14 +1916,21 @@ function CommissionLogsPage() {
     [checkSourceRows],
   );
 
-  const filteredCheckEntries = useMemo(
-    () => checkEntries.filter((entry) => matchesCheckSearch(entry, searchQuery)),
-    [checkEntries, searchQuery],
+  const checkGroups = useMemo(() => groupCheckEntries(checkEntries), [checkEntries]);
+
+  const filteredCheckGroups = useMemo(
+    () => checkGroups.filter((group) => matchesCheckGroup(group, searchQuery)),
+    [checkGroups, searchQuery],
   );
 
   const checkEntriesTotal = useMemo(
-    () => roundMoney(filteredCheckEntries.reduce((sum, entry) => sum + entry.amount, 0)),
-    [filteredCheckEntries],
+    () => roundMoney(filteredCheckGroups.reduce((sum, group) => sum + group.totalAmount, 0)),
+    [filteredCheckGroups],
+  );
+
+  const filteredCheckPaymentsCount = useMemo(
+    () => filteredCheckGroups.reduce((sum, group) => sum + group.entries.length, 0),
+    [filteredCheckGroups],
   );
 
   const paymentModalRow = useMemo(
@@ -1920,7 +2058,7 @@ function CommissionLogsPage() {
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {pageTab === 'checks'
-                  ? 'All commission checks and cash payments by date — click a row to open the job.'
+                  ? 'Checks and cash grouped by number — expand for payment details, click a payment to open the job.'
                   : 'Active jobs on top. At the bottom: underpaid (all tiers paid), then overpaid (red), then settled (green). Click a row to edit.'}
               </Typography>
             </Box>
@@ -2028,7 +2166,7 @@ function CommissionLogsPage() {
               />
             </Box>
           )
-          ) : filteredCheckEntries.length === 0 ? (
+          ) : filteredCheckGroups.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               {checkEntries.length === 0
                 ? 'No checks or cash payments recorded yet.'
@@ -2037,7 +2175,8 @@ function CommissionLogsPage() {
           ) : (
             <Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                {filteredCheckEntries.length} payment{filteredCheckEntries.length === 1 ? '' : 's'} ·{' '}
+                {filteredCheckGroups.length} check{filteredCheckGroups.length === 1 ? '' : 's'} ·{' '}
+                {filteredCheckPaymentsCount} payment{filteredCheckPaymentsCount === 1 ? '' : 's'} ·{' '}
                 Total {formatMoney(checkEntriesTotal)}
               </Typography>
               <Box
@@ -2050,7 +2189,7 @@ function CommissionLogsPage() {
                 }}
               >
                 <CommissionChecksTable
-                  entries={filteredCheckEntries}
+                  groups={filteredCheckGroups}
                   onOpenJob={(jobId) => setPaymentModalJobId(jobId)}
                 />
               </Box>
