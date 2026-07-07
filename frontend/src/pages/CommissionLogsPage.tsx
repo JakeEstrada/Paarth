@@ -784,7 +784,23 @@ function applyOverviewJobOrder(
 function orderPaymentsForDisplay(
   payments: CommissionPaymentDisplay[],
   paymentOrder: number[] | undefined,
+  options?: { preserveOrder?: boolean },
 ): CommissionPaymentDisplay[] {
+  if (options?.preserveOrder) {
+    if (Array.isArray(paymentOrder) && paymentOrder.length > 0) {
+      const orderMap = new Map(paymentOrder.map((idx, order) => [idx, order]));
+      return [...payments].sort((a, b) => {
+        const aOrder = orderMap.get(a.scheduleIndex);
+        const bOrder = orderMap.get(b.scheduleIndex);
+        if (aOrder !== undefined && bOrder !== undefined) return aOrder - bOrder;
+        if (aOrder !== undefined) return -1;
+        if (bOrder !== undefined) return 1;
+        return a.scheduleIndex - b.scheduleIndex;
+      });
+    }
+    return [...payments].sort((a, b) => a.scheduleIndex - b.scheduleIndex);
+  }
+
   const active = payments.filter((payment) => !payment.salesmanPaid);
   const settled = payments.filter((payment) => payment.salesmanPaid);
 
@@ -1056,6 +1072,7 @@ function SortablePaymentCard({
 interface JobPaymentCardsProps {
   row: CommissionTableRow;
   layout?: 'vertical' | 'horizontal';
+  preserveOrder?: boolean;
   onReorder: (jobId: string, order: number[]) => void;
   onUpdateAmount: (jobId: string, scheduleIndex: number, value: string) => void;
   onUpdateDate: (jobId: string, scheduleIndex: number, value: string) => void;
@@ -1067,6 +1084,7 @@ interface JobPaymentCardsProps {
 function JobPaymentCards({
   row,
   layout = 'horizontal',
+  preserveOrder = false,
   onReorder,
   onUpdateAmount,
   onUpdateDate,
@@ -1079,8 +1097,15 @@ function JobPaymentCards({
   );
 
   const isVertical = layout === 'vertical';
-  const activePayments = row.payments.filter((payment) => !payment.salesmanPaid);
-  const settledPayments = row.payments.filter((payment) => payment.salesmanPaid);
+  const orderedPayments = preserveOrder
+    ? [...row.payments].sort((a, b) => a.scheduleIndex - b.scheduleIndex)
+    : row.payments;
+  const activePayments = preserveOrder
+    ? orderedPayments.filter((payment) => !payment.salesmanPaid)
+    : row.payments.filter((payment) => !payment.salesmanPaid);
+  const settledPayments = preserveOrder
+    ? []
+    : row.payments.filter((payment) => payment.salesmanPaid);
   const sortableIds = activePayments.map((payment) => `${row.jobId}-${payment.scheduleIndex}`);
   const sortStrategy = isVertical ? verticalListSortingStrategy : horizontalListSortingStrategy;
 
@@ -1097,6 +1122,22 @@ function JobPaymentCards({
     onReorder(row.jobId, nextOrder);
   };
 
+  const renderPaymentCard = (payment: CommissionPaymentDisplay, draggable: boolean, keySuffix = '') => (
+    <SortablePaymentCard
+      key={`${row.jobId}-${payment.scheduleIndex}${keySuffix}`}
+      payment={payment}
+      jobId={row.jobId}
+      layout={layout}
+      draggable={draggable}
+      onUpdateAmount={(scheduleIndex, value) => onUpdateAmount(row.jobId, scheduleIndex, value)}
+      onUpdateDate={(scheduleIndex, value) => onUpdateDate(row.jobId, scheduleIndex, value)}
+      onUpdateCheck={(scheduleIndex, value) => onUpdateCheck(row.jobId, scheduleIndex, value)}
+      onUpdateSalesmanPaid={(scheduleIndex, paid) =>
+        onUpdateSalesmanPaid(row.jobId, scheduleIndex, paid)
+      }
+    />
+  );
+
   return (
     <Box
       sx={{
@@ -1108,40 +1149,20 @@ function JobPaymentCards({
         width: isVertical ? '100%' : 'max-content',
       }}
     >
+      {preserveOrder ? (
+        <>
+          {orderedPayments.map((payment) => renderPaymentCard(payment, false))}
+        </>
+      ) : (
+        <>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={sortableIds} strategy={sortStrategy}>
-          {activePayments.map((payment) => (
-            <SortablePaymentCard
-              key={`${row.jobId}-${payment.scheduleIndex}`}
-              payment={payment}
-              jobId={row.jobId}
-              layout={layout}
-              draggable
-              onUpdateAmount={(scheduleIndex, value) => onUpdateAmount(row.jobId, scheduleIndex, value)}
-              onUpdateDate={(scheduleIndex, value) => onUpdateDate(row.jobId, scheduleIndex, value)}
-              onUpdateCheck={(scheduleIndex, value) => onUpdateCheck(row.jobId, scheduleIndex, value)}
-              onUpdateSalesmanPaid={(scheduleIndex, paid) =>
-                onUpdateSalesmanPaid(row.jobId, scheduleIndex, paid)
-              }
-            />
-          ))}
+          {activePayments.map((payment) => renderPaymentCard(payment, true))}
         </SortableContext>
       </DndContext>
-      {settledPayments.map((payment) => (
-        <SortablePaymentCard
-          key={`${row.jobId}-${payment.scheduleIndex}-settled`}
-          payment={payment}
-          jobId={row.jobId}
-          layout={layout}
-          draggable={false}
-          onUpdateAmount={(scheduleIndex, value) => onUpdateAmount(row.jobId, scheduleIndex, value)}
-          onUpdateDate={(scheduleIndex, value) => onUpdateDate(row.jobId, scheduleIndex, value)}
-          onUpdateCheck={(scheduleIndex, value) => onUpdateCheck(row.jobId, scheduleIndex, value)}
-          onUpdateSalesmanPaid={(scheduleIndex, paid) =>
-            onUpdateSalesmanPaid(row.jobId, scheduleIndex, paid)
-          }
-        />
-      ))}
+      {settledPayments.map((payment) => renderPaymentCard(payment, false, '-settled'))}
+        </>
+      )}
       {row.hasManualPayments && (
         <Tooltip title="Reset manual amounts to job payment status">
           <IconButton
@@ -1345,6 +1366,7 @@ function CommissionPaymentModal({
           <JobPaymentCards
             row={row}
             layout="vertical"
+            preserveOrder
             onReorder={onReorder}
             onUpdateAmount={onUpdateAmount}
             onUpdateDate={onUpdateDate}
@@ -1441,11 +1463,7 @@ function CommissionLogsPage() {
   };
 
   const handlePaymentAmountChange = (jobId: string, scheduleIndex: number, value: string) => {
-    if (value === '') {
-      updateCommissionPayment(jobId, scheduleIndex, { amount: '', amountManual: false }, { manual: false });
-    } else {
-      updateCommissionPayment(jobId, scheduleIndex, { amount: value }, { manual: true });
-    }
+    updateCommissionPayment(jobId, scheduleIndex, { amount: value }, { manual: true });
   };
 
   const handleSalesmanPaidChange = (jobId: string, scheduleIndex: number, paid: boolean) => {
@@ -1490,9 +1508,13 @@ function CommissionLogsPage() {
           let displayAmount: string | number = '';
           const amountManual = Boolean(saved.amountManual);
 
-          if (amountManual && hasExplicitManualAmount(saved)) {
+          if (amountManual) {
             displayAmount = saved.amount ?? '';
-            amount = roundMoney(Number(saved.amount || 0));
+            const rawAmount = saved.amount;
+            amount =
+              rawAmount === '' || rawAmount === undefined || rawAmount === null
+                ? 0
+                : roundMoney(Number(rawAmount) || 0);
           } else if (status === 'paid') {
             amount = potentialAmount;
             displayAmount = potentialAmount > 0 ? formatMoneyInput(potentialAmount) : '';

@@ -61,6 +61,7 @@ import EmployeeSmsRecipientField, {
 } from '../components/common/EmployeeSmsRecipientField';
 import PhoneTextField from '../components/common/PhoneTextField';
 import { formatNanpTyping, formatPhoneForDisplay, phoneSearchMatch } from '../utils/phoneFormat';
+import { formatMoney } from '../utils/paymentSchedule';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 
@@ -1459,7 +1460,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                                   )}
                                   {!hideSensitive && (job.valueEstimated || job.valueContracted) && (
                                     <Typography variant="caption" color="text.secondary">
-                                      ${((job.valueContracted || job.valueEstimated) / 1000).toFixed(0)}K
+                                      {formatMoney(job.valueContracted || job.valueEstimated)}
                                     </Typography>
                                   )}
                                   {hideSensitive && (
