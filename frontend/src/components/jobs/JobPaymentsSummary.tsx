@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Box, Paper, Typography } from '@mui/material';
+import { Alert, Box, Paper, Typography } from '@mui/material';
 import { formatMoney, getJobPaymentSummary } from '../../utils/paymentSchedule';
 
 export default function JobPaymentsSummary({ job }) {
@@ -10,6 +10,26 @@ export default function JobPaymentsSummary({ job }) {
       <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5 }}>
         Job payment summary
       </Typography>
+
+      {summary.hasStalePaidAmounts && (
+        <Alert severity="warning" sx={{ mb: 1.5 }}>
+          <Typography variant="body2">
+            A paid amount does not match its payment row (common after editing amounts). Summary
+            totals use each row&apos;s scheduled amount. Open the schedule below and save to fix
+            stored values.
+          </Typography>
+        </Alert>
+      )}
+
+      {summary.overpaidAmount > 0 && (
+        <Alert severity="error" sx={{ mb: 1.5 }}>
+          <Typography variant="body2">
+            Payments exceed the job total by {formatMoney(summary.overpaidAmount)}. Review the Paid
+            column on each row.
+          </Typography>
+        </Alert>
+      )}
+
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
         <Box>
           <Typography variant="caption" color="text.secondary">
@@ -29,6 +49,9 @@ export default function JobPaymentsSummary({ job }) {
           </Typography>
           <Typography variant="body1" sx={{ fontWeight: 700, color: 'success.main' }}>
             {formatMoney(summary.paidToDate)}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" display="block">
+            Sum of paid milestones
           </Typography>
         </Box>
         <Box>

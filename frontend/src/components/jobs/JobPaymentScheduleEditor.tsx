@@ -33,22 +33,16 @@ import {
   getContractBase,
   getJobPaymentSummary,
   getJobTotalWithChangeOrders,
+  getScheduleItemTotal,
+  inferDueTypeFromLabel,
+  isFinalScheduleItem,
+  resolveItemPaidAmount,
   resolvePaymentSchedule,
   roundMoney,
+  sanitizeScheduleItem,
   sumChangeOrdersForFinal,
   validatePaymentSchedule,
 } from '../../utils/paymentSchedule';
-
-function inferDueTypeFromLabel(label) {
-  const text = String(label || '').trim().toLowerCase();
-  if (/\bdeposit\b/.test(text)) return 'deposit';
-  if (/\bfinal\b/.test(text) || /\bbalance\b/.test(text)) return 'final';
-  return 'milestone';
-}
-
-function isFinalScheduleItem(item) {
-  return item?.dueType === 'final' || inferDueTypeFromLabel(item?.label) === 'final';
-}
 
 function statusChipProps(status) {
   if (status === 'paid') return { label: 'Paid', color: 'success' };
@@ -120,7 +114,12 @@ function normalizeItemForEditor(item, contractBase) {
 function cloneItemsFromJob(job) {
   const resolved = resolvePaymentSchedule(job);
   const base = getContractBase(job);
-  return withItemLocalIds(resolved.items.map((item) => normalizeItemForEditor(item, base)));
+  const coAddedToFinal = sumChangeOrdersForFinal(job);
+  return withItemLocalIds(
+    resolved.items.map((item) =>
+      sanitizeScheduleItem(normalizeItemForEditor(item, base), base, coAddedToFinal),
+    ),
+  );
 }
 
 export default function JobPaymentScheduleEditor({ job, onSave, saving = false, readOnly = false }) {
@@ -135,12 +134,13 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
 
   useEffect(() => {
     setItems(cloneItemsFromJob(job));
-    setDirty(false);
+    setDirty(getJobPaymentSummary(job).hasStalePaidAmounts);
   }, [job?._id]);
 
   useEffect(() => {
     if (dirty) return;
     setItems(cloneItemsFromJob(job));
+    setDirty(getJobPaymentSummary(job).hasStalePaidAmounts);
   }, [scheduleSyncKey, dirty, job]);
 
   const computedItems = useMemo(
@@ -162,27 +162,20 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
 
   const coAddedToFinal = useMemo(() => sumChangeOrdersForFinal(job), [job]);
 
-  const paymentSummary = useMemo(() => getJobPaymentSummary(job), [job, computedItems]);
+  const paymentSummary = useMemo(
+    () => getJobPaymentSummary({ ...job, paymentSchedule: { items: computedItems } }),
+    [job, computedItems],
+  );
 
-  const getBaseFinalAmount = (item) => {
-    if (item.amountType === 'percentage') {
-      const pct = Number(item.percentage);
-      if (Number.isFinite(pct)) return roundMoney(contractBase * (pct / 100));
-    }
-    return roundMoney(Number(item.amount) || 0);
-  };
-
-  const getEffectiveItemTotal = (item) => {
-    const stored = roundMoney(Number(item.amount) || 0);
-    if (!isFinalScheduleItem(item) || coAddedToFinal <= 0) return stored;
-    const baseFinal = getBaseFinalAmount(item);
-    if (stored > baseFinal + 0.01) return stored;
-    return roundMoney(stored + coAddedToFinal);
-  };
+  const getEffectiveItemTotal = (item) => getScheduleItemTotal(item, contractBase, coAddedToFinal);
 
   const updateItem = (index, patch) => {
     setItems((prev) =>
-      prev.map((item, idx) => (idx === index ? normalizeItemForEditor({ ...item, ...patch }, contractBase) : item)),
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        const next = normalizeItemForEditor({ ...item, ...patch }, contractBase);
+        return sanitizeScheduleItem(next, contractBase, coAddedToFinal);
+      }),
     );
     setDirty(true);
   };
@@ -192,8 +185,9 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
       prev.map((item, idx) => {
         if (idx !== index) return item;
         const computed = computeItemAmount(item, contractBase);
+        let next;
         if (nextType === 'fixed') {
-          return normalizeItemForEditor(
+          next = normalizeItemForEditor(
             {
               ...item,
               amountType: 'fixed',
@@ -202,19 +196,21 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
             },
             contractBase,
           );
+        } else {
+          const pct =
+            contractBase > 0
+              ? roundMoney((computed / contractBase) * 100)
+              : Number(item.percentage) || 0;
+          next = normalizeItemForEditor(
+            {
+              ...item,
+              amountType: 'percentage',
+              percentage: pct,
+            },
+            contractBase,
+          );
         }
-        const pct =
-          contractBase > 0
-            ? roundMoney((computed / contractBase) * 100)
-            : Number(item.percentage) || 0;
-        return normalizeItemForEditor(
-          {
-            ...item,
-            amountType: 'percentage',
-            percentage: pct,
-          },
-          contractBase,
-        );
+        return sanitizeScheduleItem(next, contractBase, coAddedToFinal);
       }),
     );
     setDirty(true);
@@ -249,7 +245,7 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
       const effectiveTotal = getEffectiveItemTotal(item);
       updateItem(index, {
         status: 'paid',
-        paidAmount: item.paidAmount > 0 ? item.paidAmount : effectiveTotal,
+        paidAmount: effectiveTotal,
         paidAt: item.paidAt || new Date().toISOString(),
       });
       return;
@@ -288,7 +284,7 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
       toast.error('Add at least one payment item before saving.');
       return;
     }
-    const payload = buildSchedulePayloadFromItems(items, contractBase);
+    const payload = buildSchedulePayloadFromItems(items, contractBase, job);
     await onSave(payload);
     setDirty(false);
   };
@@ -330,6 +326,24 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
               {warning}
             </Typography>
           ))}
+        </Alert>
+      )}
+
+      {paymentSummary.hasStalePaidAmounts && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <Typography variant="body2">
+            A paid amount no longer matches its row total (often after editing amounts or reordering
+            payments). Totals below use the scheduled amount for that row. Save to fix stored values.
+          </Typography>
+        </Alert>
+      )}
+
+      {paymentSummary.overpaidAmount > 0 && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          <Typography variant="body2">
+            Customer payments exceed the job total by {formatMoney(paymentSummary.overpaidAmount)}.
+            Check the Paid column on each row.
+          </Typography>
         </Alert>
       )}
 
@@ -487,12 +501,14 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                 </TableCell>
                 <TableCell>
                   {readOnly ? (
-                    item.status === 'paid' ? formatMoney(item.paidAmount || item.amount) : '—'
+                    item.status === 'paid'
+                      ? formatMoney(resolveItemPaidAmount(item, getEffectiveItemTotal(item)))
+                      : '—'
                   ) : item.status === 'paid' ? (
                     <TextField
                       size="small"
                       type="number"
-                      value={item.paidAmount ?? item.amount ?? ''}
+                      value={item.paidAmount ?? getEffectiveItemTotal(item) ?? ''}
                       onChange={(e) =>
                         updateItem(index, { paidAmount: parseFloat(e.target.value) || 0 })
                       }

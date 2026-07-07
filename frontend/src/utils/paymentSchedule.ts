@@ -69,23 +69,83 @@ export function sumChangeOrdersForFinal(job) {
   );
 }
 
+export function inferDueTypeFromLabel(label) {
+  const text = String(label || '').trim().toLowerCase();
+  if (/\bdeposit\b/.test(text)) return 'deposit';
+  if (/\bfinal\b/.test(text) || /\bbalance\b/.test(text)) return 'final';
+  return 'milestone';
+}
+
+export function isFinalScheduleItem(item) {
+  return item?.dueType === 'final' || inferDueTypeFromLabel(item?.label) === 'final';
+}
+
+function getScheduleItemBaseAmount(item, contractBase) {
+  if (item?.amountType === 'percentage') {
+    const pct = Number(item.percentage);
+    if (Number.isFinite(pct)) return roundMoney(contractBase * (pct / 100));
+  }
+  return roundMoney(Number(item?.amount) || computeItemAmount(item, contractBase));
+}
+
+/** Scheduled total for a row, including change orders rolled into final balance. */
+export function getScheduleItemTotal(item, contractBase, coAddedToFinal = 0) {
+  const stored = roundMoney(Number(item?.amount) || computeItemAmount(item, contractBase));
+  if (!isFinalScheduleItem(item) || coAddedToFinal <= 0) return stored;
+  const baseFinal = getScheduleItemBaseAmount(item, contractBase);
+  if (stored > baseFinal + 0.01) return stored;
+  return roundMoney(stored + coAddedToFinal);
+}
+
+/** Resolve how much counts toward paid-to-date for a paid milestone. */
+export function resolveItemPaidAmount(item, scheduledTotal) {
+  if (item?.status !== 'paid') return 0;
+  const scheduled = roundMoney(scheduledTotal);
+  const rawPaid = roundMoney(Number(item?.paidAmount) || scheduled);
+  if (rawPaid > scheduled + 0.01) return scheduled;
+  return rawPaid;
+}
+
+/** Keep paid amounts in sync when schedule rows are edited or re-saved. */
+export function sanitizeScheduleItem(item, contractBase, coAddedToFinal = 0) {
+  if (!item) return item;
+  const scheduledTotal = getScheduleItemTotal(item, contractBase, coAddedToFinal);
+  if (item.status !== 'paid') {
+    return { ...item, paidAmount: 0, paidAt: item.paidAt || null };
+  }
+  return {
+    ...item,
+    paidAmount: resolveItemPaidAmount({ ...item, amount: scheduledTotal }, scheduledTotal),
+  };
+}
+
+export function sanitizeScheduleItems(items, contractBase, coAddedToFinal = 0) {
+  return (items || []).map((item) => sanitizeScheduleItem(item, contractBase, coAddedToFinal));
+}
+
 export function getJobPaymentSummary(job) {
   const base = getContractBase(job);
-  const changeOrders = Array.isArray(job?.changeOrders) ? job.changeOrders : [];
   const coTotal = sumChangeOrders(job);
   const jobTotal = roundMoney(base + coTotal);
+  const coAddedToFinal = sumChangeOrdersForFinal(job);
+  const contractBase = base;
   const schedule = resolvePaymentSchedule(job);
   const items = schedule.items || [];
 
   let paidToDate = 0;
+  let hasStalePaidAmounts = false;
   for (const item of items) {
-    if (item.status === 'paid') {
-      paidToDate += roundMoney(Number(item.paidAmount) || Number(item.amount) || 0);
-    }
+    if (item.status !== 'paid') continue;
+    const scheduledTotal = getScheduleItemTotal(item, contractBase, coAddedToFinal);
+    const rawPaid = roundMoney(Number(item.paidAmount) || scheduledTotal);
+    if (rawPaid > scheduledTotal + 0.01) hasStalePaidAmounts = true;
+    paidToDate += resolveItemPaidAmount(item, scheduledTotal);
   }
+  paidToDate = roundMoney(paidToDate);
 
-  const coAddedToFinal = sumChangeOrdersForFinal(job);
-  const balanceDue = roundMoney(Math.max(0, jobTotal - paidToDate));
+  const balanceRaw = roundMoney(jobTotal - paidToDate);
+  const balanceDue = roundMoney(Math.max(0, balanceRaw));
+  const overpaidAmount = balanceRaw < -0.01 ? roundMoney(Math.abs(balanceRaw)) : 0;
 
   return {
     base,
@@ -94,6 +154,9 @@ export function getJobPaymentSummary(job) {
     jobTotal,
     paidToDate,
     balanceDue,
+    balanceRaw,
+    overpaidAmount,
+    hasStalePaidAmounts,
   };
 }
 
@@ -255,8 +318,10 @@ export function matchesStandard4060Template(items) {
   });
 }
 
-export function buildSchedulePayloadFromItems(items, contractBase) {
-  const itemsForSave = (items || []).map(({ localId, ...item }) => item);
+export function buildSchedulePayloadFromItems(items, contractBase, job = null) {
+  const coAddedToFinal = job ? sumChangeOrdersForFinal(job) : 0;
+  const sanitized = sanitizeScheduleItems(items, contractBase, coAddedToFinal);
+  const itemsForSave = sanitized.map(({ localId, ...item }) => item);
   const payload = buildCustomScheduleFromItems(itemsForSave, contractBase);
   payload.type = matchesStandard4060Template(itemsForSave) ? 'standard_40_60' : 'custom';
   return payload;
