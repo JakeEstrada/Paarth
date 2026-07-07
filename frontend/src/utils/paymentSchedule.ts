@@ -64,12 +64,6 @@ export function getJobPaymentSummary(job) {
     }
   }
 
-  for (const co of changeOrders) {
-    if (co.status === 'paid') {
-      paidToDate += roundMoney(Number(co.paidAmount) || Number(co.amount) || 0);
-    }
-  }
-
   const coAddedToFinal = sumChangeOrdersForFinal(job);
   const balanceDue = roundMoney(Math.max(0, jobTotal - paidToDate));
 
@@ -172,23 +166,25 @@ export function resolvePaymentScheduleForCommission(job) {
   return { ...resolved, items };
 }
 
-export function validatePaymentSchedule(schedule, contractBase) {
+export function validatePaymentSchedule(schedule, contractBase, jobTotal) {
   const items = schedule?.items || [];
   const scheduledTotal = roundMoney(
     items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
   );
-  const base = roundMoney(contractBase);
-  const remaining = roundMoney(base - scheduledTotal);
+  const target = roundMoney(
+    Number.isFinite(Number(jobTotal)) && Number(jobTotal) > 0 ? Number(jobTotal) : contractBase,
+  );
+  const remaining = roundMoney(target - scheduledTotal);
   const warnings = [];
 
-  if (base > 0 && Math.abs(remaining) > 0.01) {
+  if (target > 0 && Math.abs(remaining) > 0.01) {
     const diffLabel = remaining > 0 ? 'under-scheduled' : 'over-scheduled';
     warnings.push(
       `Payment schedule is ${diffLabel} by $${Math.abs(remaining).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
     );
   }
 
-  return { scheduledTotal, remaining, warnings, isBalanced: base <= 0 || Math.abs(remaining) <= 0.01 };
+  return { scheduledTotal, remaining, target, warnings, isBalanced: target <= 0 || Math.abs(remaining) <= 0.01 };
 }
 
 export function formatScheduleItemLabel(item) {

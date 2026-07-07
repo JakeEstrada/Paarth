@@ -487,7 +487,13 @@ function JobDetailModal({
   const handleSaveChangeOrders = async (changeOrders) => {
     try {
       setChangeOrdersSaving(true);
-      await onJobUpdate(jobId, { changeOrders });
+      await onJobUpdate(jobId, {
+        changeOrders: changeOrders.map((row) => ({
+          description: row.description,
+          amount: row.amount,
+          billing: row.billing,
+        })),
+      });
       await fetchJobDetails();
       toast.success('Change orders saved');
     } catch (error) {
