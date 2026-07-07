@@ -60,6 +60,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const COMMISSION_LOGS_STORAGE_KEY = 'financeHubCommissionLogsRows';
 const DEFAULT_COMMISSION_RATE_KEY = 'financeHubCommissionDefaultRate';
 const COMMISSION_OVERVIEW_JOB_ORDER_KEY = 'financeHubCommissionOverviewJobOrder';
+const COMMISSION_SHOW_ZERO_RATE_KEY = 'financeHubCommissionShowZeroRate';
 const DEFAULT_COMMISSION_RATE = 5;
 
 const ESTIMATE_STAGE_LABELS: Record<string, string> = {
@@ -188,6 +189,15 @@ function readOverviewJobOrder(): string[] {
     return Array.isArray(parsed) ? parsed.map(String) : [];
   } catch {
     return [];
+  }
+}
+
+function readShowZeroCommissionJobs(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(COMMISSION_SHOW_ZERO_RATE_KEY) === 'true';
+  } catch {
+    return false;
   }
 }
 
@@ -415,23 +425,31 @@ function isCommissionOverpaid(row: CommissionTableRow): boolean {
   return row.balance < -0.01;
 }
 
-function isOverviewPaidRow(row: CommissionTableRow): boolean {
-  if (isCommissionOverpaid(row)) return false;
-  if (row.payments.length > 0 && row.payments.every((payment) => payment.salesmanPaid)) {
-    return true;
+function isZeroCommissionJob(row: CommissionTableRow): boolean {
+  return row.commissionRate <= 0;
+}
+
+function allSalesmanPaid(row: CommissionTableRow): boolean {
+  return row.payments.length > 0 && row.payments.every((payment) => payment.salesmanPaid);
+}
+
+type CommissionRowBucket = 'active' | 'underpaid' | 'overpaid' | 'settled';
+
+function getCommissionRowBucket(row: CommissionTableRow): CommissionRowBucket {
+  if (isCommissionOverpaid(row)) return 'overpaid';
+  if (allSalesmanPaid(row) && row.balance > 0.01) return 'underpaid';
+  if (row.balance >= -0.01 && row.balance <= 0.01 && (allSalesmanPaid(row) || row.isRowSettled)) {
+    return 'settled';
   }
-  return row.isRowSettled;
+  return 'active';
+}
+
+function isOverviewActiveRow(row: CommissionTableRow): boolean {
+  return getCommissionRowBucket(row) === 'active';
 }
 
 function compareCustomerName(a: CommissionTableRow, b: CommissionTableRow): number {
   return String(a.customerName || '').localeCompare(String(b.customerName || ''));
-}
-
-function defaultCommissionRowSort(a: CommissionTableRow, b: CommissionTableRow): number {
-  const aPaid = isOverviewPaidRow(a);
-  const bPaid = isOverviewPaidRow(b);
-  if (aPaid !== bPaid) return aPaid ? 1 : -1;
-  return compareCustomerName(a, b);
 }
 
 function joinAddressParts(
@@ -534,30 +552,45 @@ function applyOverviewJobOrder(
   rows: CommissionTableRow[],
   order: string[] | undefined,
 ): CommissionTableRow[] {
-  const unpaid = rows.filter((row) => !isOverviewPaidRow(row));
-  const paid = rows.filter((row) => isOverviewPaidRow(row)).sort(compareCustomerName);
+  const buckets: Record<CommissionRowBucket, CommissionTableRow[]> = {
+    active: [],
+    underpaid: [],
+    overpaid: [],
+    settled: [],
+  };
 
-  let orderedUnpaid: CommissionTableRow[];
+  for (const row of rows) {
+    buckets[getCommissionRowBucket(row)].push(row);
+  }
+
+  let orderedActive: CommissionTableRow[];
   if (!order?.length) {
-    orderedUnpaid = [...unpaid].sort(compareCustomerName);
+    orderedActive = [...buckets.active].sort(compareCustomerName);
   } else {
-    const unpaidById = new Map(unpaid.map((row) => [row.jobId, row]));
+    const activeById = new Map(buckets.active.map((row) => [row.jobId, row]));
     const ordered: CommissionTableRow[] = [];
     const seen = new Set<string>();
 
     for (const id of order) {
-      const row = unpaidById.get(id);
+      const row = activeById.get(id);
       if (row) {
         ordered.push(row);
         seen.add(id);
       }
     }
 
-    const remaining = unpaid.filter((row) => !seen.has(row.jobId)).sort(compareCustomerName);
-    orderedUnpaid = [...ordered, ...remaining];
+    const remaining = buckets.active.filter((row) => !seen.has(row.jobId)).sort(compareCustomerName);
+    orderedActive = [...ordered, ...remaining];
   }
 
-  return [...orderedUnpaid, ...paid];
+  const sortAlpha = (list: CommissionTableRow[]) => [...list].sort(compareCustomerName);
+
+  return [
+    ...orderedActive,
+    ...sortAlpha(buckets.underpaid),
+    ...sortAlpha(buckets.overpaid),
+    ...sortAlpha(buckets.settled),
+  ];
 }
 
 function tierChipStyles(
@@ -653,7 +686,7 @@ function SortableOverviewRow({ row, onOpenPayments }: SortableOverviewRowProps) 
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: row.jobId, disabled: isOverviewPaidRow(row) });
+  } = useSortable({ id: row.jobId, disabled: !isOverviewActiveRow(row) });
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -669,25 +702,25 @@ function SortableOverviewRow({ row, onOpenPayments }: SortableOverviewRowProps) 
       onClick={() => onOpenPayments(row)}
       sx={{
         cursor: 'pointer',
-        ...(isCommissionOverpaid(row)
+        ...(getCommissionRowBucket(row) === 'overpaid'
           ? {
               bgcolor: alpha(
                 theme.palette.error.main,
                 theme.palette.mode === 'dark' ? 0.12 : 0.08,
               ),
             }
-          : row.isRowSettled
-          ? {
-              bgcolor: alpha(
-                theme.palette.success.main,
-                theme.palette.mode === 'dark' ? 0.1 : 0.06,
-              ),
-            }
-          : undefined),
+          : getCommissionRowBucket(row) === 'settled'
+            ? {
+                bgcolor: alpha(
+                  theme.palette.success.main,
+                  theme.palette.mode === 'dark' ? 0.1 : 0.06,
+                ),
+              }
+            : undefined),
       }}
     >
       <TableCell sx={{ width: 40, px: 0.5, verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
-        {!isOverviewPaidRow(row) ? (
+        {!isOverviewActiveRow(row) ? (
           <IconButton
             size="small"
             {...attributes}
@@ -743,7 +776,7 @@ function CommissionOverviewTable({ rows, onReorder, onOpenPayments }: Commission
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const unpaidRows = rows.filter((row) => !isOverviewPaidRow(row));
+    const unpaidRows = rows.filter((row) => isOverviewActiveRow(row));
     const unpaidIds = unpaidRows.map((row) => row.jobId);
     const oldIndex = unpaidIds.indexOf(String(active.id));
     const newIndex = unpaidIds.indexOf(String(over.id));
@@ -1369,6 +1402,7 @@ function CommissionLogsPage() {
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
   const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());
   const [overviewJobOrder, setOverviewJobOrder] = useState<string[]>(() => readOverviewJobOrder());
+  const [showZeroCommissionJobs, setShowZeroCommissionJobs] = useState(() => readShowZeroCommissionJobs());
   const [paymentModalJobId, setPaymentModalJobId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
@@ -1545,10 +1579,11 @@ function CommissionLogsPage() {
     [commissionTableRows, overviewJobOrder],
   );
 
-  const visibleTableRows = useMemo(
-    () => overviewTableRows.filter((row) => matchesCommissionSearch(row, searchQuery)),
-    [overviewTableRows, searchQuery],
-  );
+  const visibleTableRows = useMemo(() => {
+    const searched = overviewTableRows.filter((row) => matchesCommissionSearch(row, searchQuery));
+    if (showZeroCommissionJobs) return searched;
+    return searched.filter((row) => !isZeroCommissionJob(row));
+  }, [overviewTableRows, searchQuery, showZeroCommissionJobs]);
 
   const paymentModalRow = useMemo(
     () => commissionTableRows.find((row) => row.jobId === paymentModalJobId) ?? null,
@@ -1577,6 +1612,11 @@ function CommissionLogsPage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(COMMISSION_OVERVIEW_JOB_ORDER_KEY, JSON.stringify(overviewJobOrder));
   }, [overviewJobOrder]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(COMMISSION_SHOW_ZERO_RATE_KEY, String(showZeroCommissionJobs));
+  }, [showZeroCommissionJobs]);
 
   const loadCommissionJobs = useCallback(async (signal?: { cancelled: boolean }) => {
     try {
@@ -1664,10 +1704,26 @@ function CommissionLogsPage() {
                 Commission Logs
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Active and completed jobs only. Drag rows to reorder. Click a row to edit payments.
+                Active jobs on top. At the bottom: underpaid (all tiers paid), then overpaid (red),
+                then settled (green). Click a row to edit.
               </Typography>
             </Box>
-            <TextField
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={showZeroCommissionJobs}
+                    onChange={(e) => setShowZeroCommissionJobs(e.target.checked)}
+                  />
+                }
+                label={
+                  <Typography variant="body2" color="text.secondary">
+                    Show 0% commission jobs
+                  </Typography>
+                }
+              />
+              <TextField
               size="small"
               label="Default rate"
               value={defaultCommissionRate}
@@ -1681,6 +1737,7 @@ function CommissionLogsPage() {
               }}
               sx={{ width: 130 }}
             />
+            </Box>
           </Box>
 
           <TextField
