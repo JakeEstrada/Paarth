@@ -509,7 +509,17 @@ interface JobDoc {
   _id?: string;
   title?: string;
   color?: string;
-  customerId?: string | { name?: string };
+  customerId?: string | {
+    name?: string;
+    primaryPhone?: string;
+    primaryEmail?: string;
+    address?: {
+      street?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+    };
+  };
   assignedTo?: string | { name?: string };
   stage?: string;
   isDeadEstimate?: boolean;
@@ -525,6 +535,17 @@ interface JobDoc {
     amountPaid?: number;
     paidAt?: string;
   };
+  jobAddress?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  };
+  jobContact?: {
+    phone?: string;
+    email?: string;
+  };
+  notes?: Array<{ content?: string }>;
 }
 
 interface EstimateDoc {
@@ -593,6 +614,7 @@ interface CommissionSourceJobRow {
   stageLabel: string;
   jobTotal: number;
   jobColor?: string;
+  searchText: string;
   paymentSchedule?: PaymentScheduleDoc;
   contract?: JobDoc['contract'];
   finalPayment?: JobDoc['finalPayment'];
@@ -639,20 +661,100 @@ function defaultCommissionRowSort(a: CommissionTableRow, b: CommissionTableRow):
   return String(a.customerName || '').localeCompare(String(b.customerName || ''));
 }
 
+function joinAddressParts(
+  addr?: { street?: string; city?: string; state?: string; zip?: string } | null,
+): string {
+  if (!addr) return '';
+  return [addr.street, addr.city, addr.state, addr.zip]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function moneySearchTokens(value: unknown): string[] {
+  const n = roundMoney(Number(value));
+  if (!Number.isFinite(n) || n === 0) return [];
+  return [String(n), n.toFixed(2), formatMoney(n)];
+}
+
+function buildCommissionJobSearchText(job: JobDoc, jobTotal: number): string {
+  const parts: string[] = [];
+  const customer = typeof job?.customerId === 'object' ? job.customerId : null;
+
+  parts.push(
+    String(job?.title || ''),
+    String(customer?.name || ''),
+    joinAddressParts(job?.jobAddress),
+    joinAddressParts(customer?.address),
+    String(job?.jobContact?.phone || ''),
+    String(job?.jobContact?.email || ''),
+    String(customer?.primaryPhone || ''),
+    String(customer?.primaryEmail || ''),
+  );
+
+  for (const token of moneySearchTokens(jobTotal)) parts.push(token);
+  for (const token of moneySearchTokens(job?.valueContracted)) parts.push(token);
+  for (const token of moneySearchTokens(job?.valueEstimated)) parts.push(token);
+  for (const token of moneySearchTokens(job?.contract?.depositReceived)) parts.push(token);
+  for (const token of moneySearchTokens(job?.finalPayment?.amountPaid)) parts.push(token);
+
+  for (const item of job?.paymentSchedule?.items || []) {
+    parts.push(String(item?.label || ''));
+    for (const token of moneySearchTokens(item?.amount)) parts.push(token);
+    for (const token of moneySearchTokens(item?.paidAmount)) parts.push(token);
+  }
+
+  for (const co of job?.changeOrders || []) {
+    parts.push(String(co?.description || ''));
+    for (const token of moneySearchTokens(co?.amount)) parts.push(token);
+  }
+
+  for (const note of job?.notes || []) {
+    parts.push(String(note?.content || ''));
+  }
+
+  return parts
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
 function matchesCommissionSearch(row: CommissionTableRow, rawQuery: string): boolean {
   const q = String(rawQuery || '').trim().toLowerCase();
   if (!q) return true;
-  const haystack = [
+
+  const qNormalized = q.replace(/[,$]/g, '');
+  const haystackParts: unknown[] = [
+    row.searchText,
     row.customerName,
     row.jobLabel,
     row.assignedToName,
     row.stageLabel,
-    ...row.payments.map((payment) => payment.check),
-    ...row.payments.map((payment) => payment.label),
-  ]
-    .map((value) => String(value || '').toLowerCase())
+    ...moneySearchTokens(row.jobTotal),
+    ...moneySearchTokens(row.commissionDue),
+    ...moneySearchTokens(row.balance),
+    String(row.commissionRate),
+    ...row.payments.flatMap((payment) => [
+      payment.label,
+      payment.check,
+      payment.date,
+      payment.status,
+      payment.displayAmount,
+      ...moneySearchTokens(payment.scheduledAmount),
+      ...moneySearchTokens(payment.potentialAmount),
+      ...moneySearchTokens(payment.amount),
+    ]),
+  ];
+
+  const haystack = haystackParts
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
     .join(' ');
-  return haystack.includes(q);
+  const haystackNormalized = haystack.replace(/[,$]/g, '');
+
+  if (haystack.includes(q)) return true;
+  return qNormalized.length > 0 && haystackNormalized.includes(qNormalized);
 }
 
 function applyOverviewJobOrder(
@@ -1555,6 +1657,7 @@ function CommissionLogsPage() {
             stageLabel: ESTIMATE_STAGE_LABELS[job?.stage ?? ''] || String(job?.stage || ''),
             jobTotal: roundMoney(fullAmount),
             jobColor: job?.color,
+            searchText: buildCommissionJobSearchText(job, roundMoney(fullAmount)),
             paymentSchedule: job?.paymentSchedule,
             contract: job?.contract,
             finalPayment: job?.finalPayment,
@@ -1659,7 +1762,7 @@ function CommissionLogsPage() {
             size="small"
             fullWidth
             label="Search commission logs"
-            placeholder="Customer, job, stage, check #..."
+            placeholder="Customer, address, job, amount, payment, check #..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             sx={{ mb: 2, maxWidth: 420 }}
