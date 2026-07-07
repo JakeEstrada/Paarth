@@ -301,7 +301,7 @@ function SortableOverviewRow({ row, onOpenPayments }: SortableOverviewRowProps) 
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: row.jobId });
+  } = useSortable({ id: row.jobId, disabled: isOverviewPaidRow(row) });
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -329,20 +329,22 @@ function SortableOverviewRow({ row, onOpenPayments }: SortableOverviewRowProps) 
       }}
     >
       <TableCell sx={{ width: 40, px: 0.5, verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
-        <IconButton
-          size="small"
-          {...attributes}
-          {...listeners}
-          sx={{
-            cursor: 'grab',
-            touchAction: 'none',
-            color: 'text.secondary',
-            '&:active': { cursor: 'grabbing' },
-          }}
-          aria-label={`Drag to reorder ${row.customerName}`}
-        >
-          <DragIndicatorIcon fontSize="small" />
-        </IconButton>
+        {!isOverviewPaidRow(row) ? (
+          <IconButton
+            size="small"
+            {...attributes}
+            {...listeners}
+            sx={{
+              cursor: 'grab',
+              touchAction: 'none',
+              color: 'text.secondary',
+              '&:active': { cursor: 'grabbing' },
+            }}
+            aria-label={`Drag to reorder ${row.customerName}`}
+          >
+            <DragIndicatorIcon fontSize="small" />
+          </IconButton>
+        ) : null}
       </TableCell>
       <TableCell>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -383,11 +385,13 @@ function CommissionOverviewTable({ rows, onReorder, onOpenPayments }: Commission
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = rowIds.indexOf(String(active.id));
-    const newIndex = rowIds.indexOf(String(over.id));
+    const unpaidRows = rows.filter((row) => !isOverviewPaidRow(row));
+    const unpaidIds = unpaidRows.map((row) => row.jobId);
+    const oldIndex = unpaidIds.indexOf(String(active.id));
+    const newIndex = unpaidIds.indexOf(String(over.id));
     if (oldIndex < 0 || newIndex < 0) return;
 
-    onReorder(arrayMove(rowIds, oldIndex, newIndex));
+    onReorder(arrayMove(unpaidIds, oldIndex, newIndex));
   };
 
   return (
@@ -656,9 +660,22 @@ function resolveAccentColor(local: CommissionLogLocalRow, jobColor?: string): st
   return DEFAULT_ACCENT_COLOR;
 }
 
-function defaultCommissionRowSort(a: CommissionTableRow, b: CommissionTableRow): number {
-  if (a.isRowSettled !== b.isRowSettled) return a.isRowSettled ? 1 : -1;
+function isOverviewPaidRow(row: CommissionTableRow): boolean {
+  if (row.payments.length > 0 && row.payments.every((payment) => payment.salesmanPaid)) {
+    return true;
+  }
+  return row.isRowSettled;
+}
+
+function compareCustomerName(a: CommissionTableRow, b: CommissionTableRow): number {
   return String(a.customerName || '').localeCompare(String(b.customerName || ''));
+}
+
+function defaultCommissionRowSort(a: CommissionTableRow, b: CommissionTableRow): number {
+  const aPaid = isOverviewPaidRow(a);
+  const bPaid = isOverviewPaidRow(b);
+  if (aPaid !== bPaid) return aPaid ? 1 : -1;
+  return compareCustomerName(a, b);
 }
 
 function joinAddressParts(
@@ -761,24 +778,30 @@ function applyOverviewJobOrder(
   rows: CommissionTableRow[],
   order: string[] | undefined,
 ): CommissionTableRow[] {
+  const unpaid = rows.filter((row) => !isOverviewPaidRow(row));
+  const paid = rows.filter((row) => isOverviewPaidRow(row)).sort(compareCustomerName);
+
+  let orderedUnpaid: CommissionTableRow[];
   if (!order?.length) {
-    return [...rows].sort(defaultCommissionRowSort);
-  }
+    orderedUnpaid = [...unpaid].sort(compareCustomerName);
+  } else {
+    const unpaidById = new Map(unpaid.map((row) => [row.jobId, row]));
+    const ordered: CommissionTableRow[] = [];
+    const seen = new Set<string>();
 
-  const rowById = new Map(rows.map((row) => [row.jobId, row]));
-  const ordered: CommissionTableRow[] = [];
-  const seen = new Set<string>();
-
-  for (const id of order) {
-    const row = rowById.get(id);
-    if (row) {
-      ordered.push(row);
-      seen.add(id);
+    for (const id of order) {
+      const row = unpaidById.get(id);
+      if (row) {
+        ordered.push(row);
+        seen.add(id);
+      }
     }
+
+    const remaining = unpaid.filter((row) => !seen.has(row.jobId)).sort(compareCustomerName);
+    orderedUnpaid = [...ordered, ...remaining];
   }
 
-  const remaining = rows.filter((row) => !seen.has(row.jobId)).sort(defaultCommissionRowSort);
-  return [...ordered, ...remaining];
+  return [...orderedUnpaid, ...paid];
 }
 
 function orderPaymentsForDisplay(
