@@ -40,6 +40,49 @@ export function sumChangeOrders(job) {
   return roundMoney(rows.reduce((sum, row) => sum + (Number(row?.amount) || 0), 0));
 }
 
+export function sumChangeOrdersForFinal(job) {
+  const rows = Array.isArray(job?.changeOrders) ? job.changeOrders : [];
+  return roundMoney(
+    rows
+      .filter((row) => String(row?.billing || 'separate') === 'final')
+      .reduce((sum, row) => sum + (Number(row?.amount) || 0), 0),
+  );
+}
+
+export function getJobPaymentSummary(job) {
+  const base = getContractBase(job);
+  const changeOrders = Array.isArray(job?.changeOrders) ? job.changeOrders : [];
+  const coTotal = sumChangeOrders(job);
+  const jobTotal = roundMoney(base + coTotal);
+  const schedule = resolvePaymentSchedule(job);
+  const items = schedule.items || [];
+
+  let paidToDate = 0;
+  for (const item of items) {
+    if (item.status === 'paid') {
+      paidToDate += roundMoney(Number(item.paidAmount) || Number(item.amount) || 0);
+    }
+  }
+
+  for (const co of changeOrders) {
+    if (co.status === 'paid') {
+      paidToDate += roundMoney(Number(co.paidAmount) || Number(co.amount) || 0);
+    }
+  }
+
+  const coAddedToFinal = sumChangeOrdersForFinal(job);
+  const balanceDue = roundMoney(Math.max(0, jobTotal - paidToDate));
+
+  return {
+    base,
+    coTotal,
+    coAddedToFinal,
+    jobTotal,
+    paidToDate,
+    balanceDue,
+  };
+}
+
 export function getJobTotalWithChangeOrders(job) {
   return roundMoney(getContractBase(job) + sumChangeOrders(job));
 }

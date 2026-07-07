@@ -101,6 +101,11 @@ const jobSchema = new mongoose.Schema({
     {
       description: { type: String, trim: true, default: '' },
       amount: { type: Number, default: 0 },
+      /** separate = own payment; final = rolls into the final balance milestone */
+      billing: { type: String, enum: ['separate', 'final'], default: 'separate' },
+      status: { type: String, enum: ['pending', 'paid'], default: 'pending' },
+      paidAmount: { type: Number, default: 0 },
+      paidAt: Date,
       createdAt: { type: Date, default: Date.now },
     },
   ],

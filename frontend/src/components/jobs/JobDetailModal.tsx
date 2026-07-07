@@ -61,6 +61,7 @@ import AddJobTaskModal from './AddJobTaskModal';
 import AddAppointmentModal from '../appointments/AddAppointmentModal';
 import JobPaymentScheduleEditor from './JobPaymentScheduleEditor';
 import JobChangeOrdersEditor from './JobChangeOrdersEditor';
+import JobPaymentsSummary from './JobPaymentsSummary';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
@@ -1434,6 +1435,7 @@ function JobDetailModal({
               </Paper>
             ) : (
               <>
+                <JobPaymentsSummary job={job} />
                 <JobPaymentScheduleEditor
                   job={job}
                   onSave={handleSavePaymentSchedule}

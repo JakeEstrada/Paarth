@@ -30,8 +30,10 @@ import {
   computeItemAmount,
   createEmptyScheduleItem,
   getContractBase,
+  getJobPaymentSummary,
   resolvePaymentSchedule,
   roundMoney,
+  sumChangeOrdersForFinal,
   validatePaymentSchedule,
 } from '../../utils/paymentSchedule';
 
@@ -40,6 +42,10 @@ function inferDueTypeFromLabel(label) {
   if (/\bdeposit\b/.test(text)) return 'deposit';
   if (/\bfinal\b/.test(text) || /\bbalance\b/.test(text)) return 'final';
   return 'milestone';
+}
+
+function isFinalScheduleItem(item) {
+  return item?.dueType === 'final' || inferDueTypeFromLabel(item?.label) === 'final';
 }
 
 function statusChipProps(status) {
@@ -158,6 +164,18 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
     [computedItems, contractBase]
   );
 
+  const coAddedToFinal = useMemo(() => sumChangeOrdersForFinal(job), [job]);
+
+  const paymentSummary = useMemo(() => getJobPaymentSummary(job), [job, computedItems]);
+
+  const getEffectiveItemTotal = (item) => {
+    const baseAmount = roundMoney(Number(item.amount) || 0);
+    if (isFinalScheduleItem(item) && coAddedToFinal > 0) {
+      return roundMoney(baseAmount + coAddedToFinal);
+    }
+    return baseAmount;
+  };
+
   const updateItem = (index, patch) => {
     setItems((prev) =>
       prev.map((item, idx) => (idx === index ? normalizeItemForEditor({ ...item, ...patch }, contractBase) : item)),
@@ -224,9 +242,10 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
     if (!item) return;
 
     if (status === 'paid') {
+      const effectiveTotal = getEffectiveItemTotal(item);
       updateItem(index, {
         status: 'paid',
-        paidAmount: item.paidAmount > 0 ? item.paidAmount : item.amount,
+        paidAmount: item.paidAmount > 0 ? item.paidAmount : effectiveTotal,
         paidAt: item.paidAt || new Date().toISOString(),
       });
       return;
@@ -312,12 +331,18 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
 
       <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="body2" color="text.secondary">
-          Scheduled: <strong>{formatMoney(validation.scheduledTotal)}</strong>
+          Scheduled (base): <strong>{formatMoney(validation.scheduledTotal)}</strong>
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Remaining:{' '}
+          Schedule gap:{' '}
           <strong style={{ color: validation.remaining < -0.01 ? '#d32f2f' : undefined }}>
             {formatMoney(validation.remaining)}
+          </strong>
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Balance due:{' '}
+          <strong style={{ color: paymentSummary.balanceDue <= 0 ? undefined : '#ed6c02' }}>
+            {formatMoney(paymentSummary.balanceDue)}
           </strong>
         </Typography>
       </Box>
@@ -441,7 +466,16 @@ export default function JobPaymentScheduleEditor({ job, onSave, saving = false, 
                     </Box>
                   )}
                 </TableCell>
-                <TableCell align="right">{formatMoney(item.amount)}</TableCell>
+                <TableCell align="right">
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {formatMoney(getEffectiveItemTotal(item))}
+                  </Typography>
+                  {isFinalScheduleItem(item) && coAddedToFinal > 0 && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      +{formatMoney(coAddedToFinal)} change orders
+                    </Typography>
+                  )}
+                </TableCell>
                 <TableCell>
                   {readOnly ? (
                     item.status === 'paid' ? formatMoney(item.paidAmount || item.amount) : '—'
