@@ -583,6 +583,46 @@ function readCommissionLogRows(): Record<string, CommissionLogLocalRow> {
   }
 }
 
+function hasCommissionLogData(row: CommissionLogLocalRow): boolean {
+  const migrated = migrateLocalRow(row);
+  if (hasRateOverride(migrated)) return true;
+  if (Array.isArray(migrated.paymentOrder) && migrated.paymentOrder.length > 0) return true;
+  const payments = migrated.payments || [];
+  return payments.some(
+    (payment) =>
+      payment.salesmanPaid ||
+      Boolean(payment.check) ||
+      Boolean(payment.date) ||
+      payment.amountManual ||
+      (payment.amount !== undefined &&
+        payment.amount !== null &&
+        String(payment.amount).trim() !== ''),
+  );
+}
+
+function mergeCommissionLogRow(
+  dbRow?: CommissionLogLocalRow | null,
+  localRow?: CommissionLogLocalRow | null,
+): CommissionLogLocalRow | null {
+  const db = dbRow ? migrateLocalRow(dbRow) : null;
+  const local = localRow ? migrateLocalRow(localRow) : null;
+  if (!db && !local) return null;
+  if (!db) return local;
+  if (!local) return db;
+  const dbTime = Date.parse(String(db.updatedAt || '')) || 0;
+  const localTime = Date.parse(String(local.updatedAt || '')) || 0;
+  return dbTime >= localTime ? db : local;
+}
+
+async function persistCommissionLog(jobId: string, data: CommissionLogLocalRow): Promise<void> {
+  await axios.patch(`${API_URL}/jobs/${jobId}`, {
+    commissionLog: {
+      ...migrateLocalRow(data),
+      updatedAt: data.updatedAt || new Date().toISOString(),
+    },
+  });
+}
+
 interface PaymentScheduleDoc {
   type?: string;
   items?: Array<{
@@ -629,6 +669,7 @@ interface JobDoc {
     amountPaid?: number;
     paidAt?: string;
   };
+  commissionLog?: CommissionLogLocalRow;
   jobAddress?: {
     street?: string;
     city?: string;
@@ -1731,14 +1772,20 @@ function CommissionLogsPage() {
   const updateCommissionRow = (jobId: string, patch: Partial<CommissionLogLocalRow>) => {
     setCommissionLogRows((prev) => {
       const current = migrateLocalRow(prev[jobId] || {});
-      return {
-        ...prev,
-        [jobId]: {
-          ...current,
-          ...patch,
-          updatedAt: new Date().toISOString(),
-        },
+      const nextRow: CommissionLogLocalRow = {
+        ...current,
+        ...patch,
+        updatedAt: new Date().toISOString(),
       };
+      const next = {
+        ...prev,
+        [jobId]: nextRow,
+      };
+      void persistCommissionLog(jobId, nextRow).catch((error) => {
+        console.error('Failed to save commission log:', error);
+        toast.error('Failed to save commission log');
+      });
+      return next;
     });
   };
 
@@ -1747,13 +1794,19 @@ function CommissionLogsPage() {
       const current = migrateLocalRow(prev[jobId] || {});
       const next = { ...current };
       delete next.commissionRate;
-      return {
-        ...prev,
-        [jobId]: {
-          ...next,
-          updatedAt: new Date().toISOString(),
-        },
+      const nextRow: CommissionLogLocalRow = {
+        ...next,
+        updatedAt: new Date().toISOString(),
       };
+      const result = {
+        ...prev,
+        [jobId]: nextRow,
+      };
+      void persistCommissionLog(jobId, nextRow).catch((error) => {
+        console.error('Failed to save commission log:', error);
+        toast.error('Failed to save commission log');
+      });
+      return result;
     });
   };
 
@@ -1775,14 +1828,20 @@ function CommissionLogsPage() {
         nextPatch.amountManual = false;
       }
       payments[scheduleIndex] = { ...payments[scheduleIndex], ...nextPatch };
-      return {
-        ...prev,
-        [jobId]: {
-          ...current,
-          payments,
-          updatedAt: new Date().toISOString(),
-        },
+      const nextRow: CommissionLogLocalRow = {
+        ...current,
+        payments,
+        updatedAt: new Date().toISOString(),
       };
+      const result = {
+        ...prev,
+        [jobId]: nextRow,
+      };
+      void persistCommissionLog(jobId, nextRow).catch((error) => {
+        console.error('Failed to save commission log:', error);
+        toast.error('Failed to save commission log');
+      });
+      return result;
     });
   };
 
@@ -1981,13 +2040,34 @@ function CommissionLogsPage() {
       if (signal?.cancelled) return;
       const estimates = Array.isArray(estimatesData.data) ? estimatesData.data : [];
       const latestEstimateByJob = pickLatestPositiveEstimateByJob(estimates);
+      const localCache = readCommissionLogRows();
+      const mergedCommissionRows: Record<string, CommissionLogLocalRow> = {};
+      const migrations: Array<{ jobId: string; data: CommissionLogLocalRow }> = [];
+
       const rows: CommissionSourceJobRow[] = jobs
         .filter((job) => isCommissionEligibleJob(job))
         .map((job) => {
-          const estimate = latestEstimateByJob.get(String(job?._id || ''));
+          const jobId = String(job?._id || '');
+          const estimate = latestEstimateByJob.get(jobId);
           const fullAmount = resolveCommissionJobTotal(job, estimate);
+          const merged = mergeCommissionLogRow(job?.commissionLog, localCache[jobId]);
+          if (merged && hasCommissionLogData(merged)) {
+            mergedCommissionRows[jobId] = merged;
+            const dbRow = job?.commissionLog ? migrateLocalRow(job.commissionLog) : null;
+            const localRow = localCache[jobId] ? migrateLocalRow(localCache[jobId]) : null;
+            const shouldMigrate =
+              !dbRow ||
+              !hasCommissionLogData(dbRow) ||
+              (localRow &&
+                hasCommissionLogData(localRow) &&
+                (Date.parse(String(localRow.updatedAt || '')) || 0) >
+                  (Date.parse(String(dbRow.updatedAt || '')) || 0));
+            if (shouldMigrate) {
+              migrations.push({ jobId, data: merged });
+            }
+          }
           return {
-            jobId: String(job?._id || ''),
+            jobId,
             customerName:
               (typeof job?.customerId === 'object' && job?.customerId?.name) || 'Unknown customer',
             jobLabel: jobTitleAfterPipe(job?.title),
@@ -2004,6 +2084,17 @@ function CommissionLogsPage() {
           };
         });
       setCommissionSourceJobs(rows);
+      setCommissionLogRows(mergedCommissionRows);
+
+      if (migrations.length > 0) {
+        void Promise.all(
+          migrations.map(({ jobId, data }) =>
+            persistCommissionLog(jobId, data).catch((error) => {
+              console.error(`Failed to migrate commission log for job ${jobId}:`, error);
+            }),
+          ),
+        );
+      }
     } catch (error) {
       console.error('Error loading commission logs:', error);
       if (!signal?.cancelled) {

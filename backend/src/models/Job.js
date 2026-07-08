@@ -249,6 +249,15 @@ const jobSchema = new mongoose.Schema({
       enum: ['cash', 'check', 'bank_transfer', 'credit_card', 'other']
     }
   },
+
+  /**
+   * Commission log overrides per job (check #, dates, manual amounts, salesman paid, rate).
+   * Synced across devices via PATCH /jobs/:id { commissionLog }.
+   */
+  commissionLog: {
+    type: mongoose.Schema.Types.Mixed,
+    default: undefined,
+  },
   
   // Notes timeline (stored within job)
   notes: [{
