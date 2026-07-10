@@ -1424,7 +1424,7 @@ function JobDetailModal({
             {hideFinancials ? (
               <Paper sx={{ p: 3, textAlign: 'center' }}>
                 <Typography variant="body1" sx={{ mb: 1 }}>
-                  Financial details are locked in Shop View.
+                  Financial amounts are locked. Enter the PIN to view.
                 </Typography>
                 {onRequestSensitiveUnlock && (
                   <Button variant="contained" onClick={() => onRequestSensitiveUnlock?.()}>
@@ -1455,7 +1455,7 @@ function JobDetailModal({
             {hideFinancials ? (
               <Paper sx={{ p: 3, textAlign: 'center' }}>
                 <Typography variant="body1" sx={{ mb: 1 }}>
-                  Financial details are locked in Shop View.
+                  Financial amounts are locked. Enter the PIN to view.
                 </Typography>
                 {onRequestSensitiveUnlock && (
                   <Button variant="contained" onClick={() => onRequestSensitiveUnlock?.()}>
