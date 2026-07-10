@@ -6,7 +6,7 @@ import { formatPhoneForDisplay } from '../../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-/** `value` format: `user:<mongoId>` or `contact:<mongoId>` */
+/** `value` format: `user:<mongoId>`, `contact:<mongoId>`, or `phone:<raw number>` */
 export function parseSmsRecipientSelection(value) {
   if (!value || typeof value !== 'string') return {};
   if (value.startsWith('user:')) {
@@ -15,7 +15,15 @@ export function parseSmsRecipientSelection(value) {
   if (value.startsWith('contact:')) {
     return { employeeContactId: value.slice(8) };
   }
+  if (value.startsWith('phone:')) {
+    return { to: value.slice(6).trim() };
+  }
   return {};
+}
+
+function toCustomPhoneValue(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  return trimmed ? `phone:${trimmed}` : '';
 }
 
 function formatRoleLabel(role) {
@@ -35,15 +43,15 @@ function toSmsOption(r) {
 }
 
 /**
- * Searchable combo of team members who have a mobile on file (users + roster).
- * Sends `employeeUserId` or `employeeContactId` to `/twilio/send-sms`. Arbitrary phone numbers cannot be entered.
+ * Searchable combo of team members with mobile on file, or type any phone number.
+ * Sends `employeeUserId`, `employeeContactId`, or `to` to `/twilio/send-sms`.
  */
 export default function EmployeeSmsRecipientField({
   value,
   onChange,
   disabled,
-  label = 'Send to employee',
-  helperText = '',
+  label = 'Send to',
+  helperText = 'Search employees or type any phone number',
   sx,
   autoSelectByName,
   dialogOpen = false,
@@ -67,10 +75,35 @@ export default function EmployeeSmsRecipientField({
     [recipients]
   );
 
-  const selectedOption = useMemo(
-    () => smsOptions.find((o) => o.selectionKey === value) || null,
-    [smsOptions, value]
-  );
+  const autocompleteValue = useMemo(() => {
+    if (!value) return null;
+    const option = smsOptions.find((o) => o.selectionKey === value);
+    if (option) return option;
+    if (value.startsWith('phone:')) return value.slice(6);
+    return null;
+  }, [smsOptions, value]);
+
+  const commitTypedRecipient = (raw: string) => {
+    const typed = String(raw || '').trim();
+    if (!typed) {
+      onChange('');
+      return;
+    }
+    const exactOption = smsOptions.find((o) => {
+      const display = formatPhoneForDisplay(o.mobile) || o.mobile;
+      const label = `${display} · ${o.name}`;
+      return (
+        label.toLowerCase() === typed.toLowerCase() ||
+        display === typed ||
+        o.mobile === typed
+      );
+    });
+    if (exactOption) {
+      onChange(exactOption.selectionKey);
+      return;
+    }
+    onChange(toCustomPhoneValue(typed));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -129,17 +162,32 @@ export default function EmployeeSmsRecipientField({
     <Box sx={sx}>
       <Autocomplete
         options={smsOptions}
-        value={selectedOption}
-        onChange={(_, newVal) => onChange(newVal?.selectionKey || '')}
+        value={autocompleteValue}
+        onChange={(_, newVal) => {
+          if (newVal == null || newVal === '') {
+            onChange('');
+            return;
+          }
+          if (typeof newVal === 'string') {
+            onChange(toCustomPhoneValue(newVal));
+            return;
+          }
+          onChange(newVal.selectionKey || '');
+        }}
         disabled={disabled}
-        freeSolo={false}
+        freeSolo
         autoHighlight
         selectOnFocus
         handleHomeEndKeys
-        isOptionEqualToValue={(a, b) => a.selectionKey === b.selectionKey}
-        getOptionLabel={(opt) =>
-          opt ? `${formatPhoneForDisplay(opt.mobile) || opt.mobile} · ${opt.name}` : ''
-        }
+        isOptionEqualToValue={(a, b) => {
+          if (typeof a === 'string' && typeof b === 'string') return a === b;
+          if (typeof a === 'string' || typeof b === 'string') return false;
+          return a.selectionKey === b.selectionKey;
+        }}
+        getOptionLabel={(opt) => {
+          if (typeof opt === 'string') return opt;
+          return opt ? `${formatPhoneForDisplay(opt.mobile) || opt.mobile} · ${opt.name}` : '';
+        }}
         filterOptions={(opts, state) => {
           const q = state.inputValue.trim().toLowerCase();
           if (!q) return opts;
@@ -148,7 +196,7 @@ export default function EmployeeSmsRecipientField({
             return hay.includes(q);
           });
         }}
-        noOptionsText="No employee matches that search (with a mobile on file)."
+        noOptionsText="No employee match — press Enter to use the number you typed."
         renderOption={(props, option) => (
           <Box component="li" {...props} key={option.selectionKey}>
             <Box>
@@ -166,8 +214,14 @@ export default function EmployeeSmsRecipientField({
             {...params}
             label={label}
             required
-            placeholder="Search by phone or name…"
+            placeholder="Search by name or type any phone number…"
             helperText={helperText}
+            onBlur={(e) => {
+              if (typeof params.inputProps?.onBlur === 'function') {
+                params.inputProps.onBlur(e);
+              }
+              commitTypedRecipient(e.target.value);
+            }}
             inputProps={{
               ...params.inputProps,
               autoComplete: 'off',
@@ -176,12 +230,8 @@ export default function EmployeeSmsRecipientField({
         )}
       />
       {!recipients.length ? (
-        <FormHelperText error sx={{ mx: 1.75 }}>
-          No team members found. Add users or roster employees.
-        </FormHelperText>
-      ) : !smsOptions.length ? (
-        <FormHelperText error sx={{ mx: 1.75 }}>
-          No one has a mobile number on file. Add mobile in Users or roster before sending SMS.
+        <FormHelperText sx={{ mx: 1.75 }}>
+          No team members loaded — you can still type any phone number above.
         </FormHelperText>
       ) : null}
     </Box>

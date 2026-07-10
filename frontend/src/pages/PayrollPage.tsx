@@ -479,7 +479,7 @@ function PayrollPage() {
 
   const handleSendPayrollText = async () => {
     if (!payrollSmsRecipient) {
-      toast.error('Select an employee');
+      toast.error('Enter a phone number or select a recipient');
       return;
     }
     try {
@@ -1352,7 +1352,7 @@ function PayrollPage() {
         <DialogTitle>Send Text</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-            Choose an employee with a mobile number on file. We send the timesheet summary to their phone.
+            Search for an employee or type any phone number. We send the timesheet summary to that number.
           </Typography>
           <EmployeeSmsRecipientField
             dialogOpen={payrollTextDialogOpen}

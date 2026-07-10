@@ -306,7 +306,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const handleSendShareSms = async () => {
     const message = shareMessage.trim();
     if (!shareSmsRecipient) {
-      toast.error('Select an employee to send the text to');
+      toast.error('Enter a phone number or select a recipient');
       return;
     }
     if (!message) {
@@ -1534,7 +1534,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
         <DialogTitle>Share Customer by Text</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            Choose which employee receives the text (must have a mobile number on file in Users).
+            Search for an employee or type any phone number to send the text to.
           </DialogContentText>
           <EmployeeSmsRecipientField
             dialogOpen={shareDialogOpen}

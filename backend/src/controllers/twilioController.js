@@ -268,39 +268,8 @@ async function twilioMediaDownload(req, res) {
   }
 }
 
-async function phoneMatchesAllowedRecipient(normalizedE164) {
-  const User = require('../models/User');
-  const EmployeeContact = require('../models/EmployeeContact');
-
-  const activeUsers = await User.find({
-    isPending: false,
-    isActive: true,
-  }).select('mobile previousPhoneNumbers');
-
-  for (const u of activeUsers) {
-    const candidates = [u.mobile, ...(Array.isArray(u.previousPhoneNumbers) ? u.previousPhoneNumbers : [])];
-    for (const c of candidates) {
-      if (c == null || !String(c).trim()) continue;
-      const n = normalizeToE164(c);
-      if (n && n === normalizedE164) return true;
-    }
-  }
-
-  const contacts = await EmployeeContact.find({}).select('mobile previousPhoneNumbers');
-  for (const ec of contacts) {
-    const candidates = [ec.mobile, ...(Array.isArray(ec.previousPhoneNumbers) ? ec.previousPhoneNumbers : [])];
-    for (const c of candidates) {
-      if (c == null || !String(c).trim()) continue;
-      const n = normalizeToE164(c);
-      if (n && n === normalizedE164) return true;
-    }
-  }
-
-  return false;
-}
-
 /**
- * Resolves destination E.164 from employeeUserId, employeeContactId, or validates legacy `to`.
+ * Resolves destination E.164 from employeeUserId, employeeContactId, or `to`.
  */
 async function resolveOutgoingSmsTo(req) {
   const User = require('../models/User');
@@ -345,12 +314,6 @@ async function resolveOutgoingSmsTo(req) {
     const normalized = normalizeToE164(rawTo);
     if (!normalized) {
       throw new Error('Recipient phone number is invalid');
-    }
-    const allowed = await phoneMatchesAllowedRecipient(normalized);
-    if (!allowed) {
-      throw new Error(
-        'SMS can only be sent to numbers on file for active team members or roster employees. Use the recipient picker in the app.'
-      );
     }
     return normalized;
   }

@@ -331,7 +331,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
 
   const handleSendShareSms = async () => {
     if (!shareSmsRecipient) {
-      toast.error('Select an employee to send to');
+      toast.error('Enter a phone number or select a recipient');
       return;
     }
     if (!shareMessage.trim()) {
