@@ -34,6 +34,7 @@ import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinancialPinLockContext } from '../../context/FinancialPinLockContext';
+import FinancialPinUnlockDialogHost from '../common/FinancialPinUnlockDialogHost';
 import { useAuthenticatedProfilePhotoUrl } from '../../hooks/useAuthenticatedProfilePhotoUrl';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -50,7 +51,8 @@ function userInitials(name) {
 function TopBar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useTheme();
-  const { unlocked, openUnlockDialog, lockFinancials } = useFinancialPinLockContext();
+  const financialPin = useFinancialPinLockContext();
+  const { unlocked, openUnlockDialog, lockFinancials } = financialPin;
   const profilePhotoUrl = useAuthenticatedProfilePhotoUrl(user);
   const navigate = useNavigate();
   const theme = useMuiTheme();
@@ -196,7 +198,14 @@ function TopBar({ onMenuClick }) {
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <IconButton
-            onClick={() => (unlocked ? lockFinancials() : openUnlockDialog())}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (unlocked) {
+                lockFinancials();
+              } else {
+                openUnlockDialog();
+              }
+            }}
             size="small"
             title={unlocked ? 'Lock financial amounts' : 'Unlock financial amounts'}
             sx={{
@@ -280,6 +289,8 @@ function TopBar({ onMenuClick }) {
           </MenuItem>
         </Menu>
       </Toolbar>
+
+      <FinancialPinUnlockDialogHost />
     </AppBar>
   );
 }

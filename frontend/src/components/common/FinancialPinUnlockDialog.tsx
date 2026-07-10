@@ -6,6 +6,7 @@ import {
   DialogContentText,
   DialogTitle,
   TextField,
+  useTheme,
 } from '@mui/material';
 
 type FinancialPinUnlockDialogProps = {
@@ -25,8 +26,20 @@ export default function FinancialPinUnlockDialog({
   onSubmit,
   onClose,
 }: FinancialPinUnlockDialogProps) {
+  const theme = useTheme();
+  const dialogZIndex = theme.zIndex.modal + 20;
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="xs"
+      fullWidth
+      sx={{ zIndex: dialogZIndex }}
+      slotProps={{
+        backdrop: { sx: { zIndex: dialogZIndex - 1 } },
+      }}
+    >
       <DialogTitle>Unlock financial amounts</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ mb: 2 }}>

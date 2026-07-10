@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const FINANCIAL_AMOUNTS_PIN = '7212';
 const FINANCIAL_AMOUNTS_UNLOCK_KEY = 'financialAmountsUnlockedV1';
@@ -24,6 +24,11 @@ export function useFinancialPinLock() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
+  const pinInputRef = useRef(pinInput);
+
+  useEffect(() => {
+    pinInputRef.current = pinInput;
+  }, [pinInput]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -42,7 +47,8 @@ export function useFinancialPinLock() {
   }, []);
 
   const submitPin = useCallback(() => {
-    if (pinInput.trim() === FINANCIAL_AMOUNTS_PIN) {
+    const entered = String(pinInputRef.current || '').trim();
+    if (entered === FINANCIAL_AMOUNTS_PIN) {
       writeFinancialUnlockFlag(true);
       setUnlocked(true);
       setDialogOpen(false);
@@ -52,7 +58,7 @@ export function useFinancialPinLock() {
     }
     setPinError('Incorrect PIN');
     return false;
-  }, [pinInput]);
+  }, []);
 
   const lockFinancials = useCallback(() => {
     writeFinancialUnlockFlag(false);

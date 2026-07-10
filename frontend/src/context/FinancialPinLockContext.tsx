@@ -1,5 +1,4 @@
 import { createContext, useContext, type ReactNode } from 'react';
-import FinancialPinUnlockDialog from '../components/common/FinancialPinUnlockDialog';
 import { useFinancialPinLock } from '../hooks/useFinancialPinLock';
 
 type FinancialPinLockContextValue = ReturnType<typeof useFinancialPinLock>;
@@ -12,14 +11,6 @@ export function FinancialPinLockProvider({ children }: { children: ReactNode }) 
   return (
     <FinancialPinLockContext.Provider value={value}>
       {children}
-      <FinancialPinUnlockDialog
-        open={value.dialogOpen}
-        pinInput={value.pinInput}
-        pinError={value.pinError}
-        onPinChange={value.setPinInput}
-        onSubmit={value.submitPin}
-        onClose={value.closeDialog}
-      />
     </FinancialPinLockContext.Provider>
   );
 }

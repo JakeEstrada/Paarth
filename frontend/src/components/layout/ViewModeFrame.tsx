@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { FinancialPinLockProvider } from '../../context/FinancialPinLockContext';
+import FinancialPinUnlockDialogHost from '../common/FinancialPinUnlockDialogHost';
 
 function ViewModeFrame({ currentView, children }) {
   const navigate = useNavigate();
@@ -138,6 +139,7 @@ function ViewModeFrame({ currentView, children }) {
         </DialogActions>
       </Dialog>
       {children}
+      <FinancialPinUnlockDialogHost />
     </Box>
     </FinancialPinLockProvider>
   );
