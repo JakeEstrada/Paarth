@@ -971,16 +971,26 @@ function JobDetailModal({
             {/* Estimated Value in Header */}
             <Box sx={{ textAlign: 'right' }}>
               {hideFinancials ? (
-                <Tooltip title="Unlock financial amounts">
-                  <IconButton
-                    size="small"
-                    onClick={() => onRequestSensitiveUnlock?.()}
-                    sx={{ color: 'text.secondary' }}
-                    aria-label="Unlock financial amounts"
-                  >
-                    <LockIcon />
-                  </IconButton>
-                </Tooltip>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    alignItems: 'flex-start',
+                    minHeight: 32,
+                    minWidth: 80,
+                  }}
+                >
+                  <Tooltip title="Unlock financial amounts">
+                    <IconButton
+                      size="small"
+                      onClick={() => onRequestSensitiveUnlock?.()}
+                      sx={{ color: 'text.secondary', p: 0, width: 20, height: 20, mt: 0.25 }}
+                      aria-label="Unlock financial amounts"
+                    >
+                      <LockIcon sx={{ fontSize: '0.95rem' }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               ) : isEditing ? (
                 <>
                   <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>

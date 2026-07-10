@@ -319,20 +319,75 @@ function PipelineBoard({
           }}
         >
           <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-            <Typography
-              variant="caption"
+            <Box
               sx={{
-                color: theme.palette.text.secondary,
-                fontWeight: 500,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                fontSize: '0.75rem',
-                display: 'block',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 1,
                 mb: 0.75,
               }}
             >
-              {getStageLabel(stageId)}
-            </Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: theme.palette.text.secondary,
+                  fontWeight: 500,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  fontSize: '0.75rem',
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {getStageLabel(stageId)}
+              </Typography>
+              <Box
+                sx={{
+                  flexShrink: 0,
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  alignItems: 'flex-start',
+                  minWidth: 40,
+                  minHeight: 18,
+                }}
+              >
+                {hideSensitive ? (
+                  <Tooltip title="Unlock stage totals">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRequestSensitiveUnlock?.();
+                      }}
+                      sx={{
+                        color: theme.palette.primary.main,
+                        p: 0,
+                        width: 18,
+                        height: 18,
+                        mt: -0.125,
+                      }}
+                      aria-label="Unlock stage totals"
+                    >
+                      <LockIcon sx={{ fontSize: '0.8rem' }} />
+                    </IconButton>
+                  </Tooltip>
+                ) : (
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                      color: theme.palette.primary.main,
+                      lineHeight: 1.1,
+                      textAlign: 'right',
+                    }}
+                  >
+                    {`$${Math.round(value / 1000)}K`}
+                  </Typography>
+                )}
+              </Box>
+            </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box
                 sx={{
@@ -348,32 +403,6 @@ function PipelineBoard({
                 {count}
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                {hideSensitive ? (
-                  <Tooltip title="Unlock stage totals">
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRequestSensitiveUnlock?.();
-                      }}
-                      sx={{ color: theme.palette.primary.main, p: 0.25 }}
-                      aria-label="Unlock stage totals"
-                    >
-                      <LockIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                ) : (
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontSize: '0.875rem',
-                      fontWeight: 500,
-                      color: theme.palette.primary.main,
-                    }}
-                  >
-                    {`$${Math.round(value / 1000)}K`}
-                  </Typography>
-                )}
                 {stageId === 'ESTIMATE_SENT' && (
                   <Tooltip title="View archived estimates">
                     <IconButton
