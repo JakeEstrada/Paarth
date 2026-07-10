@@ -62,6 +62,7 @@ import AddAppointmentModal from '../appointments/AddAppointmentModal';
 import JobPaymentScheduleEditor from './JobPaymentScheduleEditor';
 import JobChangeOrdersEditor from './JobChangeOrdersEditor';
 import JobPaymentsSummary from './JobPaymentsSummary';
+import JobSchedulePanel from './JobSchedulePanel';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
@@ -178,13 +179,14 @@ function renderTextWithLinks(text) {
 
 export const JOB_MODAL_TAB = {
   overview: 0,
-  payments: 1,
-  files: 2,
-  notes: 3,
+  schedule: 1,
+  payments: 2,
+  files: 3,
+  notes: 4,
 };
 
 function resolveJobModalTab(tab) {
-  if (typeof tab === 'number' && tab >= 0 && tab <= 3) return tab;
+  if (typeof tab === 'number' && tab >= 0 && tab <= 4) return tab;
   if (typeof tab === 'string' && tab in JOB_MODAL_TAB) return JOB_MODAL_TAB[tab];
   return JOB_MODAL_TAB.overview;
 }
@@ -1089,6 +1091,7 @@ function JobDetailModal({
       <DialogContent sx={{ pt: 2 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
           <Tab label="Overview" />
+          <Tab label="Schedule" />
           <Tab label="Payments" />
           <Tab label="Files" />
           <Tab label="Notes" />
@@ -1417,6 +1420,12 @@ function JobDetailModal({
               </Paper>
             </Grid>
           </Grid>
+        )}
+
+        {activeTab === JOB_MODAL_TAB.schedule && (
+          <Box>
+            <JobSchedulePanel job={job} />
+          </Box>
         )}
 
         {activeTab === JOB_MODAL_TAB.payments && (
