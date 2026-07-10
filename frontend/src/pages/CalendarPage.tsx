@@ -60,8 +60,7 @@ import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
 import { getConnectedSocketId } from '../services/socket';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
-import { useFinancialPinLock } from '../hooks/useFinancialPinLock';
-import FinancialPinUnlockDialog from '../components/common/FinancialPinUnlockDialog';
+import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../components/common/EmployeeSmsRecipientField';
@@ -1594,7 +1593,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
   const { mode, toggleColorMode } = useAppTheme();
   const { user, canModifyCalendar, canViewCalendar, tenantIdForBranding } = useAuth();
   const { hideSensitive: shopHideSensitive } = useShopViewSensitive(user?.role);
-  const financialPin = useFinancialPinLock();
+  const financialPin = useFinancialPinLockContext();
   const hideSensitive = shopHideSensitive || financialPin.hideFinancials;
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -2757,15 +2756,6 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
         }}
         hideSensitive={hideSensitive}
         onRequestSensitiveUnlock={financialPin.openUnlockDialog}
-      />
-
-      <FinancialPinUnlockDialog
-        open={financialPin.dialogOpen}
-        pinInput={financialPin.pinInput}
-        pinError={financialPin.pinError}
-        onPinChange={financialPin.setPinInput}
-        onSubmit={financialPin.submitPin}
-        onClose={financialPin.closeDialog}
       />
 
       {/* Right-click on a date: hide/show that weekday */}

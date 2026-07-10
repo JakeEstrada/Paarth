@@ -11,6 +11,7 @@ import {
   TextField,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { FinancialPinLockProvider } from '../../context/FinancialPinLockContext';
 
 function ViewModeFrame({ currentView, children }) {
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ function ViewModeFrame({ currentView, children }) {
   };
 
   return (
+    <FinancialPinLockProvider>
     <Box sx={{ position: 'relative', minHeight: '100vh' }}>
       <Paper
         elevation={3}
@@ -137,6 +139,7 @@ function ViewModeFrame({ currentView, children }) {
       </Dialog>
       {children}
     </Box>
+    </FinancialPinLockProvider>
   );
 }
 

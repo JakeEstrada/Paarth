@@ -64,8 +64,7 @@ import { formatNanpTyping, formatPhoneForDisplay, phoneSearchMatch } from '../ut
 import { formatMoney } from '../utils/paymentSchedule';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
-import { useFinancialPinLock } from '../hooks/useFinancialPinLock';
-import FinancialPinUnlockDialog from '../components/common/FinancialPinUnlockDialog';
+import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function CustomersPage({ viewMode = false, externalViewControls = false }) {
@@ -74,7 +73,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { isShopViewRole, hideSensitive: shopHideSensitive } = useShopViewSensitive(user?.role);
-  const financialPin = useFinancialPinLock();
+  const financialPin = useFinancialPinLockContext();
   const hideSensitive = shopHideSensitive || financialPin.hideFinancials;
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1534,14 +1533,6 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
         sx={(theme) => ({ zIndex: theme.zIndex.modal + 2 })}
         hideSensitive={hideSensitive}
         onRequestSensitiveUnlock={financialPin.openUnlockDialog}
-      />
-      <FinancialPinUnlockDialog
-        open={financialPin.dialogOpen}
-        pinInput={financialPin.pinInput}
-        pinError={financialPin.pinError}
-        onPinChange={financialPin.setPinInput}
-        onSubmit={financialPin.submitPin}
-        onClose={financialPin.closeDialog}
       />
       <Dialog open={shareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Share Customer by Text</DialogTitle>

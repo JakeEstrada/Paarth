@@ -44,8 +44,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchPipelineLayoutsList, createPipelineLayout } from '../utils/pipelineLayoutsApi';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
-import { useFinancialPinLock } from '../hooks/useFinancialPinLock';
-import FinancialPinUnlockDialog from '../components/common/FinancialPinUnlockDialog';
+import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import { getConnectedSocketId } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -97,7 +96,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const [selectedPipelineId, setSelectedPipelineId] = useState('default');
   const [pipelineHydrated, setPipelineHydrated] = useState(false);
   const { isShopViewRole, hideSensitive: shopHideSensitive } = useShopViewSensitive(user?.role);
-  const financialPin = useFinancialPinLock();
+  const financialPin = useFinancialPinLockContext();
   const hideSensitive = shopHideSensitive || financialPin.hideFinancials;
 
   const showTasksAndAppointments = !isShopViewRole && !tvMode;
@@ -878,15 +877,6 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
             </Button>
           </DialogActions>
         </Dialog>
-
-        <FinancialPinUnlockDialog
-          open={financialPin.dialogOpen}
-          pinInput={financialPin.pinInput}
-          pinError={financialPin.pinError}
-          onPinChange={financialPin.setPinInput}
-          onSubmit={financialPin.submitPin}
-          onClose={financialPin.closeDialog}
-        />
       </Container>
     </Box>
   );

@@ -3,6 +3,7 @@ import { Box } from '@mui/material';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import SiteAssistantChat from '../assistant/SiteAssistantChat';
+import { FinancialPinLockProvider } from '../../context/FinancialPinLockContext';
 
 function MainLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -12,7 +13,8 @@ function MainLayout({ children }) {
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <FinancialPinLockProvider>
+      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <Box
         component="main"
@@ -41,6 +43,7 @@ function MainLayout({ children }) {
       </Box>
       <SiteAssistantChat />
     </Box>
+    </FinancialPinLockProvider>
   );
 }
 

@@ -23,6 +23,8 @@ import {
   Person as PersonIcon,
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
+  Lock as LockIcon,
+  LockOpen as LockOpenIcon,
   Menu as MenuIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
@@ -31,6 +33,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useFinancialPinLockContext } from '../../context/FinancialPinLockContext';
 import { useAuthenticatedProfilePhotoUrl } from '../../hooks/useAuthenticatedProfilePhotoUrl';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -47,6 +50,7 @@ function userInitials(name) {
 function TopBar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useTheme();
+  const { unlocked, openUnlockDialog, lockFinancials } = useFinancialPinLockContext();
   const profilePhotoUrl = useAuthenticatedProfilePhotoUrl(user);
   const navigate = useNavigate();
   const theme = useMuiTheme();
@@ -191,6 +195,18 @@ function TopBar({ onMenuClick }) {
           )}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <IconButton
+            onClick={() => (unlocked ? lockFinancials() : openUnlockDialog())}
+            size="small"
+            title={unlocked ? 'Lock financial amounts' : 'Unlock financial amounts'}
+            sx={{
+              '&:hover': {
+                backgroundColor: 'action.hover',
+              },
+            }}
+          >
+            {unlocked ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}
+          </IconButton>
           <IconButton
             onClick={toggleColorMode}
             size="small"
