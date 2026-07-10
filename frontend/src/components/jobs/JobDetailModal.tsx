@@ -51,6 +51,7 @@ import {
   Share as ShareIcon,
   AutoAwesome as AutoAwesomeIcon,
   ContentCopy as ContentCopyIcon,
+  Lock as LockIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import axios from 'axios';
@@ -970,16 +971,16 @@ function JobDetailModal({
             {/* Estimated Value in Header */}
             <Box sx={{ textAlign: 'right' }}>
               {hideFinancials ? (
-                <Box sx={{ textAlign: 'right' }}>
-                  <Typography variant="h6" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                    Locked
-                  </Typography>
-                  {onRequestSensitiveUnlock && (
-                    <Button size="small" onClick={() => onRequestSensitiveUnlock?.()}>
-                      Unlock
-                    </Button>
-                  )}
-                </Box>
+                <Tooltip title="Unlock financial amounts">
+                  <IconButton
+                    size="small"
+                    onClick={() => onRequestSensitiveUnlock?.()}
+                    sx={{ color: 'text.secondary' }}
+                    aria-label="Unlock financial amounts"
+                  >
+                    <LockIcon />
+                  </IconButton>
+                </Tooltip>
               ) : isEditing ? (
                 <>
                   <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
@@ -1431,15 +1432,16 @@ function JobDetailModal({
         {activeTab === JOB_MODAL_TAB.payments && (
           <Box>
             {hideFinancials ? (
-              <Paper sx={{ p: 3, textAlign: 'center' }}>
-                <Typography variant="body1" sx={{ mb: 1 }}>
-                  Financial amounts are locked. Enter the PIN to view.
-                </Typography>
-                {onRequestSensitiveUnlock && (
-                  <Button variant="contained" onClick={() => onRequestSensitiveUnlock?.()}>
-                    Unlock with PIN
-                  </Button>
-                )}
+              <Paper sx={{ p: 4, textAlign: 'center' }}>
+                <Tooltip title="Unlock financial amounts">
+                  <IconButton
+                    onClick={() => onRequestSensitiveUnlock?.()}
+                    aria-label="Unlock financial amounts"
+                    sx={{ color: 'text.secondary' }}
+                  >
+                    <LockIcon sx={{ fontSize: 40 }} />
+                  </IconButton>
+                </Tooltip>
               </Paper>
             ) : (
               <>
@@ -1462,15 +1464,16 @@ function JobDetailModal({
         {activeTab === JOB_MODAL_TAB.files && (
           <Box>
             {hideFinancials ? (
-              <Paper sx={{ p: 3, textAlign: 'center' }}>
-                <Typography variant="body1" sx={{ mb: 1 }}>
-                  Financial amounts are locked. Enter the PIN to view.
-                </Typography>
-                {onRequestSensitiveUnlock && (
-                  <Button variant="contained" onClick={() => onRequestSensitiveUnlock?.()}>
-                    Unlock with PIN
-                  </Button>
-                )}
+              <Paper sx={{ p: 4, textAlign: 'center' }}>
+                <Tooltip title="Unlock financial amounts">
+                  <IconButton
+                    onClick={() => onRequestSensitiveUnlock?.()}
+                    aria-label="Unlock financial amounts"
+                    sx={{ color: 'text.secondary' }}
+                  >
+                    <LockIcon sx={{ fontSize: 40 }} />
+                  </IconButton>
+                </Tooltip>
               </Paper>
             ) : null}
             <>

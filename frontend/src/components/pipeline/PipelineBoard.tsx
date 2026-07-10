@@ -32,6 +32,7 @@ import {
   History as HistoryIcon,
   Edit as EditIcon,
   Settings as SettingsIcon,
+  Lock as LockIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -347,35 +348,32 @@ function PipelineBoard({
                 {count}
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Typography
-                  variant="body2"
-                  component={hideSensitive && onRequestSensitiveUnlock ? 'button' : 'p'}
-                  onClick={
-                    hideSensitive && onRequestSensitiveUnlock
-                      ? (e) => {
-                          e.stopPropagation();
-                          onRequestSensitiveUnlock();
-                        }
-                      : undefined
-                  }
-                  sx={{
-                    fontSize: '0.875rem',
-                    fontWeight: 500,
-                    color: theme.palette.primary.main,
-                    ...(hideSensitive && onRequestSensitiveUnlock
-                      ? {
-                          cursor: 'pointer',
-                          border: 'none',
-                          background: 'none',
-                          p: 0,
-                          font: 'inherit',
-                          textDecoration: 'underline',
-                        }
-                      : {}),
-                  }}
-                >
-                  {hideSensitive ? 'Locked' : `$${Math.round(value / 1000)}K`}
-                </Typography>
+                {hideSensitive ? (
+                  <Tooltip title="Unlock stage totals">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRequestSensitiveUnlock?.();
+                      }}
+                      sx={{ color: theme.palette.primary.main, p: 0.25 }}
+                      aria-label="Unlock stage totals"
+                    >
+                      <LockIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                ) : (
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                      color: theme.palette.primary.main,
+                    }}
+                  >
+                    {`$${Math.round(value / 1000)}K`}
+                  </Typography>
+                )}
                 {stageId === 'ESTIMATE_SENT' && (
                   <Tooltip title="View archived estimates">
                     <IconButton
