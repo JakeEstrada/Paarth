@@ -1533,6 +1533,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
         sx={(theme) => ({ zIndex: theme.zIndex.modal + 2 })}
         hideSensitive={hideSensitive}
         onRequestSensitiveUnlock={financialPin.openUnlockDialog}
+        shopDisplayMode={isReadonlyView}
       />
       <Dialog open={shareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Share Customer by Text</DialogTitle>

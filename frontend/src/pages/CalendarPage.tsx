@@ -2575,7 +2575,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
               </Button>
             </>
           ) : null}
-          {tvMode && (
+          {tvMode && !externalViewControls && (
             <Button
               onClick={() => navigate('/calendar')}
               variant="outlined"
@@ -2756,6 +2756,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
         }}
         hideSensitive={hideSensitive}
         onRequestSensitiveUnlock={financialPin.openUnlockDialog}
+        shopDisplayMode={tvMode}
       />
 
       {/* Right-click on a date: hide/show that weekday */}

@@ -3,7 +3,7 @@
  * Docs: ../../../docs/COMPONENTS.md
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   Dialog,
   DialogTitle,
@@ -82,6 +82,11 @@ import {
   sumChangeOrders,
   validatePaymentSchedule,
 } from '../../utils/paymentSchedule';
+import {
+  isShopDisplayPath,
+  shopDisplayCalendarPath,
+  shopDisplayCustomerPath,
+} from '../../utils/shopDisplay';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -204,7 +209,10 @@ function JobDetailModal({
   sx = {},
   hideSensitive = false,
   onRequestSensitiveUnlock = () => {},
+  shopDisplayMode = false,
 }) {
+  const location = useLocation();
+  const isShopDisplay = shopDisplayMode || isShopDisplayPath(location.pathname);
   const [activeTab, setActiveTab] = useState(() => resolveJobModalTab(initialTab));
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1066,11 +1074,15 @@ function JobDetailModal({
                   {customerEntityId && (
                     <IconButton
                       component={RouterLink}
-                      to={`/customers?customerId=${customerEntityId}`}
+                      to={
+                        isShopDisplay
+                          ? shopDisplayCustomerPath(customerEntityId)
+                          : `/customers?customerId=${customerEntityId}`
+                      }
                       onClick={onClose}
                       size="small"
                       color="info"
-                      title="Open customer card"
+                      title={isShopDisplay ? 'Open customer in shop view' : 'Open customer card'}
                     >
                       <PersonIcon />
                     </IconButton>
@@ -1435,7 +1447,10 @@ function JobDetailModal({
 
         {activeTab === JOB_MODAL_TAB.schedule && (
           <Box>
-            <JobSchedulePanel job={job} />
+            <JobSchedulePanel
+              job={job}
+              calendarPath={isShopDisplay ? shopDisplayCalendarPath() : '/calendar'}
+            />
           </Box>
         )}
 
@@ -1503,7 +1518,7 @@ function JobDetailModal({
                       </Typography>
                     )}
                     <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {jobEstimates.length > 0 ? (
+                      {!isShopDisplay && jobEstimates.length > 0 ? (
                         jobEstimates.map((est) => (
                           <Button
                             key={est._id}
@@ -1515,7 +1530,7 @@ function JobDetailModal({
                             Open {est.estimateNumber || 'estimate'}
                           </Button>
                         ))
-                      ) : (
+                      ) : !isShopDisplay ? (
                         <Button
                           size="small"
                           variant="outlined"
@@ -1524,7 +1539,8 @@ function JobDetailModal({
                         >
                           Create estimate
                         </Button>
-                      )}
+                      ) : null}
+                      {!isShopDisplay ? (
                       <Button
                         size="small"
                         variant="outlined"
@@ -1533,6 +1549,7 @@ function JobDetailModal({
                       >
                         Open takeoff sheet
                       </Button>
+                      ) : null}
                     </Box>
                   </Paper>
                 </Grid>

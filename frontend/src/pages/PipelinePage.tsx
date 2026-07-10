@@ -710,6 +710,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
           }}
           hideSensitive={hideSensitive}
           onRequestSensitiveUnlock={financialPin.openUnlockDialog}
+          shopDisplayMode={tvMode}
         />
 
         {/* Add Appointment Modal */}
@@ -836,6 +837,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
             onJobArchive={handleJobArchive}
             hideSensitive={hideSensitive}
             onRequestSensitiveUnlock={financialPin.openUnlockDialog}
+            shopDisplayMode={tvMode}
           />
         )}
 

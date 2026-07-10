@@ -33,9 +33,10 @@ type JobSchedulePanelProps = {
       }>;
     };
   } | null;
+  calendarPath?: string;
 };
 
-export default function JobSchedulePanel({ job }: JobSchedulePanelProps) {
+export default function JobSchedulePanel({ job, calendarPath = '/calendar' }: JobSchedulePanelProps) {
   const segments = getJobScheduleSegments(job);
   const crewNotes = String(job?.schedule?.crewNotes || '').trim();
   const uniqueInstallers = [...new Set(segments.map((segment) => segment.installer))];
@@ -47,7 +48,7 @@ export default function JobSchedulePanel({ job }: JobSchedulePanelProps) {
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
           This job is not scheduled on the calendar yet.
         </Typography>
-        <Button component={RouterLink} to="/calendar" variant="outlined">
+        <Button component={RouterLink} to={calendarPath} variant="outlined">
           Open calendar
         </Button>
       </Paper>
@@ -106,7 +107,7 @@ export default function JobSchedulePanel({ job }: JobSchedulePanelProps) {
         </Table>
       </Paper>
 
-      <Button component={RouterLink} to="/calendar" size="small" sx={{ mt: 2 }}>
+      <Button component={RouterLink} to={calendarPath} size="small" sx={{ mt: 2 }}>
         View on calendar
       </Button>
     </Box>
