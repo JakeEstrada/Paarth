@@ -1,13 +1,11 @@
 /**
- * PayrollPage — Timesheets, mileage, PDF print, SMS share.
+ * PayrollPage — Timesheets, mileage, print.
  * Route: /payroll
  * Docs: ../../../docs/PAGES.md#payrollpagetsx
  */
 import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import axios from 'axios';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 import {
   Box,
   Paper,
@@ -35,12 +33,8 @@ import {
   useTheme,
 } from '@mui/material';
 import BrandLogo from '../components/common/BrandLogo';
-import EmployeeSmsRecipientField, {
-  parseSmsRecipientSelection,
-} from '../components/common/EmployeeSmsRecipientField';
 import {
   Print as PrintIcon,
-  Download as DownloadIcon,
   AccessTime as TimeIcon,
   DirectionsCar as CarIcon,
   Receipt as ReceiptIcon,
@@ -48,13 +42,44 @@ import {
   Add as AddIcon,
   Save as SaveIcon,
   Delete as DeleteIcon,
-  Share as ShareIcon,
 } from '@mui/icons-material';
 
 const DAYS = ['Friday', 'Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'];
 
 const PRESETS_STORAGE_KEY = 'payroll_saved_presets';
+const DEFAULT_PRESET_NAME = 'Day Shift';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+const COMPACT_BTN_SX = {
+  textTransform: 'none',
+  borderRadius: 1.5,
+  py: 0.4,
+  px: 1.25,
+  fontSize: '0.8125rem',
+  minHeight: 32,
+};
+
+function normalizeWorkHours(hours) {
+  const byDay = {};
+  for (const entry of hours || []) {
+    if (entry?.day) {
+      byDay[entry.day] = entry;
+    }
+  }
+  return DAYS.map((day) => ({
+    day,
+    in: String(byDay[day]?.in ?? '0'),
+    out: String(byDay[day]?.out ?? '0'),
+    breaks: String(byDay[day]?.breaks ?? '0'),
+  }));
+}
+
+const DAY_SHIFT_HOURS = DAYS.map((day) => ({
+  day,
+  in: '600',
+  out: '1430',
+  breaks: '30',
+}));
 
 function PayrollPage() {
   const theme = useTheme();
@@ -64,13 +89,8 @@ function PayrollPage() {
   const [presetSelect, setPresetSelect] = useState('');
   const [savedPresets, setSavedPresets] = useState([]);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-  const [presetName, setPresetName] = useState('');
+  const [presetName, setPresetName] = useState(DEFAULT_PRESET_NAME);
   const printSummaryRef = useRef(null);
-  const [capturingPdf, setCapturingPdf] = useState(false);
-  const [payrollBaseDirHandle, setPayrollBaseDirHandle] = useState(null);
-  const [payrollTextDialogOpen, setPayrollTextDialogOpen] = useState(false);
-  const [payrollSmsRecipient, setPayrollSmsRecipient] = useState('');
-  const [sendingPayrollText, setSendingPayrollText] = useState(false);
   
   // Work hours - default 6:45 AM - 3:00 PM (645 - 1500)
   const [workHours, setWorkHours] = useState(
@@ -82,16 +102,26 @@ function PayrollPage() {
     }))
   );
 
+  const readSavedPresets = () => {
+    try {
+      const saved = localStorage.getItem(PRESETS_STORAGE_KEY);
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.error('Error loading saved presets:', error);
+      return [];
+    }
+  };
+
+  const persistSavedPresets = (presets) => {
+    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+    setSavedPresets(presets);
+  };
+
   // Load saved presets from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem(PRESETS_STORAGE_KEY);
-    if (saved) {
-      try {
-        setSavedPresets(JSON.parse(saved));
-      } catch (error) {
-        console.error('Error loading saved presets:', error);
-      }
-    }
+    setSavedPresets(readSavedPresets());
   }, []);
 
   // Travel miles
@@ -274,42 +304,53 @@ function PayrollPage() {
           }
         })
       );
+      toast.success('Loaded Standard Week');
+    } else if (preset === 'dayShift') {
+      setWorkHours(DAY_SHIFT_HOURS.map((h) => ({ ...h })));
+      toast.success('Loaded Day Shift (6:00–14:30, all days)');
     } else {
-      // Load saved preset
-      const savedPreset = savedPresets.find(p => p.id === preset);
+      // Load saved preset (match id as string — Select values are always strings)
+      const presets = readSavedPresets();
+      const savedPreset = presets.find((p) => String(p.id) === String(preset));
       if (savedPreset) {
-        setWorkHours(savedPreset.hours);
+        setWorkHours(normalizeWorkHours(savedPreset.hours));
+        toast.success(`Loaded "${savedPreset.name}"`);
+      } else {
+        toast.error('Saved hours not found — try saving again');
       }
     }
     // Reset the select after loading
     setPresetSelect('');
   };
 
-  // Save current hours as a new preset
-  const handleSavePreset = () => {
-    const name = presetName.trim();
-    if (!name) {
-      toast.error('Enter a name for this preset');
-      return;
-    }
+  // Save current hours (upsert by name; name defaults to "Day Shift")
+  const handleSavePreset = (nameOverride) => {
+    const name = String(nameOverride ?? presetName).trim() || DEFAULT_PRESET_NAME;
+    const hours = normalizeWorkHours(workHours);
+    const existing = readSavedPresets().find(
+      (p) => String(p.name || '').trim().toLowerCase() === name.toLowerCase(),
+    );
 
-    const newPreset = {
-      id: Date.now().toString(),
+    const preset = {
+      id: existing?.id || Date.now().toString(),
       name,
-      hours: workHours.map(h => ({ day: h.day, in: h.in, out: h.out, breaks: h.breaks })),
-      createdAt: new Date().toISOString(),
+      hours,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     try {
-      const updatedPresets = [...savedPresets, newPreset];
-      setSavedPresets(updatedPresets);
-      localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
-      setPresetName('');
+      const current = readSavedPresets();
+      const updatedPresets = existing
+        ? current.map((p) => (String(p.id) === String(existing.id) ? preset : p))
+        : [...current, preset];
+      persistSavedPresets(updatedPresets);
+      setPresetName(name);
       setSaveDialogOpen(false);
-      toast.success(`Preset "${newPreset.name}" saved`);
+      toast.success(existing ? `Updated "${name}"` : `Saved "${name}" — pick it from Load Hours`);
     } catch (err) {
       console.error('Save preset failed:', err);
-      toast.error('Could not save preset. Try again or check if storage is full.');
+      toast.error('Could not save hours. Check browser storage settings.');
     }
   };
 
@@ -317,9 +358,8 @@ function PayrollPage() {
   const handleDeletePreset = (presetId, e) => {
     e.stopPropagation(); // Prevent dropdown from closing
     if (window.confirm('Are you sure you want to delete this preset?')) {
-      const updatedPresets = savedPresets.filter(p => p.id !== presetId);
-      setSavedPresets(updatedPresets);
-      localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
+      const updatedPresets = readSavedPresets().filter((p) => String(p.id) !== String(presetId));
+      persistSavedPresets(updatedPresets);
       toast.success('Preset deleted');
     }
   };
@@ -338,165 +378,6 @@ function PayrollPage() {
     
     // Trigger browser print dialog
     window.print();
-  };
-
-  const handleDownloadPDF = async () => {
-    if (!printSummaryRef.current) return;
-    setCapturingPdf(true);
-    try {
-      const { pdf, pdfBlob, folderName, timeLabel, safeName, fileName } = await generatePayrollPdfArtifact();
-      let savedToFolder = false;
-
-      // Chromium family browsers: let user pick a base folder, then save under Payroll/<M-D>/filename.pdf
-      if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
-        try {
-          let baseDir = payrollBaseDirHandle;
-          if (!baseDir) {
-            // @ts-ignore - showDirectoryPicker is not yet in all TS DOM libs
-            baseDir = await window.showDirectoryPicker({ mode: 'readwrite' });
-            setPayrollBaseDirHandle(baseDir);
-          }
-
-          const payrollDir = await baseDir.getDirectoryHandle('Payroll', { create: true });
-          const dateDir = await payrollDir.getDirectoryHandle(folderName, { create: true });
-          const fileHandle = await dateDir.getFileHandle(fileName, { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(pdfBlob);
-          await writable.close();
-          savedToFolder = true;
-          toast.success(`Saved to Payroll/${folderName}/${fileName}`);
-        } catch (saveErr) {
-          // If user cancels folder picker or FS API fails, fall back to standard download.
-          console.warn('Folder save failed or cancelled; falling back to download:', saveErr);
-        }
-      }
-
-      if (!savedToFolder) {
-        pdf.save(`payroll-${safeName || 'employee'}-${folderName}-${timeLabel}.pdf`);
-      }
-
-      try {
-        await axios.post(`${API_URL}/activities/payroll/print`, {
-          employeeName: employeeName.trim() || 'Unknown',
-          date: date,
-        });
-      } catch (err) {
-        console.error('Error logging payroll download:', err);
-      }
-      if (!savedToFolder) {
-        toast.success('PDF downloaded');
-      }
-    } catch (err) {
-      console.error('Error generating PDF:', err);
-      toast.error('Failed to generate PDF');
-    } finally {
-      setCapturingPdf(false);
-    }
-  };
-
-  const generatePayrollPdfArtifact = async () => {
-    if (!printSummaryRef.current) throw new Error('Payroll print area not ready');
-    await new Promise((r) => setTimeout(r, 150));
-    const el = printSummaryRef.current;
-    const canvas = await html2canvas(el, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-    });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const imgW = pageW;
-    const imgH = (canvas.height * imgW) / canvas.width;
-    pdf.addImage(imgData, 'PNG', 0, 0, imgW, Math.min(imgH, pageH));
-    if (imgH > pageH) {
-      let heightLeft = imgH - pageH;
-      let position = -pageH;
-      while (heightLeft > 0) {
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-        heightLeft -= pageH;
-        position -= pageH;
-      }
-    }
-    const cleanEmployeeName = (employeeName || 'employee').trim();
-    const parsed = new Date(date);
-    const payrollDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-    const folderName = `${payrollDate.getMonth() + 1}-${payrollDate.getDate()}`;
-    const now = new Date();
-    const hour = ((now.getHours() + 11) % 12) + 1;
-    const minute = String(now.getMinutes()).padStart(2, '0');
-    const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
-    const timeLabel = `${hour}-${minute}-${ampm}`;
-    const safeName = cleanEmployeeName.replace(/[^a-z0-9]/gi, ' ').trim().replace(/\s+/g, '-');
-    const fileName = `${safeName || 'employee'}-${timeLabel}.pdf`;
-    const pdfBlob = pdf.output('blob');
-    return { pdf, pdfBlob, folderName, timeLabel, safeName, fileName };
-  };
-
-  const uploadPayrollPdfAndGetLink = async () => {
-    const { pdfBlob, fileName } = await generatePayrollPdfArtifact();
-    const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('fileType', 'other');
-    formData.append('description', `Payroll PDF for ${employeeName || 'Employee'} (${date || '-'})`);
-    const uploadRes = await axios.post(`${API_URL}/files/upload-document`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    const uploaded = uploadRes.data;
-    if (!uploaded?._id) throw new Error('Could not upload payroll PDF');
-    return uploaded._id;
-  };
-
-  const openPayrollTextDialog = () => {
-    setPayrollTextDialogOpen(true);
-  };
-
-  const buildPayrollSmsMessage = () => {
-    const rate = (parseFloat(ratePerHour) || 0).toFixed(2);
-    const employee = (employeeName || '-').trim() || '-';
-    const payrollDate = (date || '-').trim() || '-';
-    const lines = [
-      'TIMESHEET SUMMARY',
-      `Employee: ${employee}`,
-      `Date: ${payrollDate}`,
-      '',
-      `Rate/hr: $${rate}`,
-      `Hours: ${totalHours.toFixed(2)}`,
-      `Weighted: ${weightedHoursData.weighted.toFixed(2)}`,
-      '',
-      `Travel: $${travelCost.toFixed(2)}`,
-      `Receipts: $${totalReceipts.toFixed(2)}`,
-      '--------------------',
-      `TOTAL PAY: $${overallTotal.toFixed(2)}`,
-    ];
-    // Use CRLF for better compatibility across SMS clients/carriers.
-    return lines.join('\r\n');
-  };
-
-  const handleSendPayrollText = async () => {
-    if (!payrollSmsRecipient) {
-      toast.error('Enter a phone number or select a recipient');
-      return;
-    }
-    try {
-      setSendingPayrollText(true);
-      await axios.post(`${API_URL}/twilio/send-sms`, {
-        ...parseSmsRecipientSelection(payrollSmsRecipient),
-        message: buildPayrollSmsMessage(),
-      });
-      toast.success('Text sent');
-      setPayrollTextDialogOpen(false);
-      setPayrollSmsRecipient('');
-    } catch (error) {
-      console.error('Failed to text payroll:', error);
-      toast.error(error.response?.data?.error || 'Failed to send text');
-    } finally {
-      setSendingPayrollText(false);
-    }
   };
 
   return (
@@ -540,12 +421,12 @@ function PayrollPage() {
       `}</style>
       
       <Box sx={{ p: { xs: 1, sm: 2, md: 4 }, width: '100%', '@media print': { p: 0 } }}>
-        {/* Print Summary - Only visible when printing or when capturing for PDF */}
+        {/* Print Summary - Only visible when printing */}
         <Box
           ref={printSummaryRef}
           className="print-summary"
           sx={{
-            display: capturingPdf ? 'block' : 'none',
+            display: 'none',
             color: '#000',
             backgroundColor: '#fff',
             '& .MuiTypography-root': { color: '#000' },
@@ -553,17 +434,6 @@ function PayrollPage() {
             '& .MuiTableRow-root': { color: '#000' },
             '& .MuiDivider-root': { borderColor: '#000', opacity: 1 },
             '@media print': { display: 'block', p: 2 },
-            ...(capturingPdf && {
-              position: 'fixed',
-              left: 0,
-              top: 0,
-              width: 800,
-              maxWidth: '100%',
-              p: 2,
-              backgroundColor: '#fff',
-              zIndex: 9999,
-              boxShadow: 3,
-            }),
           }}
         >
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
@@ -772,8 +642,8 @@ function PayrollPage() {
               Timesheet
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 1, sm: 2 }, alignItems: 'stretch', width: { xs: '100%', md: 'auto' } }}>
-            <FormControl size="small" sx={{ minWidth: 250 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center', width: { xs: '100%', md: 'auto' } }}>
+            <FormControl size="small" sx={{ minWidth: 200 }}>
               <InputLabel>Load Hours</InputLabel>
               <Select
                 label="Load Hours"
@@ -787,14 +657,15 @@ function PayrollPage() {
                 sx={{ textTransform: 'none' }}
               >
                 <MenuItem value="zero">Clear All (Set to Zero)</MenuItem>
-                <MenuItem value="standard">Standard Week (Mon-Thurs & Fri: 6:45-15:00, 30min break)</MenuItem>
+                <MenuItem value="dayShift">Day Shift (all days: 6:00–14:30, 30 min break)</MenuItem>
+                <MenuItem value="standard">Standard Week (Mon–Fri: 6:45–15:00; weekends off)</MenuItem>
                 {savedPresets.length > 0 && (
                   <>
                     <Divider sx={{ my: 0.5 }} />
                     {savedPresets.map((preset) => (
                       <MenuItem 
                         key={preset.id} 
-                        value={preset.id}
+                        value={String(preset.id)}
                         sx={{ 
                           display: 'flex', 
                           justifyContent: 'space-between', 
@@ -827,41 +698,33 @@ function PayrollPage() {
               </Select>
             </FormControl>
             <Button
+              size="small"
               variant="outlined"
-              startIcon={<SaveIcon />}
+              startIcon={<SaveIcon fontSize="small" />}
+              onClick={() => handleSavePreset(DEFAULT_PRESET_NAME)}
+              sx={COMPACT_BTN_SX}
+            >
+              Save Hours
+            </Button>
+            <Button
+              size="small"
+              variant="text"
               onClick={() => {
-                setPresetName(prev => prev || `Hours ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`);
+                setPresetName(DEFAULT_PRESET_NAME);
                 setSaveDialogOpen(true);
               }}
-              sx={{ textTransform: 'none', borderRadius: 2 }}
+              sx={COMPACT_BTN_SX}
             >
-              Save Current Hours
+              Save as…
             </Button>
             <Button
+              size="small"
               variant="contained"
-              startIcon={<PrintIcon />}
+              startIcon={<PrintIcon fontSize="small" />}
               onClick={handlePrint}
-              sx={{ textTransform: 'none', borderRadius: 2 }}
+              sx={COMPACT_BTN_SX}
             >
               Print
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<DownloadIcon />}
-              onClick={handleDownloadPDF}
-              disabled={capturingPdf}
-              sx={{ textTransform: 'none', borderRadius: 2 }}
-            >
-              {capturingPdf ? 'Generating…' : 'Download PDF'}
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<ShareIcon />}
-              onClick={openPayrollTextDialog}
-              disabled={sendingPayrollText}
-              sx={{ textTransform: 'none', borderRadius: 2 }}
-            >
-              Send Text
             </Button>
           </Box>
         </Box>
@@ -1302,78 +1165,44 @@ function PayrollPage() {
       {/* Save Preset Dialog */}
       <Dialog open={saveDialogOpen} onClose={() => {
         setSaveDialogOpen(false);
-        setPresetName('');
+        setPresetName(DEFAULT_PRESET_NAME);
       }} maxWidth="sm" fullWidth>
-        <DialogTitle>Save Current Hours as Preset</DialogTitle>
+        <DialogTitle>Save hours as…</DialogTitle>
         <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+            Optional label for this shift. Use &ldquo;Day Shift&rdquo; for the usual 6:00–14:30 schedule, or name
+            another shift (e.g. &ldquo;Late Shift&rdquo;).
+          </Typography>
           <TextField
             autoFocus
             margin="dense"
-            label="Preset Name"
+            label="Preset name (optional)"
             fullWidth
             variant="outlined"
             value={presetName}
             onChange={(e) => setPresetName(e.target.value)}
-            placeholder="e.g., Week 1 Schedule, Overtime Week"
-            sx={{ mt: 2 }}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && presetName.trim()) {
+            placeholder={DEFAULT_PRESET_NAME}
+            sx={{ mt: 1 }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
                 handleSavePreset();
               }
             }}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
+          <Button size="small" onClick={() => {
             setSaveDialogOpen(false);
-            setPresetName('');
+            setPresetName(DEFAULT_PRESET_NAME);
           }}>
             Cancel
           </Button>
           <Button 
-            onClick={handleSavePreset} 
+            size="small"
+            onClick={() => handleSavePreset()} 
             variant="contained"
-            disabled={!presetName.trim()}
           >
             Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={payrollTextDialogOpen}
-        onClose={() => {
-          setPayrollTextDialogOpen(false);
-          setPayrollSmsRecipient('');
-        }}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Send Text</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
-            Search for an employee or type any phone number. We send the timesheet summary to that number.
-          </Typography>
-          <EmployeeSmsRecipientField
-            dialogOpen={payrollTextDialogOpen}
-            value={payrollSmsRecipient}
-            onChange={setPayrollSmsRecipient}
-            disabled={sendingPayrollText}
-            autoSelectByName={employeeName}
-            sx={{ mb: 2 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => {
-              setPayrollTextDialogOpen(false);
-            }}
-            disabled={sendingPayrollText}
-          >
-            Cancel
-          </Button>
-          <Button onClick={handleSendPayrollText} variant="contained" disabled={sendingPayrollText}>
-            {sendingPayrollText ? 'Sending...' : 'Send Text'}
           </Button>
         </DialogActions>
       </Dialog>
