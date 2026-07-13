@@ -1979,13 +1979,10 @@ function CommissionLogsPage() {
           };
         });
 
-        const payments = orderPaymentsForDisplay(
-          builtPayments,
-          local.paymentOrder,
-          Array.isArray(local.paymentOrder) && local.paymentOrder.length > 0
-            ? { preserveOrder: true }
-            : undefined,
-        );
+        // Keep tiers in job schedule order (or saved paymentOrder). Do not push salesman-paid tiers to the end.
+        const payments = orderPaymentsForDisplay(builtPayments, local.paymentOrder, {
+          preserveOrder: true,
+        });
 
         const paidTotal = roundMoney(
           payments.reduce(
