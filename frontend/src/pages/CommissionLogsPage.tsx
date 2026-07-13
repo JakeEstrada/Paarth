@@ -790,6 +790,7 @@ interface CommissionTableRow extends CommissionSourceJobRow {
   rateOverridden: boolean;
   commissionDue: number;
   payments: CommissionPaymentDisplay[];
+  paymentOrder?: number[];
   hasManualPayments: boolean;
   balance: number;
   isRowSettled: boolean;
@@ -1005,11 +1006,11 @@ interface CommissionOverviewTiersProps {
 
 function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
   const theme = useTheme();
-  const ordered = [...payments].sort((a, b) => a.scheduleIndex - b.scheduleIndex);
+  // Preserve commissionLog paymentOrder — do not re-sort by scheduleIndex here.
 
   return (
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-      {ordered.map((payment) => {
+      {payments.map((payment) => {
         const styles = tierChipStyles(theme, payment);
         const dueAmount = payment.amount > 0 ? payment.amount : payment.potentialAmount;
         const statusLabel = payment.salesmanPaid
@@ -1095,7 +1096,7 @@ function SortableOverviewRow({ row, onOpenPayments, onOpenJobDetail }: SortableO
       }}
     >
       <TableCell sx={{ width: 40, px: 0.5, verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
-        {!isOverviewActiveRow(row) ? (
+        {isOverviewActiveRow(row) ? (
           <IconButton
             size="small"
             {...attributes}
@@ -1529,16 +1530,20 @@ function JobPaymentCards({
   );
 
   const isVertical = layout === 'vertical';
+
   const orderedPayments = preserveOrder
-    ? [...row.payments].sort((a, b) => a.scheduleIndex - b.scheduleIndex)
+    ? orderPaymentsForDisplay(row.payments, row.paymentOrder, { preserveOrder: true })
     : row.payments;
+
   const activePayments = preserveOrder
-    ? orderedPayments.filter((payment) => !payment.salesmanPaid)
+    ? orderedPayments
     : row.payments.filter((payment) => !payment.salesmanPaid);
   const settledPayments = preserveOrder
     ? []
     : row.payments.filter((payment) => payment.salesmanPaid);
-  const sortableIds = activePayments.map((payment) => `${row.jobId}-${payment.scheduleIndex}`);
+
+  const sortablePayments = preserveOrder ? orderedPayments : activePayments;
+  const sortableIds = sortablePayments.map((payment) => `${row.jobId}-${payment.scheduleIndex}`);
   const sortStrategy = isVertical ? verticalListSortingStrategy : horizontalListSortingStrategy;
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -1549,7 +1554,7 @@ function JobPaymentCards({
     const overIdx = sortableIds.indexOf(String(over.id));
     if (activeIdx < 0 || overIdx < 0) return;
 
-    const currentOrder = activePayments.map((payment) => payment.scheduleIndex);
+    const currentOrder = sortablePayments.map((payment) => payment.scheduleIndex);
     const nextOrder = arrayMove(currentOrder, activeIdx, overIdx);
     onReorder(row.jobId, nextOrder);
   };
@@ -1582,9 +1587,11 @@ function JobPaymentCards({
       }}
     >
       {preserveOrder ? (
-        <>
-          {orderedPayments.map((payment) => renderPaymentCard(payment, false))}
-        </>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={sortableIds} strategy={sortStrategy}>
+            {orderedPayments.map((payment) => renderPaymentCard(payment, true))}
+          </SortableContext>
+        </DndContext>
       ) : (
         <>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -1972,7 +1979,13 @@ function CommissionLogsPage() {
           };
         });
 
-        const payments = orderPaymentsForDisplay(builtPayments, local.paymentOrder);
+        const payments = orderPaymentsForDisplay(
+          builtPayments,
+          local.paymentOrder,
+          Array.isArray(local.paymentOrder) && local.paymentOrder.length > 0
+            ? { preserveOrder: true }
+            : undefined,
+        );
 
         const paidTotal = roundMoney(
           payments.reduce(
@@ -1991,6 +2004,10 @@ function CommissionLogsPage() {
           rateOverridden,
           commissionDue,
           payments,
+          paymentOrder:
+            Array.isArray(local.paymentOrder) && local.paymentOrder.length > 0
+              ? local.paymentOrder
+              : undefined,
           hasManualPayments,
           balance,
           isRowSettled,
