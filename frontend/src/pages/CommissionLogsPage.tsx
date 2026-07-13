@@ -37,6 +37,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import CloseIcon from '@mui/icons-material/Close';
+import PersonIcon from '@mui/icons-material/Person';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
@@ -60,6 +61,7 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { getCommissionPaymentSplits, getJobTotalWithChangeOrders, formatMoney, formatMoneyInput, roundMoney } from '../utils/paymentSchedule';
 import { isCommissionEligibleJob } from '../utils/commissionJobEligibility';
+import JobDetailModal from '../components/jobs/JobDetailModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const COMMISSION_LOGS_STORAGE_KEY = 'financeHubCommissionLogsRows';
@@ -394,9 +396,10 @@ function matchesCheckGroup(group: CommissionCheckGroup, rawQuery: string): boole
 interface CommissionChecksTableProps {
   groups: CommissionCheckGroup[];
   onOpenJob: (jobId: string) => void;
+  onOpenJobDetail: (jobId: string) => void;
 }
 
-function CommissionChecksTable({ groups, onOpenJob }: CommissionChecksTableProps) {
+function CommissionChecksTable({ groups, onOpenJob, onOpenJobDetail }: CommissionChecksTableProps) {
   const theme = useTheme();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -486,6 +489,7 @@ function CommissionChecksTable({ groups, onOpenJob }: CommissionChecksTableProps
                             <TableCell sx={{ fontWeight: 600 }} align="right">
                               Amount
                             </TableCell>
+                            <TableCell sx={{ width: 44 }} />
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -502,6 +506,17 @@ function CommissionChecksTable({ groups, onOpenJob }: CommissionChecksTableProps
                               <TableCell>{entry.paymentLabel}</TableCell>
                               <TableCell align="right" sx={{ fontWeight: 600 }}>
                                 {formatMoney(entry.amount)}
+                              </TableCell>
+                              <TableCell sx={{ py: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                                <Tooltip title="View job">
+                                  <IconButton
+                                    size="small"
+                                    aria-label={`View job for ${entry.customerName}`}
+                                    onClick={() => onOpenJobDetail(entry.jobId)}
+                                  >
+                                    <PersonIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -1034,9 +1049,10 @@ function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
 interface SortableOverviewRowProps {
   row: CommissionTableRow;
   onOpenPayments: (row: CommissionTableRow) => void;
+  onOpenJobDetail: (jobId: string) => void;
 }
 
-function SortableOverviewRow({ row, onOpenPayments }: SortableOverviewRowProps) {
+function SortableOverviewRow({ row, onOpenPayments, onOpenJobDetail }: SortableOverviewRowProps) {
   const theme = useTheme();
   const {
     attributes,
@@ -1115,6 +1131,17 @@ function SortableOverviewRow({ row, onOpenPayments }: SortableOverviewRowProps) 
       <TableCell sx={{ py: 1 }}>
         <CommissionOverviewTiers payments={row.payments} />
       </TableCell>
+      <TableCell sx={{ width: 44, px: 0.5 }} onClick={(e) => e.stopPropagation()}>
+        <Tooltip title="View job">
+          <IconButton
+            size="small"
+            aria-label={`View job for ${row.customerName}`}
+            onClick={() => onOpenJobDetail(row.jobId)}
+          >
+            <PersonIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </TableCell>
     </TableRow>
   );
 }
@@ -1123,9 +1150,10 @@ interface CommissionOverviewTableProps {
   rows: CommissionTableRow[];
   onReorder: (order: string[]) => void;
   onOpenPayments: (row: CommissionTableRow) => void;
+  onOpenJobDetail: (jobId: string) => void;
 }
 
-function CommissionOverviewTable({ rows, onReorder, onOpenPayments }: CommissionOverviewTableProps) {
+function CommissionOverviewTable({ rows, onReorder, onOpenPayments, onOpenJobDetail }: CommissionOverviewTableProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
@@ -1165,12 +1193,18 @@ function CommissionOverviewTable({ rows, onReorder, onOpenPayments }: Commission
             <TableCell sx={{ fontWeight: 700, minWidth: 280, bgcolor: 'background.paper' }}>
               Payment tiers
             </TableCell>
+            <TableCell sx={{ width: 44, bgcolor: 'background.paper' }} />
           </TableRow>
         </TableHead>
         <TableBody>
           <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
             {rows.map((row) => (
-              <SortableOverviewRow key={row.jobId} row={row} onOpenPayments={onOpenPayments} />
+              <SortableOverviewRow
+                key={row.jobId}
+                row={row}
+                onOpenPayments={onOpenPayments}
+                onOpenJobDetail={onOpenJobDetail}
+              />
             ))}
           </SortableContext>
         </TableBody>
@@ -1589,6 +1623,7 @@ interface CommissionPaymentModalProps {
   onUpdateCheck: (jobId: string, scheduleIndex: number, value: string) => void;
   onUpdateSalesmanPaid: (jobId: string, scheduleIndex: number, paid: boolean) => void;
   onResetOverrides: (jobId: string) => void;
+  onOpenJobDetail: (jobId: string) => void;
 }
 
 function CommissionPaymentModal({
@@ -1603,6 +1638,7 @@ function CommissionPaymentModal({
   onUpdateCheck,
   onUpdateSalesmanPaid,
   onResetOverrides,
+  onOpenJobDetail,
 }: CommissionPaymentModalProps) {
   const theme = useTheme();
   if (!row) return null;
@@ -1644,6 +1680,15 @@ function CommissionPaymentModal({
             {row.jobLabel || 'Untitled'} · {row.stageLabel || '-'}
           </Typography>
         </Box>
+        <Tooltip title="View job">
+          <IconButton
+            aria-label="View job"
+            onClick={() => onOpenJobDetail(row.jobId)}
+            sx={{ position: 'absolute', right: 48, top: 12 }}
+          >
+            <PersonIcon />
+          </IconButton>
+        </Tooltip>
         <IconButton
           aria-label="Close"
           onClick={onClose}
@@ -1764,6 +1809,7 @@ function CommissionLogsPage() {
   const [showZeroCommissionJobs, setShowZeroCommissionJobs] = useState(() => readShowZeroCommissionJobs());
   const [pageTab, setPageTab] = useState<CommissionPageTab>(() => readCommissionPageTab());
   const [paymentModalJobId, setPaymentModalJobId] = useState<string | null>(null);
+  const [jobDetailModalJobId, setJobDetailModalJobId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
     () => readCommissionLogRows(),
@@ -2129,6 +2175,22 @@ function CommissionLogsPage() {
     return () => window.removeEventListener('focus', handleFocus);
   }, [loadCommissionJobs]);
 
+  const handleJobDetailUpdate = async (jobId: string, updates: Record<string, unknown>) => {
+    try {
+      await axios.patch(`${API_URL}/jobs/${jobId}`, updates);
+      toast.success('Job updated');
+      await loadCommissionJobs();
+    } catch (error) {
+      console.error('Error updating job:', error);
+      toast.error('Failed to update job');
+    }
+  };
+
+  const handleJobDetailClose = async () => {
+    setJobDetailModalJobId(null);
+    await loadCommissionJobs();
+  };
+
   return (
     <Box sx={{ width: '100%', maxWidth: '100%', py: 1 }}>
       <Card sx={{ width: '100%' }}>
@@ -2254,6 +2316,7 @@ function CommissionLogsPage() {
                 rows={visibleTableRows}
                 onReorder={setOverviewJobOrder}
                 onOpenPayments={(row) => setPaymentModalJobId(row.jobId)}
+                onOpenJobDetail={setJobDetailModalJobId}
               />
             </Box>
           )
@@ -2282,6 +2345,7 @@ function CommissionLogsPage() {
                 <CommissionChecksTable
                   groups={filteredCheckGroups}
                   onOpenJob={(jobId) => setPaymentModalJobId(jobId)}
+                  onOpenJobDetail={setJobDetailModalJobId}
                 />
               </Box>
             </Box>
@@ -2305,6 +2369,16 @@ function CommissionLogsPage() {
         }
         onUpdateSalesmanPaid={handleSalesmanPaidChange}
         onResetOverrides={resetPaymentOverrides}
+        onOpenJobDetail={setJobDetailModalJobId}
+      />
+
+      <JobDetailModal
+        jobId={jobDetailModalJobId}
+        open={Boolean(jobDetailModalJobId)}
+        onClose={() => setJobDetailModalJobId(null)}
+        onJobUpdate={handleJobDetailUpdate}
+        onJobDelete={handleJobDetailClose}
+        onJobArchive={handleJobDetailClose}
       />
     </Box>
   );
