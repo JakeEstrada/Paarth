@@ -111,6 +111,10 @@ function CompletedJobsPage() {
     await fetchCompletedJobs();
   };
 
+  const handleJobDataChanged = () => {
+    fetchCompletedJobs();
+  };
+
   const handleContextMenu = (event, job) => {
     event.preventDefault();
     event.stopPropagation();
@@ -342,6 +346,7 @@ function CompletedJobsPage() {
           open={!!selectedJobId}
           onClose={() => setSelectedJobId(null)}
           onJobUpdate={handleJobUpdate}
+          onJobDataChanged={handleJobDataChanged}
           onJobDelete={handleJobDelete}
           onJobArchive={handleJobArchive}
           hideSensitive={hideSensitive}

@@ -267,7 +267,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     const sourceSocketId = payload?.sourceSocketId || null;
     const ownSocketId = getConnectedSocketId();
     if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
-    // Tasks do not require pipeline-wide refetch; ignore for smooth UX.
+    setTodoRefreshTrigger((prev) => prev + 1);
   }, []);
   useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeProjectUpdate);
   useSocketSubscription(tenantRoom, 'project.created', handleRealtimeProjectUpdate);
@@ -314,6 +314,16 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const handleJobArchive = async (jobId) => {
     await fetchJobs(); // Refresh the list
   };
+
+  const handleJobDataChanged = useCallback(({ type }) => {
+    if (type === 'task') {
+      setTodoRefreshTrigger((prev) => prev + 1);
+    }
+    if (type === 'appointment') {
+      setAppointmentRefreshTrigger((prev) => prev + 1);
+    }
+    fetchJobs({ background: true });
+  }, [fetchJobs]);
 
   const handleArchiveCompleted = async () => {
     try {
@@ -708,6 +718,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
             // Trigger refresh of appointment list
             setAppointmentRefreshTrigger(prev => prev + 1);
           }}
+          onJobDataChanged={handleJobDataChanged}
           hideSensitive={hideSensitive}
           onRequestSensitiveUnlock={financialPin.openUnlockDialog}
           shopDisplayMode={tvMode}
@@ -835,6 +846,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
             onJobUpdate={handleJobUpdate}
             onJobDelete={handleJobDelete}
             onJobArchive={handleJobArchive}
+            onJobDataChanged={handleJobDataChanged}
             hideSensitive={hideSensitive}
             onRequestSensitiveUnlock={financialPin.openUnlockDialog}
             shopDisplayMode={tvMode}

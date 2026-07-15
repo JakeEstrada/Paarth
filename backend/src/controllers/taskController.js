@@ -1,6 +1,6 @@
 const Task = require('../models/Task');
 const Activity = require('../models/Activity');
-const { publishTaskCreated, publishTaskUpdated } = require('../services/eventBus');
+const { publishTaskCreated, publishTaskUpdated, publishProjectUpdated } = require('../services/eventBus');
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-US', {
@@ -153,6 +153,11 @@ async function createTask(req, res) {
       });
       
       await job.save();
+
+      const io = req.app.get('io');
+      publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
+        sourceSocketId: req.headers['x-socket-id'] || null,
+      });
       
       // Log activity - check if it's a project or task
       // Include full description in the activity note

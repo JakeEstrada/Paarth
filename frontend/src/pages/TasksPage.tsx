@@ -5,7 +5,7 @@
  * Docs: ../../../docs/PAGES.md#taskspagetsx
  */
 // @ts-nocheck — large page; tighten types incrementally
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -38,11 +38,15 @@ import toast from 'react-hot-toast';
 import AddTodoModal from '../components/todos/AddTodoModal';
 import ProjectModal from '../components/todos/ProjectModal';
 import { buildJobsById, formatTaskDisplayLabel, getTaskCardStyle } from '../utils/taskDisplay';
+import { useAuth } from '../context/AuthContext';
+import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { getConnectedSocketId } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function TasksPage() {
   const theme = useTheme();
+  const { tenantIdForBranding } = useAuth();
   const [todos, setTodos] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +65,16 @@ function TasksPage() {
   useEffect(() => {
     fetchTodos();
   }, [refreshTrigger]);
+
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const handleRealtimeTaskUpdate = useCallback((payload) => {
+    const sourceSocketId = payload?.sourceSocketId || null;
+    const ownSocketId = getConnectedSocketId();
+    if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
+    setRefreshTrigger((prev) => prev + 1);
+  }, []);
+  useSocketSubscription(tenantRoom, 'task.created', handleRealtimeTaskUpdate);
+  useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeTaskUpdate);
 
   const fetchTodos = async () => {
     try {

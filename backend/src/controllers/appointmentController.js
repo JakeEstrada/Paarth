@@ -1,6 +1,7 @@
 const Appointment = require('../models/Appointment');
 const Activity = require('../models/Activity');
 const ScheduledSms = require('../models/ScheduledSms');
+const { publishProjectUpdated } = require('../services/eventBus');
 
 function normalizeToE164(value) {
   const raw = String(value || '').trim();
@@ -220,6 +221,11 @@ async function createAppointment(req, res) {
         });
         
         await job.save();
+
+        const io = req.app.get('io');
+        publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
+          sourceSocketId: req.headers['x-socket-id'] || null,
+        });
       }
     }
     

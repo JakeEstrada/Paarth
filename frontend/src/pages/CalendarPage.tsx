@@ -1795,7 +1795,25 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     setScheduledJobs(scheduled);
     console.timeEnd('socket job patch');
   }, []);
-  const handleRealtimeTaskUpdate = useCallback(() => {}, []);
+  const handleRealtimeTaskUpdate = useCallback((payload) => {
+    const sourceSocketId = payload?.sourceSocketId || null;
+    const ownSocketId = getConnectedSocketId();
+    if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
+    fetchJobs({ background: true });
+  }, [fetchJobs]);
+
+  const handleJobDataChanged = useCallback(() => {
+    fetchJobs({ background: true });
+  }, [fetchJobs]);
+
+  const handleJobUpdate = useCallback(async (jobId, updates) => {
+    try {
+      await axios.patch(`${API_URL}/jobs/${jobId}`, updates);
+      await fetchJobs({ background: true });
+    } catch (error) {
+      console.error('Error updating job:', error);
+    }
+  }, [fetchJobs]);
   useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeProjectUpdate);
   useSocketSubscription(tenantRoom, 'project.created', handleRealtimeProjectUpdate);
   useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeTaskUpdate);
@@ -2745,7 +2763,8 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
         jobId={jobIdForDetailModal}
         open={!!jobIdForDetailModal}
         onClose={() => setJobIdForDetailModal(null)}
-        onJobUpdate={async (jobId, updates) => { await fetchJobs(); }}
+        onJobUpdate={handleJobUpdate}
+        onJobDataChanged={handleJobDataChanged}
         onJobDelete={(jobId) => {
           setJobIdForDetailModal(null);
           fetchJobs();

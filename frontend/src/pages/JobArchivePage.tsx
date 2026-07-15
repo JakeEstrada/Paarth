@@ -128,6 +128,10 @@ function JobArchivePage() {
     await fetchArchivedJobs(); // Refresh the list
   };
 
+  const handleJobDataChanged = () => {
+    fetchArchivedJobs();
+  };
+
   const handleContextMenu = (event, job) => {
     event.preventDefault();
     event.stopPropagation();
@@ -435,6 +439,7 @@ function JobArchivePage() {
           open={!!selectedJobId}
           onClose={() => setSelectedJobId(null)}
           onJobUpdate={handleJobUpdate}
+          onJobDataChanged={handleJobDataChanged}
           onJobDelete={handleJobDelete}
           onJobArchive={handleJobArchive}
           hideSensitive={hideSensitive}

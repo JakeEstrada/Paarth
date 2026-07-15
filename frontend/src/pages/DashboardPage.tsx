@@ -52,6 +52,8 @@ import BrandLogo from '../components/common/BrandLogo';
 import { APP_LOGO_LIGHT } from '../utils/tenantBranding';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { renderSummaryBlocks } from '../utils/summaryMarkdown';
+import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { getConnectedSocketId } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -207,7 +209,7 @@ function DashboardEmptyState({ message }) {
 function DashboardPage() {
   const navigate = useNavigate();
   const theme = useTheme();
-  const { user } = useAuth();
+  const { user, tenantIdForBranding } = useAuth();
   const { hideSensitive } = useShopViewSensitive(user?.role);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -350,6 +352,18 @@ function DashboardPage() {
       setLoading(false);
     }
   };
+
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const handleRealtimeDashboardUpdate = useCallback((payload) => {
+    const sourceSocketId = payload?.sourceSocketId || null;
+    const ownSocketId = getConnectedSocketId();
+    if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
+    fetchDashboardData();
+  }, []);
+  useSocketSubscription(tenantRoom, 'task.created', handleRealtimeDashboardUpdate);
+  useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeDashboardUpdate);
+  useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeDashboardUpdate);
+  useSocketSubscription(tenantRoom, 'project.created', handleRealtimeDashboardUpdate);
 
   const handleManualActivitySubmit = async (event) => {
     event.preventDefault();

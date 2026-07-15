@@ -2200,6 +2200,10 @@ function CommissionLogsPage() {
     }
   };
 
+  const handleJobDataChanged = () => {
+    void loadCommissionJobs();
+  };
+
   const handleJobDetailClose = async () => {
     setJobDetailModalJobId(null);
     await loadCommissionJobs();
@@ -2391,6 +2395,7 @@ function CommissionLogsPage() {
         open={Boolean(jobDetailModalJobId)}
         onClose={() => setJobDetailModalJobId(null)}
         onJobUpdate={handleJobDetailUpdate}
+        onJobDataChanged={handleJobDataChanged}
         onJobDelete={handleJobDetailClose}
         onJobArchive={handleJobDetailClose}
       />

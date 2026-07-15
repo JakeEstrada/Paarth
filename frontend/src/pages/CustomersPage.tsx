@@ -261,6 +261,12 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     if (selectedCustomer?._id) await fetchCustomerJobs(selectedCustomer._id);
   };
 
+  const handleJobDataChanged = () => {
+    if (selectedCustomer?._id) {
+      fetchCustomerJobs(selectedCustomer._id);
+    }
+  };
+
   // Open contact modal
   const handleOpenContactModal = (customer) => {
     setSelectedCustomer(customer);
@@ -1528,6 +1534,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
         open={!!selectedJobId}
         onClose={() => setSelectedJobId(null)}
         onJobUpdate={handleJobUpdate}
+        onJobDataChanged={handleJobDataChanged}
         onJobDelete={handleJobDeletedOrArchived}
         onJobArchive={handleJobDeletedOrArchived}
         sx={(theme) => ({ zIndex: theme.zIndex.modal + 2 })}

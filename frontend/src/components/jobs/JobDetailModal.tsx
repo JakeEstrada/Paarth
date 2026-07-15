@@ -205,6 +205,7 @@ function JobDetailModal({
   onJobDelete,
   onJobArchive,
   onAppointmentCreated = () => {},
+  onJobDataChanged = () => {},
   initialTab = 'overview',
   sx = {},
   hideSensitive = false,
@@ -1888,7 +1889,8 @@ function JobDetailModal({
         open={addNoteOpen}
         onClose={() => setAddNoteOpen(false)}
         onSuccess={() => {
-          fetchJobDetails(); // Refresh job data to show new note
+          fetchJobDetails();
+          onJobDataChanged({ type: 'note', jobId });
         }}
         job={job}
       />
@@ -1898,7 +1900,8 @@ function JobDetailModal({
         open={addTaskOpen}
         onClose={() => setAddTaskOpen(false)}
         onSuccess={() => {
-          fetchJobDetails(); // Refresh job data to show new note (task creation adds a note)
+          fetchJobDetails();
+          onJobDataChanged({ type: 'task', jobId });
         }}
         job={job}
       />
@@ -1908,10 +1911,9 @@ function JobDetailModal({
         open={addAppointmentOpen}
         onClose={() => setAddAppointmentOpen(false)}
         onSuccess={() => {
-          fetchJobDetails(); // Refresh job data to show new note (appointment creation adds a note)
-          if (onAppointmentCreated) {
-            onAppointmentCreated(); // Trigger refresh of appointments list
-          }
+          fetchJobDetails();
+          onAppointmentCreated();
+          onJobDataChanged({ type: 'appointment', jobId });
         }}
         job={job}
       />
