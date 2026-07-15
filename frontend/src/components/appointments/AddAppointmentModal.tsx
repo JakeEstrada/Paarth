@@ -18,8 +18,7 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import PhoneTextField from '../common/PhoneTextField';
-import { formatNanpTyping } from '../../utils/phoneFormat';
+import { formatNanpTyping, formatReminderPhonesForDisplay, hasValidReminderPhone, normalizeReminderPhonesInput } from '../../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -335,7 +334,7 @@ function AddAppointmentModal({
         setReminderDate('');
         setReminderTime('');
       }
-      setReminderPhone(appt.reminderPhone ? formatNanpTyping(appt.reminderPhone) : '');
+      setReminderPhone(appt.reminderPhone ? formatReminderPhonesForDisplay(appt.reminderPhone) : '');
       setReminderMessage(appt.reminderMessage || '');
     } catch (error) {
       console.error('Error loading appointment:', error);
@@ -407,8 +406,8 @@ function AddAppointmentModal({
           setLoading(false);
           return;
         }
-        if (!reminderPhone.trim()) {
-          toast.error('Enter a phone number for the reminder');
+        if (!hasValidReminderPhone(reminderPhone)) {
+          toast.error('Enter at least one valid phone number (comma-separated for multiple)');
           setLoading(false);
           return;
         }
@@ -419,7 +418,7 @@ function AddAppointmentModal({
           return;
         }
         appointmentData.reminderAt = reminderAt.toISOString();
-        appointmentData.reminderPhone = reminderPhone.trim();
+        appointmentData.reminderPhone = normalizeReminderPhonesInput(reminderPhone);
         appointmentData.reminderMessage = reminderMessage.trim() || undefined;
       } else {
         appointmentData.reminderAt = null;
@@ -731,12 +730,14 @@ function AddAppointmentModal({
                     </Grid>
                   </Grid>
 
-                  <PhoneTextField
-                    label="Reminder Phone"
-                    placeholder="(949) 555-1234"
+                  <TextField
+                    label="Reminder Phone(s)"
+                    placeholder="9492339196, 9497960113, 9498385157"
                     value={reminderPhone}
                     onChange={(e) => setReminderPhone(e.target.value)}
                     fullWidth
+                    helperText="Separate multiple numbers with commas. Everyone gets the same reminder text."
+                    inputProps={{ inputMode: 'tel' }}
                   />
 
                   <TextField

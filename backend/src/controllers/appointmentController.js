@@ -12,6 +12,32 @@ function normalizeToE164(value) {
   return hasPlus ? `+${digits}` : `+1${digits}`;
 }
 
+function parseReminderPhones(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  const phones = raw
+    .split(/[,;\n]+/)
+    .map((part) => normalizeToE164(part))
+    .filter(Boolean);
+  return [...new Set(phones)];
+}
+
+async function cancelAppointmentReminderSms(appointment, reason = 'Reminder removed or invalid') {
+  if (!appointment?._id) return;
+
+  await ScheduledSms.updateMany(
+    { appointmentId: appointment._id, status: 'scheduled' },
+    { $set: { status: 'cancelled', lastError: reason } },
+  );
+
+  if (appointment.reminderSmsId) {
+    await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
+      $set: { status: 'cancelled', lastError: reason },
+    });
+    appointment.reminderSmsId = null;
+  }
+}
+
 function buildAppointmentReminderMessage(appointment) {
   const appointmentDate = appointment?.date ? new Date(appointment.date) : null;
   const dateStr =
@@ -28,51 +54,37 @@ function buildAppointmentReminderMessage(appointment) {
 
 async function syncAppointmentReminderSms(appointment, userId) {
   const reminderAt = appointment?.reminderAt ? new Date(appointment.reminderAt) : null;
-  const reminderPhone = normalizeToE164(appointment?.reminderPhone);
+  const reminderPhones = parseReminderPhones(appointment?.reminderPhone);
   const reminderMessage = String(appointment?.reminderMessage || '').trim() || buildAppointmentReminderMessage(appointment);
   const hasReminder =
     reminderAt &&
     !Number.isNaN(reminderAt.getTime()) &&
-    reminderPhone &&
+    reminderPhones.length > 0 &&
     reminderAt.getTime() > Date.now();
 
-  // If no valid reminder config, cancel any existing scheduled message.
   if (!hasReminder) {
-    if (appointment?.reminderSmsId) {
-      await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
-        $set: { status: 'cancelled', lastError: 'Reminder removed or invalid' },
-      });
-      appointment.reminderSmsId = null;
-      await appointment.save();
-    }
+    await cancelAppointmentReminderSms(appointment);
+    await appointment.save();
     return;
   }
 
-  if (appointment?.reminderSmsId) {
-    const existing = await ScheduledSms.findById(appointment.reminderSmsId);
-    if (existing && existing.status === 'scheduled') {
-      existing.to = reminderPhone;
-      existing.message = reminderMessage;
-      existing.sendAt = reminderAt;
-      existing.createdBy = userId || appointment.createdBy;
-      existing.customerId = appointment.customerId || undefined;
-      existing.appointmentId = appointment._id;
-      existing.lastError = undefined;
-      await existing.save();
-      return;
-    }
+  await cancelAppointmentReminderSms(appointment);
+
+  const createdIds = [];
+  for (const reminderPhone of reminderPhones) {
+    const scheduled = await ScheduledSms.create({
+      to: reminderPhone,
+      message: reminderMessage,
+      sendAt: reminderAt,
+      status: 'scheduled',
+      createdBy: userId || appointment.createdBy,
+      customerId: appointment.customerId || undefined,
+      appointmentId: appointment._id,
+    });
+    createdIds.push(scheduled._id);
   }
 
-  const scheduled = await ScheduledSms.create({
-    to: reminderPhone,
-    message: reminderMessage,
-    sendAt: reminderAt,
-    status: 'scheduled',
-    createdBy: userId || appointment.createdBy,
-    customerId: appointment.customerId || undefined,
-    appointmentId: appointment._id,
-  });
-  appointment.reminderSmsId = scheduled._id;
+  appointment.reminderSmsId = createdIds[0] || null;
   await appointment.save();
 }
 
@@ -322,11 +334,7 @@ async function completeAppointment(req, res) {
     appointment.status = 'completed';
     appointment.completedAt = new Date();
     await appointment.save();
-    if (appointment.reminderSmsId) {
-      await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
-        $set: { status: 'cancelled', lastError: 'Appointment completed before reminder send' },
-      });
-    }
+    await cancelAppointmentReminderSms(appointment, 'Appointment completed before reminder send');
     
     // Log activity for appointment completion
     let customerId = appointment.customerId;
@@ -398,11 +406,7 @@ async function cancelAppointment(req, res) {
     appointment.status = 'cancelled';
     appointment.cancelledAt = new Date();
     await appointment.save();
-    if (appointment.reminderSmsId) {
-      await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
-        $set: { status: 'cancelled', lastError: 'Appointment cancelled before reminder send' },
-      });
-    }
+    await cancelAppointmentReminderSms(appointment, 'Appointment cancelled before reminder send');
     
     res.json(appointment);
   } catch (error) {
@@ -470,11 +474,7 @@ async function deleteAppointment(req, res) {
     const createdBy = req.user?._id || appointment.createdBy;
     
     // Delete the appointment
-    if (appointment.reminderSmsId) {
-      await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
-        $set: { status: 'cancelled', lastError: 'Appointment deleted before reminder send' },
-      });
-    }
+    await cancelAppointmentReminderSms(appointment, 'Appointment deleted before reminder send');
     await Appointment.findByIdAndDelete(req.params.id);
     
     // Log activity for appointment deletion

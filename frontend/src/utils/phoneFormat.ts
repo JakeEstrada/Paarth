@@ -31,6 +31,34 @@ export function formatPhoneForDisplay(input) {
   return raw;
 }
 
+/** Split comma/semicolon/newline-separated reminder numbers into trimmed parts */
+export function splitReminderPhoneInput(input) {
+  return String(input ?? '')
+    .split(/[,;\n]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/** Display stored reminder list — formats each number, joined with commas */
+export function formatReminderPhonesForDisplay(input) {
+  const parts = splitReminderPhoneInput(input);
+  if (parts.length === 0) return '';
+  return parts.map((part) => formatPhoneForDisplay(part) || part).join(', ');
+}
+
+/** Keep only valid 10-digit NANP numbers, stored as comma-separated digits */
+export function normalizeReminderPhonesInput(input) {
+  const digits = splitReminderPhoneInput(input)
+    .map((part) => nanpDigitsOnly(part))
+    .filter((d) => d.length === 10);
+  return [...new Set(digits)].join(',');
+}
+
+/** True when at least one valid NANP number is present */
+export function hasValidReminderPhone(input) {
+  return splitReminderPhoneInput(input).some((part) => nanpDigitsOnly(part).length === 10);
+}
+
 /** `tel:` href for mobile browsers */
 export function telHref(input) {
   const d = nanpDigitsOnly(input);
