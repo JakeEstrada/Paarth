@@ -404,15 +404,20 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     if (!selectedCustomer) return;
     
     try {
+      const contactPhones = editCustomerForm.contactPhones?.filter(cp => cp.value?.trim()) || [];
+      const contactEmails = editCustomerForm.contactEmails?.filter(ce => ce.value?.trim()) || [];
+      const primaryPhone = getPrimaryContactPhone(contactPhones) || editCustomerForm.primaryPhone || undefined;
+      const primaryEmail = getPrimaryContactEmail(contactEmails) || editCustomerForm.primaryEmail || undefined;
+
       // Prepare update data
       const updateData = {
         name: editCustomerForm.name.trim(),
-        primaryPhone: editCustomerForm.primaryPhone || undefined,
-        primaryEmail: editCustomerForm.primaryEmail || undefined,
+        primaryPhone,
+        primaryEmail,
         phones: editCustomerForm.phones || [],
         emails: editCustomerForm.emails || [],
-        contactPhones: editCustomerForm.contactPhones?.filter(cp => cp.value?.trim()) || [],
-        contactEmails: editCustomerForm.contactEmails?.filter(ce => ce.value?.trim()) || [],
+        contactPhones,
+        contactEmails,
         address: (editCustomerForm.address.street || editCustomerForm.address.city) 
           ? editCustomerForm.address 
           : undefined,
@@ -427,12 +432,18 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
       
       // Refresh customer data
       const updatedResponse = await axios.get(`${API_URL}/customers/${selectedCustomer._id}`);
-      setSelectedCustomer(updatedResponse.data);
+      const updatedCustomer = updatedResponse.data;
+      setSelectedCustomer(updatedCustomer);
+      setCustomers((prev) =>
+        prev.map((customer) =>
+          String(customer._id) === String(updatedCustomer._id) ? { ...customer, ...updatedCustomer } : customer,
+        ),
+      );
       setIsEditingCustomer(false);
       setEditCustomerForm({});
       
-      // Refresh the customer list
-      fetchCustomers();
+      // Refresh the customer list from server
+      await fetchCustomers();
       // Refresh jobs if customer modal is open
       if (selectedCustomer) {
         fetchCustomerJobs(selectedCustomer._id);
@@ -607,6 +618,18 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     return phones;
   };
 
+  const getPrimaryContactPhone = (contactPhones = []) => {
+    const phones = contactPhones.filter((cp) => cp?.value?.trim());
+    const labeledPrimary = phones.find((cp) => /^primary$/i.test(String(cp.label || '').trim()));
+    return (labeledPrimary || phones[0])?.value?.trim() || '';
+  };
+
+  const getPrimaryContactEmail = (contactEmails = []) => {
+    const emails = contactEmails.filter((ce) => ce?.value?.trim());
+    const labeledPrimary = emails.find((ce) => /^primary$/i.test(String(ce.label || '').trim()));
+    return (labeledPrimary || emails[0])?.value?.trim() || '';
+  };
+
   // Get all emails for a customer (with labels)
   const getAllEmails = (customer) => {
     // Use new structure if available
@@ -627,6 +650,10 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     }
     return emails;
   };
+
+  const getDisplayPhone = (customer) => getAllPhones(customer)[0]?.value || customer.primaryPhone || '';
+
+  const getDisplayEmail = (customer) => getAllEmails(customer)[0]?.value || customer.primaryEmail || '';
 
   // Get all addresses for a customer (profile + job-site addresses from linked jobs)
   const getAllAddresses = (customer, jobs = []) => {
@@ -891,8 +918,8 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     sx={{ cursor: isReadonlyView ? 'pointer' : 'pointer' }}
                   >
                     <TableCell>{customer.name || '-'}</TableCell>
-                    <TableCell>{formatPhoneForDisplay(customer.primaryPhone) || '-'}</TableCell>
-                    <TableCell>{customer.primaryEmail || '-'}</TableCell>
+                    <TableCell>{formatPhoneForDisplay(getDisplayPhone(customer)) || '-'}</TableCell>
+                    <TableCell>{getDisplayEmail(customer) || '-'}</TableCell>
                     <TableCell>
                       {formatAddress(customer.address)}
                     </TableCell>
