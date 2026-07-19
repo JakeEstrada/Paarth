@@ -34,7 +34,6 @@ import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useFinancialPinLockContext } from '../../context/FinancialPinLockContext';
-import FinancialPinUnlockDialogHost from '../common/FinancialPinUnlockDialogHost';
 import { useAuthenticatedProfilePhotoUrl } from '../../hooks/useAuthenticatedProfilePhotoUrl';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -289,8 +288,6 @@ function TopBar({ onMenuClick }) {
           </MenuItem>
         </Menu>
       </Toolbar>
-
-      <FinancialPinUnlockDialogHost />
     </AppBar>
   );
 }

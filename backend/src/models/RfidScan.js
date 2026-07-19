@@ -9,6 +9,17 @@ const rfidScanSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    /** Set when check-in used kiosk PIN instead of RFID */
+    pin: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    rfidPinId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'RfidPin',
+      default: null,
+    },
     displayName: {
       type: String,
       required: true,

@@ -1,9 +1,12 @@
 const RfidTag = require('../models/RfidTag');
+const RfidPin = require('../models/RfidPin');
 const RfidScan = require('../models/RfidScan');
 const {
   publishRfidScanCreated,
   publishRfidTagUpserted,
   publishRfidTagDeleted,
+  publishRfidPinUpserted,
+  publishRfidPinDeleted,
 } = require('../services/eventBus');
 
 function normalizeUid(raw) {
@@ -12,11 +15,23 @@ function normalizeUid(raw) {
   return s.replace(/\s+/g, '');
 }
 
+function normalizePin(raw) {
+  const s = String(raw || '').trim().replace(/\D/g, '');
+  if (s.length !== 4) return '';
+  return s;
+}
+
 async function recordScan(req, res) {
   try {
+    const pin = normalizePin(req.body?.pin);
     const uid = normalizeUid(req.body?.uid);
+
+    if (pin) {
+      return recordPinScan(req, res, pin);
+    }
+
     if (!uid) {
-      return res.status(400).json({ error: 'uid is required' });
+      return res.status(400).json({ error: 'uid or pin is required' });
     }
 
     const tag = await RfidTag.findOne({ uid, isActive: { $ne: false } });
@@ -62,6 +77,55 @@ async function recordScan(req, res) {
   }
 }
 
+async function recordPinScan(req, res, pin) {
+  try {
+    const pinEntry = await RfidPin.findOne({ pin, isActive: { $ne: false } });
+    const bodyName = String(req.body?.displayName || req.body?.name || '').trim();
+    const displayName =
+      bodyName ||
+      (pinEntry?.displayName ? String(pinEntry.displayName).trim() : '') ||
+      `Unknown PIN (${pin})`;
+
+    const scannedAtRaw = req.body?.scannedAt;
+    const scannedAt = scannedAtRaw ? new Date(scannedAtRaw) : new Date();
+    if (Number.isNaN(scannedAt.getTime())) {
+      return res.status(400).json({ error: 'Invalid scannedAt' });
+    }
+
+    const scan = await RfidScan.create({
+      uid: `PIN-${pin}`,
+      pin,
+      displayName,
+      rfidPinId: pinEntry?._id || undefined,
+      scannedAt,
+      source: String(req.body?.source || 'device').trim() || 'device',
+      deviceLabel: String(req.body?.deviceLabel || req.body?.device || '').trim(),
+    });
+
+    const io = req.app.get('io');
+    const scanDoc = scan.toObject ? scan.toObject() : scan;
+    publishRfidScanCreated(io, scanDoc, {
+      knownPin: Boolean(pinEntry),
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
+    return res.status(201).json({
+      success: true,
+      scan: {
+        _id: scan._id,
+        uid: scan.uid,
+        pin: scan.pin,
+        displayName: scan.displayName,
+        scannedAt: scan.scannedAt,
+        knownPin: Boolean(pinEntry),
+      },
+    });
+  } catch (error) {
+    console.error('recordPinScan error:', error?.message || error);
+    return res.status(500).json({ error: error.message || 'Failed to record PIN scan' });
+  }
+}
+
 async function listScans(req, res) {
   try {
     const limit = Math.min(Math.max(Number(req.query?.limit) || 100, 1), 500);
@@ -94,6 +158,15 @@ async function listTags(req, res) {
   try {
     const tags = await RfidTag.find({}).sort({ displayName: 1 }).lean();
     return res.json({ tags });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+async function listPins(req, res) {
+  try {
+    const pins = await RfidPin.find({}).sort({ displayName: 1 }).lean();
+    return res.json({ pins });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -137,6 +210,44 @@ async function upsertTag(req, res) {
   }
 }
 
+async function upsertPin(req, res) {
+  try {
+    const pin = normalizePin(req.body?.pin);
+    const displayName = String(req.body?.displayName || req.body?.name || '').trim();
+    if (!pin) return res.status(400).json({ error: 'pin must be exactly 4 digits' });
+    if (!displayName) return res.status(400).json({ error: 'displayName is required' });
+
+    const notes = String(req.body?.notes || '').trim();
+    const employeeUserId = req.body?.employeeUserId || null;
+    const isActive = req.body?.isActive !== false;
+
+    const pinEntry = await RfidPin.findOneAndUpdate(
+      { pin },
+      {
+        pin,
+        displayName,
+        notes,
+        employeeUserId: employeeUserId || undefined,
+        isActive,
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+
+    const io = req.app.get('io');
+    const pinDoc = pinEntry.toObject ? pinEntry.toObject() : pinEntry;
+    publishRfidPinUpserted(io, pinDoc, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
+    return res.status(200).json({ pin: pinEntry });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ error: 'This PIN is already registered for your organization' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+}
+
 async function deleteTag(req, res) {
   try {
     const tag = await RfidTag.findByIdAndDelete(req.params.id);
@@ -154,10 +265,30 @@ async function deleteTag(req, res) {
   }
 }
 
+async function deletePin(req, res) {
+  try {
+    const pinEntry = await RfidPin.findByIdAndDelete(req.params.id);
+    if (!pinEntry) return res.status(404).json({ error: 'PIN not found' });
+
+    const io = req.app.get('io');
+    const pinDoc = pinEntry.toObject ? pinEntry.toObject() : pinEntry;
+    publishRfidPinDeleted(io, pinDoc, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
 module.exports = {
   recordScan,
   listScans,
   listTags,
+  listPins,
   upsertTag,
+  upsertPin,
   deleteTag,
+  deletePin,
 };

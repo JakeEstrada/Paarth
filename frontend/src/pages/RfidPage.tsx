@@ -37,9 +37,17 @@ interface RfidTagRow {
   notes?: string;
 }
 
+interface RfidPinRow {
+  _id: string;
+  pin: string;
+  displayName: string;
+  notes?: string;
+}
+
 interface RfidScanRow {
   _id: string;
   uid: string;
+  pin?: string;
   displayName: string;
   scannedAt: string;
   source?: string;
@@ -52,21 +60,27 @@ function RfidPage() {
   const { tenantIdForBranding } = useAuth();
   const [loading, setLoading] = useState(true);
   const [tags, setTags] = useState<RfidTagRow[]>([]);
+  const [pins, setPins] = useState<RfidPinRow[]>([]);
   const [scans, setScans] = useState<RfidScanRow[]>([]);
   const [tagUid, setTagUid] = useState('');
   const [tagName, setTagName] = useState('');
+  const [pinCode, setPinCode] = useState('');
+  const [pinName, setPinName] = useState('');
   const [savingTag, setSavingTag] = useState(false);
+  const [savingPin, setSavingPin] = useState(false);
 
   const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tagsRes, scansRes] = await Promise.all([
+      const [tagsRes, pinsRes, scansRes] = await Promise.all([
         api.get<{ tags: RfidTagRow[] }>('/rfid/tags'),
+        api.get<{ pins: RfidPinRow[] }>('/rfid/pins'),
         api.get<{ scans: RfidScanRow[] }>('/rfid/scans', { params: { limit: SCAN_LIST_LIMIT } }),
       ]);
       setTags(tagsRes.data.tags || []);
+      setPins(pinsRes.data.pins || []);
       setScans(scansRes.data.scans || []);
     } catch (error) {
       console.error(error);
@@ -117,9 +131,33 @@ function RfidPage() {
     setTags((prev) => prev.filter((t) => String(t._id) !== tagId));
   }, []);
 
+  const handleRealtimePinUpsert = useCallback((payload: { pinEntry?: RfidPinRow }) => {
+    const incoming = payload?.pinEntry;
+    if (!incoming?._id || !incoming.pin) return;
+
+    setPins((prev) => {
+      const id = String(incoming._id);
+      const idx = prev.findIndex((p) => String(p._id) === id);
+      if (idx === -1) {
+        return [...prev, incoming].sort((a, b) => a.displayName.localeCompare(b.displayName));
+      }
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...incoming };
+      return next.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    });
+  }, []);
+
+  const handleRealtimePinDeleted = useCallback((payload: { pinId?: string }) => {
+    const pinId = String(payload?.pinId || '').trim();
+    if (!pinId) return;
+    setPins((prev) => prev.filter((p) => String(p._id) !== pinId));
+  }, []);
+
   useSocketSubscription(tenantRoom, 'rfid.scan.created', handleRealtimeScan);
   useSocketSubscription(tenantRoom, 'rfid.tag.upserted', handleRealtimeTagUpsert);
   useSocketSubscription(tenantRoom, 'rfid.tag.deleted', handleRealtimeTagDeleted);
+  useSocketSubscription(tenantRoom, 'rfid.pin.upserted', handleRealtimePinUpsert);
+  useSocketSubscription(tenantRoom, 'rfid.pin.deleted', handleRealtimePinDeleted);
 
   const liveLabel = useMemo(() => (tenantRoom ? 'Live' : ''), [tenantRoom]);
 
@@ -149,6 +187,38 @@ function RfidPage() {
     try {
       await api.delete(`/rfid/tags/${id}`);
       toast.success('Tag removed');
+      await load();
+    } catch (error) {
+      toast.error(isAxiosError(error) ? error.response?.data?.error || 'Failed to delete' : 'Failed to delete');
+    }
+  };
+
+  const handleSavePin = async () => {
+    const pin = pinCode.replace(/\D/g, '').slice(0, 4);
+    const displayName = pinName.trim();
+    if (pin.length !== 4 || !displayName) {
+      toast.error('4-digit PIN and name are required');
+      return;
+    }
+    setSavingPin(true);
+    try {
+      await api.post('/rfid/pins', { pin, displayName });
+      toast.success('PIN saved');
+      setPinCode('');
+      setPinName('');
+      await load();
+    } catch (error) {
+      toast.error(isAxiosError(error) ? error.response?.data?.error || 'Failed to save PIN' : 'Failed to save');
+    } finally {
+      setSavingPin(false);
+    }
+  };
+
+  const handleDeletePin = async (id: string) => {
+    if (!window.confirm('Remove this PIN mapping?')) return;
+    try {
+      await api.delete(`/rfid/pins/${id}`);
+      toast.success('PIN removed');
       await load();
     } catch (error) {
       toast.error(isAxiosError(error) ? error.response?.data?.error || 'Failed to delete' : 'Failed to delete');
@@ -185,9 +255,8 @@ function RfidPage() {
       </Box>
 
       <Alert severity="info" sx={{ mb: 3 }}>
-        Map each physical tag UID to a name here. Your Raspberry Pi posts scans to{' '}
-        <code>POST /rfid/scans</code> with <code>x-rfid-api-key</code> and <code>x-tenant-id</code>. See{' '}
-        <code>scripts/raspberry-pi/rfid_to_paarth.py</code> in the repo.
+        Map each physical tag UID or kiosk PIN to an employee name here. The shop kiosk posts RFID scans or PIN
+        check-ins to <code>POST /rfid/scans</code> with <code>x-rfid-api-key</code> and <code>x-tenant-id</code>.
       </Alert>
 
       <Card variant="outlined" sx={{ mb: 3 }}>
@@ -219,6 +288,39 @@ function RfidPage() {
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
             Scan once on the Pi and copy the UID from its console, or from the scan log below if it already logged as
             Unknown.
+          </Typography>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined" sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+            Register kiosk PIN
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
+            <TextField
+              label="4-digit PIN"
+              size="small"
+              value={pinCode}
+              onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="1234"
+              inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 4 }}
+              sx={{ minWidth: 140 }}
+            />
+            <TextField
+              label="Name"
+              size="small"
+              value={pinName}
+              onChange={(e) => setPinName(e.target.value)}
+              placeholder="Jake"
+              sx={{ minWidth: 180 }}
+            />
+            <Button variant="contained" onClick={() => void handleSavePin()} disabled={savingPin}>
+              {savingPin ? <CircularProgress size={22} /> : 'Save PIN'}
+            </Button>
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Used when RFID is unavailable. Employees tap the kiosk logo and enter this PIN.
           </Typography>
         </CardContent>
       </Card>
@@ -268,6 +370,44 @@ function RfidPage() {
           </Card>
 
           <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+            PIN registry ({pins.length})
+          </Typography>
+          <Card variant="outlined" sx={{ mb: 3, overflow: 'auto' }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>PIN</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell width={56} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pins.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3}>
+                      <Typography variant="body2" color="text.secondary">
+                        No PINs registered yet.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  pins.map((p) => (
+                    <TableRow key={p._id}>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{p.pin}</TableCell>
+                      <TableCell>{p.displayName}</TableCell>
+                      <TableCell>
+                        <IconButton size="small" onClick={() => void handleDeletePin(p._id)} aria-label="Delete PIN">
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
             Recent scans ({scans.length})
           </Typography>
           <Card variant="outlined" sx={{ overflow: 'auto' }}>
@@ -276,7 +416,7 @@ function RfidPage() {
                 <TableRow>
                   <TableCell>When</TableCell>
                   <TableCell>Name</TableCell>
-                  <TableCell>UID</TableCell>
+                  <TableCell>UID / PIN</TableCell>
                   <TableCell>Source</TableCell>
                 </TableRow>
               </TableHead>
@@ -296,7 +436,9 @@ function RfidPage() {
                         {format(new Date(s.scannedAt), 'MMM d, yyyy h:mm:ss a')}
                       </TableCell>
                       <TableCell>{s.displayName}</TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{s.uid}</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                        {s.pin ? `PIN ${s.pin}` : s.uid}
+                      </TableCell>
                       <TableCell>
                         {[s.deviceLabel, s.source].filter(Boolean).join(' · ') || '—'}
                       </TableCell>

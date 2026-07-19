@@ -7,6 +7,8 @@ import { useEffect } from 'react';
 import { Box, useTheme } from '@mui/material';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
+import { FinancialPinLockProvider } from './context/FinancialPinLockContext';
+import FinancialPinUnlockDialogHost from './components/common/FinancialPinUnlockDialogHost';
 import MainLayout from './components/layout/MainLayout';
 import ViewModeFrame from './components/layout/ViewModeFrame';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -27,6 +29,7 @@ import TasksPage from './pages/TasksPage';
 import DeveloperTasksPage from './pages/DeveloperTasksPage';
 import CustomersPage from './pages/CustomersPage';
 import PayrollPage from './pages/PayrollPage';
+import RfidTimesheetPage from './pages/RfidTimesheetPage';
 import CommissionLogsPage from './pages/CommissionLogsPage';
 import UsersPage from './pages/UsersPage';
 import BillsPage from './pages/BillsPage';
@@ -52,6 +55,7 @@ function App(): JSX.Element | null {
   }
 
   return (
+    <FinancialPinLockProvider>
     <Box
       sx={{
         minHeight: '100vh',
@@ -144,6 +148,7 @@ function App(): JSX.Element | null {
                   <Route path="/completed-tasks" element={<CompletedTasksPage />} />
                   <Route path="/developer" element={<DeveloperTasksPage />} />
                   <Route path="/payroll" element={<PayrollPage />} />
+                  <Route path="/rfid-timesheets" element={<RfidTimesheetPage />} />
                   <Route path="/commission-logs" element={<CommissionLogsPage />} />
                   <Route path="/bills" element={<BillsPage />} />
                   <Route path="/finance" element={<FinanceHubPage />} />
@@ -157,6 +162,8 @@ function App(): JSX.Element | null {
         />
       </Routes>
     </Box>
+    <FinancialPinUnlockDialogHost />
+    </FinancialPinLockProvider>
   );
 }
 

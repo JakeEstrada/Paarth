@@ -26,6 +26,7 @@ import {
   CheckCircle as CompletedJobsIcon,
   Code as DeveloperIcon,
   AccountBalance as PayrollIcon,
+  Nfc as RfidTimesheetIcon,
   Person as UsersIcon,
   Receipt as ReceiptIcon,
   TableChart as TableChartIcon,
@@ -53,6 +54,7 @@ const financeItems = [
   { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance' },
   { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
+  { text: 'RFID Timesheets', icon: <RfidTimesheetIcon />, path: '/rfid-timesheets' },
   { text: 'Commission Logs', icon: <TableChartIcon />, path: '/commission-logs' },
 ];
 

@@ -68,6 +68,7 @@ import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
 import { formatPhoneForDisplay, telHref } from '../../utils/phoneFormat';
+import { useFinancialPinLockContext } from '../../context/FinancialPinLockContext';
 import {
   getJobFilesCache,
   invalidateJobFilesCache,
@@ -213,6 +214,7 @@ function JobDetailModal({
   shopDisplayMode = false,
 }) {
   const location = useLocation();
+  const financialPin = useFinancialPinLockContext();
   const isShopDisplay = shopDisplayMode || isShopDisplayPath(location.pathname);
   const [activeTab, setActiveTab] = useState(() => resolveJobModalTab(initialTab));
   const [job, setJob] = useState(null);
@@ -853,6 +855,7 @@ function JobDetailModal({
       onClose={onClose}
       maxWidth="lg"
       fullWidth
+      disableEnforceFocus={financialPin.dialogOpen}
       sx={sx}
       PaperProps={{
         sx: {
