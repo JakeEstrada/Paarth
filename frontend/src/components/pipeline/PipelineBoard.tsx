@@ -23,7 +23,6 @@ import {
   MenuItem,
   Chip,
   Autocomplete,
-  Popover,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -31,7 +30,6 @@ import {
   Search as SearchIcon,
   History as HistoryIcon,
   Edit as EditIcon,
-  Settings as SettingsIcon,
   Lock as LockIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
@@ -40,12 +38,6 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import JobCard from './JobCard';
 import { updatePipelineLayout, deletePipelineLayout } from '../../utils/pipelineLayoutsApi';
-import {
-  readPipelineViewSettings,
-  writePipelineViewSettings,
-  JOB_CARD_SIZE_PRESETS,
-  presetPxById,
-} from '../../utils/pipelineViewSettings';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -145,19 +137,6 @@ function PipelineBoard({
 
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [stageOverrides, setStageOverrides] = useState({});
-  const [pipelineViewPrefs, setPipelineViewPrefs] = useState(() => readPipelineViewSettings());
-  const [boardSettingsAnchorEl, setBoardSettingsAnchorEl] = useState(null);
-
-  const handleJobCardSizePresetChange = (e) => {
-    const id = e.target.value;
-    setPipelineViewPrefs((prev) => ({
-      ...prev,
-      jobCardSizePreset: id,
-      jobCardMinHeightPx: presetPxById(id),
-    }));
-    writePipelineViewSettings({ jobCardSizePreset: id });
-    setBoardSettingsAnchorEl(null);
-  };
 
   /** Server is source of truth per tenant; localStorage is fallback if API fails or old deploy. */
   useEffect(() => {
@@ -456,7 +435,6 @@ function PipelineBoard({
               <JobCard
                 key={job._id}
                 job={job}
-                minHeightPx={pipelineViewPrefs.jobCardMinHeightPx}
                 onClick={() => onJobClick && onJobClick(job._id)}
                 onUpdate={(updates) => onJobUpdate(job._id, updates)}
                 onStageChange={(toStage, note) => onStageChange(job._id, toStage, note)}
@@ -614,50 +592,6 @@ function PipelineBoard({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifySelf: { xs: 'stretch', md: 'start' }, flexWrap: 'wrap' }}>
-          <Tooltip title="Board display settings">
-            <IconButton
-              onClick={(e) => setBoardSettingsAnchorEl(e.currentTarget)}
-              aria-label="Board display settings"
-              size="small"
-              sx={{
-                border: `1px solid ${theme.palette.divider}`,
-                backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)',
-              }}
-            >
-              <SettingsIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Popover
-            open={Boolean(boardSettingsAnchorEl)}
-            anchorEl={boardSettingsAnchorEl}
-            onClose={() => setBoardSettingsAnchorEl(null)}
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-            slotProps={{ paper: { sx: { p: 2, minWidth: 260 } } }}
-          >
-            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-              Board settings
-            </Typography>
-            <FormControl size="small" fullWidth>
-              <InputLabel id="job-card-size-select-label">Job card size</InputLabel>
-              <Select
-                labelId="job-card-size-select-label"
-                label="Job card size"
-                value={pipelineViewPrefs.jobCardSizePreset}
-                onChange={handleJobCardSizePresetChange}
-                MenuProps={{
-                  disablePortal: true,
-                  slotProps: { paper: { sx: { maxHeight: 280 } } },
-                }}
-              >
-                {JOB_CARD_SIZE_PRESETS.map((p) => (
-                  <MenuItem key={p.id} value={p.id}>
-                    {p.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Popover>
           {onNewJobClick && (
             <Button
               variant="contained"
