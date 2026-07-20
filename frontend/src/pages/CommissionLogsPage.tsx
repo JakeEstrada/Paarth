@@ -3,7 +3,7 @@
  * Route: /commission-logs
  * Docs: ../../../docs/PAGES.md#commissionlogspagetsx
  */
-import { useCallback, useEffect, useMemo, useState, Fragment, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, Fragment, type CSSProperties, type MouseEvent } from 'react';
 import {
   alpha,
   Box,
@@ -20,6 +20,8 @@ import {
   FormControlLabel,
   IconButton,
   InputAdornment,
+  Menu,
+  MenuItem,
   Table,
   TableBody,
   TableCell,
@@ -35,6 +37,8 @@ import {
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonIcon from '@mui/icons-material/Person';
@@ -246,6 +250,9 @@ interface CommissionCheckEntry {
   check: string;
   date: string;
   salesmanPaid: boolean;
+  entryKind: 'payment' | 'adjustment';
+  scheduleIndex?: number;
+  adjustmentId?: string;
 }
 
 interface SalesmanPaidEntry {
@@ -349,6 +356,22 @@ function buildSalesmanPaidEntries(rows: CommissionTableRow[]): SalesmanPaidEntry
         balance: row.balance,
       });
     }
+
+    for (const adjustment of row.adjustments) {
+      if (!adjustment.salesmanPaid) continue;
+      if (Math.abs(adjustment.amount) < 0.005) continue;
+
+      entries.push({
+        jobId: row.jobId,
+        customerName: row.customerName,
+        jobLabel: row.jobLabel,
+        paymentLabel: adjustment.label,
+        amount: roundMoney(adjustment.amount),
+        date: String(adjustment.date || '').trim(),
+        check: String(adjustment.check || '').trim(),
+        balance: row.balance,
+      });
+    }
   }
 
   return entries.sort((a, b) => {
@@ -412,6 +435,29 @@ function buildCheckEntries(rows: CommissionTableRow[]): CommissionCheckEntry[] {
         check,
         date,
         salesmanPaid: payment.salesmanPaid,
+        entryKind: 'payment',
+        scheduleIndex: payment.scheduleIndex,
+      });
+    }
+
+    for (const adjustment of row.adjustments) {
+      const check = String(adjustment.check || '').trim();
+      const date = String(adjustment.date || '').trim();
+      const amount = adjustment.amount;
+
+      if (!adjustment.salesmanPaid && !check && !date && Math.abs(amount) < 0.005) continue;
+
+      entries.push({
+        jobId: row.jobId,
+        customerName: row.customerName,
+        jobLabel: row.jobLabel,
+        paymentLabel: adjustment.label,
+        amount: roundMoney(amount),
+        check,
+        date,
+        salesmanPaid: adjustment.salesmanPaid,
+        entryKind: 'adjustment',
+        adjustmentId: adjustment.id,
       });
     }
   }
@@ -577,17 +623,46 @@ interface CommissionChecksTableProps {
   groups: CommissionCheckGroup[];
   onOpenJob: (jobId: string) => void;
   onOpenJobDetail: (jobId: string) => void;
+  onSetGroupPaid: (group: CommissionCheckGroup) => void;
 }
 
-function CommissionChecksTable({ groups, onOpenJob, onOpenJobDetail }: CommissionChecksTableProps) {
+function CommissionChecksTable({
+  groups,
+  onOpenJob,
+  onOpenJobDetail,
+  onSetGroupPaid,
+}: CommissionChecksTableProps) {
   const theme = useTheme();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
+  const [contextMenuGroup, setContextMenuGroup] = useState<CommissionCheckGroup | null>(null);
 
   const toggleGroup = (groupId: string) => {
     setExpanded((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  const handleGroupContextMenu = (
+    event: MouseEvent,
+    group: CommissionCheckGroup,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({ mouseX: event.clientX + 2, mouseY: event.clientY - 6 });
+    setContextMenuGroup(group);
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenu(null);
+    setContextMenuGroup(null);
+  };
+
+  const handleSetGroupPaid = () => {
+    if (contextMenuGroup) onSetGroupPaid(contextMenuGroup);
+    handleCloseContextMenu();
+  };
+
   return (
+    <>
     <Table stickyHeader size="small" sx={{ minWidth: 760 }}>
       <TableHead>
         <TableRow>
@@ -614,6 +689,7 @@ function CommissionChecksTable({ groups, onOpenJob, onOpenJobDetail }: Commissio
               <TableRow
                 hover
                 onClick={() => toggleGroup(group.id)}
+                onContextMenu={(event) => handleGroupContextMenu(event, group)}
                 sx={{
                   cursor: 'pointer',
                   bgcolor: alpha(
@@ -711,6 +787,116 @@ function CommissionChecksTable({ groups, onOpenJob, onOpenJobDetail }: Commissio
         })}
       </TableBody>
     </Table>
+    <Menu
+      open={contextMenu !== null}
+      onClose={handleCloseContextMenu}
+      anchorReference="anchorPosition"
+      anchorPosition={
+        contextMenu !== null
+          ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+          : undefined
+      }
+    >
+      <MenuItem onClick={handleSetGroupPaid}>Set group to paid…</MenuItem>
+    </Menu>
+    </>
+  );
+}
+
+interface SetCheckGroupPaidDialogProps {
+  group: CommissionCheckGroup | null;
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (check: string, paidDate: string) => void;
+}
+
+function SetCheckGroupPaidDialog({
+  group,
+  open,
+  onClose,
+  onConfirm,
+}: SetCheckGroupPaidDialogProps) {
+  const [checkNumber, setCheckNumber] = useState('');
+  const [paidDate, setPaidDate] = useState('');
+  const [isCash, setIsCash] = useState(false);
+
+  useEffect(() => {
+    if (!open || !group) return;
+    setCheckNumber(group.isCash ? 'Cash' : group.checkKey === '__none__' ? '' : group.checkDisplay);
+    setPaidDate(group.date || format(new Date(), 'yyyy-MM-dd'));
+    setIsCash(group.isCash);
+  }, [open, group]);
+
+  if (!group) return null;
+
+  const unpaidCount = group.entries.filter((entry) => !entry.salesmanPaid).length;
+
+  const handleConfirm = () => {
+    const check = isCash ? 'Cash' : checkNumber.trim();
+    if (!check) return;
+    onConfirm(check, paidDate);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Set group to paid</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {group.entries.length} payment{group.entries.length === 1 ? '' : 's'} ·{' '}
+          {formatMoney(group.totalAmount)}
+          {unpaidCount > 0
+            ? ` · ${unpaidCount} not yet marked salesman paid`
+            : ' · all already marked paid'}
+        </Typography>
+        <FormControlLabel
+          sx={{ mb: 1.5 }}
+          control={
+            <Checkbox
+              checked={isCash}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setIsCash(checked);
+                if (checked) setCheckNumber('Cash');
+                else if (checkNumber === 'Cash') setCheckNumber('');
+              }}
+            />
+          }
+          label="Cash payment"
+        />
+        <TextField
+          fullWidth
+          size="small"
+          label="Check #"
+          value={checkNumber}
+          onChange={(e) => setCheckNumber(e.target.value)}
+          disabled={isCash}
+          placeholder="Enter check number"
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          fullWidth
+          size="small"
+          type="date"
+          label="Paid date"
+          value={paidDate}
+          onChange={(e) => setPaidDate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+          All payments in this group will use the same check number and be marked salesman paid.
+        </Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={handleConfirm}
+          disabled={!isCash && !checkNumber.trim()}
+        >
+          Apply to group
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -729,8 +915,18 @@ interface CommissionPaymentLocal {
   salesmanPaid?: boolean;
 }
 
+interface CommissionAdjustmentLocal {
+  id: string;
+  label?: string;
+  amount?: string | number;
+  check?: string;
+  date?: string;
+  salesmanPaid?: boolean;
+}
+
 interface CommissionLogLocalRow {
   payments?: CommissionPaymentLocal[];
+  adjustments?: CommissionAdjustmentLocal[];
   paymentOrder?: number[];
   payment1?: string | number;
   payment2?: string | number;
@@ -740,6 +936,17 @@ interface CommissionLogLocalRow {
   payment2Date?: string;
   commissionRate?: string | number;
   updatedAt?: string;
+}
+
+function newAdjustmentRow(): CommissionAdjustmentLocal {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    label: 'Adjustment',
+    amount: '',
+    check: '',
+    date: '',
+    salesmanPaid: false,
+  };
 }
 
 function migrateLocalRow(local: CommissionLogLocalRow): CommissionLogLocalRow {
@@ -782,6 +989,21 @@ function hasCommissionLogData(row: CommissionLogLocalRow): boolean {
   const migrated = migrateLocalRow(row);
   if (hasRateOverride(migrated)) return true;
   if (Array.isArray(migrated.paymentOrder) && migrated.paymentOrder.length > 0) return true;
+  const adjustments = migrated.adjustments || [];
+  if (
+    adjustments.some(
+      (adjustment) =>
+        adjustment.salesmanPaid ||
+        Boolean(adjustment.check) ||
+        Boolean(adjustment.date) ||
+        Boolean(String(adjustment.label || '').trim()) ||
+        (adjustment.amount !== undefined &&
+          adjustment.amount !== null &&
+          String(adjustment.amount).trim() !== ''),
+    )
+  ) {
+    return true;
+  }
   const payments = migrated.payments || [];
   return payments.some(
     (payment) =>
@@ -965,11 +1187,22 @@ interface CommissionPaymentDisplay {
   salesmanPaid: boolean;
 }
 
+interface CommissionAdjustmentDisplay {
+  id: string;
+  label: string;
+  amount: number;
+  displayAmount: string | number;
+  check: string;
+  date: string;
+  salesmanPaid: boolean;
+}
+
 interface CommissionTableRow extends CommissionSourceJobRow {
   commissionRate: number;
   rateOverridden: boolean;
   commissionDue: number;
   payments: CommissionPaymentDisplay[];
+  adjustments: CommissionAdjustmentDisplay[];
   paymentOrder?: number[];
   hasManualPayments: boolean;
   balance: number;
@@ -1090,6 +1323,13 @@ function matchesCommissionSearch(row: CommissionTableRow, rawQuery: string): boo
       ...moneySearchTokens(payment.scheduledAmount),
       ...moneySearchTokens(payment.potentialAmount),
       ...moneySearchTokens(payment.amount),
+    ]),
+    ...row.adjustments.flatMap((adjustment) => [
+      adjustment.label,
+      adjustment.check,
+      adjustment.date,
+      adjustment.displayAmount,
+      ...moneySearchTokens(adjustment.amount),
     ]),
   ];
 
@@ -1682,6 +1922,223 @@ function SortablePaymentCard({
   );
 }
 
+interface AdjustmentPaymentCardProps {
+  adjustment: CommissionAdjustmentDisplay;
+  onUpdateLabel: (id: string, value: string) => void;
+  onUpdateAmount: (id: string, value: string) => void;
+  onUpdateDate: (id: string, value: string) => void;
+  onUpdateCheck: (id: string, value: string) => void;
+  onUpdateSalesmanPaid: (id: string, paid: boolean) => void;
+  onRemove: (id: string) => void;
+}
+
+function AdjustmentPaymentCard({
+  adjustment,
+  onUpdateLabel,
+  onUpdateAmount,
+  onUpdateDate,
+  onUpdateCheck,
+  onUpdateSalesmanPaid,
+  onRemove,
+}: AdjustmentPaymentCardProps) {
+  const theme = useTheme();
+  const cardStyle = adjustment.salesmanPaid
+    ? {
+        borderColor: 'success.main',
+        bgcolor: alpha(theme.palette.success.main, theme.palette.mode === 'dark' ? 0.32 : 0.2),
+      }
+    : {
+        borderColor: 'info.main',
+        bgcolor: alpha(theme.palette.info.main, theme.palette.mode === 'dark' ? 0.16 : 0.08),
+      };
+
+  return (
+    <Box
+      sx={{
+        width: '100%',
+        p: 1.5,
+        borderRadius: 1.5,
+        border: 1,
+        ...cardStyle,
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
+          mb: 1,
+        }}
+      >
+        <TextField
+          size="small"
+          label="Payment name"
+          value={adjustment.label}
+          onChange={(e) => onUpdateLabel(adjustment.id, e.target.value)}
+          placeholder="Adjustment"
+          sx={{ flex: 1, ...paymentFieldSx }}
+        />
+        <Chip
+          size="small"
+          variant={adjustment.salesmanPaid ? 'filled' : 'outlined'}
+          label={adjustment.salesmanPaid ? 'Salesman paid' : 'Adjustment'}
+          color={adjustment.salesmanPaid ? 'success' : 'info'}
+          sx={{ height: 22, fontSize: '0.7rem', flexShrink: 0 }}
+        />
+        <Tooltip title="Remove adjustment">
+          <IconButton
+            size="small"
+            color="error"
+            aria-label="Remove adjustment"
+            onClick={() => onRemove(adjustment.id)}
+          >
+            <DeleteOutlineIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
+        Manual adjustment — not tied to a job payment tier. Use negative amounts for paybacks.
+      </Typography>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: 'repeat(2, minmax(0, 1fr))',
+            md: 'minmax(140px, 1fr) minmax(148px, 1fr) minmax(120px, 1fr) auto',
+          },
+          gap: 1.5,
+          alignItems: 'center',
+        }}
+      >
+        <TextField
+          size="small"
+          fullWidth
+          label="Commission amount"
+          value={adjustment.displayAmount}
+          onChange={(e) =>
+            onUpdateAmount(adjustment.id, e.target.value.replace(/[^\d.-]/g, ''))
+          }
+          placeholder="0.00"
+          sx={paymentFieldSx}
+          InputProps={{
+            startAdornment: <InputAdornment position="start">$</InputAdornment>,
+            inputProps: { inputMode: 'decimal' },
+          }}
+        />
+        <TextField
+          size="small"
+          fullWidth
+          type="date"
+          label="Paid date"
+          value={adjustment.date}
+          onChange={(e) => onUpdateDate(adjustment.id, e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+        <TextField
+          size="small"
+          fullWidth
+          label="Check #"
+          value={adjustment.check}
+          onChange={(e) => onUpdateCheck(adjustment.id, e.target.value)}
+          placeholder="Check #"
+          sx={paymentFieldSx}
+        />
+        <FormControlLabel
+          sx={{ ml: 0, mr: 0, justifySelf: { md: 'start' } }}
+          control={
+            <Checkbox
+              size="small"
+              checked={adjustment.salesmanPaid}
+              onChange={(e) => onUpdateSalesmanPaid(adjustment.id, e.target.checked)}
+            />
+          }
+          label={
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Salesman paid
+            </Typography>
+          }
+        />
+      </Box>
+    </Box>
+  );
+}
+
+interface CommissionAdjustmentsSectionProps {
+  adjustments: CommissionAdjustmentDisplay[];
+  onAdd: () => void;
+  onUpdateLabel: (id: string, value: string) => void;
+  onUpdateAmount: (id: string, value: string) => void;
+  onUpdateDate: (id: string, value: string) => void;
+  onUpdateCheck: (id: string, value: string) => void;
+  onUpdateSalesmanPaid: (id: string, paid: boolean) => void;
+  onRemove: (id: string) => void;
+}
+
+function CommissionAdjustmentsSection({
+  adjustments,
+  onAdd,
+  onUpdateLabel,
+  onUpdateAmount,
+  onUpdateDate,
+  onUpdateCheck,
+  onUpdateSalesmanPaid,
+  onRemove,
+}: CommissionAdjustmentsSectionProps) {
+  return (
+    <Box sx={{ mt: 3, pt: 2.5, borderTop: 1, borderColor: 'divider' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
+          mb: adjustments.length > 0 ? 2 : 1,
+        }}
+      >
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Adjustments
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Extra commission payments or corrections outside the job payment schedule.
+          </Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<AddIcon />}
+          onClick={onAdd}
+          sx={{ textTransform: 'none', flexShrink: 0 }}
+        >
+          Add adjustment
+        </Button>
+      </Box>
+      {adjustments.length === 0 ? (
+        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+          No adjustments yet.
+        </Typography>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {adjustments.map((adjustment) => (
+            <AdjustmentPaymentCard
+              key={adjustment.id}
+              adjustment={adjustment}
+              onUpdateLabel={onUpdateLabel}
+              onUpdateAmount={onUpdateAmount}
+              onUpdateDate={onUpdateDate}
+              onUpdateCheck={onUpdateCheck}
+              onUpdateSalesmanPaid={onUpdateSalesmanPaid}
+              onRemove={onRemove}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 interface JobPaymentCardsProps {
   row: CommissionTableRow;
   layout?: 'vertical' | 'horizontal';
@@ -1810,6 +2267,13 @@ interface CommissionPaymentModalProps {
   onUpdateCheck: (jobId: string, scheduleIndex: number, value: string) => void;
   onUpdateSalesmanPaid: (jobId: string, scheduleIndex: number, paid: boolean) => void;
   onResetOverrides: (jobId: string) => void;
+  onAddAdjustment: (jobId: string) => void;
+  onUpdateAdjustmentLabel: (jobId: string, adjustmentId: string, value: string) => void;
+  onUpdateAdjustmentAmount: (jobId: string, adjustmentId: string, value: string) => void;
+  onUpdateAdjustmentDate: (jobId: string, adjustmentId: string, value: string) => void;
+  onUpdateAdjustmentCheck: (jobId: string, adjustmentId: string, value: string) => void;
+  onUpdateAdjustmentSalesmanPaid: (jobId: string, adjustmentId: string, paid: boolean) => void;
+  onRemoveAdjustment: (jobId: string, adjustmentId: string) => void;
   onOpenJobDetail: (jobId: string) => void;
 }
 
@@ -1825,6 +2289,13 @@ function CommissionPaymentModal({
   onUpdateCheck,
   onUpdateSalesmanPaid,
   onResetOverrides,
+  onAddAdjustment,
+  onUpdateAdjustmentLabel,
+  onUpdateAdjustmentAmount,
+  onUpdateAdjustmentDate,
+  onUpdateAdjustmentCheck,
+  onUpdateAdjustmentSalesmanPaid,
+  onRemoveAdjustment,
   onOpenJobDetail,
 }: CommissionPaymentModalProps) {
   const theme = useTheme();
@@ -1979,6 +2450,18 @@ function CommissionPaymentModal({
             onUpdateSalesmanPaid={onUpdateSalesmanPaid}
             onResetOverrides={onResetOverrides}
           />
+          <CommissionAdjustmentsSection
+            adjustments={row.adjustments}
+            onAdd={() => onAddAdjustment(row.jobId)}
+            onUpdateLabel={(id, value) => onUpdateAdjustmentLabel(row.jobId, id, value)}
+            onUpdateAmount={(id, value) => onUpdateAdjustmentAmount(row.jobId, id, value)}
+            onUpdateDate={(id, value) => onUpdateAdjustmentDate(row.jobId, id, value)}
+            onUpdateCheck={(id, value) => onUpdateAdjustmentCheck(row.jobId, id, value)}
+            onUpdateSalesmanPaid={(id, paid) =>
+              onUpdateAdjustmentSalesmanPaid(row.jobId, id, paid)
+            }
+            onRemove={(id) => onRemoveAdjustment(row.jobId, id)}
+          />
         </Box>
       </DialogContent>
       <DialogActions>
@@ -1997,6 +2480,7 @@ function CommissionLogsPage() {
   const [pageTab, setPageTab] = useState<CommissionPageTab>(() => readCommissionPageTab());
   const [paymentModalJobId, setPaymentModalJobId] = useState<string | null>(null);
   const [jobDetailModalJobId, setJobDetailModalJobId] = useState<string | null>(null);
+  const [setPaidDialogGroup, setSetPaidDialogGroup] = useState<CommissionCheckGroup | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
     () => readCommissionLogRows(),
@@ -2077,6 +2561,170 @@ function CommissionLogsPage() {
       return result;
     });
   };
+
+  const updateCommissionAdjustment = (
+    jobId: string,
+    adjustmentId: string,
+    patch: Partial<CommissionAdjustmentLocal>,
+  ) => {
+    setCommissionLogRows((prev) => {
+      const current = migrateLocalRow(prev[jobId] || {});
+      const adjustments = [...(current.adjustments || [])];
+      const index = adjustments.findIndex((row) => row.id === adjustmentId);
+      if (index < 0) return prev;
+
+      adjustments[index] = { ...adjustments[index], ...patch };
+      const nextRow: CommissionLogLocalRow = {
+        ...current,
+        adjustments,
+        updatedAt: new Date().toISOString(),
+      };
+      const result = {
+        ...prev,
+        [jobId]: nextRow,
+      };
+      void persistCommissionLog(jobId, nextRow).catch((error) => {
+        console.error('Failed to save commission log:', error);
+        toast.error('Failed to save commission log');
+      });
+      return result;
+    });
+  };
+
+  const addCommissionAdjustment = (jobId: string) => {
+    setCommissionLogRows((prev) => {
+      const current = migrateLocalRow(prev[jobId] || {});
+      const nextRow: CommissionLogLocalRow = {
+        ...current,
+        adjustments: [...(current.adjustments || []), newAdjustmentRow()],
+        updatedAt: new Date().toISOString(),
+      };
+      const result = {
+        ...prev,
+        [jobId]: nextRow,
+      };
+      void persistCommissionLog(jobId, nextRow).catch((error) => {
+        console.error('Failed to save commission log:', error);
+        toast.error('Failed to save commission log');
+      });
+      return result;
+    });
+  };
+
+  const removeCommissionAdjustment = (jobId: string, adjustmentId: string) => {
+    setCommissionLogRows((prev) => {
+      const current = migrateLocalRow(prev[jobId] || {});
+      const nextRow: CommissionLogLocalRow = {
+        ...current,
+        adjustments: (current.adjustments || []).filter((row) => row.id !== adjustmentId),
+        updatedAt: new Date().toISOString(),
+      };
+      const result = {
+        ...prev,
+        [jobId]: nextRow,
+      };
+      void persistCommissionLog(jobId, nextRow).catch((error) => {
+        console.error('Failed to save commission log:', error);
+        toast.error('Failed to save commission log');
+      });
+      return result;
+    });
+  };
+
+  const markCheckGroupPaid = useCallback((group: CommissionCheckGroup, check: string, paidDate: string) => {
+    const trimmedCheck = String(check || '').trim();
+    if (!trimmedCheck) {
+      toast.error('Enter a check number');
+      return;
+    }
+
+    const resolvedDate = String(paidDate || group.date || '').trim();
+
+    setCommissionLogRows((prev) => {
+      const next = { ...prev };
+      const updatesByJob = new Map<string, CommissionCheckEntry[]>();
+
+      for (const entry of group.entries) {
+        const list = updatesByJob.get(entry.jobId) || [];
+        list.push(entry);
+        updatesByJob.set(entry.jobId, list);
+      }
+
+      for (const [jobId, jobEntries] of updatesByJob) {
+        const current = migrateLocalRow(next[jobId] || {});
+
+        for (const entry of jobEntries) {
+          if (entry.entryKind === 'adjustment' && entry.adjustmentId) {
+            const adjustments = [...(current.adjustments || [])];
+            const index = adjustments.findIndex((row) => row.id === entry.adjustmentId);
+            if (index < 0) continue;
+
+            const existing = adjustments[index];
+            adjustments[index] = {
+              ...existing,
+              check: trimmedCheck,
+              date: resolvedDate || existing.date || entry.date,
+              salesmanPaid: true,
+              amount:
+                existing.amount !== undefined &&
+                existing.amount !== null &&
+                String(existing.amount).trim() !== ''
+                  ? existing.amount
+                  : entry.amount !== 0
+                    ? String(entry.amount)
+                    : existing.amount,
+            };
+            current.adjustments = adjustments;
+            continue;
+          }
+
+          if (entry.entryKind === 'payment' && entry.scheduleIndex !== undefined) {
+            const payments = [...(current.payments || [])];
+            while (payments.length <= entry.scheduleIndex) payments.push({});
+            const existing = payments[entry.scheduleIndex] || {};
+            const patch: CommissionPaymentLocal = {
+              ...existing,
+              check: trimmedCheck,
+              date: resolvedDate || existing.date || entry.date,
+              salesmanPaid: true,
+            };
+
+            const hasAmount =
+              existing.amountManual ||
+              (existing.amount !== undefined &&
+                existing.amount !== null &&
+                String(existing.amount).trim() !== '' &&
+                Number(existing.amount) !== 0);
+
+            if (!hasAmount && entry.amount !== 0) {
+              patch.amount = formatMoneyInput(entry.amount);
+              patch.amountManual = true;
+            }
+
+            payments[entry.scheduleIndex] = patch;
+            current.payments = payments;
+          }
+        }
+
+        const nextRow: CommissionLogLocalRow = {
+          ...current,
+          updatedAt: new Date().toISOString(),
+        };
+        next[jobId] = nextRow;
+        void persistCommissionLog(jobId, nextRow).catch((error) => {
+          console.error('Failed to save commission log:', error);
+          toast.error('Failed to save commission log');
+        });
+      }
+
+      return next;
+    });
+
+    toast.success(
+      `Marked ${group.entries.length} payment${group.entries.length === 1 ? '' : 's'} on check ${trimmedCheck}`,
+    );
+    setSetPaidDialogGroup(null);
+  }, []);
 
   const reorderPayments = (jobId: string, order: number[]) => {
     updateCommissionRow(jobId, { paymentOrder: order });
@@ -2164,12 +2812,39 @@ function CommissionLogsPage() {
           preserveOrder: true,
         });
 
-        const paidTotal = roundMoney(
+        const builtAdjustments: CommissionAdjustmentDisplay[] = (local.adjustments || []).map(
+          (saved) => {
+            const rawAmount = saved.amount;
+            const amount =
+              rawAmount === '' || rawAmount === undefined || rawAmount === null
+                ? 0
+                : roundMoney(Number(rawAmount) || 0);
+
+            return {
+              id: saved.id,
+              label: String(saved.label || 'Adjustment').trim() || 'Adjustment',
+              amount,
+              displayAmount: saved.amount ?? '',
+              check: String(saved.check || ''),
+              date: String(saved.date || ''),
+              salesmanPaid: safeRate <= 0 ? true : Boolean(saved.salesmanPaid),
+            };
+          },
+        );
+
+        const schedulePaidTotal = roundMoney(
           payments.reduce(
             (sum, payment) => sum + (payment.salesmanPaid ? payment.amount : 0),
             0,
           ),
         );
+        const adjustmentPaidTotal = roundMoney(
+          builtAdjustments.reduce(
+            (sum, adjustment) => sum + (adjustment.salesmanPaid ? adjustment.amount : 0),
+            0,
+          ),
+        );
+        const paidTotal = roundMoney(schedulePaidTotal + adjustmentPaidTotal);
         const balance = roundMoney(commissionDue - paidTotal);
         const hasManualPayments = payments.some((payment) => payment.amountManual);
         const isRowSettled =
@@ -2181,6 +2856,7 @@ function CommissionLogsPage() {
           rateOverridden,
           commissionDue,
           payments,
+          adjustments: builtAdjustments,
           paymentOrder:
             Array.isArray(local.paymentOrder) && local.paymentOrder.length > 0
               ? local.paymentOrder
@@ -2426,7 +3102,7 @@ function CommissionLogsPage() {
                 {pageTab === 'recent'
                   ? 'Most recent salesman-paid commission payments — newest first. Click a row to open the job.'
                   : pageTab === 'checks'
-                    ? 'Checks and cash grouped by number — expand for payment details, click a payment to open the job.'
+                    ? 'Checks and cash grouped by number — right-click a group to mark all payments paid on one check.'
                     : 'Active jobs on top. At the bottom: underpaid (all tiers paid), then overpaid (red), then settled (green). Click a row to edit.'}
               </Typography>
             </Box>
@@ -2601,12 +3277,22 @@ function CommissionLogsPage() {
                   groups={filteredCheckGroups}
                   onOpenJob={(jobId) => setPaymentModalJobId(jobId)}
                   onOpenJobDetail={setJobDetailModalJobId}
+                  onSetGroupPaid={setSetPaidDialogGroup}
                 />
               </Box>
             </Box>
           )}
         </CardContent>
       </Card>
+
+      <SetCheckGroupPaidDialog
+        group={setPaidDialogGroup}
+        open={Boolean(setPaidDialogGroup)}
+        onClose={() => setSetPaidDialogGroup(null)}
+        onConfirm={(check, paidDate) => {
+          if (setPaidDialogGroup) markCheckGroupPaid(setPaidDialogGroup, check, paidDate);
+        }}
+      />
 
       <CommissionPaymentModal
         row={paymentModalRow}
@@ -2624,6 +3310,23 @@ function CommissionLogsPage() {
         }
         onUpdateSalesmanPaid={handleSalesmanPaidChange}
         onResetOverrides={resetPaymentOverrides}
+        onAddAdjustment={addCommissionAdjustment}
+        onUpdateAdjustmentLabel={(jobId, adjustmentId, value) =>
+          updateCommissionAdjustment(jobId, adjustmentId, { label: value })
+        }
+        onUpdateAdjustmentAmount={(jobId, adjustmentId, value) =>
+          updateCommissionAdjustment(jobId, adjustmentId, { amount: value })
+        }
+        onUpdateAdjustmentDate={(jobId, adjustmentId, value) =>
+          updateCommissionAdjustment(jobId, adjustmentId, { date: value })
+        }
+        onUpdateAdjustmentCheck={(jobId, adjustmentId, value) =>
+          updateCommissionAdjustment(jobId, adjustmentId, { check: value })
+        }
+        onUpdateAdjustmentSalesmanPaid={(jobId, adjustmentId, paid) =>
+          updateCommissionAdjustment(jobId, adjustmentId, { salesmanPaid: paid })
+        }
+        onRemoveAdjustment={removeCommissionAdjustment}
         onOpenJobDetail={setJobDetailModalJobId}
       />
 
