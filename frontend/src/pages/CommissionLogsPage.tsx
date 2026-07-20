@@ -358,6 +358,7 @@ function buildSalesmanPaidEntries(rows: CommissionTableRow[]): SalesmanPaidEntry
     }
 
     for (const adjustment of row.adjustments) {
+      if (adjustment.kind === 'deduction') continue;
       if (!adjustment.salesmanPaid) continue;
       if (Math.abs(adjustment.amount) < 0.005) continue;
 
@@ -441,6 +442,8 @@ function buildCheckEntries(rows: CommissionTableRow[]): CommissionCheckEntry[] {
     }
 
     for (const adjustment of row.adjustments) {
+      if (adjustment.kind === 'deduction') continue;
+
       const check = String(adjustment.check || '').trim();
       const date = String(adjustment.date || '').trim();
       const amount = adjustment.amount;
@@ -1001,7 +1004,9 @@ interface CommissionPaymentLocal {
 
 interface CommissionAdjustmentLocal {
   id: string;
+  kind?: 'payment' | 'deduction';
   label?: string;
+  note?: string;
   amount?: string | number;
   check?: string;
   date?: string;
@@ -1025,10 +1030,25 @@ interface CommissionLogLocalRow {
 function newAdjustmentRow(): CommissionAdjustmentLocal {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    kind: 'payment',
     label: 'Adjustment',
+    note: '',
     amount: '',
     check: '',
     date: '',
+    salesmanPaid: false,
+  };
+}
+
+function newDeductionRow(amount = '', note = ''): CommissionAdjustmentLocal {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    kind: 'deduction',
+    label: 'Deduction',
+    note,
+    amount: amount === '' ? '' : String(amount),
+    check: '',
+    date: format(new Date(), 'yyyy-MM-dd'),
     salesmanPaid: false,
   };
 }
@@ -1081,6 +1101,7 @@ function hasCommissionLogData(row: CommissionLogLocalRow): boolean {
         Boolean(adjustment.check) ||
         Boolean(adjustment.date) ||
         Boolean(String(adjustment.label || '').trim()) ||
+        Boolean(String(adjustment.note || '').trim()) ||
         (adjustment.amount !== undefined &&
           adjustment.amount !== null &&
           String(adjustment.amount).trim() !== ''),
@@ -1273,7 +1294,9 @@ interface CommissionPaymentDisplay {
 
 interface CommissionAdjustmentDisplay {
   id: string;
+  kind: 'payment' | 'deduction';
   label: string;
+  note: string;
   amount: number;
   displayAmount: string | number;
   check: string;
@@ -1289,6 +1312,8 @@ interface CommissionTableRow extends CommissionSourceJobRow {
   adjustments: CommissionAdjustmentDisplay[];
   paymentOrder?: number[];
   hasManualPayments: boolean;
+  paidToSalesman: number;
+  deductionTotal: number;
   balance: number;
   isRowSettled: boolean;
 }
@@ -1410,6 +1435,8 @@ function matchesCommissionSearch(row: CommissionTableRow, rawQuery: string): boo
     ]),
     ...row.adjustments.flatMap((adjustment) => [
       adjustment.label,
+      adjustment.note,
+      adjustment.kind,
       adjustment.check,
       adjustment.date,
       adjustment.displayAmount,
@@ -2009,6 +2036,7 @@ function SortablePaymentCard({
 interface AdjustmentPaymentCardProps {
   adjustment: CommissionAdjustmentDisplay;
   onUpdateLabel: (id: string, value: string) => void;
+  onUpdateNote: (id: string, value: string) => void;
   onUpdateAmount: (id: string, value: string) => void;
   onUpdateDate: (id: string, value: string) => void;
   onUpdateCheck: (id: string, value: string) => void;
@@ -2019,6 +2047,7 @@ interface AdjustmentPaymentCardProps {
 function AdjustmentPaymentCard({
   adjustment,
   onUpdateLabel,
+  onUpdateNote,
   onUpdateAmount,
   onUpdateDate,
   onUpdateCheck,
@@ -2026,15 +2055,21 @@ function AdjustmentPaymentCard({
   onRemove,
 }: AdjustmentPaymentCardProps) {
   const theme = useTheme();
-  const cardStyle = adjustment.salesmanPaid
+  const isDeduction = adjustment.kind === 'deduction';
+  const cardStyle = isDeduction
     ? {
-        borderColor: 'success.main',
-        bgcolor: alpha(theme.palette.success.main, theme.palette.mode === 'dark' ? 0.32 : 0.2),
+        borderColor: 'warning.main',
+        bgcolor: alpha(theme.palette.warning.main, theme.palette.mode === 'dark' ? 0.18 : 0.1),
       }
-    : {
-        borderColor: 'info.main',
-        bgcolor: alpha(theme.palette.info.main, theme.palette.mode === 'dark' ? 0.16 : 0.08),
-      };
+    : adjustment.salesmanPaid
+      ? {
+          borderColor: 'success.main',
+          bgcolor: alpha(theme.palette.success.main, theme.palette.mode === 'dark' ? 0.32 : 0.2),
+        }
+      : {
+          borderColor: 'info.main',
+          bgcolor: alpha(theme.palette.info.main, theme.palette.mode === 'dark' ? 0.16 : 0.08),
+        };
 
   return (
     <Box
@@ -2057,24 +2092,24 @@ function AdjustmentPaymentCard({
       >
         <TextField
           size="small"
-          label="Payment name"
+          label={isDeduction ? 'Deduction type' : 'Payment name'}
           value={adjustment.label}
           onChange={(e) => onUpdateLabel(adjustment.id, e.target.value)}
-          placeholder="Adjustment"
+          placeholder={isDeduction ? 'Subcontractor' : 'Adjustment'}
           sx={{ flex: 1, ...paymentFieldSx }}
         />
         <Chip
           size="small"
-          variant={adjustment.salesmanPaid ? 'filled' : 'outlined'}
-          label={adjustment.salesmanPaid ? 'Salesman paid' : 'Adjustment'}
-          color={adjustment.salesmanPaid ? 'success' : 'info'}
+          variant={isDeduction ? 'filled' : adjustment.salesmanPaid ? 'filled' : 'outlined'}
+          label={isDeduction ? 'Deduction' : adjustment.salesmanPaid ? 'Salesman paid' : 'Payment'}
+          color={isDeduction ? 'warning' : adjustment.salesmanPaid ? 'success' : 'info'}
           sx={{ height: 22, fontSize: '0.7rem', flexShrink: 0 }}
         />
-        <Tooltip title="Remove adjustment">
+        <Tooltip title={isDeduction ? 'Remove deduction' : 'Remove adjustment'}>
           <IconButton
             size="small"
             color="error"
-            aria-label="Remove adjustment"
+            aria-label={isDeduction ? 'Remove deduction' : 'Remove adjustment'}
             onClick={() => onRemove(adjustment.id)}
           >
             <DeleteOutlineIcon fontSize="small" />
@@ -2082,77 +2117,128 @@ function AdjustmentPaymentCard({
         </Tooltip>
       </Box>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
-        Manual adjustment — not tied to a job payment tier. Use negative amounts for paybacks.
+        {isDeduction
+          ? 'Reduces the commission balance without paying the salesman — e.g. subcontractor costs, write-offs.'
+          : 'Manual payment outside the job payment schedule. Use negative amounts for paybacks.'}
       </Typography>
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: {
-            xs: '1fr',
-            sm: 'repeat(2, minmax(0, 1fr))',
-            md: 'minmax(140px, 1fr) minmax(148px, 1fr) minmax(120px, 1fr) auto',
-          },
-          gap: 1.5,
-          alignItems: 'center',
-        }}
-      >
-        <TextField
-          size="small"
-          fullWidth
-          label="Commission amount"
-          value={adjustment.displayAmount}
-          onChange={(e) =>
-            onUpdateAmount(adjustment.id, e.target.value.replace(/[^\d.-]/g, ''))
-          }
-          placeholder="0.00"
-          sx={paymentFieldSx}
-          InputProps={{
-            startAdornment: <InputAdornment position="start">$</InputAdornment>,
-            inputProps: { inputMode: 'decimal' },
-          }}
-        />
-        <TextField
-          size="small"
-          fullWidth
-          type="date"
-          label="Paid date"
-          value={adjustment.date}
-          onChange={(e) => onUpdateDate(adjustment.id, e.target.value)}
-          InputLabelProps={{ shrink: true }}
-        />
-        <TextField
-          size="small"
-          fullWidth
-          label="Check #"
-          value={adjustment.check}
-          onChange={(e) => onUpdateCheck(adjustment.id, e.target.value)}
-          placeholder="Check #"
-          sx={paymentFieldSx}
-        />
-        <FormControlLabel
-          sx={{ ml: 0, mr: 0, justifySelf: { md: 'start' } }}
-          control={
-            <Checkbox
+      {isDeduction ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <TextField
+            size="small"
+            fullWidth
+            label="Note"
+            value={adjustment.note}
+            onChange={(e) => onUpdateNote(adjustment.id, e.target.value)}
+            placeholder="e.g. Subcontractor paid from commission — job settled"
+            multiline
+            minRows={2}
+          />
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+              gap: 1.5,
+            }}
+          >
+            <TextField
               size="small"
-              checked={adjustment.salesmanPaid}
-              onChange={(e) => onUpdateSalesmanPaid(adjustment.id, e.target.checked)}
+              fullWidth
+              label="Deduction amount"
+              value={adjustment.displayAmount}
+              onChange={(e) =>
+                onUpdateAmount(adjustment.id, e.target.value.replace(/[^\d.]/g, ''))
+              }
+              placeholder="0.00"
+              sx={paymentFieldSx}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                inputProps: { inputMode: 'decimal' },
+              }}
             />
-          }
-          label={
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              Salesman paid
-            </Typography>
-          }
-        />
-      </Box>
+            <TextField
+              size="small"
+              fullWidth
+              type="date"
+              label="Date"
+              value={adjustment.date}
+              onChange={(e) => onUpdateDate(adjustment.id, e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Box>
+        </Box>
+      ) : (
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              md: 'minmax(140px, 1fr) minmax(148px, 1fr) minmax(120px, 1fr) auto',
+            },
+            gap: 1.5,
+            alignItems: 'center',
+          }}
+        >
+          <TextField
+            size="small"
+            fullWidth
+            label="Commission amount"
+            value={adjustment.displayAmount}
+            onChange={(e) =>
+              onUpdateAmount(adjustment.id, e.target.value.replace(/[^\d.-]/g, ''))
+            }
+            placeholder="0.00"
+            sx={paymentFieldSx}
+            InputProps={{
+              startAdornment: <InputAdornment position="start">$</InputAdornment>,
+              inputProps: { inputMode: 'decimal' },
+            }}
+          />
+          <TextField
+            size="small"
+            fullWidth
+            type="date"
+            label="Paid date"
+            value={adjustment.date}
+            onChange={(e) => onUpdateDate(adjustment.id, e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            size="small"
+            fullWidth
+            label="Check #"
+            value={adjustment.check}
+            onChange={(e) => onUpdateCheck(adjustment.id, e.target.value)}
+            placeholder="Check #"
+            sx={paymentFieldSx}
+          />
+          <FormControlLabel
+            sx={{ ml: 0, mr: 0, justifySelf: { md: 'start' } }}
+            control={
+              <Checkbox
+                size="small"
+                checked={adjustment.salesmanPaid}
+                onChange={(e) => onUpdateSalesmanPaid(adjustment.id, e.target.checked)}
+              />
+            }
+            label={
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Salesman paid
+              </Typography>
+            }
+          />
+        </Box>
+      )}
     </Box>
   );
 }
 
 interface CommissionAdjustmentsSectionProps {
   adjustments: CommissionAdjustmentDisplay[];
-  onAdd: () => void;
+  onAddPayment: () => void;
+  onAddDeduction: () => void;
   onUpdateLabel: (id: string, value: string) => void;
+  onUpdateNote: (id: string, value: string) => void;
   onUpdateAmount: (id: string, value: string) => void;
   onUpdateDate: (id: string, value: string) => void;
   onUpdateCheck: (id: string, value: string) => void;
@@ -2162,8 +2248,10 @@ interface CommissionAdjustmentsSectionProps {
 
 function CommissionAdjustmentsSection({
   adjustments,
-  onAdd,
+  onAddPayment,
+  onAddDeduction,
   onUpdateLabel,
+  onUpdateNote,
   onUpdateAmount,
   onUpdateDate,
   onUpdateCheck,
@@ -2175,10 +2263,11 @@ function CommissionAdjustmentsSection({
       <Box
         sx={{
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'space-between',
           gap: 1,
           mb: adjustments.length > 0 ? 2 : 1,
+          flexWrap: 'wrap',
         }}
       >
         <Box>
@@ -2186,18 +2275,30 @@ function CommissionAdjustmentsSection({
             Adjustments
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Extra commission payments or corrections outside the job payment schedule.
+            Extra payments to the salesman, or deductions that reduce the balance (subcontractor, write-off).
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<AddIcon />}
-          onClick={onAdd}
-          sx={{ textTransform: 'none', flexShrink: 0 }}
-        >
-          Add adjustment
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={onAddPayment}
+            sx={{ textTransform: 'none' }}
+          >
+            Add payment
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            color="warning"
+            startIcon={<AddIcon />}
+            onClick={onAddDeduction}
+            sx={{ textTransform: 'none' }}
+          >
+            Add deduction
+          </Button>
+        </Box>
       </Box>
       {adjustments.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
@@ -2210,6 +2311,7 @@ function CommissionAdjustmentsSection({
               key={adjustment.id}
               adjustment={adjustment}
               onUpdateLabel={onUpdateLabel}
+              onUpdateNote={onUpdateNote}
               onUpdateAmount={onUpdateAmount}
               onUpdateDate={onUpdateDate}
               onUpdateCheck={onUpdateCheck}
@@ -2220,6 +2322,127 @@ function CommissionAdjustmentsSection({
         </Box>
       )}
     </Box>
+  );
+}
+
+interface SettleRemainderBannerProps {
+  balance: number;
+  onSettle: () => void;
+}
+
+function SettleRemainderBanner({ balance, onSettle }: SettleRemainderBannerProps) {
+  const theme = useTheme();
+  if (balance <= 0.01) return null;
+
+  return (
+    <Box
+      sx={{
+        mt: 2.5,
+        p: 2,
+        borderRadius: 1.5,
+        border: 1,
+        borderColor: 'warning.main',
+        bgcolor: alpha(theme.palette.warning.main, theme.palette.mode === 'dark' ? 0.12 : 0.08),
+      }}
+    >
+      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+        Remaining balance: {formatMoney(balance)}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+        All commission tiers may be paid, but something reduced what is owed — like a subcontractor
+        taken from commission. Record a deduction to settle this job without paying the salesman
+        again.
+      </Typography>
+      <Button variant="contained" color="warning" size="small" onClick={onSettle} sx={{ textTransform: 'none' }}>
+        Settle remainder…
+      </Button>
+    </Box>
+  );
+}
+
+interface SettleRemainderDialogProps {
+  open: boolean;
+  balance: number;
+  onClose: () => void;
+  onConfirm: (payload: { amount: string; label: string; note: string; date: string }) => void;
+}
+
+function SettleRemainderDialog({ open, balance, onClose, onConfirm }: SettleRemainderDialogProps) {
+  const [amount, setAmount] = useState('');
+  const [label, setLabel] = useState('Subcontractor');
+  const [note, setNote] = useState('');
+  const [date, setDate] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setAmount(balance > 0 ? formatMoneyInput(balance) : '');
+    setLabel('Subcontractor');
+    setNote('');
+    setDate(format(new Date(), 'yyyy-MM-dd'));
+  }, [open, balance]);
+
+  const handleConfirm = () => {
+    if (!note.trim()) return;
+    onConfirm({ amount, label, note: note.trim(), date });
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Settle remainder</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Records a deduction so the commission balance goes to zero. This does not pay the salesman
+          — it documents why the remaining amount is not owed.
+        </Typography>
+        <TextField
+          fullWidth
+          size="small"
+          label="Deduction type"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          fullWidth
+          size="small"
+          label="Amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
+          sx={{ mb: 2, ...paymentFieldSx }}
+          InputProps={{
+            startAdornment: <InputAdornment position="start">$</InputAdornment>,
+            inputProps: { inputMode: 'decimal' },
+          }}
+        />
+        <TextField
+          fullWidth
+          size="small"
+          type="date"
+          label="Date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          fullWidth
+          size="small"
+          label="Note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="e.g. Subcontractor paid from commission — job fully settled"
+          multiline
+          minRows={3}
+          required
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" color="warning" onClick={handleConfirm} disabled={!note.trim()}>
+          Settle job
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -2352,7 +2575,13 @@ interface CommissionPaymentModalProps {
   onUpdateSalesmanPaid: (jobId: string, scheduleIndex: number, paid: boolean) => void;
   onResetOverrides: (jobId: string) => void;
   onAddAdjustment: (jobId: string) => void;
+  onAddDeduction: (jobId: string) => void;
+  onSettleRemainder: (
+    jobId: string,
+    payload: { amount: string; label: string; note: string; date: string },
+  ) => void;
   onUpdateAdjustmentLabel: (jobId: string, adjustmentId: string, value: string) => void;
+  onUpdateAdjustmentNote: (jobId: string, adjustmentId: string, value: string) => void;
   onUpdateAdjustmentAmount: (jobId: string, adjustmentId: string, value: string) => void;
   onUpdateAdjustmentDate: (jobId: string, adjustmentId: string, value: string) => void;
   onUpdateAdjustmentCheck: (jobId: string, adjustmentId: string, value: string) => void;
@@ -2374,7 +2603,10 @@ function CommissionPaymentModal({
   onUpdateSalesmanPaid,
   onResetOverrides,
   onAddAdjustment,
+  onAddDeduction,
+  onSettleRemainder,
   onUpdateAdjustmentLabel,
+  onUpdateAdjustmentNote,
   onUpdateAdjustmentAmount,
   onUpdateAdjustmentDate,
   onUpdateAdjustmentCheck,
@@ -2383,6 +2615,8 @@ function CommissionPaymentModal({
   onOpenJobDetail,
 }: CommissionPaymentModalProps) {
   const theme = useTheme();
+  const [settleDialogOpen, setSettleDialogOpen] = useState(false);
+
   if (!row) return null;
 
   const balanceColor = isCommissionOverpaid(row)
@@ -2392,6 +2626,7 @@ function CommissionPaymentModal({
       : 'text.primary';
 
   return (
+    <>
     <Dialog
       open={open}
       onClose={onClose}
@@ -2509,6 +2744,24 @@ function CommissionPaymentModal({
           </Box>
           <Box>
             <Typography variant="caption" color="text.secondary">
+              Paid to salesman
+            </Typography>
+            <Typography variant="body1" sx={{ fontWeight: 700 }}>
+              {formatMoney(row.paidToSalesman)}
+            </Typography>
+          </Box>
+          {row.deductionTotal > 0.005 && (
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                Deductions
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 700, color: 'warning.main' }}>
+                {formatMoney(row.deductionTotal)}
+              </Typography>
+            </Box>
+          )}
+          <Box>
+            <Typography variant="caption" color="text.secondary">
               {isCommissionOverpaid(row) ? 'Overpaid (owed back)' : 'Balance'}
             </Typography>
             <Typography
@@ -2534,10 +2787,16 @@ function CommissionPaymentModal({
             onUpdateSalesmanPaid={onUpdateSalesmanPaid}
             onResetOverrides={onResetOverrides}
           />
+          <SettleRemainderBanner
+            balance={row.balance}
+            onSettle={() => setSettleDialogOpen(true)}
+          />
           <CommissionAdjustmentsSection
             adjustments={row.adjustments}
-            onAdd={() => onAddAdjustment(row.jobId)}
+            onAddPayment={() => onAddAdjustment(row.jobId)}
+            onAddDeduction={() => onAddDeduction(row.jobId)}
             onUpdateLabel={(id, value) => onUpdateAdjustmentLabel(row.jobId, id, value)}
+            onUpdateNote={(id, value) => onUpdateAdjustmentNote(row.jobId, id, value)}
             onUpdateAmount={(id, value) => onUpdateAdjustmentAmount(row.jobId, id, value)}
             onUpdateDate={(id, value) => onUpdateAdjustmentDate(row.jobId, id, value)}
             onUpdateCheck={(id, value) => onUpdateAdjustmentCheck(row.jobId, id, value)}
@@ -2552,6 +2811,17 @@ function CommissionPaymentModal({
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
+
+    <SettleRemainderDialog
+      open={settleDialogOpen}
+      balance={row.balance}
+      onClose={() => setSettleDialogOpen(false)}
+      onConfirm={(payload) => {
+        onSettleRemainder(row.jobId, payload);
+        setSettleDialogOpen(false);
+      }}
+    />
+    </>
   );
 }
 
@@ -2694,6 +2964,56 @@ function CommissionLogsPage() {
       });
       return result;
     });
+  };
+
+  const addCommissionDeduction = (jobId: string) => {
+    setCommissionLogRows((prev) => {
+      const current = migrateLocalRow(prev[jobId] || {});
+      const nextRow: CommissionLogLocalRow = {
+        ...current,
+        adjustments: [...(current.adjustments || []), newDeductionRow()],
+        updatedAt: new Date().toISOString(),
+      };
+      const result = {
+        ...prev,
+        [jobId]: nextRow,
+      };
+      void persistCommissionLog(jobId, nextRow).catch((error) => {
+        console.error('Failed to save commission log:', error);
+        toast.error('Failed to save commission log');
+      });
+      return result;
+    });
+  };
+
+  const settleCommissionRemainder = (
+    jobId: string,
+    payload: { amount: string; label: string; note: string; date: string },
+  ) => {
+    setCommissionLogRows((prev) => {
+      const current = migrateLocalRow(prev[jobId] || {});
+      const deduction: CommissionAdjustmentLocal = {
+        ...newDeductionRow(payload.amount, payload.note),
+        label: payload.label.trim() || 'Deduction',
+        note: payload.note,
+        date: payload.date,
+      };
+      const nextRow: CommissionLogLocalRow = {
+        ...current,
+        adjustments: [...(current.adjustments || []), deduction],
+        updatedAt: new Date().toISOString(),
+      };
+      const result = {
+        ...prev,
+        [jobId]: nextRow,
+      };
+      void persistCommissionLog(jobId, nextRow).catch((error) => {
+        console.error('Failed to save commission log:', error);
+        toast.error('Failed to save commission log');
+      });
+      return result;
+    });
+    toast.success('Commission remainder settled');
   };
 
   const removeCommissionAdjustment = (jobId: string, adjustmentId: string) => {
@@ -2884,15 +3204,19 @@ function CommissionLogsPage() {
               rawAmount === '' || rawAmount === undefined || rawAmount === null
                 ? 0
                 : roundMoney(Number(rawAmount) || 0);
+            const kind = saved.kind === 'deduction' ? 'deduction' : 'payment';
 
             return {
               id: saved.id,
-              label: String(saved.label || 'Adjustment').trim() || 'Adjustment',
-              amount,
+              kind,
+              label: String(saved.label || (kind === 'deduction' ? 'Deduction' : 'Adjustment')).trim() ||
+                (kind === 'deduction' ? 'Deduction' : 'Adjustment'),
+              note: String(saved.note || ''),
+              amount: Math.abs(amount),
               displayAmount: saved.amount ?? '',
               check: String(saved.check || ''),
               date: String(saved.date || ''),
-              salesmanPaid: safeRate <= 0 ? true : Boolean(saved.salesmanPaid),
+              salesmanPaid: kind === 'deduction' ? false : safeRate <= 0 ? true : Boolean(saved.salesmanPaid),
             };
           },
         );
@@ -2905,12 +3229,19 @@ function CommissionLogsPage() {
         );
         const adjustmentPaidTotal = roundMoney(
           builtAdjustments.reduce(
-            (sum, adjustment) => sum + (adjustment.salesmanPaid ? adjustment.amount : 0),
+            (sum, adjustment) =>
+              sum + (adjustment.kind === 'payment' && adjustment.salesmanPaid ? adjustment.amount : 0),
             0,
           ),
         );
-        const paidTotal = roundMoney(schedulePaidTotal + adjustmentPaidTotal);
-        const balance = roundMoney(commissionDue - paidTotal);
+        const paidToSalesman = roundMoney(schedulePaidTotal + adjustmentPaidTotal);
+        const deductionTotal = roundMoney(
+          builtAdjustments.reduce(
+            (sum, adjustment) => sum + (adjustment.kind === 'deduction' ? adjustment.amount : 0),
+            0,
+          ),
+        );
+        const balance = roundMoney(commissionDue - paidToSalesman - deductionTotal);
         const hasManualPayments = payments.some((payment) => payment.amountManual);
         const isRowSettled =
           safeRate <= 0 || (jobTotal > 0 && balance >= -0.01 && balance <= 0.01);
@@ -2927,6 +3258,8 @@ function CommissionLogsPage() {
               ? local.paymentOrder
               : undefined,
           hasManualPayments,
+          paidToSalesman,
+          deductionTotal,
           balance,
           isRowSettled,
         };
@@ -3388,8 +3721,13 @@ function CommissionLogsPage() {
         onUpdateSalesmanPaid={handleSalesmanPaidChange}
         onResetOverrides={resetPaymentOverrides}
         onAddAdjustment={addCommissionAdjustment}
+        onAddDeduction={addCommissionDeduction}
+        onSettleRemainder={settleCommissionRemainder}
         onUpdateAdjustmentLabel={(jobId, adjustmentId, value) =>
           updateCommissionAdjustment(jobId, adjustmentId, { label: value })
+        }
+        onUpdateAdjustmentNote={(jobId, adjustmentId, value) =>
+          updateCommissionAdjustment(jobId, adjustmentId, { note: value })
         }
         onUpdateAdjustmentAmount={(jobId, adjustmentId, value) =>
           updateCommissionAdjustment(jobId, adjustmentId, { amount: value })
