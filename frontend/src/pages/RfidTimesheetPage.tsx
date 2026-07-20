@@ -80,11 +80,28 @@ type ReceiptRow = {
   amount: string;
 };
 
+type AdditionalHoursRow = {
+  id: string;
+  description: string;
+  hours: string;
+};
+
 type WeekSheetData = {
   workHours: DayRow[];
   receipts: ReceiptRow[];
+  additionalHours: AdditionalHoursRow[];
   ratePerHour: string;
 };
+
+const DAY_SHIFT = { in: '600', out: '1430', breaks: '30' };
+
+function newAdditionalHoursRow(): AdditionalHoursRow {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    description: '',
+    hours: '',
+  };
+}
 
 function storageKey(employeeId: string, periodId: string) {
   return `${STORAGE_PREFIX}:${employeeId}:${periodId}`;
@@ -106,7 +123,12 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
   try {
     const raw = localStorage.getItem(storageKey(employeeId, period.id));
     if (!raw) {
-      return { workHours: defaultWorkHours(period), receipts: [], ratePerHour: '' };
+      return {
+        workHours: defaultWorkHours(period),
+        receipts: [],
+        additionalHours: [],
+        ratePerHour: '',
+      };
     }
     const parsed = JSON.parse(raw);
     const defaults = defaultWorkHours(period);
@@ -120,10 +142,22 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
         scanCount: Number(byDay[d.day]?.scanCount) || 0,
       })),
       receipts: Array.isArray(parsed.receipts) ? parsed.receipts : [],
+      additionalHours: Array.isArray(parsed.additionalHours)
+        ? parsed.additionalHours.map((row: AdditionalHoursRow) => ({
+            id: row.id || newAdditionalHoursRow().id,
+            description: String(row.description ?? ''),
+            hours: String(row.hours ?? ''),
+          }))
+        : [],
       ratePerHour: String(parsed.ratePerHour ?? ''),
     };
   } catch {
-    return { workHours: defaultWorkHours(period), receipts: [], ratePerHour: '' };
+    return {
+      workHours: defaultWorkHours(period),
+      receipts: [],
+      additionalHours: [],
+      ratePerHour: '',
+    };
   }
 }
 
@@ -152,7 +186,7 @@ function calculateHours(inTime: string, outTime: string, breaks: string) {
   return Math.max(0, (outMinutes - inMinutes - breakMinutes) / 60);
 }
 
-function calculateWeightedHours(workHours: DayRow[]) {
+function calculateWeightedHours(workHours: DayRow[], additionalHours: AdditionalHoursRow[]) {
   let totalRegular = 0;
   let totalOvertime = 0;
   let totalWeighted = 0;
@@ -167,7 +201,10 @@ function calculateWeightedHours(workHours: DayRow[]) {
       totalWeighted += 8 + (dayHours - 8) * 1.5;
     }
   }
-  return { regular: totalRegular, overtime: totalOvertime, weighted: totalWeighted };
+  const manualHours = additionalHours.reduce((sum, row) => sum + (parseFloat(row.hours) || 0), 0);
+  totalRegular += manualHours;
+  totalWeighted += manualHours;
+  return { regular: totalRegular, overtime: totalOvertime, weighted: totalWeighted, manualHours };
 }
 
 function RfidTimesheetPage() {
@@ -178,6 +215,7 @@ function RfidTimesheetPage() {
   const [payPeriod, setPayPeriod] = useState<PayPeriod>(() => getPayPeriodForDate(new Date()));
   const [workHours, setWorkHours] = useState<DayRow[]>(() => defaultWorkHours(getPayPeriodForDate(new Date())));
   const [receipts, setReceipts] = useState<ReceiptRow[]>([]);
+  const [additionalHours, setAdditionalHours] = useState<AdditionalHoursRow[]>([]);
   const [ratePerHour, setRatePerHour] = useState('');
 
   const isCurrentWeek = isCurrentPayPeriod(payPeriod);
@@ -187,11 +225,12 @@ function RfidTimesheetPage() {
 
   const payPeriodOptions = useMemo(() => listRecentPayPeriods(new Date(), 16), []);
 
-  const totalHours = workHours.reduce(
+  const scheduleHours = workHours.reduce(
     (sum, day) => sum + calculateHours(day.in, day.out, day.breaks),
     0,
   );
-  const weightedHoursData = calculateWeightedHours(workHours);
+  const weightedHoursData = calculateWeightedHours(workHours, additionalHours);
+  const totalHours = scheduleHours + weightedHoursData.manualHours;
   const totalReceipts = receipts.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
   const grossPay = (parseFloat(ratePerHour) || 0) * weightedHoursData.weighted;
   const overallTotal = grossPay + totalReceipts;
@@ -232,6 +271,7 @@ function RfidTimesheetPage() {
     const sheet = loadWeekSheet(selectedEmployee.id, payPeriod);
     setWorkHours(sheet.workHours);
     setReceipts(sheet.receipts);
+    setAdditionalHours(sheet.additionalHours);
     setRatePerHour(sheet.ratePerHour);
   }, [selectedEmployee, payPeriod]);
 
@@ -240,9 +280,10 @@ function RfidTimesheetPage() {
     saveWeekSheet(selectedEmployee.id, payPeriod.id, {
       workHours,
       receipts,
+      additionalHours,
       ratePerHour,
     });
-  }, [selectedEmployee, payPeriod.id, isCurrentWeek, workHours, receipts, ratePerHour]);
+  }, [selectedEmployee, payPeriod.id, isCurrentWeek, workHours, receipts, additionalHours, ratePerHour]);
 
   const handleWorkHoursChange = (index: number, field: 'in' | 'out' | 'breaks', value: string) => {
     if (!isEditable) return;
@@ -270,6 +311,49 @@ function RfidTimesheetPage() {
   const handleRemoveReceipt = (index: number) => {
     if (!isEditable) return;
     setReceipts((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleApplyDayShift = () => {
+    if (!isEditable) return;
+    setWorkHours((prev) =>
+      prev.map((row) => ({
+        ...row,
+        in: DAY_SHIFT.in,
+        out: DAY_SHIFT.out,
+        breaks: DAY_SHIFT.breaks,
+      })),
+    );
+    toast.success('Applied day shift (6:00–14:30, 30 min break) to all days');
+  };
+
+  const handleClearWeekHours = () => {
+    if (!isEditable) return;
+    setWorkHours((prev) =>
+      prev.map((row) => ({ ...row, in: '0', out: '0', breaks: '0' })),
+    );
+  };
+
+  const handleAdditionalHoursChange = (
+    index: number,
+    field: keyof AdditionalHoursRow,
+    value: string,
+  ) => {
+    if (!isEditable) return;
+    setAdditionalHours((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleAddAdditionalHours = () => {
+    if (!isEditable) return;
+    setAdditionalHours((prev) => [...prev, newAdditionalHoursRow()]);
+  };
+
+  const handleRemoveAdditionalHours = (index: number) => {
+    if (!isEditable) return;
+    setAdditionalHours((prev) => prev.filter((_, i) => i !== index));
   };
 
   const readOnlyCardSx = isPastWeek
@@ -422,11 +506,42 @@ function RfidTimesheetPage() {
         <>
           <Card sx={{ mb: 3, boxShadow: 2, ...readOnlyCardSx }}>
             <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <TimeIcon sx={{ color: 'primary.main' }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {selectedEmployee.name} — {payPeriod.label}
-                </Typography>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                  mb: 2,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <TimeIcon sx={{ color: 'primary.main' }} />
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    {selectedEmployee.name} — {payPeriod.label}
+                  </Typography>
+                </Box>
+                {isEditable && (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleApplyDayShift}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Apply day shift
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={handleClearWeekHours}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Clear week
+                    </Button>
+                  </Box>
+                )}
               </Box>
 
               <Table size="small">
@@ -517,6 +632,96 @@ function RfidTimesheetPage() {
                   </TableRow>
                 </TableBody>
               </Table>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    mb: 2,
+                  }}
+                >
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    Additional hours
+                  </Typography>
+                  {isEditable && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<AddIcon />}
+                      onClick={handleAddAdditionalHours}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Add hours
+                    </Button>
+                  )}
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Manual entries for extra time not captured by RFID (e.g. off-site work, adjustments).
+                </Typography>
+
+                {additionalHours.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                    {isEditable
+                      ? 'No additional hours. Click "Add hours" to record extra time.'
+                      : 'No additional hours for this week.'}
+                  </Typography>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {additionalHours.map((row, index) => (
+                      <Box
+                        key={row.id}
+                        sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }}
+                      >
+                        <TextField
+                          label="Description"
+                          value={row.description}
+                          onChange={(e) =>
+                            handleAdditionalHoursChange(index, 'description', e.target.value)
+                          }
+                          size="small"
+                          disabled={!isEditable}
+                          placeholder="e.g. Off-site install"
+                          sx={{ flex: '1 1 200px' }}
+                        />
+                        <TextField
+                          label="Hours"
+                          value={row.hours}
+                          onChange={(e) =>
+                            handleAdditionalHoursChange(
+                              index,
+                              'hours',
+                              e.target.value.replace(/[^\d.]/g, ''),
+                            )
+                          }
+                          size="small"
+                          disabled={!isEditable}
+                          inputProps={{ inputMode: 'decimal' }}
+                          placeholder="0.00"
+                          sx={{ width: 120 }}
+                        />
+                        {isEditable && (
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            size="small"
+                            onClick={() => handleRemoveAdditionalHours(index)}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+
+                {additionalHours.length > 0 && (
+                  <Typography variant="body2" sx={{ mt: 2, fontWeight: 600, color: 'primary.main' }}>
+                    Additional: {weightedHoursData.manualHours.toFixed(2)} hrs
+                  </Typography>
+                )}
+              </Box>
             </CardContent>
           </Card>
 
