@@ -71,7 +71,7 @@ const COMMISSION_SHOW_ZERO_RATE_KEY = 'financeHubCommissionShowZeroRate';
 const COMMISSION_PAGE_TAB_KEY = 'financeHubCommissionPageTab';
 const DEFAULT_COMMISSION_RATE = 5;
 
-type CommissionPageTab = 'jobs' | 'checks';
+type CommissionPageTab = 'jobs' | 'recent' | 'checks';
 
 const ESTIMATE_STAGE_LABELS: Record<string, string> = {
   APPOINTMENT_SCHEDULED: 'Appointment',
@@ -214,7 +214,9 @@ function readShowZeroCommissionJobs(): boolean {
 function readCommissionPageTab(): CommissionPageTab {
   if (typeof window === 'undefined') return 'jobs';
   try {
-    return window.localStorage.getItem(COMMISSION_PAGE_TAB_KEY) === 'checks' ? 'checks' : 'jobs';
+    const stored = window.localStorage.getItem(COMMISSION_PAGE_TAB_KEY);
+    if (stored === 'checks' || stored === 'recent') return stored;
+    return 'jobs';
   } catch {
     return 'jobs';
   }
@@ -244,6 +246,17 @@ interface CommissionCheckEntry {
   check: string;
   date: string;
   salesmanPaid: boolean;
+}
+
+interface SalesmanPaidEntry {
+  jobId: string;
+  customerName: string;
+  jobLabel: string;
+  paymentLabel: string;
+  amount: number;
+  date: string;
+  check: string;
+  balance: number;
 }
 
 interface CommissionCheckGroup {
@@ -308,6 +321,70 @@ function groupCheckEntries(entries: CommissionCheckEntry[]): CommissionCheckGrou
     if (dateDiff !== 0) return dateDiff;
     return a.checkDisplay.localeCompare(b.checkDisplay);
   });
+}
+
+function buildSalesmanPaidEntries(rows: CommissionTableRow[]): SalesmanPaidEntry[] {
+  const entries: SalesmanPaidEntry[] = [];
+
+  for (const row of rows) {
+    for (const payment of row.payments) {
+      if (!payment.salesmanPaid) continue;
+
+      const amount =
+        payment.amount > 0
+          ? payment.amount
+          : payment.potentialAmount > 0
+            ? payment.potentialAmount
+            : 0;
+      if (amount <= 0) continue;
+
+      entries.push({
+        jobId: row.jobId,
+        customerName: row.customerName,
+        jobLabel: row.jobLabel,
+        paymentLabel: payment.label,
+        amount: roundMoney(amount),
+        date: String(payment.date || '').trim(),
+        check: String(payment.check || '').trim(),
+        balance: row.balance,
+      });
+    }
+  }
+
+  return entries.sort((a, b) => {
+    const dateDiff = parseDateSortValue(b.date) - parseDateSortValue(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    return compareCustomerName(
+      { customerName: a.customerName } as CommissionTableRow,
+      { customerName: b.customerName } as CommissionTableRow,
+    );
+  });
+}
+
+function matchesSalesmanPaidSearch(entry: SalesmanPaidEntry, rawQuery: string): boolean {
+  const q = String(rawQuery || '').trim().toLowerCase();
+  if (!q) return true;
+
+  const qNormalized = q.replace(/[,$]/g, '');
+  const haystackParts: unknown[] = [
+    entry.customerName,
+    entry.jobLabel,
+    entry.paymentLabel,
+    entry.check,
+    entry.date,
+    formatCheckDisplayDate(entry.date),
+    ...moneySearchTokens(entry.amount),
+    ...moneySearchTokens(entry.balance),
+  ];
+
+  const haystack = haystackParts
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  const haystackNormalized = haystack.replace(/[,$]/g, '');
+
+  if (haystack.includes(q)) return true;
+  return qNormalized.length > 0 && haystackNormalized.includes(qNormalized);
 }
 
 function buildCheckEntries(rows: CommissionTableRow[]): CommissionCheckEntry[] {
@@ -391,6 +468,109 @@ function matchesCheckGroup(group: CommissionCheckGroup, rawQuery: string): boole
 
   if (groupHaystack.includes(q.toLowerCase())) return true;
   return group.entries.some((entry) => matchesCheckSearch(entry, rawQuery));
+}
+
+interface RecentSalesmanPaidTableProps {
+  entries: SalesmanPaidEntry[];
+  onOpenJob: (jobId: string) => void;
+  onOpenJobDetail: (jobId: string) => void;
+}
+
+function RecentSalesmanPaidTable({ entries, onOpenJob, onOpenJobDetail }: RecentSalesmanPaidTableProps) {
+  const theme = useTheme();
+
+  return (
+    <Table stickyHeader size="small" sx={{ minWidth: 760 }}>
+      <TableHead>
+        <TableRow>
+          <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
+            Paid date
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 160, bgcolor: 'background.paper' }}>
+            Job
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
+            Payment
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }} align="right">
+            Amount
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }} align="right">
+            Balance
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 90, bgcolor: 'background.paper' }}>
+            Check #
+          </TableCell>
+          <TableCell sx={{ width: 44, bgcolor: 'background.paper' }} />
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {entries.map((entry, index) => (
+          <TableRow
+            key={`${entry.jobId}-${entry.paymentLabel}-${entry.date}-${index}`}
+            hover
+            onClick={() => onOpenJob(entry.jobId)}
+            sx={{
+              cursor: 'pointer',
+              ...(entry.balance <= 0.01
+                ? {
+                    bgcolor: alpha(
+                      theme.palette.success.main,
+                      theme.palette.mode === 'dark' ? 0.08 : 0.04,
+                    ),
+                  }
+                : undefined),
+            }}
+          >
+            <TableCell sx={{ fontWeight: 600 }}>{formatCheckDisplayDate(entry.date)}</TableCell>
+            <TableCell>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {entry.jobLabel || entry.customerName}
+              </Typography>
+              {entry.jobLabel && entry.customerName !== entry.jobLabel ? (
+                <Typography variant="caption" color="text.secondary">
+                  {entry.customerName}
+                </Typography>
+              ) : null}
+            </TableCell>
+            <TableCell>{entry.paymentLabel}</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 600 }}>
+              {formatMoney(entry.amount)}
+            </TableCell>
+            <TableCell
+              align="right"
+              sx={{
+                fontWeight: 600,
+                color: entry.balance <= 0.01 ? 'success.main' : 'text.primary',
+              }}
+            >
+              {formatMoney(entry.balance)}
+            </TableCell>
+            <TableCell>
+              {entry.check ? (
+                <Typography variant="body2">{entry.check}</Typography>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  —
+                </Typography>
+              )}
+            </TableCell>
+            <TableCell sx={{ py: 0.5 }} onClick={(e) => e.stopPropagation()}>
+              <Tooltip title="View job">
+                <IconButton
+                  size="small"
+                  aria-label={`View job for ${entry.customerName}`}
+                  onClick={() => onOpenJobDetail(entry.jobId)}
+                >
+                  <PersonIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
 }
 
 interface CommissionChecksTableProps {
@@ -2035,6 +2215,21 @@ function CommissionLogsPage() {
     [checkSourceRows],
   );
 
+  const salesmanPaidEntries = useMemo(
+    () => buildSalesmanPaidEntries(checkSourceRows),
+    [checkSourceRows],
+  );
+
+  const filteredSalesmanPaidEntries = useMemo(
+    () => salesmanPaidEntries.filter((entry) => matchesSalesmanPaidSearch(entry, searchQuery)),
+    [salesmanPaidEntries, searchQuery],
+  );
+
+  const salesmanPaidTotal = useMemo(
+    () => roundMoney(filteredSalesmanPaidEntries.reduce((sum, entry) => sum + entry.amount, 0)),
+    [filteredSalesmanPaidEntries],
+  );
+
   const checkGroups = useMemo(() => groupCheckEntries(checkEntries), [checkEntries]);
 
   const filteredCheckGroups = useMemo(
@@ -2228,9 +2423,11 @@ function CommissionLogsPage() {
                 Commission Logs
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {pageTab === 'checks'
-                  ? 'Checks and cash grouped by number — expand for payment details, click a payment to open the job.'
-                  : 'Active jobs on top. At the bottom: underpaid (all tiers paid), then overpaid (red), then settled (green). Click a row to edit.'}
+                {pageTab === 'recent'
+                  ? 'Most recent salesman-paid commission payments — newest first. Click a row to open the job.'
+                  : pageTab === 'checks'
+                    ? 'Checks and cash grouped by number — expand for payment details, click a payment to open the job.'
+                    : 'Active jobs on top. At the bottom: underpaid (all tiers paid), then overpaid (red), then settled (green). Click a row to edit.'}
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -2271,17 +2468,26 @@ function CommissionLogsPage() {
             sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
           >
             <Tab value="jobs" label="Jobs" />
+            <Tab value="recent" label="Recent paid" />
             <Tab value="checks" label="Checks / cash" />
           </Tabs>
 
           <TextField
             size="small"
             fullWidth
-            label={pageTab === 'checks' ? 'Search checks / cash' : 'Search commission logs'}
+            label={
+              pageTab === 'recent'
+                ? 'Search recent paid'
+                : pageTab === 'checks'
+                  ? 'Search checks / cash'
+                  : 'Search commission logs'
+            }
             placeholder={
-              pageTab === 'checks'
-                ? 'Customer, job, check #, cash, date, amount...'
-                : 'Customer, address, job, amount, payment, check #...'
+              pageTab === 'recent'
+                ? 'Job, customer, payment, date, amount, balance, check #...'
+                : pageTab === 'checks'
+                  ? 'Customer, job, check #, cash, date, amount...'
+                  : 'Customer, address, job, amount, payment, check #...'
             }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -2338,6 +2544,37 @@ function CommissionLogsPage() {
               />
             </Box>
           )
+          ) : pageTab === 'recent' ? (
+            filteredSalesmanPaidEntries.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                {salesmanPaidEntries.length === 0
+                  ? 'No salesman-paid commission payments recorded yet.'
+                  : `No payments match "${searchQuery.trim()}". Try a different search or clear the filter.`}
+              </Typography>
+            ) : (
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                  {filteredSalesmanPaidEntries.length} payment
+                  {filteredSalesmanPaidEntries.length === 1 ? '' : 's'} · Total paid{' '}
+                  {formatMoney(salesmanPaidTotal)}
+                </Typography>
+                <Box
+                  sx={{
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 1.5,
+                    overflow: 'auto',
+                    maxHeight: 'calc(100vh - 300px)',
+                  }}
+                >
+                  <RecentSalesmanPaidTable
+                    entries={filteredSalesmanPaidEntries}
+                    onOpenJob={(jobId) => setPaymentModalJobId(jobId)}
+                    onOpenJobDetail={setJobDetailModalJobId}
+                  />
+                </Box>
+              </Box>
+            )
           ) : filteredCheckGroups.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               {checkEntries.length === 0
