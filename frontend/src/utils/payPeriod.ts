@@ -72,6 +72,17 @@ export function formatPayDate(date: Date): string {
   return format(date, 'EEE, MMM d, yyyy');
 }
 
+/** True when `period` is the pay week that contains today. */
+export function isCurrentPayPeriod(period: PayPeriod, anchor: Date = new Date()): boolean {
+  return period.id === getPayPeriodForDate(anchor).id;
+}
+
+/** True when the period ended before the current period started (locked / read-only). */
+export function isPastPayPeriod(period: PayPeriod, anchor: Date = new Date()): boolean {
+  const current = getPayPeriodForDate(anchor);
+  return period.start.getTime() < current.start.getTime();
+}
+
 /** Recent pay periods for dropdowns (current week first). */
 export function listRecentPayPeriods(anchor: Date, count = 12): PayPeriod[] {
   const current = getPayPeriodForDate(anchor);
