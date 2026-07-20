@@ -624,6 +624,7 @@ interface CommissionChecksTableProps {
   onOpenJob: (jobId: string) => void;
   onOpenJobDetail: (jobId: string) => void;
   onSetGroupPaid: (group: CommissionCheckGroup) => void;
+  onEditGroupCheck: (group: CommissionCheckGroup) => void;
 }
 
 function CommissionChecksTable({
@@ -631,6 +632,7 @@ function CommissionChecksTable({
   onOpenJob,
   onOpenJobDetail,
   onSetGroupPaid,
+  onEditGroupCheck,
 }: CommissionChecksTableProps) {
   const theme = useTheme();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -658,6 +660,11 @@ function CommissionChecksTable({
 
   const handleSetGroupPaid = () => {
     if (contextMenuGroup) onSetGroupPaid(contextMenuGroup);
+    handleCloseContextMenu();
+  };
+
+  const handleEditGroupCheck = () => {
+    if (contextMenuGroup) onEditGroupCheck(contextMenuGroup);
     handleCloseContextMenu();
   };
 
@@ -798,24 +805,27 @@ function CommissionChecksTable({
       }
     >
       <MenuItem onClick={handleSetGroupPaid}>Set group to paid…</MenuItem>
+      <MenuItem onClick={handleEditGroupCheck}>Edit check number…</MenuItem>
     </Menu>
     </>
   );
 }
 
-interface SetCheckGroupPaidDialogProps {
+interface CheckGroupDialogProps {
   group: CommissionCheckGroup | null;
   open: boolean;
+  mode: 'pay' | 'edit';
   onClose: () => void;
   onConfirm: (check: string, paidDate: string) => void;
 }
 
-function SetCheckGroupPaidDialog({
+function CheckGroupDialog({
   group,
   open,
+  mode,
   onClose,
   onConfirm,
-}: SetCheckGroupPaidDialogProps) {
+}: CheckGroupDialogProps) {
   const [checkNumber, setCheckNumber] = useState('');
   const [paidDate, setPaidDate] = useState('');
   const [isCash, setIsCash] = useState(false);
@@ -830,6 +840,7 @@ function SetCheckGroupPaidDialog({
   if (!group) return null;
 
   const unpaidCount = group.entries.filter((entry) => !entry.salesmanPaid).length;
+  const isPayMode = mode === 'pay';
 
   const handleConfirm = () => {
     const check = isCash ? 'Cash' : checkNumber.trim();
@@ -839,14 +850,16 @@ function SetCheckGroupPaidDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Set group to paid</DialogTitle>
+      <DialogTitle>{isPayMode ? 'Set group to paid' : 'Edit check number'}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {group.entries.length} payment{group.entries.length === 1 ? '' : 's'} ·{' '}
           {formatMoney(group.totalAmount)}
-          {unpaidCount > 0
-            ? ` · ${unpaidCount} not yet marked salesman paid`
-            : ' · all already marked paid'}
+          {isPayMode
+            ? unpaidCount > 0
+              ? ` · ${unpaidCount} not yet marked salesman paid`
+              : ' · all already marked paid'
+            : ''}
         </Typography>
         <FormControlLabel
           sx={{ mb: 1.5 }}
@@ -883,7 +896,9 @@ function SetCheckGroupPaidDialog({
           InputLabelProps={{ shrink: true }}
         />
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-          All payments in this group will use the same check number and be marked salesman paid.
+          {isPayMode
+            ? 'All payments in this group will use the same check number and be marked salesman paid.'
+            : 'Updates the check number and paid date for every payment in this group. Salesman paid status is not changed.'}
         </Typography>
       </DialogContent>
       <DialogActions>
@@ -893,11 +908,80 @@ function SetCheckGroupPaidDialog({
           onClick={handleConfirm}
           disabled={!isCash && !checkNumber.trim()}
         >
-          Apply to group
+          {isPayMode ? 'Apply to group' : 'Save changes'}
         </Button>
       </DialogActions>
     </Dialog>
   );
+}
+
+function applyCheckGroupUpdates(
+  current: CommissionLogLocalRow,
+  jobEntries: CommissionCheckEntry[],
+  options: { check: string; paidDate: string; markSalesmanPaid: boolean },
+): CommissionLogLocalRow {
+  const { check, paidDate, markSalesmanPaid } = options;
+
+  for (const entry of jobEntries) {
+    if (entry.entryKind === 'adjustment' && entry.adjustmentId) {
+      const adjustments = [...(current.adjustments || [])];
+      const index = adjustments.findIndex((row) => row.id === entry.adjustmentId);
+      if (index < 0) continue;
+
+      const existing = adjustments[index];
+      adjustments[index] = {
+        ...existing,
+        check,
+        date: paidDate || existing.date || entry.date,
+        ...(markSalesmanPaid
+          ? {
+              salesmanPaid: true,
+              amount:
+                existing.amount !== undefined &&
+                existing.amount !== null &&
+                String(existing.amount).trim() !== ''
+                  ? existing.amount
+                  : entry.amount !== 0
+                    ? String(entry.amount)
+                    : existing.amount,
+            }
+          : {}),
+      };
+      current.adjustments = adjustments;
+      continue;
+    }
+
+    if (entry.entryKind === 'payment' && entry.scheduleIndex !== undefined) {
+      const payments = [...(current.payments || [])];
+      while (payments.length <= entry.scheduleIndex) payments.push({});
+      const existing = payments[entry.scheduleIndex] || {};
+      const patch: CommissionPaymentLocal = {
+        ...existing,
+        check,
+        date: paidDate || existing.date || entry.date,
+        ...(markSalesmanPaid ? { salesmanPaid: true } : {}),
+      };
+
+      if (markSalesmanPaid) {
+        const hasAmount =
+          existing.amountManual ||
+          (existing.amount !== undefined &&
+            existing.amount !== null &&
+            String(existing.amount).trim() !== '' &&
+            Number(existing.amount) !== 0);
+
+        if (!hasAmount && entry.amount !== 0) {
+          patch.amount = formatMoneyInput(entry.amount);
+          patch.amountManual = true;
+        }
+      }
+
+      payments[entry.scheduleIndex] = patch;
+      current.payments = payments;
+    }
+  }
+
+  return current;
 }
 
 function hasExplicitManualAmount(saved: CommissionPaymentLocal): boolean {
@@ -2481,6 +2565,7 @@ function CommissionLogsPage() {
   const [paymentModalJobId, setPaymentModalJobId] = useState<string | null>(null);
   const [jobDetailModalJobId, setJobDetailModalJobId] = useState<string | null>(null);
   const [setPaidDialogGroup, setSetPaidDialogGroup] = useState<CommissionCheckGroup | null>(null);
+  const [editCheckDialogGroup, setEditCheckDialogGroup] = useState<CommissionCheckGroup | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
     () => readCommissionLogRows(),
@@ -2631,100 +2716,80 @@ function CommissionLogsPage() {
     });
   };
 
-  const markCheckGroupPaid = useCallback((group: CommissionCheckGroup, check: string, paidDate: string) => {
-    const trimmedCheck = String(check || '').trim();
-    if (!trimmedCheck) {
-      toast.error('Enter a check number');
-      return;
-    }
-
-    const resolvedDate = String(paidDate || group.date || '').trim();
-
-    setCommissionLogRows((prev) => {
-      const next = { ...prev };
-      const updatesByJob = new Map<string, CommissionCheckEntry[]>();
-
-      for (const entry of group.entries) {
-        const list = updatesByJob.get(entry.jobId) || [];
-        list.push(entry);
-        updatesByJob.set(entry.jobId, list);
+  const applyCheckGroupChanges = useCallback(
+    (
+      group: CommissionCheckGroup,
+      check: string,
+      paidDate: string,
+      options: { markSalesmanPaid: boolean; successMessage: string; onDone: () => void },
+    ) => {
+      const trimmedCheck = String(check || '').trim();
+      if (!trimmedCheck) {
+        toast.error('Enter a check number');
+        return;
       }
 
-      for (const [jobId, jobEntries] of updatesByJob) {
-        const current = migrateLocalRow(next[jobId] || {});
+      const resolvedDate = String(paidDate || group.date || '').trim();
 
-        for (const entry of jobEntries) {
-          if (entry.entryKind === 'adjustment' && entry.adjustmentId) {
-            const adjustments = [...(current.adjustments || [])];
-            const index = adjustments.findIndex((row) => row.id === entry.adjustmentId);
-            if (index < 0) continue;
+      setCommissionLogRows((prev) => {
+        const next = { ...prev };
+        const updatesByJob = new Map<string, CommissionCheckEntry[]>();
 
-            const existing = adjustments[index];
-            adjustments[index] = {
-              ...existing,
-              check: trimmedCheck,
-              date: resolvedDate || existing.date || entry.date,
-              salesmanPaid: true,
-              amount:
-                existing.amount !== undefined &&
-                existing.amount !== null &&
-                String(existing.amount).trim() !== ''
-                  ? existing.amount
-                  : entry.amount !== 0
-                    ? String(entry.amount)
-                    : existing.amount,
-            };
-            current.adjustments = adjustments;
-            continue;
-          }
-
-          if (entry.entryKind === 'payment' && entry.scheduleIndex !== undefined) {
-            const payments = [...(current.payments || [])];
-            while (payments.length <= entry.scheduleIndex) payments.push({});
-            const existing = payments[entry.scheduleIndex] || {};
-            const patch: CommissionPaymentLocal = {
-              ...existing,
-              check: trimmedCheck,
-              date: resolvedDate || existing.date || entry.date,
-              salesmanPaid: true,
-            };
-
-            const hasAmount =
-              existing.amountManual ||
-              (existing.amount !== undefined &&
-                existing.amount !== null &&
-                String(existing.amount).trim() !== '' &&
-                Number(existing.amount) !== 0);
-
-            if (!hasAmount && entry.amount !== 0) {
-              patch.amount = formatMoneyInput(entry.amount);
-              patch.amountManual = true;
-            }
-
-            payments[entry.scheduleIndex] = patch;
-            current.payments = payments;
-          }
+        for (const entry of group.entries) {
+          const list = updatesByJob.get(entry.jobId) || [];
+          list.push(entry);
+          updatesByJob.set(entry.jobId, list);
         }
 
-        const nextRow: CommissionLogLocalRow = {
-          ...current,
-          updatedAt: new Date().toISOString(),
-        };
-        next[jobId] = nextRow;
-        void persistCommissionLog(jobId, nextRow).catch((error) => {
-          console.error('Failed to save commission log:', error);
-          toast.error('Failed to save commission log');
-        });
-      }
+        for (const [jobId, jobEntries] of updatesByJob) {
+          let current = migrateLocalRow(next[jobId] || {});
+          current = applyCheckGroupUpdates(current, jobEntries, {
+            check: trimmedCheck,
+            paidDate: resolvedDate,
+            markSalesmanPaid: options.markSalesmanPaid,
+          });
 
-      return next;
-    });
+          const nextRow: CommissionLogLocalRow = {
+            ...current,
+            updatedAt: new Date().toISOString(),
+          };
+          next[jobId] = nextRow;
+          void persistCommissionLog(jobId, nextRow).catch((error) => {
+            console.error('Failed to save commission log:', error);
+            toast.error('Failed to save commission log');
+          });
+        }
 
-    toast.success(
-      `Marked ${group.entries.length} payment${group.entries.length === 1 ? '' : 's'} on check ${trimmedCheck}`,
-    );
-    setSetPaidDialogGroup(null);
-  }, []);
+        return next;
+      });
+
+      toast.success(options.successMessage);
+      options.onDone();
+    },
+    [],
+  );
+
+  const markCheckGroupPaid = useCallback(
+    (group: CommissionCheckGroup, check: string, paidDate: string) => {
+      applyCheckGroupChanges(group, check, paidDate, {
+        markSalesmanPaid: true,
+        successMessage: `Marked ${group.entries.length} payment${group.entries.length === 1 ? '' : 's'} on check ${check.trim()}`,
+        onDone: () => setSetPaidDialogGroup(null),
+      });
+    },
+    [applyCheckGroupChanges],
+  );
+
+  const updateCheckGroupCheck = useCallback(
+    (group: CommissionCheckGroup, check: string, paidDate: string) => {
+      applyCheckGroupChanges(group, check, paidDate, {
+        markSalesmanPaid: false,
+        successMessage: `Updated check number for ${group.entries.length} payment${group.entries.length === 1 ? '' : 's'}`,
+        onDone: () => setEditCheckDialogGroup(null),
+      });
+    },
+    [applyCheckGroupChanges],
+  );
 
   const reorderPayments = (jobId: string, order: number[]) => {
     updateCommissionRow(jobId, { paymentOrder: order });
@@ -3102,7 +3167,7 @@ function CommissionLogsPage() {
                 {pageTab === 'recent'
                   ? 'Most recent salesman-paid commission payments — newest first. Click a row to open the job.'
                   : pageTab === 'checks'
-                    ? 'Checks and cash grouped by number — right-click a group to mark all payments paid on one check.'
+                    ? 'Checks and cash grouped by number — right-click a group to mark paid or edit the check number.'
                     : 'Active jobs on top. At the bottom: underpaid (all tiers paid), then overpaid (red), then settled (green). Click a row to edit.'}
               </Typography>
             </Box>
@@ -3278,6 +3343,7 @@ function CommissionLogsPage() {
                   onOpenJob={(jobId) => setPaymentModalJobId(jobId)}
                   onOpenJobDetail={setJobDetailModalJobId}
                   onSetGroupPaid={setSetPaidDialogGroup}
+                  onEditGroupCheck={setEditCheckDialogGroup}
                 />
               </Box>
             </Box>
@@ -3285,12 +3351,23 @@ function CommissionLogsPage() {
         </CardContent>
       </Card>
 
-      <SetCheckGroupPaidDialog
+      <CheckGroupDialog
         group={setPaidDialogGroup}
         open={Boolean(setPaidDialogGroup)}
+        mode="pay"
         onClose={() => setSetPaidDialogGroup(null)}
         onConfirm={(check, paidDate) => {
           if (setPaidDialogGroup) markCheckGroupPaid(setPaidDialogGroup, check, paidDate);
+        }}
+      />
+
+      <CheckGroupDialog
+        group={editCheckDialogGroup}
+        open={Boolean(editCheckDialogGroup)}
+        mode="edit"
+        onClose={() => setEditCheckDialogGroup(null)}
+        onConfirm={(check, paidDate) => {
+          if (editCheckDialogGroup) updateCheckGroupCheck(editCheckDialogGroup, check, paidDate);
         }}
       />
 
