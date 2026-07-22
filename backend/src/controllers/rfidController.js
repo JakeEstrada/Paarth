@@ -8,6 +8,7 @@ const {
   publishRfidPinUpserted,
   publishRfidPinDeleted,
 } = require('../services/eventBus');
+const { getTenantContext } = require('../middleware/tenantContext');
 
 function normalizeUid(raw) {
   const s = String(raw || '').trim();
@@ -56,6 +57,10 @@ async function recordScan(req, res) {
 
     const io = req.app.get('io');
     const scanDoc = scan.toObject ? scan.toObject() : scan;
+    if (!scanDoc.tenantId) {
+      const { tenantId } = getTenantContext();
+      if (tenantId) scanDoc.tenantId = tenantId;
+    }
     publishRfidScanCreated(io, scanDoc, {
       knownTag: Boolean(tag),
       sourceSocketId: req.headers['x-socket-id'] || null,
@@ -104,6 +109,10 @@ async function recordPinScan(req, res, pin) {
 
     const io = req.app.get('io');
     const scanDoc = scan.toObject ? scan.toObject() : scan;
+    if (!scanDoc.tenantId) {
+      const { tenantId } = getTenantContext();
+      if (tenantId) scanDoc.tenantId = tenantId;
+    }
     publishRfidScanCreated(io, scanDoc, {
       knownPin: Boolean(pinEntry),
       sourceSocketId: req.headers['x-socket-id'] || null,
@@ -133,6 +142,21 @@ async function listScans(req, res) {
     const uid = normalizeUid(req.query?.uid);
     const q = {};
     if (uid) q.uid = uid;
+
+    const fromRaw = req.query?.from;
+    const toRaw = req.query?.to;
+    if (fromRaw || toRaw) {
+      q.scannedAt = {};
+      if (fromRaw) {
+        const from = new Date(String(fromRaw));
+        if (!Number.isNaN(from.getTime())) q.scannedAt.$gte = from;
+      }
+      if (toRaw) {
+        const to = new Date(String(toRaw));
+        if (!Number.isNaN(to.getTime())) q.scannedAt.$lt = to;
+      }
+      if (Object.keys(q.scannedAt).length === 0) delete q.scannedAt;
+    }
 
     const [scans, total] = await Promise.all([
       RfidScan.find(q)

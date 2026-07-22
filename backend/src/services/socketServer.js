@@ -80,6 +80,11 @@ function initializeSocketServer(httpServer) {
   io.on('connection', (socket) => {
     console.log('[socket] connected:', socket.id);
 
+    const tenantId = socket.data?.tenantId ? String(socket.data.tenantId) : null;
+    if (tenantId) {
+      socket.join(`tenant:${tenantId}`);
+    }
+
     socket.on('subscribe', (topic) => {
       if (!canJoinRoom(socket, topic)) return;
       socket.join(topic);

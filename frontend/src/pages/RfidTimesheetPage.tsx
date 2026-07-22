@@ -39,6 +39,18 @@ import {
 import { isAxiosError } from 'axios';
 import toast from 'react-hot-toast';
 import api from '../utils/axios';
+import { useAuth } from '../context/AuthContext';
+import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import {
+  buildRfidDayClocks,
+  mergeRfidIntoWorkHours,
+  mergeRfidRegistries,
+  payPeriodScanRangeIso,
+  scanMatchesEmployee,
+  type RfidEmployeeIdentity,
+  type RfidManualDayFlags,
+  type RfidScanRecord,
+} from '../utils/rfidTimesheetScans';
 import {
   PAY_PERIOD_DAYS,
   formatPayDate,
@@ -60,11 +72,7 @@ const NO_NUMBER_SPINNER_SX = {
   '& input[type=number]::-webkit-inner-spin-button': { WebkitAppearance: 'none', margin: 0 },
 };
 
-type RfidEmployeeOption = {
-  id: string;
-  uid: string;
-  name: string;
-};
+type RfidEmployeeOption = RfidEmployeeIdentity;
 
 type DayRow = {
   day: string;
@@ -91,6 +99,7 @@ type WeekSheetData = {
   receipts: ReceiptRow[];
   additionalHours: AdditionalHoursRow[];
   ratePerHour: string;
+  manualByDay?: Record<string, RfidManualDayFlags>;
 };
 
 const DAY_SHIFT = { in: '600', out: '1430', breaks: '30' };
@@ -128,6 +137,7 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
         receipts: [],
         additionalHours: [],
         ratePerHour: '',
+        manualByDay: {},
       };
     }
     const parsed = JSON.parse(raw);
@@ -150,6 +160,8 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
           }))
         : [],
       ratePerHour: String(parsed.ratePerHour ?? ''),
+      manualByDay:
+        parsed.manualByDay && typeof parsed.manualByDay === 'object' ? parsed.manualByDay : {},
     };
   } catch {
     return {
@@ -157,6 +169,7 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
       receipts: [],
       additionalHours: [],
       ratePerHour: '',
+      manualByDay: {},
     };
   }
 }
@@ -207,16 +220,32 @@ function calculateWeightedHours(workHours: DayRow[], additionalHours: Additional
   return { regular: totalRegular, overtime: totalOvertime, weighted: totalWeighted, manualHours };
 }
 
+function normalizeTenantRoomId(raw: unknown): string | null {
+  const value =
+    typeof raw === 'object' && raw !== null && '_id' in raw
+      ? String((raw as { _id: unknown })._id)
+      : String(raw || '').trim();
+  if (!/^[a-fA-F0-9]{24}$/.test(value)) return null;
+  return value;
+}
+
 function RfidTimesheetPage() {
   const theme = useTheme();
+  const { tenantIdForBranding } = useAuth();
   const [employees, setEmployees] = useState<RfidEmployeeOption[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [loadingScans, setLoadingScans] = useState(false);
+  const [scans, setScans] = useState<RfidScanRecord[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<RfidEmployeeOption | null>(null);
   const [payPeriod, setPayPeriod] = useState<PayPeriod>(() => getPayPeriodForDate(new Date()));
   const [workHours, setWorkHours] = useState<DayRow[]>(() => defaultWorkHours(getPayPeriodForDate(new Date())));
+  const [manualByDay, setManualByDay] = useState<Record<string, RfidManualDayFlags>>({});
   const [receipts, setReceipts] = useState<ReceiptRow[]>([]);
   const [additionalHours, setAdditionalHours] = useState<AdditionalHoursRow[]>([]);
   const [ratePerHour, setRatePerHour] = useState('');
+
+  const tenantId = normalizeTenantRoomId(tenantIdForBranding);
+  const tenantRoom = tenantId ? `tenant:${tenantId}` : null;
 
   const isCurrentWeek = isCurrentPayPeriod(payPeriod);
   const isPastWeek = isPastPayPeriod(payPeriod);
@@ -238,42 +267,121 @@ function RfidTimesheetPage() {
   const loadEmployees = useCallback(async () => {
     try {
       setLoadingEmployees(true);
-      const res = await api.get<{ tags: { _id: string; uid: string; displayName: string }[] }>('/rfid/tags');
-      const tags = res.data?.tags || [];
-      const options = tags
-        .filter((t) => t.displayName?.trim())
-        .map((t) => ({
-          id: t._id,
-          uid: t.uid,
-          name: t.displayName.trim(),
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name));
+      const [tagsRes, pinsRes] = await Promise.all([
+        api.get<{ tags: { _id: string; uid: string; displayName: string }[] }>('/rfid/tags'),
+        api.get<{ pins: { _id: string; pin: string; displayName: string }[] }>('/rfid/pins'),
+      ]);
+      const options = mergeRfidRegistries(tagsRes.data?.tags || [], pinsRes.data?.pins || []);
       setEmployees(options);
-      setSelectedEmployee((prev) => prev ?? options[0] ?? null);
+      setSelectedEmployee((prev) => {
+        if (!prev) return options[0] ?? null;
+        return options.find((e) => e.id === prev.id) ?? options[0] ?? null;
+      });
     } catch (error) {
       console.error('Failed to load RFID employees:', error);
       if (isAxiosError(error)) {
-        toast.error(error.response?.data?.error || 'Failed to load RFID tag registry');
+        toast.error(error.response?.data?.error || 'Failed to load RFID registry');
       } else {
-        toast.error('Failed to load RFID tag registry');
+        toast.error('Failed to load RFID registry');
       }
     } finally {
       setLoadingEmployees(false);
     }
   }, []);
 
+  const fetchScans = useCallback(async (period: PayPeriod) => {
+    const { from, to } = payPeriodScanRangeIso(period);
+    const res = await api.get<{ scans: RfidScanRecord[] }>('/rfid/scans', {
+      params: { from, to, limit: 500 },
+    });
+    return res.data?.scans || [];
+  }, []);
+
+  const applyRfidToRows = useCallback(
+    (
+      baseRows: DayRow[],
+      scanList: RfidScanRecord[],
+      employee: RfidEmployeeOption,
+      period: PayPeriod,
+      manual: Record<string, RfidManualDayFlags>,
+    ) => {
+      const rfidByDay = buildRfidDayClocks(scanList, employee, period);
+      return mergeRfidIntoWorkHours(baseRows, rfidByDay, manual);
+    },
+    [],
+  );
+
   useEffect(() => {
     void loadEmployees();
   }, [loadEmployees]);
 
   useEffect(() => {
+    if (!selectedEmployee) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
+      setLoadingScans(true);
+      const sheet = loadWeekSheet(selectedEmployee.id, payPeriod);
+      const manual = sheet.manualByDay || {};
+
+      try {
+        const scanList = await fetchScans(payPeriod);
+        if (cancelled) return;
+
+        setScans(scanList);
+        setManualByDay(manual);
+        setWorkHours(applyRfidToRows(sheet.workHours, scanList, selectedEmployee, payPeriod, manual));
+        setReceipts(sheet.receipts);
+        setAdditionalHours(sheet.additionalHours);
+        setRatePerHour(sheet.ratePerHour);
+      } catch (error) {
+        console.error('Failed to load RFID scans:', error);
+        if (!cancelled) {
+          setManualByDay(manual);
+          setWorkHours(sheet.workHours);
+          setReceipts(sheet.receipts);
+          setAdditionalHours(sheet.additionalHours);
+          setRatePerHour(sheet.ratePerHour);
+          toast.error('Could not load RFID scans for this pay period');
+        }
+      } finally {
+        if (!cancelled) setLoadingScans(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEmployee, payPeriod, fetchScans, applyRfidToRows]);
+
+  const refreshFromScans = useCallback(async () => {
     if (!selectedEmployee) return;
-    const sheet = loadWeekSheet(selectedEmployee.id, payPeriod);
-    setWorkHours(sheet.workHours);
-    setReceipts(sheet.receipts);
-    setAdditionalHours(sheet.additionalHours);
-    setRatePerHour(sheet.ratePerHour);
-  }, [selectedEmployee, payPeriod]);
+    try {
+      const scanList = await fetchScans(payPeriod);
+      setScans(scanList);
+      setWorkHours((prev) =>
+        applyRfidToRows(prev, scanList, selectedEmployee, payPeriod, manualByDay),
+      );
+    } catch (error) {
+      console.error('Failed to refresh RFID scans:', error);
+    }
+  }, [selectedEmployee, payPeriod, fetchScans, applyRfidToRows, manualByDay]);
+
+  const handleRealtimeScan = useCallback(
+    (payload: unknown) => {
+      const scan = (payload as { scan?: RfidScanRecord })?.scan;
+      if (!scan || !selectedEmployee) return;
+      if (!scanMatchesEmployee(scan, selectedEmployee)) return;
+      const at = new Date(scan.scannedAt);
+      const { from, to } = payPeriodScanRangeIso(payPeriod);
+      if (Number.isNaN(at.getTime()) || at < new Date(from) || at >= new Date(to)) return;
+      void refreshFromScans();
+    },
+    [selectedEmployee, payPeriod, refreshFromScans],
+  );
+
+  useSocketSubscription(tenantRoom, 'rfid.scan.created', handleRealtimeScan);
 
   useEffect(() => {
     if (!selectedEmployee || !isCurrentWeek) return;
@@ -282,11 +390,19 @@ function RfidTimesheetPage() {
       receipts,
       additionalHours,
       ratePerHour,
+      manualByDay,
     });
-  }, [selectedEmployee, payPeriod.id, isCurrentWeek, workHours, receipts, additionalHours, ratePerHour]);
+  }, [selectedEmployee, payPeriod.id, isCurrentWeek, workHours, receipts, additionalHours, ratePerHour, manualByDay]);
 
   const handleWorkHoursChange = (index: number, field: 'in' | 'out' | 'breaks', value: string) => {
     if (!isEditable) return;
+    const day = workHours[index]?.day;
+    if (day) {
+      setManualByDay((prev) => ({
+        ...prev,
+        [day]: { ...prev[day], [field]: true },
+      }));
+    }
     setWorkHours((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -315,6 +431,10 @@ function RfidTimesheetPage() {
 
   const handleApplyDayShift = () => {
     if (!isEditable) return;
+    const allManual = Object.fromEntries(
+      PAY_PERIOD_DAYS.map((day) => [day, { in: true, out: true, breaks: true }]),
+    );
+    setManualByDay(allManual);
     setWorkHours((prev) =>
       prev.map((row) => ({
         ...row,
@@ -327,10 +447,12 @@ function RfidTimesheetPage() {
   };
 
   const handleClearWeekHours = () => {
-    if (!isEditable) return;
-    setWorkHours((prev) =>
-      prev.map((row) => ({ ...row, in: '0', out: '0', breaks: '0' })),
-    );
+    if (!isEditable || !selectedEmployee) return;
+    setManualByDay({});
+    setWorkHours((prev) => {
+      const cleared = prev.map((row) => ({ ...row, in: '0', out: '0', breaks: '0' }));
+      return applyRfidToRows(cleared, scans, selectedEmployee, payPeriod, {});
+    });
   };
 
   const handleAdditionalHoursChange = (
@@ -371,7 +493,8 @@ function RfidTimesheetPage() {
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Pay periods run <strong>Friday through Thursday</strong>; paychecks go out on the following Friday.
-          Only the <strong>current week</strong> can be edited — past weeks are locked.
+          Only the <strong>current week</strong> can be edited — past weeks are locked. In/Out times auto-fill from
+          RFID and kiosk PIN scans (first and last scan each day; rapid double-reads within 3 minutes are ignored).
         </Typography>
       </Box>
 
@@ -404,7 +527,7 @@ function RfidTimesheetPage() {
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Employee (RFID tag)"
+                  label="Employee"
                   placeholder={loadingEmployees ? 'Loading…' : 'Select employee'}
                   InputProps={{
                     ...params.InputProps,
@@ -473,7 +596,20 @@ function RfidTimesheetPage() {
 
           {selectedEmployee && (
             <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-              <Chip size="small" icon={<NfcIcon />} label={`UID: ${selectedEmployee.uid}`} variant="outlined" />
+              {selectedEmployee.uids.map((uid) => (
+                <Chip key={uid} size="small" icon={<NfcIcon />} label={`UID: ${uid}`} variant="outlined" />
+              ))}
+              {selectedEmployee.pins.map((pin) => (
+                <Chip key={pin} size="small" label={`PIN: ${pin}`} variant="outlined" />
+              ))}
+              {loadingScans && (
+                <Chip
+                  size="small"
+                  icon={<CircularProgress size={12} color="inherit" />}
+                  label="Syncing scans…"
+                  variant="outlined"
+                />
+              )}
               <Chip
                 size="small"
                 label={`Work week: ${payPeriod.label}`}
@@ -498,7 +634,8 @@ function RfidTimesheetPage() {
 
       {!selectedEmployee && !loadingEmployees && (
         <Alert severity="warning">
-          No RFID tags found. Register employees on the <strong>RFID scans</strong> page first, then return here.
+          No RFID tags or kiosk PINs found. Register employees on the <strong>RFID scans</strong> page first
+          (use the same name for tag and PIN so they appear as one person), then return here.
         </Alert>
       )}
 

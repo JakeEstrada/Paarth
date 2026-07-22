@@ -6,6 +6,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { connectSocket, disconnectSocket } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const TENANT_HEADER = 'x-tenant-id';
@@ -91,6 +92,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (user) {
+      connectSocket();
+    } else {
+      disconnectSocket();
+    }
+  }, [user, loading]);
 
   const fetchCurrentUser = async (token: string) => {
     try {

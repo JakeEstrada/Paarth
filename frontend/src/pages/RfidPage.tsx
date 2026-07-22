@@ -4,7 +4,7 @@
  * APIs: GET /rfid/scans, Socket.IO rfid.scan.created
  * Docs: ../../../docs/PAGES.md#rfidpagetsx
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -28,7 +28,7 @@ import { isAxiosError } from 'axios';
 import api from '../utils/axios';
 import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
-import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { useSocketConnectionStatus, useSocketSubscription } from '../hooks/useSocketSubscription';
 
 interface RfidTagRow {
   _id: string;
@@ -56,6 +56,15 @@ interface RfidScanRow {
 
 const SCAN_LIST_LIMIT = 200;
 
+function normalizeTenantRoomId(raw: unknown): string | null {
+  const value =
+    typeof raw === 'object' && raw !== null && '_id' in raw
+      ? String((raw as { _id: unknown })._id)
+      : String(raw || '').trim();
+  if (!/^[a-fA-F0-9]{24}$/.test(value)) return null;
+  return value;
+}
+
 function RfidPage() {
   const { tenantIdForBranding } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -68,8 +77,12 @@ function RfidPage() {
   const [pinName, setPinName] = useState('');
   const [savingTag, setSavingTag] = useState(false);
   const [savingPin, setSavingPin] = useState(false);
+  const [recentScanIds, setRecentScanIds] = useState<Set<string>>(() => new Set());
+  const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const tenantId = normalizeTenantRoomId(tenantIdForBranding);
+  const tenantRoom = tenantId ? `tenant:${tenantId}` : null;
+  const socketConnected = useSocketConnectionStatus();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +107,13 @@ function RfidPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    return () => {
+      highlightTimersRef.current.forEach((timer) => clearTimeout(timer));
+      highlightTimersRef.current.clear();
+    };
+  }, []);
+
   const handleRealtimeScan = useCallback((payload: { scan?: RfidScanRow }) => {
     const incoming = payload?.scan;
     if (!incoming?._id) return;
@@ -107,6 +127,22 @@ function RfidPage() {
           : new Date(incoming.scannedAt).toISOString();
       return [{ ...incoming, scannedAt }, ...prev].slice(0, SCAN_LIST_LIMIT);
     });
+
+    const id = String(incoming._id);
+    setRecentScanIds((prev) => new Set(prev).add(id));
+    const existingTimer = highlightTimersRef.current.get(id);
+    if (existingTimer) clearTimeout(existingTimer);
+    highlightTimersRef.current.set(
+      id,
+      setTimeout(() => {
+        setRecentScanIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        highlightTimersRef.current.delete(id);
+      }, 4000),
+    );
   }, []);
 
   const handleRealtimeTagUpsert = useCallback((payload: { tag?: RfidTagRow }) => {
@@ -159,7 +195,12 @@ function RfidPage() {
   useSocketSubscription(tenantRoom, 'rfid.pin.upserted', handleRealtimePinUpsert);
   useSocketSubscription(tenantRoom, 'rfid.pin.deleted', handleRealtimePinDeleted);
 
-  const liveLabel = useMemo(() => (tenantRoom ? 'Live' : ''), [tenantRoom]);
+  const liveLabel = useMemo(() => {
+    if (!tenantRoom) return 'Offline';
+    return socketConnected ? 'Live' : 'Connecting…';
+  }, [tenantRoom, socketConnected]);
+
+  const liveColor = tenantRoom && socketConnected ? 'success.main' : 'warning.main';
 
   const handleSaveTag = async () => {
     const uid = tagUid.trim();
@@ -239,8 +280,8 @@ function RfidPage() {
                 px: 1,
                 py: 0.25,
                 borderRadius: 1,
-                bgcolor: 'success.main',
-                color: 'success.contrastText',
+                bgcolor: liveColor,
+                color: tenantRoom && socketConnected ? 'success.contrastText' : 'warning.contrastText',
                 fontWeight: 600,
                 letterSpacing: 0.5,
               }}
@@ -431,7 +472,17 @@ function RfidPage() {
                   </TableRow>
                 ) : (
                   scans.map((s) => (
-                    <TableRow key={s._id}>
+                    <TableRow
+                      key={s._id}
+                      sx={
+                        recentScanIds.has(String(s._id))
+                          ? {
+                              bgcolor: 'action.selected',
+                              transition: 'background-color 0.4s ease',
+                            }
+                          : undefined
+                      }
+                    >
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>
                         {format(new Date(s.scannedAt), 'MMM d, yyyy h:mm:ss a')}
                       </TableCell>
