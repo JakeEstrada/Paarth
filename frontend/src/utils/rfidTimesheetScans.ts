@@ -6,15 +6,12 @@ import {
 } from './payPeriod';
 
 /** Scans within this window count as one tap (reader sensitivity / double reads). */
-export const RFID_SCAN_BURST_MS = 3 * 60 * 1000;
-
-/** Clock-in scans are usually before this (6–8 AM). */
-export const RFID_CLOCK_IN_CUTOFF_MINUTES = 8 * 60;
-
-/** Clock-out scans are usually at or after this (2 PM). */
-export const RFID_CLOCK_OUT_CUTOFF_MINUTES = 14 * 60;
+export const RFID_SCAN_BURST_MS = 5 * 60 * 1000;
 
 export const RFID_DEFAULT_BREAK_MINUTES = 30;
+
+/** Only auto-apply lunch break when the shift is longer than this (minutes). */
+export const RFID_MIN_SHIFT_FOR_BREAK_MINUTES = 60;
 
 export type RfidScanRecord = {
   _id?: string;
@@ -120,19 +117,24 @@ function localDateKey(date: Date): string {
 
 function clockFromScanTimes(times: Date[]): { in: string; out: string } {
   if (times.length === 0) return { in: '0', out: '0' };
-  if (times.length === 1) {
-    const mins = times[0].getHours() * 60 + times[0].getMinutes();
-    const token = minutesToTimeInput(mins);
-    if (mins < RFID_CLOCK_IN_CUTOFF_MINUTES) return { in: token, out: '0' };
-    if (mins >= RFID_CLOCK_OUT_CUTOFF_MINUTES) return { in: '0', out: token };
-    return { in: token, out: '0' };
-  }
   const first = times[0];
+  const inToken = minutesToTimeInput(first.getHours() * 60 + first.getMinutes());
+  if (times.length === 1) return { in: inToken, out: '0' };
   const last = times[times.length - 1];
   return {
-    in: minutesToTimeInput(first.getHours() * 60 + first.getMinutes()),
+    in: inToken,
     out: minutesToTimeInput(last.getHours() * 60 + last.getMinutes()),
   };
+}
+
+function shiftDurationMinutes(inToken: string, outToken: string): number {
+  if (!inToken || !outToken || inToken === '0' || outToken === '0') return 0;
+  const parse = (token: string) => {
+    const padded = token.padStart(4, '0');
+    return parseInt(padded.substring(0, 2), 10) * 60 + parseInt(padded.substring(2, 4), 10);
+  };
+  const diff = parse(outToken) - parse(inToken);
+  return diff > 0 ? diff : 0;
 }
 
 /** Build Fri–Thu clock rows from raw scans for one employee and pay period. */
@@ -171,11 +173,15 @@ export function buildRfidDayClocks(
     const raw = (scansByDateKey.get(key) || []).sort((a, b) => a.getTime() - b.getTime());
     const deduped = dedupeScanTimes(raw);
     const { in, out } = clockFromScanTimes(deduped);
+    const duration = shiftDurationMinutes(in, out);
     const hasShift = in !== '0' && out !== '0';
     result[day] = {
       in,
       out,
-      breaks: hasShift ? String(RFID_DEFAULT_BREAK_MINUTES) : '0',
+      breaks:
+        hasShift && duration > RFID_MIN_SHIFT_FOR_BREAK_MINUTES
+          ? String(RFID_DEFAULT_BREAK_MINUTES)
+          : '0',
       scanCount: deduped.length,
     };
   });

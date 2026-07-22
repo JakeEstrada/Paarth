@@ -494,7 +494,7 @@ function RfidTimesheetPage() {
         <Typography variant="body2" color="text.secondary">
           Pay periods run <strong>Friday through Thursday</strong>; paychecks go out on the following Friday.
           Only the <strong>current week</strong> can be edited — past weeks are locked. In/Out times auto-fill from
-          RFID and kiosk PIN scans (first and last scan each day; rapid double-reads within 3 minutes are ignored).
+          RFID and kiosk PIN scans (first and last scan each day; rapid double-reads within 5 minutes are ignored).
         </Typography>
       </Box>
 
