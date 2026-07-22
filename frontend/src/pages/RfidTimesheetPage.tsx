@@ -3,7 +3,7 @@
  * Route: /rfid-timesheets
  * Current week is editable; past weeks are read-only (greyed out).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -33,6 +33,7 @@ import {
   Add as AddIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
+  Edit as EditIcon,
   Nfc as NfcIcon,
   Receipt as ReceiptIcon,
 } from '@mui/icons-material';
@@ -40,16 +41,20 @@ import { isAxiosError } from 'axios';
 import toast from 'react-hot-toast';
 import api from '../utils/axios';
 import { useAuth } from '../context/AuthContext';
-import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { useSocketConnectionStatus, useSocketSubscription } from '../hooks/useSocketSubscription';
 import {
   buildRfidDayClocks,
+  defaultShiftProfile,
   mergeRfidIntoWorkHours,
   mergeRfidRegistries,
   payPeriodScanRangeIso,
+  profileMapFromApi,
   scanMatchesEmployee,
   type RfidEmployeeIdentity,
+  type RfidEmployeeShiftProfile,
   type RfidManualDayFlags,
   type RfidScanRecord,
+  type RfidTimesheetWeekPayload,
 } from '../utils/rfidTimesheetScans';
 import {
   PAY_PERIOD_DAYS,
@@ -81,6 +86,7 @@ type DayRow = {
   out: string;
   breaks: string;
   scanCount: number;
+  note: string;
 };
 
 type ReceiptRow = {
@@ -102,7 +108,29 @@ type WeekSheetData = {
   manualByDay?: Record<string, RfidManualDayFlags>;
 };
 
-const DAY_SHIFT = { in: '600', out: '1430', breaks: '30' };
+
+function sheetPayload(
+  workHours: DayRow[],
+  receipts: ReceiptRow[],
+  additionalHours: AdditionalHoursRow[],
+  ratePerHour: string,
+  manualByDay: Record<string, RfidManualDayFlags>,
+): RfidTimesheetWeekPayload {
+  return {
+    workHours: workHours.map((row) => ({
+      day: row.day,
+      in: row.in,
+      out: row.out,
+      breaks: row.breaks,
+      scanCount: row.scanCount,
+      note: row.note,
+    })),
+    receipts,
+    additionalHours,
+    ratePerHour,
+    manualByDay,
+  };
+}
 
 function newAdditionalHoursRow(): AdditionalHoursRow {
   return {
@@ -125,6 +153,7 @@ function defaultWorkHours(period: PayPeriod): DayRow[] {
     out: '0',
     breaks: '0',
     scanCount: 0,
+    note: '',
   }));
 }
 
@@ -150,6 +179,7 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
         out: String(byDay[d.day]?.out ?? d.out),
         breaks: String(byDay[d.day]?.breaks ?? d.breaks),
         scanCount: Number(byDay[d.day]?.scanCount) || 0,
+        note: String(byDay[d.day]?.note ?? ''),
       })),
       receipts: Array.isArray(parsed.receipts) ? parsed.receipts : [],
       additionalHours: Array.isArray(parsed.additionalHours)
@@ -233,8 +263,11 @@ function RfidTimesheetPage() {
   const theme = useTheme();
   const { tenantIdForBranding } = useAuth();
   const [employees, setEmployees] = useState<RfidEmployeeOption[]>([]);
+  const [employeeProfiles, setEmployeeProfiles] = useState<Record<string, RfidEmployeeShiftProfile>>({});
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [loadingScans, setLoadingScans] = useState(false);
+  const [savingTimesheet, setSavingTimesheet] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [scans, setScans] = useState<RfidScanRecord[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<RfidEmployeeOption | null>(null);
   const [payPeriod, setPayPeriod] = useState<PayPeriod>(() => getPayPeriodForDate(new Date()));
@@ -243,14 +276,37 @@ function RfidTimesheetPage() {
   const [receipts, setReceipts] = useState<ReceiptRow[]>([]);
   const [additionalHours, setAdditionalHours] = useState<AdditionalHoursRow[]>([]);
   const [ratePerHour, setRatePerHour] = useState('');
+  const [shiftIn, setShiftIn] = useState(defaultShiftProfile().shiftIn);
+  const [shiftOut, setShiftOut] = useState(defaultShiftProfile().shiftOut);
+  const [shiftBreak, setShiftBreak] = useState(String(defaultShiftProfile().breakMinutes));
+
+  const manualByDayRef = useRef(manualByDay);
+  const scansRef = useRef(scans);
+  const isEditModeRef = useRef(isEditMode);
+  manualByDayRef.current = manualByDay;
+  scansRef.current = scans;
+  isEditModeRef.current = isEditMode;
 
   const tenantId = normalizeTenantRoomId(tenantIdForBranding);
   const tenantRoom = tenantId ? `tenant:${tenantId}` : null;
+  const socketConnected = useSocketConnectionStatus();
 
   const isCurrentWeek = isCurrentPayPeriod(payPeriod);
   const isPastWeek = isPastPayPeriod(payPeriod);
-  const isEditable = isCurrentWeek;
+  const canEdit = isCurrentWeek && isEditMode;
   const currentPeriodId = getPayPeriodForDate(new Date()).id;
+
+  const activeShiftProfile = useMemo((): RfidEmployeeShiftProfile => {
+    if (!selectedEmployee) return defaultShiftProfile();
+    return (
+      employeeProfiles[selectedEmployee.id] || {
+        shiftIn,
+        shiftOut,
+        breakMinutes: parseInt(shiftBreak || '0', 10) || 0,
+        ratePerHour,
+      }
+    );
+  }, [selectedEmployee, employeeProfiles, shiftIn, shiftOut, shiftBreak, ratePerHour]);
 
   const payPeriodOptions = useMemo(() => listRecentPayPeriods(new Date(), 16), []);
 
@@ -267,12 +323,22 @@ function RfidTimesheetPage() {
   const loadEmployees = useCallback(async () => {
     try {
       setLoadingEmployees(true);
-      const [tagsRes, pinsRes] = await Promise.all([
+      const [tagsRes, pinsRes, profilesRes] = await Promise.all([
         api.get<{ tags: { _id: string; uid: string; displayName: string }[] }>('/rfid/tags'),
         api.get<{ pins: { _id: string; pin: string; displayName: string }[] }>('/rfid/pins'),
+        api.get<{
+          profiles: Array<{
+            employeeKey: string;
+            shiftIn?: string;
+            shiftOut?: string;
+            breakMinutes?: number;
+            ratePerHour?: string;
+          }>;
+        }>('/rfid/employee-profiles'),
       ]);
       const options = mergeRfidRegistries(tagsRes.data?.tags || [], pinsRes.data?.pins || []);
       setEmployees(options);
+      setEmployeeProfiles(profileMapFromApi(profilesRes.data?.profiles || []));
       setSelectedEmployee((prev) => {
         if (!prev) return options[0] ?? null;
         return options.find((e) => e.id === prev.id) ?? options[0] ?? null;
@@ -289,6 +355,40 @@ function RfidTimesheetPage() {
     }
   }, []);
 
+  const fetchTimesheet = useCallback(async (employeeKey: string, periodId: string) => {
+    try {
+      const res = await api.get<{ timesheet: RfidTimesheetWeekPayload | null }>(
+        `/rfid/timesheets/${encodeURIComponent(employeeKey)}/${encodeURIComponent(periodId)}`,
+      );
+      return res.data?.timesheet;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const persistTimesheet = useCallback(
+    async (
+      employeeKey: string,
+      periodId: string,
+      payload: RfidTimesheetWeekPayload,
+    ) => {
+      setSavingTimesheet(true);
+      try {
+        await api.put(
+          `/rfid/timesheets/${encodeURIComponent(employeeKey)}/${encodeURIComponent(periodId)}`,
+          payload,
+        );
+      } catch (error) {
+        console.error('Failed to save timesheet:', error);
+        saveWeekSheet(employeeKey, periodId, payload);
+        toast.error('Could not sync timesheet to server — saved locally');
+      } finally {
+        setSavingTimesheet(false);
+      }
+    },
+    [],
+  );
+
   const fetchScans = useCallback(async (period: PayPeriod) => {
     const { from, to } = payPeriodScanRangeIso(period);
     const res = await api.get<{ scans: RfidScanRecord[] }>('/rfid/scans', {
@@ -304,11 +404,28 @@ function RfidTimesheetPage() {
       employee: RfidEmployeeOption,
       period: PayPeriod,
       manual: Record<string, RfidManualDayFlags>,
+      profile: RfidEmployeeShiftProfile,
     ) => {
-      const rfidByDay = buildRfidDayClocks(scanList, employee, period);
+      const rfidByDay = buildRfidDayClocks(scanList, employee, period, profile);
       return mergeRfidIntoWorkHours(baseRows, rfidByDay, manual);
     },
     [],
+  );
+
+  const mergeSheetWithScans = useCallback(
+    (
+      sheet: WeekSheetData,
+      scanList: RfidScanRecord[],
+      employee: RfidEmployeeOption,
+      period: PayPeriod,
+      profile: RfidEmployeeShiftProfile,
+    ) => {
+      const manual = sheet.manualByDay || {};
+      const baseRows =
+        sheet.workHours.length > 0 ? sheet.workHours : defaultWorkHours(period);
+      return applyRfidToRows(baseRows, scanList, employee, period, manual, profile);
+    },
+    [applyRfidToRows],
   );
 
   useEffect(() => {
@@ -317,13 +434,46 @@ function RfidTimesheetPage() {
 
   useEffect(() => {
     if (!selectedEmployee) return undefined;
+    setIsEditMode(false);
 
     let cancelled = false;
 
     (async () => {
       setLoadingScans(true);
-      const sheet = loadWeekSheet(selectedEmployee.id, payPeriod);
+      const profile =
+        employeeProfiles[selectedEmployee.id] ||
+        defaultShiftProfile();
+      const remoteSheet = await fetchTimesheet(selectedEmployee.id, payPeriod.id);
+      const localSheet = loadWeekSheet(selectedEmployee.id, payPeriod);
+      const sheet: WeekSheetData = remoteSheet
+        ? {
+            workHours: defaultWorkHours(payPeriod).map((d) => {
+              const saved = (remoteSheet.workHours || []).find((r) => r.day === d.day);
+              return {
+                ...d,
+                in: String(saved?.in ?? d.in),
+                out: String(saved?.out ?? d.out),
+                breaks: String(saved?.breaks ?? d.breaks),
+                scanCount: Number(saved?.scanCount) || 0,
+                note: String(saved?.note ?? ''),
+              };
+            }),
+            receipts: remoteSheet.receipts || [],
+            additionalHours: (remoteSheet.additionalHours || []).map((row) => ({
+              id: row.id || newAdditionalHoursRow().id,
+              description: String(row.description ?? ''),
+              hours: String(row.hours ?? ''),
+            })),
+            ratePerHour: String(remoteSheet.ratePerHour ?? profile.ratePerHour ?? ''),
+            manualByDay: remoteSheet.manualByDay || {},
+          }
+        : localSheet;
+
       const manual = sheet.manualByDay || {};
+      setShiftIn(profile.shiftIn);
+      setShiftOut(profile.shiftOut);
+      setShiftBreak(String(profile.breakMinutes));
+      setRatePerHour(sheet.ratePerHour || profile.ratePerHour || '');
 
       try {
         const scanList = await fetchScans(payPeriod);
@@ -331,10 +481,9 @@ function RfidTimesheetPage() {
 
         setScans(scanList);
         setManualByDay(manual);
-        setWorkHours(applyRfidToRows(sheet.workHours, scanList, selectedEmployee, payPeriod, manual));
+        setWorkHours(mergeSheetWithScans(sheet, scanList, selectedEmployee, payPeriod, profile));
         setReceipts(sheet.receipts);
         setAdditionalHours(sheet.additionalHours);
-        setRatePerHour(sheet.ratePerHour);
       } catch (error) {
         console.error('Failed to load RFID scans:', error);
         if (!cancelled) {
@@ -342,7 +491,6 @@ function RfidTimesheetPage() {
           setWorkHours(sheet.workHours);
           setReceipts(sheet.receipts);
           setAdditionalHours(sheet.additionalHours);
-          setRatePerHour(sheet.ratePerHour);
           toast.error('Could not load RFID scans for this pay period');
         }
       } finally {
@@ -353,49 +501,162 @@ function RfidTimesheetPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedEmployee, payPeriod, fetchScans, applyRfidToRows]);
+  }, [
+    selectedEmployee,
+    payPeriod,
+    fetchScans,
+    fetchTimesheet,
+    mergeSheetWithScans,
+    employeeProfiles,
+  ]);
 
-  const refreshFromScans = useCallback(async () => {
-    if (!selectedEmployee) return;
-    try {
-      const scanList = await fetchScans(payPeriod);
-      setScans(scanList);
+  const recomputeFromScans = useCallback(
+    (
+      scanList: RfidScanRecord[],
+      employee: RfidEmployeeOption,
+      period: PayPeriod,
+      profile: RfidEmployeeShiftProfile,
+    ) => {
       setWorkHours((prev) =>
-        applyRfidToRows(prev, scanList, selectedEmployee, payPeriod, manualByDay),
+        applyRfidToRows(prev, scanList, employee, period, manualByDayRef.current, profile),
       );
-    } catch (error) {
-      console.error('Failed to refresh RFID scans:', error);
-    }
-  }, [selectedEmployee, payPeriod, fetchScans, applyRfidToRows, manualByDay]);
+    },
+    [applyRfidToRows],
+  );
 
   const handleRealtimeScan = useCallback(
     (payload: unknown) => {
       const scan = (payload as { scan?: RfidScanRecord })?.scan;
-      if (!scan || !selectedEmployee) return;
+      if (!scan?._id || !selectedEmployee) return;
       if (!scanMatchesEmployee(scan, selectedEmployee)) return;
       const at = new Date(scan.scannedAt);
       const { from, to } = payPeriodScanRangeIso(payPeriod);
       if (Number.isNaN(at.getTime()) || at < new Date(from) || at >= new Date(to)) return;
-      void refreshFromScans();
+
+      setScans((prev) => {
+        if (prev.some((s) => s._id === scan._id)) return prev;
+        const next = [scan, ...prev];
+        scansRef.current = next;
+        recomputeFromScans(next, selectedEmployee, payPeriod, activeShiftProfile);
+        return next;
+      });
     },
-    [selectedEmployee, payPeriod, refreshFromScans],
+    [selectedEmployee, payPeriod, recomputeFromScans, activeShiftProfile],
   );
 
   useSocketSubscription(tenantRoom, 'rfid.scan.created', handleRealtimeScan);
 
-  useEffect(() => {
-    if (!selectedEmployee || !isCurrentWeek) return;
-    saveWeekSheet(selectedEmployee.id, payPeriod.id, {
-      workHours,
-      receipts,
-      additionalHours,
-      ratePerHour,
-      manualByDay,
-    });
-  }, [selectedEmployee, payPeriod.id, isCurrentWeek, workHours, receipts, additionalHours, ratePerHour, manualByDay]);
+  const handleRemoteTimesheet = useCallback(
+    (payload: unknown) => {
+      if (isEditModeRef.current || !selectedEmployee) return;
+      const data = payload as {
+        employeeKey?: string;
+        periodId?: string;
+        timesheet?: RfidTimesheetWeekPayload;
+      };
+      if (data.employeeKey !== selectedEmployee.id || data.periodId !== payPeriod.id) return;
+      const remote = data.timesheet;
+      if (!remote) return;
 
-  const handleWorkHoursChange = (index: number, field: 'in' | 'out' | 'breaks', value: string) => {
-    if (!isEditable) return;
+      const manual = remote.manualByDay || {};
+      const sheet: WeekSheetData = {
+        workHours: defaultWorkHours(payPeriod).map((d) => {
+          const saved = (remote.workHours || []).find((r) => r.day === d.day);
+          return {
+            ...d,
+            in: String(saved?.in ?? d.in),
+            out: String(saved?.out ?? d.out),
+            breaks: String(saved?.breaks ?? d.breaks),
+            scanCount: Number(saved?.scanCount) || 0,
+            note: String(saved?.note ?? ''),
+          };
+        }),
+        receipts: remote.receipts || [],
+        additionalHours: (remote.additionalHours || []).map((row) => ({
+          id: row.id || newAdditionalHoursRow().id,
+          description: String(row.description ?? ''),
+          hours: String(row.hours ?? ''),
+        })),
+        ratePerHour: String(remote.ratePerHour ?? ''),
+        manualByDay: manual,
+      };
+
+      setManualByDay(manual);
+      setReceipts(sheet.receipts);
+      setAdditionalHours(sheet.additionalHours);
+      setRatePerHour(sheet.ratePerHour);
+      setWorkHours(mergeSheetWithScans(sheet, scansRef.current, selectedEmployee, payPeriod, activeShiftProfile));
+    },
+    [selectedEmployee, payPeriod, mergeSheetWithScans, activeShiftProfile],
+  );
+
+  const handleRemoteProfile = useCallback(
+    (payload: unknown) => {
+      const data = payload as {
+        employeeKey?: string;
+        profile?: {
+          shiftIn?: string;
+          shiftOut?: string;
+          breakMinutes?: number;
+          ratePerHour?: string;
+        };
+      };
+      if (!data.employeeKey || !data.profile) return;
+      const key = data.employeeKey;
+      const profile: RfidEmployeeShiftProfile = {
+        shiftIn: data.profile.shiftIn || defaultShiftProfile().shiftIn,
+        shiftOut: data.profile.shiftOut || defaultShiftProfile().shiftOut,
+        breakMinutes: Number(data.profile.breakMinutes ?? defaultShiftProfile().breakMinutes),
+        ratePerHour: String(data.profile.ratePerHour ?? ''),
+      };
+      setEmployeeProfiles((prev) => ({ ...prev, [key]: profile }));
+      if (selectedEmployee?.id === key) {
+        setShiftIn(profile.shiftIn);
+        setShiftOut(profile.shiftOut);
+        setShiftBreak(String(profile.breakMinutes));
+        if (profile.ratePerHour && !isEditModeRef.current) setRatePerHour(profile.ratePerHour);
+        recomputeFromScans(scansRef.current, selectedEmployee, payPeriod, profile);
+      }
+    },
+    [selectedEmployee, payPeriod, recomputeFromScans],
+  );
+
+  useSocketSubscription(tenantRoom, 'rfid.timesheet.updated', handleRemoteTimesheet);
+  useSocketSubscription(tenantRoom, 'rfid.employee-profile.updated', handleRemoteProfile);
+
+  /** Re-check auto-logout at 11:59 PM and on a short interval while viewing today. */
+  useEffect(() => {
+    if (!selectedEmployee) return undefined;
+    const tick = () => {
+      recomputeFromScans(scansRef.current, selectedEmployee, payPeriod, activeShiftProfile);
+    };
+    tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+  }, [selectedEmployee, payPeriod, activeShiftProfile, recomputeFromScans]);
+
+  useEffect(() => {
+    if (!selectedEmployee || !isCurrentWeek) return undefined;
+    const payload = sheetPayload(workHours, receipts, additionalHours, ratePerHour, manualByDay);
+    saveWeekSheet(selectedEmployee.id, payPeriod.id, payload);
+    const timer = window.setTimeout(() => {
+      void persistTimesheet(selectedEmployee.id, payPeriod.id, payload);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [
+    selectedEmployee,
+    payPeriod.id,
+    isCurrentWeek,
+    workHours,
+    receipts,
+    additionalHours,
+    ratePerHour,
+    manualByDay,
+    persistTimesheet,
+  ]);
+
+  const handleWorkHoursChange = (index: number, field: 'in' | 'out' | 'breaks' | 'note', value: string) => {
+    if (!canEdit) return;
     const day = workHours[index]?.day;
     if (day) {
       setManualByDay((prev) => ({
@@ -411,7 +672,7 @@ function RfidTimesheetPage() {
   };
 
   const handleReceiptChange = (index: number, field: keyof ReceiptRow, value: string) => {
-    if (!isEditable) return;
+    if (!canEdit) return;
     setReceipts((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -420,39 +681,97 @@ function RfidTimesheetPage() {
   };
 
   const handleAddReceipt = () => {
-    if (!isEditable) return;
+    if (!canEdit) return;
     setReceipts((prev) => [...prev, { description: '', amount: '' }]);
   };
 
   const handleRemoveReceipt = (index: number) => {
-    if (!isEditable) return;
+    if (!canEdit) return;
     setReceipts((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleApplyDayShift = () => {
-    if (!isEditable) return;
+    if (!canEdit || !selectedEmployee) return;
+    const profile = activeShiftProfile;
     const allManual = Object.fromEntries(
-      PAY_PERIOD_DAYS.map((day) => [day, { in: true, out: true, breaks: true }]),
+      PAY_PERIOD_DAYS.map((day) => [day, { in: true, out: true, breaks: true, note: true }]),
     );
     setManualByDay(allManual);
     setWorkHours((prev) =>
       prev.map((row) => ({
         ...row,
-        in: DAY_SHIFT.in,
-        out: DAY_SHIFT.out,
-        breaks: DAY_SHIFT.breaks,
+        in: profile.shiftIn,
+        out: profile.shiftOut,
+        breaks: String(profile.breakMinutes),
+        note: '',
       })),
     );
-    toast.success('Applied day shift (6:00–14:30, 30 min break) to all days');
+    toast.success(`Applied shift (${profile.shiftIn}–${profile.shiftOut}) to all days`);
   };
 
   const handleClearWeekHours = () => {
-    if (!isEditable || !selectedEmployee) return;
+    if (!canEdit || !selectedEmployee) return;
     setManualByDay({});
     setWorkHours((prev) => {
-      const cleared = prev.map((row) => ({ ...row, in: '0', out: '0', breaks: '0' }));
-      return applyRfidToRows(cleared, scans, selectedEmployee, payPeriod, {});
+      const cleared = prev.map((row) => ({
+        ...row,
+        in: '0',
+        out: '0',
+        breaks: '0',
+        note: '',
+      }));
+      return applyRfidToRows(
+        cleared,
+        scans,
+        selectedEmployee,
+        payPeriod,
+        {},
+        activeShiftProfile,
+      );
     });
+  };
+
+  const handleSaveShiftProfile = async () => {
+    if (!canEdit || !selectedEmployee) return;
+    try {
+      const res = await api.put<{ profile: { employeeKey: string } }>(
+        `/rfid/employee-profiles/${encodeURIComponent(selectedEmployee.id)}`,
+        {
+          displayName: selectedEmployee.name,
+          shiftIn,
+          shiftOut,
+          breakMinutes: parseInt(shiftBreak || '0', 10) || 0,
+          ratePerHour,
+        },
+      );
+      const profile: RfidEmployeeShiftProfile = {
+        shiftIn,
+        shiftOut,
+        breakMinutes: parseInt(shiftBreak || '0', 10) || 0,
+        ratePerHour,
+      };
+      setEmployeeProfiles((prev) => ({
+        ...prev,
+        [selectedEmployee.id]: profile,
+      }));
+      recomputeFromScans(scans, selectedEmployee, payPeriod, profile);
+      toast.success(`Saved shift for ${selectedEmployee.name}`);
+      void res;
+    } catch (error) {
+      console.error(error);
+      toast.error('Could not save employee shift');
+    }
+  };
+
+  const handleExitEditMode = () => {
+    if (selectedEmployee) {
+      void persistTimesheet(
+        selectedEmployee.id,
+        payPeriod.id,
+        sheetPayload(workHours, receipts, additionalHours, ratePerHour, manualByDay),
+      );
+    }
+    setIsEditMode(false);
   };
 
   const handleAdditionalHoursChange = (
@@ -460,7 +779,7 @@ function RfidTimesheetPage() {
     field: keyof AdditionalHoursRow,
     value: string,
   ) => {
-    if (!isEditable) return;
+    if (!canEdit) return;
     setAdditionalHours((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -469,12 +788,12 @@ function RfidTimesheetPage() {
   };
 
   const handleAddAdditionalHours = () => {
-    if (!isEditable) return;
+    if (!canEdit) return;
     setAdditionalHours((prev) => [...prev, newAdditionalHoursRow()]);
   };
 
   const handleRemoveAdditionalHours = (index: number) => {
-    if (!isEditable) return;
+    if (!canEdit) return;
     setAdditionalHours((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -493,8 +812,9 @@ function RfidTimesheetPage() {
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Pay periods run <strong>Friday through Thursday</strong>; paychecks go out on the following Friday.
-          Only the <strong>current week</strong> can be edited — past weeks are locked. In/Out times auto-fill from
-          RFID and kiosk PIN scans (first and last scan each day; rapid double-reads within 5 minutes are ignored).
+          Hours auto-fill live from RFID/PIN scans. Click <strong>Edit</strong> on the current week to adjust times,
+          set each employee&apos;s expected shift, or add receipts. Missing clock-outs after 11:59 PM use the
+          employee&apos;s shift end time with an &quot;Auto log out&quot; note.
         </Typography>
       </Box>
 
@@ -545,8 +865,8 @@ function RfidTimesheetPage() {
             <TextField
               label="Rate per hour ($)"
               value={ratePerHour}
-              onChange={(e) => isEditable && setRatePerHour(e.target.value.replace(/[^\d.]/g, ''))}
-              disabled={!isEditable}
+              onChange={(e) => canEdit && setRatePerHour(e.target.value.replace(/[^\d.]/g, ''))}
+              disabled={!canEdit}
               inputProps={{ inputMode: 'decimal' }}
               sx={{ flex: '0 1 160px', minWidth: 140 }}
             />
@@ -610,6 +930,19 @@ function RfidTimesheetPage() {
                   variant="outlined"
                 />
               )}
+              {socketConnected ? (
+                <Chip size="small" label="Live" color="success" variant="outlined" />
+              ) : (
+                <Chip size="small" label="Connecting…" variant="outlined" />
+              )}
+              {savingTimesheet && (
+                <Chip size="small" label="Saving…" variant="outlined" />
+              )}
+              <Chip
+                size="small"
+                label={`Expected shift: ${activeShiftProfile.shiftIn}–${activeShiftProfile.shiftOut}`}
+                variant="outlined"
+              />
               <Chip
                 size="small"
                 label={`Work week: ${payPeriod.label}`}
@@ -621,8 +954,11 @@ function RfidTimesheetPage() {
                 label={`Pay date: ${formatPayDate(payPeriod.payDate)}`}
                 variant="outlined"
               />
-              {isCurrentWeek && (
-                <Chip size="small" label="Editable" color="success" variant="outlined" />
+              {isCurrentWeek && !isEditMode && (
+                <Chip size="small" label="Viewing" color="info" variant="outlined" />
+              )}
+              {isCurrentWeek && isEditMode && (
+                <Chip size="small" label="Editing" color="warning" variant="outlined" />
               )}
               {isPastWeek && (
                 <Chip size="small" label="Locked" color="default" variant="filled" />
@@ -659,27 +995,99 @@ function RfidTimesheetPage() {
                     {selectedEmployee.name} — {payPeriod.label}
                   </Typography>
                 </Box>
-                {isEditable && (
+                {isCurrentWeek && (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={handleApplyDayShift}
-                      sx={{ textTransform: 'none' }}
-                    >
-                      Apply day shift
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="text"
-                      onClick={handleClearWeekHours}
-                      sx={{ textTransform: 'none' }}
-                    >
-                      Clear week
-                    </Button>
+                    {!isEditMode ? (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<EditIcon />}
+                        onClick={() => setIsEditMode(true)}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        Edit
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="success"
+                          onClick={handleExitEditMode}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Done
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={handleApplyDayShift}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Apply shift to week
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={handleClearWeekHours}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Clear week
+                        </Button>
+                      </>
+                    )}
                   </Box>
                 )}
               </Box>
+
+              {canEdit && (
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    mb: 2,
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 2,
+                    alignItems: 'flex-end',
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ width: '100%', fontWeight: 600 }}>
+                    Employee shift (used for auto clock-out at 11:59 PM if no scan out)
+                  </Typography>
+                  <TextField
+                    label="Shift in"
+                    value={shiftIn}
+                    onChange={(e) => setShiftIn(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    size="small"
+                    placeholder="600"
+                    sx={{ width: 100 }}
+                  />
+                  <TextField
+                    label="Shift out"
+                    value={shiftOut}
+                    onChange={(e) => setShiftOut(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    size="small"
+                    placeholder="1430"
+                    sx={{ width: 100 }}
+                  />
+                  <TextField
+                    label="Break (min)"
+                    value={shiftBreak}
+                    onChange={(e) => setShiftBreak(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    size="small"
+                    sx={{ width: 100, ...NO_NUMBER_SPINNER_SX }}
+                  />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => void handleSaveShiftProfile()}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    Save shift
+                  </Button>
+                </Paper>
+              )}
 
               <Table size="small">
                 <TableHead>
@@ -691,6 +1099,7 @@ function RfidTimesheetPage() {
                     <TableCell sx={{ fontWeight: 700 }} align="center">Break (min)</TableCell>
                     <TableCell sx={{ fontWeight: 700 }} align="center">Hours</TableCell>
                     <TableCell sx={{ fontWeight: 700 }} align="center">RFID scans</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Note</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -699,13 +1108,13 @@ function RfidTimesheetPage() {
                     return (
                       <TableRow
                         key={row.day}
-                        hover={isEditable}
+                        hover={canEdit}
                         sx={isPastWeek ? { color: 'text.secondary' } : undefined}
                       >
                         <TableCell sx={{ fontWeight: 600 }}>{row.day}</TableCell>
                         <TableCell>{row.dateLabel}</TableCell>
                         <TableCell align="center">
-                          {isEditable ? (
+                          {canEdit ? (
                             <TextField
                               value={row.in}
                               onChange={(e) => handleWorkHoursChange(index, 'in', e.target.value)}
@@ -719,7 +1128,7 @@ function RfidTimesheetPage() {
                           )}
                         </TableCell>
                         <TableCell align="center">
-                          {isEditable ? (
+                          {canEdit ? (
                             <TextField
                               value={row.out}
                               onChange={(e) => handleWorkHoursChange(index, 'out', e.target.value)}
@@ -733,7 +1142,7 @@ function RfidTimesheetPage() {
                           )}
                         </TableCell>
                         <TableCell align="center">
-                          {isEditable ? (
+                          {canEdit ? (
                             <TextField
                               value={row.breaks}
                               onChange={(e) => handleWorkHoursChange(index, 'breaks', e.target.value)}
@@ -752,6 +1161,19 @@ function RfidTimesheetPage() {
                         <TableCell align="center" sx={{ color: 'text.secondary' }}>
                           {row.scanCount}
                         </TableCell>
+                        <TableCell sx={{ color: row.note ? 'warning.main' : 'text.secondary', fontSize: '0.85rem' }}>
+                          {canEdit ? (
+                            <TextField
+                              value={row.note}
+                              onChange={(e) => handleWorkHoursChange(index, 'note', e.target.value)}
+                              size="small"
+                              placeholder="—"
+                              sx={{ minWidth: 120 }}
+                            />
+                          ) : (
+                            row.note || '—'
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -766,6 +1188,7 @@ function RfidTimesheetPage() {
                     <TableCell align="center">
                       {workHours.reduce((s, r) => s + r.scanCount, 0)}
                     </TableCell>
+                    <TableCell />
                   </TableRow>
                 </TableBody>
               </Table>
@@ -782,7 +1205,7 @@ function RfidTimesheetPage() {
                   <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                     Additional hours
                   </Typography>
-                  {isEditable && (
+                  {canEdit && (
                     <Button
                       variant="outlined"
                       size="small"
@@ -800,7 +1223,7 @@ function RfidTimesheetPage() {
 
                 {additionalHours.length === 0 ? (
                   <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                    {isEditable
+                    {canEdit
                       ? 'No additional hours. Click "Add hours" to record extra time.'
                       : 'No additional hours for this week.'}
                   </Typography>
@@ -818,7 +1241,7 @@ function RfidTimesheetPage() {
                             handleAdditionalHoursChange(index, 'description', e.target.value)
                           }
                           size="small"
-                          disabled={!isEditable}
+                          disabled={!canEdit}
                           placeholder="e.g. Off-site install"
                           sx={{ flex: '1 1 200px' }}
                         />
@@ -833,12 +1256,12 @@ function RfidTimesheetPage() {
                             )
                           }
                           size="small"
-                          disabled={!isEditable}
+                          disabled={!canEdit}
                           inputProps={{ inputMode: 'decimal' }}
                           placeholder="0.00"
                           sx={{ width: 120 }}
                         />
-                        {isEditable && (
+                        {canEdit && (
                           <Button
                             variant="outlined"
                             color="error"
@@ -872,7 +1295,7 @@ function RfidTimesheetPage() {
                       Receipts
                     </Typography>
                   </Box>
-                  {isEditable && (
+                  {canEdit && (
                     <Button
                       variant="outlined"
                       size="small"
@@ -887,7 +1310,7 @@ function RfidTimesheetPage() {
 
                 {receipts.length === 0 ? (
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
-                    {isEditable
+                    {canEdit
                       ? 'No receipts yet. Click "Add receipt" for this week.'
                       : 'No receipts recorded for this week.'}
                   </Typography>
@@ -900,7 +1323,7 @@ function RfidTimesheetPage() {
                           value={receipt.description}
                           onChange={(e) => handleReceiptChange(index, 'description', e.target.value)}
                           size="small"
-                          disabled={!isEditable}
+                          disabled={!canEdit}
                           sx={{ flex: '1 1 180px' }}
                         />
                         <TextField
@@ -910,14 +1333,14 @@ function RfidTimesheetPage() {
                             handleReceiptChange(index, 'amount', e.target.value.replace(/[^\d.]/g, ''))
                           }
                           size="small"
-                          disabled={!isEditable}
+                          disabled={!canEdit}
                           inputProps={{ inputMode: 'decimal' }}
                           InputProps={{
                             startAdornment: <Typography sx={{ mr: 0.5, color: 'text.secondary' }}>$</Typography>,
                           }}
                           sx={{ width: 140 }}
                         />
-                        {isEditable && (
+                        {canEdit && (
                           <Button
                             variant="outlined"
                             color="error"

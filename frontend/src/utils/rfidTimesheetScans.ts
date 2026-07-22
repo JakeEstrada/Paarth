@@ -8,10 +8,14 @@ import {
 /** Scans within this window count as one tap (reader sensitivity / double reads). */
 export const RFID_SCAN_BURST_MS = 5 * 60 * 1000;
 
+export const RFID_DEFAULT_SHIFT_IN = '600';
+export const RFID_DEFAULT_SHIFT_OUT = '1430';
 export const RFID_DEFAULT_BREAK_MINUTES = 30;
 
 /** Only auto-apply lunch break when the shift is longer than this (minutes). */
 export const RFID_MIN_SHIFT_FOR_BREAK_MINUTES = 60;
+
+export const AUTO_LOGOUT_NOTE = 'Auto log out';
 
 export type RfidScanRecord = {
   _id?: string;
@@ -29,18 +33,37 @@ export type RfidEmployeeIdentity = {
   pins: string[];
 };
 
+export type RfidEmployeeShiftProfile = {
+  shiftIn: string;
+  shiftOut: string;
+  breakMinutes: number;
+  ratePerHour?: string;
+};
+
 export type RfidDayClock = {
   in: string;
   out: string;
   breaks: string;
   scanCount: number;
+  note: string;
+  autoLogout: boolean;
 };
 
 export type RfidManualDayFlags = {
   in?: boolean;
   out?: boolean;
   breaks?: boolean;
+  note?: boolean;
 };
+
+export function defaultShiftProfile(): RfidEmployeeShiftProfile {
+  return {
+    shiftIn: RFID_DEFAULT_SHIFT_IN,
+    shiftOut: RFID_DEFAULT_SHIFT_OUT,
+    breakMinutes: RFID_DEFAULT_BREAK_MINUTES,
+    ratePerHour: '',
+  };
+}
 
 export function normalizeEmployeeKey(name: string): string {
   return String(name || '')
@@ -127,7 +150,7 @@ function clockFromScanTimes(times: Date[]): { in: string; out: string } {
   };
 }
 
-function shiftDurationMinutes(inToken: string, outToken: string): number {
+export function shiftDurationMinutes(inToken: string, outToken: string): number {
   if (!inToken || !outToken || inToken === '0' || outToken === '0') return 0;
   const parse = (token: string) => {
     const padded = token.padStart(4, '0');
@@ -137,11 +160,34 @@ function shiftDurationMinutes(inToken: string, outToken: string): number {
   return diff > 0 ? diff : 0;
 }
 
+/** True once the calendar day has passed 11:59 PM local time (or the day is entirely in the past). */
+export function shouldAutoLogoutForDay(dayDate: Date, now: Date): boolean {
+  const dayStart = startOfDay(dayDate);
+  const todayStart = startOfDay(now);
+  if (dayStart.getTime() < todayStart.getTime()) return true;
+  if (dayStart.getTime() > todayStart.getTime()) return false;
+  const cutoff = new Date(dayDate);
+  cutoff.setHours(23, 59, 0, 0);
+  return now.getTime() >= cutoff.getTime();
+}
+
+function breakForShift(
+  inToken: string,
+  outToken: string,
+  profile: RfidEmployeeShiftProfile,
+): string {
+  const duration = shiftDurationMinutes(inToken, outToken);
+  if (duration <= RFID_MIN_SHIFT_FOR_BREAK_MINUTES) return '0';
+  return String(profile.breakMinutes ?? RFID_DEFAULT_BREAK_MINUTES);
+}
+
 /** Build Fri–Thu clock rows from raw scans for one employee and pay period. */
 export function buildRfidDayClocks(
   scans: RfidScanRecord[],
   employee: RfidEmployeeIdentity,
   period: PayPeriod,
+  shiftProfile: RfidEmployeeShiftProfile = defaultShiftProfile(),
+  now: Date = new Date(),
 ): Record<(typeof PAY_PERIOD_DAYS)[number], RfidDayClock> {
   const dayDates = getPayPeriodDayDates(period);
   const dateKeys = dayDates.map((d) => localDateKey(d));
@@ -169,27 +215,37 @@ export function buildRfidDayClocks(
   const result = {} as Record<(typeof PAY_PERIOD_DAYS)[number], RfidDayClock>;
 
   PAY_PERIOD_DAYS.forEach((day, index) => {
+    const dayDate = dayDates[index];
     const key = dateKeys[index];
     const raw = (scansByDateKey.get(key) || []).sort((a, b) => a.getTime() - b.getTime());
     const deduped = dedupeScanTimes(raw);
     const clock = clockFromScanTimes(deduped);
-    const duration = shiftDurationMinutes(clock.in, clock.out);
-    const hasShift = clock.in !== '0' && clock.out !== '0';
+    let outToken = clock.out;
+    let note = '';
+    let autoLogout = false;
+
+    if (clock.in !== '0' && outToken === '0' && shouldAutoLogoutForDay(dayDate, now)) {
+      outToken = shiftProfile.shiftOut || RFID_DEFAULT_SHIFT_OUT;
+      note = AUTO_LOGOUT_NOTE;
+      autoLogout = true;
+    }
+
     result[day] = {
       in: clock.in,
-      out: clock.out,
-      breaks:
-        hasShift && duration > RFID_MIN_SHIFT_FOR_BREAK_MINUTES
-          ? String(RFID_DEFAULT_BREAK_MINUTES)
-          : '0',
+      out: outToken,
+      breaks: breakForShift(clock.in, outToken, shiftProfile),
       scanCount: deduped.length,
+      note,
+      autoLogout,
     };
   });
 
   return result;
 }
 
-export function mergeRfidIntoWorkHours<T extends { day: string; in: string; out: string; breaks: string; scanCount: number }>(
+export function mergeRfidIntoWorkHours<
+  T extends { day: string; in: string; out: string; breaks: string; scanCount: number; note?: string },
+>(
   rows: T[],
   rfidByDay: Record<string, RfidDayClock>,
   manualByDay: Record<string, RfidManualDayFlags>,
@@ -202,6 +258,7 @@ export function mergeRfidIntoWorkHours<T extends { day: string; in: string; out:
     if (!manual.in) next.in = rfid.in;
     if (!manual.out) next.out = rfid.out;
     if (!manual.breaks) next.breaks = rfid.breaks;
+    if (!manual.note) next.note = rfid.note;
     next.scanCount = rfid.scanCount;
     return next;
   });
@@ -211,4 +268,42 @@ export function payPeriodScanRangeIso(period: PayPeriod): { from: string; to: st
   const from = startOfDay(period.start).toISOString();
   const to = addDays(startOfDay(period.end), 1).toISOString();
   return { from, to };
+}
+
+export type RfidTimesheetWeekPayload = {
+  workHours: Array<{
+    day: string;
+    in: string;
+    out: string;
+    breaks: string;
+    scanCount: number;
+    note?: string;
+  }>;
+  receipts: Array<{ description: string; amount: string }>;
+  additionalHours: Array<{ id: string; description: string; hours: string }>;
+  ratePerHour: string;
+  manualByDay: Record<string, RfidManualDayFlags>;
+};
+
+export function profileMapFromApi(
+  profiles: Array<{
+    employeeKey: string;
+    shiftIn?: string;
+    shiftOut?: string;
+    breakMinutes?: number;
+    ratePerHour?: string;
+  }>,
+): Record<string, RfidEmployeeShiftProfile> {
+  const map: Record<string, RfidEmployeeShiftProfile> = {};
+  for (const profile of profiles) {
+    const key = normalizeEmployeeKey(profile.employeeKey);
+    if (!key) continue;
+    map[key] = {
+      shiftIn: profile.shiftIn || RFID_DEFAULT_SHIFT_IN,
+      shiftOut: profile.shiftOut || RFID_DEFAULT_SHIFT_OUT,
+      breakMinutes: Number(profile.breakMinutes ?? RFID_DEFAULT_BREAK_MINUTES) || 0,
+      ratePerHour: String(profile.ratePerHour ?? ''),
+    };
+  }
+  return map;
 }

@@ -1,12 +1,16 @@
 const RfidTag = require('../models/RfidTag');
 const RfidPin = require('../models/RfidPin');
 const RfidScan = require('../models/RfidScan');
+const RfidEmployeeProfile = require('../models/RfidEmployeeProfile');
+const RfidTimesheetWeek = require('../models/RfidTimesheetWeek');
 const {
   publishRfidScanCreated,
   publishRfidTagUpserted,
   publishRfidTagDeleted,
   publishRfidPinUpserted,
   publishRfidPinDeleted,
+  publishRfidTimesheetUpdated,
+  publishRfidEmployeeProfileUpdated,
 } = require('../services/eventBus');
 const { getTenantContext } = require('../middleware/tenantContext');
 
@@ -20,6 +24,20 @@ function normalizePin(raw) {
   const s = String(raw || '').trim().replace(/\D/g, '');
   if (s.length !== 4) return '';
   return s;
+}
+
+function normalizeEmployeeKey(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeTimeToken(raw, fallback = '0') {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  if (!digits || digits === '0') return fallback;
+  if (digits.length <= 4) return digits;
+  return digits.slice(0, 4);
 }
 
 async function recordScan(req, res) {
@@ -306,6 +324,111 @@ async function deletePin(req, res) {
   }
 }
 
+async function listEmployeeProfiles(req, res) {
+  try {
+    const profiles = await RfidEmployeeProfile.find({}).sort({ displayName: 1 }).lean();
+    return res.json({ profiles });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+async function upsertEmployeeProfile(req, res) {
+  try {
+    const employeeKey = normalizeEmployeeKey(req.params.employeeKey || req.body?.employeeKey);
+    const displayName = String(req.body?.displayName || req.body?.name || '').trim();
+    if (!employeeKey) return res.status(400).json({ error: 'employeeKey is required' });
+    if (!displayName) return res.status(400).json({ error: 'displayName is required' });
+
+    const shiftIn = normalizeTimeToken(req.body?.shiftIn, '600');
+    const shiftOut = normalizeTimeToken(req.body?.shiftOut, '1430');
+    const breakMinutes = Math.min(
+      480,
+      Math.max(0, Number(req.body?.breakMinutes ?? 30) || 0),
+    );
+    const ratePerHour = String(req.body?.ratePerHour ?? '').trim();
+
+    const profile = await RfidEmployeeProfile.findOneAndUpdate(
+      { employeeKey },
+      {
+        employeeKey,
+        displayName,
+        shiftIn,
+        shiftOut,
+        breakMinutes,
+        ratePerHour,
+      },
+      { upsert: true, new: true, runValidators: true },
+    );
+
+    const io = req.app.get('io');
+    const profileDoc = profile.toObject ? profile.toObject() : profile;
+    publishRfidEmployeeProfileUpdated(io, profileDoc, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
+    return res.json({ profile: profileDoc });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+async function getTimesheetWeek(req, res) {
+  try {
+    const employeeKey = normalizeEmployeeKey(req.params.employeeKey);
+    const periodId = String(req.params.periodId || '').trim();
+    if (!employeeKey || !periodId) {
+      return res.status(400).json({ error: 'employeeKey and periodId are required' });
+    }
+
+    const timesheet = await RfidTimesheetWeek.findOne({ employeeKey, periodId }).lean();
+    return res.json({ timesheet: timesheet || null });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+async function upsertTimesheetWeek(req, res) {
+  try {
+    const employeeKey = normalizeEmployeeKey(req.params.employeeKey || req.body?.employeeKey);
+    const periodId = String(req.params.periodId || req.body?.periodId || '').trim();
+    if (!employeeKey || !periodId) {
+      return res.status(400).json({ error: 'employeeKey and periodId are required' });
+    }
+
+    const workHours = Array.isArray(req.body?.workHours) ? req.body.workHours : [];
+    const receipts = Array.isArray(req.body?.receipts) ? req.body.receipts : [];
+    const additionalHours = Array.isArray(req.body?.additionalHours) ? req.body.additionalHours : [];
+    const ratePerHour = String(req.body?.ratePerHour ?? '').trim();
+    const manualByDay =
+      req.body?.manualByDay && typeof req.body.manualByDay === 'object' ? req.body.manualByDay : {};
+
+    const timesheet = await RfidTimesheetWeek.findOneAndUpdate(
+      { employeeKey, periodId },
+      {
+        employeeKey,
+        periodId,
+        workHours,
+        receipts,
+        additionalHours,
+        ratePerHour,
+        manualByDay,
+      },
+      { upsert: true, new: true, runValidators: true },
+    );
+
+    const io = req.app.get('io');
+    const timesheetDoc = timesheet.toObject ? timesheet.toObject() : timesheet;
+    publishRfidTimesheetUpdated(io, timesheetDoc, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
+    return res.json({ timesheet: timesheetDoc });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
 module.exports = {
   recordScan,
   listScans,
@@ -315,4 +438,8 @@ module.exports = {
   upsertPin,
   deleteTag,
   deletePin,
+  listEmployeeProfiles,
+  upsertEmployeeProfile,
+  getTimesheetWeek,
+  upsertTimesheetWeek,
 };

@@ -145,6 +145,37 @@ function publishRfidTagDeleted(io, tag, opts = {}) {
   }
 }
 
+function publishRfidTimesheetUpdated(io, timesheet, opts = {}) {
+  if (!timesheet?.employeeKey || !timesheet?.periodId) return;
+  const tenantId = timesheet.tenantId ? String(timesheet.tenantId) : null;
+  const data = {
+    type: 'rfid.timesheet.updated',
+    tenantId,
+    timesheet: timesheet && typeof timesheet === 'object' ? timesheet : null,
+    employeeKey: String(timesheet.employeeKey),
+    periodId: String(timesheet.periodId),
+    sourceSocketId: opts.sourceSocketId || null,
+  };
+  if (tenantId) {
+    safeEmit(io, `tenant:${tenantId}`, 'rfid.timesheet.updated', data);
+  }
+}
+
+function publishRfidEmployeeProfileUpdated(io, profile, opts = {}) {
+  if (!profile?.employeeKey) return;
+  const tenantId = profile.tenantId ? String(profile.tenantId) : null;
+  const data = {
+    type: 'rfid.employee-profile.updated',
+    tenantId,
+    profile: profile && typeof profile === 'object' ? profile : null,
+    employeeKey: String(profile.employeeKey),
+    sourceSocketId: opts.sourceSocketId || null,
+  };
+  if (tenantId) {
+    safeEmit(io, `tenant:${tenantId}`, 'rfid.employee-profile.updated', data);
+  }
+}
+
 module.exports = {
   publishProjectCreated,
   publishProjectUpdated,
@@ -155,4 +186,6 @@ module.exports = {
   publishRfidTagDeleted,
   publishRfidPinUpserted,
   publishRfidPinDeleted,
+  publishRfidTimesheetUpdated,
+  publishRfidEmployeeProfileUpdated,
 };

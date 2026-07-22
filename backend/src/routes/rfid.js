@@ -10,6 +10,10 @@ const {
   upsertPin,
   deleteTag,
   deletePin,
+  listEmployeeProfiles,
+  upsertEmployeeProfile,
+  getTimesheetWeek,
+  upsertTimesheetWeek,
 } = require('../controllers/rfidController');
 
 const router = express.Router();
@@ -27,5 +31,9 @@ router.post('/pins', upsertPin);
 router.put('/pins', upsertPin);
 router.delete('/tags/:id', deleteTag);
 router.delete('/pins/:id', deletePin);
+router.get('/employee-profiles', listEmployeeProfiles);
+router.put('/employee-profiles/:employeeKey', upsertEmployeeProfile);
+router.get('/timesheets/:employeeKey/:periodId', getTimesheetWeek);
+router.put('/timesheets/:employeeKey/:periodId', upsertTimesheetWeek);
 
 module.exports = router;
