@@ -172,12 +172,12 @@ export function buildRfidDayClocks(
     const key = dateKeys[index];
     const raw = (scansByDateKey.get(key) || []).sort((a, b) => a.getTime() - b.getTime());
     const deduped = dedupeScanTimes(raw);
-    const { in, out } = clockFromScanTimes(deduped);
-    const duration = shiftDurationMinutes(in, out);
-    const hasShift = in !== '0' && out !== '0';
+    const clock = clockFromScanTimes(deduped);
+    const duration = shiftDurationMinutes(clock.in, clock.out);
+    const hasShift = clock.in !== '0' && clock.out !== '0';
     result[day] = {
-      in,
-      out,
+      in: clock.in,
+      out: clock.out,
       breaks:
         hasShift && duration > RFID_MIN_SHIFT_FOR_BREAK_MINUTES
           ? String(RFID_DEFAULT_BREAK_MINUTES)
