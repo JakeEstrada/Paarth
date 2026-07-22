@@ -34,7 +34,6 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   Edit as EditIcon,
-  Nfc as NfcIcon,
   Receipt as ReceiptIcon,
 } from '@mui/icons-material';
 import { isAxiosError } from 'axios';
@@ -50,6 +49,7 @@ import {
   payPeriodScanRangeIso,
   profileMapFromApi,
   scanMatchesEmployee,
+  sortEmployeesForTimesheet,
   type RfidEmployeeIdentity,
   type RfidEmployeeShiftProfile,
   type RfidManualDayFlags,
@@ -266,7 +266,6 @@ function RfidTimesheetPage() {
   const [employeeProfiles, setEmployeeProfiles] = useState<Record<string, RfidEmployeeShiftProfile>>({});
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [loadingScans, setLoadingScans] = useState(false);
-  const [savingTimesheet, setSavingTimesheet] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [scans, setScans] = useState<RfidScanRecord[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<RfidEmployeeOption | null>(null);
@@ -283,6 +282,7 @@ function RfidTimesheetPage() {
   const manualByDayRef = useRef(manualByDay);
   const scansRef = useRef(scans);
   const isEditModeRef = useRef(isEditMode);
+  const lastPersistedRef = useRef('');
   manualByDayRef.current = manualByDay;
   scansRef.current = scans;
   isEditModeRef.current = isEditMode;
@@ -336,7 +336,9 @@ function RfidTimesheetPage() {
           }>;
         }>('/rfid/employee-profiles'),
       ]);
-      const options = mergeRfidRegistries(tagsRes.data?.tags || [], pinsRes.data?.pins || []);
+      const options = sortEmployeesForTimesheet(
+        mergeRfidRegistries(tagsRes.data?.tags || [], pinsRes.data?.pins || []),
+      );
       setEmployees(options);
       setEmployeeProfiles(profileMapFromApi(profilesRes.data?.profiles || []));
       setSelectedEmployee((prev) => {
@@ -372,7 +374,6 @@ function RfidTimesheetPage() {
       periodId: string,
       payload: RfidTimesheetWeekPayload,
     ) => {
-      setSavingTimesheet(true);
       try {
         await api.put(
           `/rfid/timesheets/${encodeURIComponent(employeeKey)}/${encodeURIComponent(periodId)}`,
@@ -382,8 +383,6 @@ function RfidTimesheetPage() {
         console.error('Failed to save timesheet:', error);
         saveWeekSheet(employeeKey, periodId, payload);
         toast.error('Could not sync timesheet to server — saved locally');
-      } finally {
-        setSavingTimesheet(false);
       }
     },
     [],
@@ -435,6 +434,7 @@ function RfidTimesheetPage() {
   useEffect(() => {
     if (!selectedEmployee) return undefined;
     setIsEditMode(false);
+    lastPersistedRef.current = '';
 
     let cancelled = false;
 
@@ -638,9 +638,14 @@ function RfidTimesheetPage() {
   useEffect(() => {
     if (!selectedEmployee || !isCurrentWeek) return undefined;
     const payload = sheetPayload(workHours, receipts, additionalHours, ratePerHour, manualByDay);
+    const serialized = JSON.stringify(payload);
+    if (serialized === lastPersistedRef.current) return undefined;
+
     saveWeekSheet(selectedEmployee.id, payPeriod.id, payload);
     const timer = window.setTimeout(() => {
-      void persistTimesheet(selectedEmployee.id, payPeriod.id, payload);
+      void persistTimesheet(selectedEmployee.id, payPeriod.id, payload).then(() => {
+        lastPersistedRef.current = serialized;
+      });
     }, 400);
     return () => window.clearTimeout(timer);
   }, [
@@ -916,12 +921,6 @@ function RfidTimesheetPage() {
 
           {selectedEmployee && (
             <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-              {selectedEmployee.uids.map((uid) => (
-                <Chip key={uid} size="small" icon={<NfcIcon />} label={`UID: ${uid}`} variant="outlined" />
-              ))}
-              {selectedEmployee.pins.map((pin) => (
-                <Chip key={pin} size="small" label={`PIN: ${pin}`} variant="outlined" />
-              ))}
               {loadingScans && (
                 <Chip
                   size="small"
@@ -934,9 +933,6 @@ function RfidTimesheetPage() {
                 <Chip size="small" label="Live" color="success" variant="outlined" />
               ) : (
                 <Chip size="small" label="Connecting…" variant="outlined" />
-              )}
-              {savingTimesheet && (
-                <Chip size="small" label="Saving…" variant="outlined" />
               )}
               <Chip
                 size="small"

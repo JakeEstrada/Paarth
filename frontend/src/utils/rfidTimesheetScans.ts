@@ -105,6 +105,23 @@ export function mergeRfidRegistries(
   return Array.from(byKey.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Felix (or other preferred keys) first, then alphabetical. */
+export function sortEmployeesForTimesheet(
+  employees: RfidEmployeeIdentity[],
+  preferredFirstKeys: string[] = ['felix'],
+): RfidEmployeeIdentity[] {
+  return [...employees].sort((a, b) => {
+    const aRank = preferredFirstKeys.indexOf(a.id);
+    const bRank = preferredFirstKeys.indexOf(b.id);
+    if (aRank !== -1 || bRank !== -1) {
+      if (aRank === -1) return 1;
+      if (bRank === -1) return -1;
+      return aRank - bRank;
+    }
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export function scanMatchesEmployee(scan: RfidScanRecord, employee: RfidEmployeeIdentity): boolean {
   const uid = String(scan.uid || '').trim();
   const pin = String(scan.pin || '').trim();
