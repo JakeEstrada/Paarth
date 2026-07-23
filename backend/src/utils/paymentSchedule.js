@@ -40,6 +40,42 @@ function getContractBase(job) {
   return 0;
 }
 
+function sumChangeOrdersForFinal(job) {
+  const rows = Array.isArray(job?.changeOrders) ? job.changeOrders : [];
+  return roundMoney(
+    rows
+      .filter((row) => String(row?.billing || 'separate') === 'final')
+      .reduce((sum, row) => sum + (Number(row?.amount) || 0), 0),
+  );
+}
+
+function inferDueTypeFromLabel(label) {
+  const text = String(label || '').trim().toLowerCase();
+  if (/\bdeposit\b/.test(text)) return 'deposit';
+  if (/\bfinal\b/.test(text) || /\bbalance\b/.test(text)) return 'final';
+  return 'milestone';
+}
+
+function isFinalScheduleItem(item) {
+  return item?.dueType === 'final' || inferDueTypeFromLabel(item?.label) === 'final';
+}
+
+function getScheduleItemBaseAmount(item, contractBase) {
+  if (item?.amountType === 'percentage') {
+    const pct = Number(item.percentage);
+    if (Number.isFinite(pct)) return roundMoney(contractBase * (pct / 100));
+  }
+  return roundMoney(Number(item?.amount) || computeItemAmount(item, contractBase));
+}
+
+function getScheduleItemTotal(item, contractBase, coAddedToFinal = 0) {
+  const stored = roundMoney(Number(item?.amount) || computeItemAmount(item, contractBase));
+  if (!isFinalScheduleItem(item) || coAddedToFinal <= 0) return stored;
+  const baseFinal = getScheduleItemBaseAmount(item, contractBase);
+  if (stored > baseFinal + 0.01) return stored;
+  return roundMoney(stored + coAddedToFinal);
+}
+
 function hasStoredPaymentSchedule(job) {
   return Array.isArray(job?.paymentSchedule?.items) && job.paymentSchedule.items.length > 0;
 }
@@ -307,6 +343,10 @@ module.exports = {
   roundMoney,
   STANDARD_4060_TEMPLATE,
   getContractBase,
+  sumChangeOrdersForFinal,
+  inferDueTypeFromLabel,
+  isFinalScheduleItem,
+  getScheduleItemTotal,
   hasStoredPaymentSchedule,
   computeItemAmount,
   resolvePaymentSchedule,

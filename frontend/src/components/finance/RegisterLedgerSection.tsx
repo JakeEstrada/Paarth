@@ -24,6 +24,8 @@ import {
 import { alpha } from '@mui/material/styles';
 import { Fullscreen, FullscreenExit, Refresh } from '@mui/icons-material';
 import PlaidBankLinkSection from './PlaidBankLinkSection';
+import DepositLinkDialog, { type DepositAllocation, type DepositTransaction } from './DepositLinkDialog';
+import api from '../../utils/axios';
 import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -88,6 +90,9 @@ export default function RegisterLedgerSection({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [allocations, setAllocations] = useState<DepositAllocation[]>([]);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [selectedDeposit, setSelectedDeposit] = useState<DepositTransaction | null>(null);
   const panelRef = useRef(null);
   const accountIdRef = useRef(accountId);
   const registerSyncRef = useRef(registerSync);
@@ -105,6 +110,38 @@ export default function RegisterLedgerSection({
     () => accounts.find((a) => a.account_id === accountId) || null,
     [accounts, accountId]
   );
+
+  const allocationByTransactionId = useMemo(() => {
+    const map = new Map<string, DepositAllocation>();
+    for (const row of allocations) {
+      if (row.plaidTransactionId) map.set(row.plaidTransactionId, row);
+    }
+    return map;
+  }, [allocations]);
+
+  const loadAllocations = useCallback(async () => {
+    if (!active || !depositsOnly) return;
+    try {
+      const { data } = await api.get<{ allocations: DepositAllocation[] }>('/deposit-allocations');
+      setAllocations(Array.isArray(data?.allocations) ? data.allocations : []);
+    } catch (error) {
+      console.error('Failed to load deposit links:', error);
+    }
+  }, [active, depositsOnly]);
+
+  useEffect(() => {
+    void loadAllocations();
+  }, [loadAllocations]);
+
+  const openDepositLink = (transaction: DepositTransaction) => {
+    setSelectedDeposit(transaction);
+    setLinkDialogOpen(true);
+  };
+
+  const closeDepositLink = () => {
+    setLinkDialogOpen(false);
+    setSelectedDeposit(null);
+  };
 
   const loadRegister = useCallback(async ({ forceRefresh = false, silent = false } = {}) => {
     if (!active) return;
@@ -207,7 +244,7 @@ export default function RegisterLedgerSection({
     });
   }, [rows, searchTerm, depositsOnly]);
 
-  const tableColumnCount = depositsOnly ? 4 : 6;
+  const tableColumnCount = depositsOnly ? 5 : 6;
 
   if (!active) return null;
 
@@ -479,6 +516,12 @@ export default function RegisterLedgerSection({
         ) : null}
       </Stack>
 
+      {depositsOnly && showFinanceHeader ? (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Click a deposit to connect it to a job payment. Exact amount matches are suggested automatically.
+        </Typography>
+      ) : null}
+
       {registerSync ? (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center', mb: 1 }}>
           <Chip size="small" variant="outlined" label={`Source: ${registerSync.source || '—'}`} />
@@ -535,7 +578,10 @@ export default function RegisterLedgerSection({
                 <TableCell>Description</TableCell>
                 <TableCell>Account</TableCell>
                 {depositsOnly ? (
-                  <TableCell align="right">Deposit</TableCell>
+                  <>
+                    <TableCell align="right">Deposit</TableCell>
+                    <TableCell>Linked payment</TableCell>
+                  </>
                 ) : (
                   <>
                     <TableCell align="right">Debit</TableCell>
@@ -576,8 +622,31 @@ export default function RegisterLedgerSection({
                   const checkRef = String(r.checkNumber || r.referenceNumber || '').trim();
                   const description = isCheckTxn && checkRef ? `${r.name} #${checkRef}` : r.name;
                   const imageHref = isCheckTxn ? String(r.imageUrl || '').trim() : '';
+                  const allocation = depositsOnly
+                    ? allocationByTransactionId.get(String(r.transaction_id))
+                    : null;
                   return (
-                    <TableRow key={r.transaction_id} hover>
+                    <TableRow
+                      key={r.transaction_id}
+                      hover
+                      onClick={
+                        depositsOnly
+                          ? () =>
+                              openDepositLink({
+                                transaction_id: String(r.transaction_id),
+                                account_id: String(r.account_id || ''),
+                                date: String(r.date || ''),
+                                name: String(description || r.name || ''),
+                                amount: Number(r.amount || 0),
+                              })
+                          : undefined
+                      }
+                      sx={
+                        depositsOnly
+                          ? { cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }
+                          : undefined
+                      }
+                    >
                       <TableCell>{r.date}</TableCell>
                       <TableCell>
                         <Typography variant="body2">{description}</Typography>
@@ -597,7 +666,20 @@ export default function RegisterLedgerSection({
                       </TableCell>
                       <TableCell>{acct?.name || acct?.official_name || '—'}</TableCell>
                       {depositsOnly ? (
-                        <TableCell align="right">${money(r.depositAmount)}</TableCell>
+                        <>
+                          <TableCell align="right">${money(r.depositAmount)}</TableCell>
+                          <TableCell>
+                            {allocation ? (
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.main' }}>
+                                {allocation.customerName || 'Customer'} · {allocation.paymentLabel}
+                              </Typography>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">
+                                Click to connect
+                              </Typography>
+                            )}
+                          </TableCell>
+                        </>
                       ) : (
                         <>
                           <TableCell align="right">{debit ? `$${money(debit)}` : '—'}</TableCell>
@@ -613,6 +695,22 @@ export default function RegisterLedgerSection({
           </Table>
         </TableContainer>
       )}
+
+      {depositsOnly ? (
+        <DepositLinkDialog
+          open={linkDialogOpen}
+          transaction={selectedDeposit}
+          existingAllocation={
+            selectedDeposit?.transaction_id
+              ? allocationByTransactionId.get(selectedDeposit.transaction_id) || null
+              : null
+          }
+          onClose={closeDepositLink}
+          onLinked={() => {
+            void loadAllocations();
+          }}
+        />
+      ) : null}
     </Box>
   );
 }
