@@ -30,6 +30,14 @@ const additionalHoursSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const travelMilesSchema = new mongoose.Schema(
+  {
+    day: { type: String, required: true },
+    miles: { type: String, default: '' },
+  },
+  { _id: false },
+);
+
 const rfidTimesheetWeekSchema = new mongoose.Schema(
   {
     employeeKey: {
@@ -54,6 +62,10 @@ const rfidTimesheetWeekSchema = new mongoose.Schema(
     },
     additionalHours: {
       type: [additionalHoursSchema],
+      default: [],
+    },
+    travelMiles: {
+      type: [travelMilesSchema],
       default: [],
     },
     ratePerHour: {

@@ -356,6 +356,7 @@ export type RfidTimesheetWeekPayload = {
   }>;
   receipts: Array<{ description: string; amount: string }>;
   additionalHours: Array<{ id: string; description: string; hours: string }>;
+  travelMiles: Array<{ day: string; miles: string }>;
   ratePerHour: string;
   manualByDay: Record<string, RfidManualDayFlags>;
 };

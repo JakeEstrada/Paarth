@@ -418,6 +418,7 @@ async function upsertTimesheetWeek(req, res) {
     const workHours = Array.isArray(req.body?.workHours) ? req.body.workHours : [];
     const receipts = Array.isArray(req.body?.receipts) ? req.body.receipts : [];
     const additionalHours = Array.isArray(req.body?.additionalHours) ? req.body.additionalHours : [];
+    const travelMiles = Array.isArray(req.body?.travelMiles) ? req.body.travelMiles : [];
     const ratePerHour = String(req.body?.ratePerHour ?? '').trim();
     const manualByDay =
       req.body?.manualByDay && typeof req.body.manualByDay === 'object' ? req.body.manualByDay : {};
@@ -430,6 +431,7 @@ async function upsertTimesheetWeek(req, res) {
         workHours,
         receipts,
         additionalHours,
+        travelMiles,
         ratePerHour,
         manualByDay,
       },

@@ -13,6 +13,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Divider,
   FormControl,
   IconButton,
   InputLabel,
@@ -31,6 +32,7 @@ import {
 import {
   AccessTime as TimeIcon,
   Add as AddIcon,
+  DirectionsCar as CarIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   Edit as EditIcon,
@@ -71,6 +73,8 @@ import {
 
 const STORAGE_PREFIX = 'rfidTimesheetWeek';
 const MIGRATED_PREFIX = 'rfidTimesheetMigrated';
+/** IRS-style mileage rate (matches Payroll page). */
+const PRICE_PER_MILE = 0.725;
 
 const NO_NUMBER_SPINNER_SX = {
   '& input[type=number]': { MozAppearance: 'textfield' },
@@ -95,6 +99,11 @@ type ReceiptRow = {
   amount: string;
 };
 
+type TravelMileRow = {
+  day: string;
+  miles: string;
+};
+
 type AdditionalHoursRow = {
   id: string;
   description: string;
@@ -104,6 +113,7 @@ type AdditionalHoursRow = {
 type WeekSheetData = {
   workHours: DayRow[];
   receipts: ReceiptRow[];
+  travelMiles: TravelMileRow[];
   additionalHours: AdditionalHoursRow[];
   ratePerHour: string;
   manualByDay?: Record<string, RfidManualDayFlags>;
@@ -113,6 +123,7 @@ type WeekSheetData = {
 function sheetPayload(
   workHours: DayRow[],
   receipts: ReceiptRow[],
+  travelMiles: TravelMileRow[],
   additionalHours: AdditionalHoursRow[],
   ratePerHour: string,
   manualByDay: Record<string, RfidManualDayFlags>,
@@ -127,6 +138,7 @@ function sheetPayload(
       note: row.note,
     })),
     receipts,
+    travelMiles,
     additionalHours,
     ratePerHour,
     manualByDay,
@@ -167,6 +179,7 @@ function sheetFromRemotePayload(
       };
     }),
     receipts: remote.receipts || [],
+    travelMiles: mergeTravelMiles(remote.travelMiles),
     additionalHours: (remote.additionalHours || []).map((row) => ({
       id: row.id || newAdditionalHoursRow().id,
       description: String(row.description ?? ''),
@@ -181,10 +194,23 @@ function localSheetHasData(sheet: WeekSheetData): boolean {
   return (
     sheet.workHours.some((r) => r.in !== '0' || r.out !== '0') ||
     sheet.receipts.length > 0 ||
+    sheet.travelMiles.some((r) => parseFloat(r.miles) > 0) ||
     sheet.additionalHours.length > 0 ||
     Boolean(sheet.ratePerHour) ||
     Object.keys(sheet.manualByDay || {}).length > 0
   );
+}
+
+function defaultTravelMiles(): TravelMileRow[] {
+  return PAY_PERIOD_DAYS.map((day) => ({ day, miles: '' }));
+}
+
+function mergeTravelMiles(saved: TravelMileRow[] | undefined): TravelMileRow[] {
+  const byDay = Object.fromEntries((saved || []).map((r) => [r.day, r]));
+  return PAY_PERIOD_DAYS.map((day) => ({
+    day,
+    miles: String(byDay[day]?.miles ?? ''),
+  }));
 }
 
 function defaultWorkHours(period: PayPeriod): DayRow[] {
@@ -207,6 +233,7 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
       return {
         workHours: defaultWorkHours(period),
         receipts: [],
+        travelMiles: defaultTravelMiles(),
         additionalHours: [],
         ratePerHour: '',
         manualByDay: {},
@@ -225,6 +252,7 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
         note: String(byDay[d.day]?.note ?? ''),
       })),
       receipts: Array.isArray(parsed.receipts) ? parsed.receipts : [],
+      travelMiles: mergeTravelMiles(parsed.travelMiles),
       additionalHours: Array.isArray(parsed.additionalHours)
         ? parsed.additionalHours.map((row: AdditionalHoursRow) => ({
             id: row.id || newAdditionalHoursRow().id,
@@ -240,6 +268,7 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
     return {
       workHours: defaultWorkHours(period),
       receipts: [],
+      travelMiles: defaultTravelMiles(),
       additionalHours: [],
       ratePerHour: '',
       manualByDay: {},
@@ -316,6 +345,7 @@ function RfidTimesheetPage() {
   const [workHours, setWorkHours] = useState<DayRow[]>(() => defaultWorkHours(getPayPeriodForDate(new Date())));
   const [manualByDay, setManualByDay] = useState<Record<string, RfidManualDayFlags>>({});
   const [receipts, setReceipts] = useState<ReceiptRow[]>([]);
+  const [travelMiles, setTravelMiles] = useState<TravelMileRow[]>(() => defaultTravelMiles());
   const [additionalHours, setAdditionalHours] = useState<AdditionalHoursRow[]>([]);
   const [ratePerHour, setRatePerHour] = useState('');
   const [shiftIn, setShiftIn] = useState(defaultShiftProfile().shiftIn);
@@ -361,8 +391,10 @@ function RfidTimesheetPage() {
   const weightedHoursData = calculateWeightedHours(workHours, additionalHours);
   const totalHours = scheduleHours + weightedHoursData.manualHours;
   const totalReceipts = receipts.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+  const totalMiles = travelMiles.reduce((sum, row) => sum + (parseFloat(row.miles) || 0), 0);
+  const travelCost = totalMiles * PRICE_PER_MILE;
   const grossPay = (parseFloat(ratePerHour) || 0) * weightedHoursData.weighted;
-  const overallTotal = grossPay + totalReceipts;
+  const overallTotal = grossPay + travelCost + totalReceipts;
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -501,6 +533,7 @@ function RfidTimesheetPage() {
       let sheet: WeekSheetData = {
         workHours: defaultWorkHours(payPeriod),
         receipts: [],
+        travelMiles: defaultTravelMiles(),
         additionalHours: [],
         ratePerHour: profile.ratePerHour || '',
         manualByDay: {},
@@ -528,6 +561,7 @@ function RfidTimesheetPage() {
               const migratePayload = sheetPayload(
                 localSheet.workHours,
                 localSheet.receipts,
+                localSheet.travelMiles,
                 localSheet.additionalHours,
                 localSheet.ratePerHour,
                 localSheet.manualByDay || {},
@@ -569,11 +603,13 @@ function RfidTimesheetPage() {
         setManualByDay(merged.manual);
         setWorkHours(merged.rows);
         setReceipts(sheet.receipts);
+        setTravelMiles(sheet.travelMiles);
         setAdditionalHours(sheet.additionalHours);
         lastPersistedRef.current = JSON.stringify(
           sheetPayload(
             merged.rows,
             sheet.receipts,
+            sheet.travelMiles,
             sheet.additionalHours,
             sheet.ratePerHour || profile.ratePerHour || '',
             merged.manual,
@@ -678,6 +714,7 @@ function RfidTimesheetPage() {
           };
         }),
         receipts: remote.receipts || [],
+        travelMiles: mergeTravelMiles(remote.travelMiles),
         additionalHours: (remote.additionalHours || []).map((row) => ({
           id: row.id || newAdditionalHoursRow().id,
           description: String(row.description ?? ''),
@@ -696,6 +733,7 @@ function RfidTimesheetPage() {
       );
       setManualByDay(merged.manual);
       setReceipts(sheet.receipts);
+      setTravelMiles(sheet.travelMiles);
       setAdditionalHours(sheet.additionalHours);
       setRatePerHour(sheet.ratePerHour);
       setWorkHours(merged.rows);
@@ -751,7 +789,7 @@ function RfidTimesheetPage() {
 
   useEffect(() => {
     if (!selectedEmployee || !isCurrentWeek || !isEditMode || !sheetReadyRef.current) return undefined;
-    const payload = sheetPayload(workHours, receipts, additionalHours, ratePerHour, manualByDay);
+    const payload = sheetPayload(workHours, receipts, travelMiles, additionalHours, ratePerHour, manualByDay);
     const serialized = JSON.stringify(payload);
     if (serialized === lastPersistedRef.current) return undefined;
 
@@ -770,6 +808,7 @@ function RfidTimesheetPage() {
     isEditMode,
     workHours,
     receipts,
+    travelMiles,
     additionalHours,
     ratePerHour,
     manualByDay,
@@ -788,6 +827,15 @@ function RfidTimesheetPage() {
     setWorkHours((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleTravelMilesChange = (index: number, value: string) => {
+    if (!canEdit) return;
+    setTravelMiles((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], miles: value.replace(/[^\d.]/g, '') };
       return next;
     });
   };
@@ -882,7 +930,7 @@ function RfidTimesheetPage() {
 
   const handleExitEditMode = () => {
     if (!selectedEmployee) return;
-    const payload = sheetPayload(workHours, receipts, additionalHours, ratePerHour, manualByDay);
+    const payload = sheetPayload(workHours, receipts, travelMiles, additionalHours, ratePerHour, manualByDay);
     void persistTimesheet(selectedEmployee.id, payPeriod.id, payload)
       .then(() => {
         toast.success('Timesheet saved');
@@ -933,8 +981,8 @@ function RfidTimesheetPage() {
         <Typography variant="body2" color="text.secondary">
           Pay periods run <strong>Friday through Thursday</strong>; paychecks go out on the following Friday.
           Hours auto-fill live from RFID/PIN scans. Click <strong>Edit</strong> on the current week to adjust times,
-          set each employee&apos;s expected shift, or add receipts. Missing clock-outs after 11:59 PM use the
-          employee&apos;s shift end time with an &quot;Auto log out&quot; note.
+          set each employee&apos;s expected shift, or add miles and receipts. Missing clock-outs after 11:59 PM use the
+          employee&apos;s shift end time with an &quot;Auto log out&quot; note. Past pay weeks are greyed out and locked after payday Friday.
         </Typography>
       </Box>
 
@@ -1396,7 +1444,79 @@ function RfidTimesheetPage() {
             </CardContent>
           </Card>
 
-          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3, mb: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 3, mb: 3 }}>
+            <Card sx={{ flex: 1, boxShadow: 2, ...readOnlyCardSx }}>
+              <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <CarIcon sx={{ color: 'primary.main' }} />
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    Travel miles
+                  </Typography>
+                </Box>
+
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
+                      <TableCell sx={{ fontWeight: 700 }}>Day</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">Miles</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {travelMiles.map((row, index) => (
+                      <TableRow key={row.day} hover={canEdit}>
+                        <TableCell sx={{ fontWeight: 600 }}>{row.day}</TableCell>
+                        <TableCell align="right">
+                          {canEdit ? (
+                            <TextField
+                              value={row.miles}
+                              onChange={(e) => handleTravelMilesChange(index, e.target.value)}
+                              size="small"
+                              placeholder="0"
+                              inputProps={{ inputMode: 'decimal', style: { textAlign: 'right' } }}
+                              sx={{ maxWidth: 100, ...NO_NUMBER_SPINNER_SX }}
+                            />
+                          ) : (
+                            row.miles ? `${row.miles} mi` : '—'
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow
+                      sx={{
+                        backgroundColor: theme.palette.mode === 'dark' ? 'rgba(25, 118, 210, 0.16)' : '#e3f2fd',
+                        '& td': { fontWeight: 700, borderTop: `2px solid ${theme.palette.primary.main}` },
+                      }}
+                    >
+                      <TableCell>Total</TableCell>
+                      <TableCell align="right" sx={{ color: 'primary.main' }}>
+                        {totalMiles.toFixed(1)} mi
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+
+                <Paper sx={{ p: 2, mt: 2, bgcolor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Rate per mile
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      ${PRICE_PER_MILE.toFixed(3)}
+                    </Typography>
+                  </Box>
+                  <Divider sx={{ my: 1 }} />
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      Travel reimbursement
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                      ${travelCost.toFixed(2)}
+                    </Typography>
+                  </Box>
+                </Paper>
+              </CardContent>
+            </Card>
+
             <Card sx={{ flex: 1, boxShadow: 2, ...readOnlyCardSx }}>
               <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -1498,6 +1618,10 @@ function RfidTimesheetPage() {
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Typography color="text.secondary">Gross pay</Typography>
                     <Typography sx={{ fontWeight: 600 }}>${grossPay.toFixed(2)}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography color="text.secondary">Travel ({totalMiles.toFixed(1)} mi)</Typography>
+                    <Typography sx={{ fontWeight: 600 }}>${travelCost.toFixed(2)}</Typography>
                   </Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Typography color="text.secondary">Receipts</Typography>
