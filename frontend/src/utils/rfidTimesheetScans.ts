@@ -268,6 +268,27 @@ export function isPayPeriodWorkday(day: string): boolean {
   return !PAY_PERIOD_WEEKEND_DAYS.includes(day as (typeof PAY_PERIOD_WEEKEND_DAYS)[number]);
 }
 
+export function sanitizeManualByDay(
+  manual: Record<string, RfidManualDayFlags>,
+  savedWorkHours: Array<{ day: string; in: string; out: string; breaks: string; note?: string }>,
+): Record<string, RfidManualDayFlags> {
+  const savedByDay = Object.fromEntries(savedWorkHours.map((r) => [r.day, r]));
+  const result: Record<string, RfidManualDayFlags> = {};
+
+  for (const [day, flags] of Object.entries(manual || {})) {
+    const saved = savedByDay[day];
+    const cleaned: RfidManualDayFlags = {};
+    if (flags.in && saved?.in && saved.in !== '0') cleaned.in = true;
+    if (flags.out && saved?.out && saved.out !== '0') cleaned.out = true;
+    if (flags.breaks && saved?.breaks && saved.breaks !== '0') cleaned.breaks = true;
+    const note = String(saved?.note ?? '').trim();
+    if (flags.note && note.length > 0) cleaned.note = true;
+    if (Object.keys(cleaned).length > 0) result[day] = cleaned;
+  }
+
+  return result;
+}
+
 export function inferManualFromSavedRows(
   rows: Array<{ day: string; in: string; out: string; breaks: string; note?: string }>,
   rfidByDay: Record<string, RfidDayClock>,
@@ -313,8 +334,25 @@ export function buildTimesheetRowsFromScans(
     note: '',
   }));
   const rfidByDay = buildRfidDayClocks(scanList, employee, period, profile);
-  const manual = inferManualFromSavedRows(savedWorkHours, rfidByDay, savedManual);
-  const merged = mergeRfidIntoWorkHours(baseRows, rfidByDay, manual);
+  const savedByDay = Object.fromEntries(savedWorkHours.map((r) => [r.day, r]));
+  let manual = sanitizeManualByDay(savedManual, savedWorkHours);
+  manual = inferManualFromSavedRows(savedWorkHours, rfidByDay, manual);
+  manual = sanitizeManualByDay(manual, savedWorkHours);
+
+  let merged = mergeRfidIntoWorkHours(baseRows, rfidByDay, manual);
+  merged = merged.map((row) => {
+    const flags = manual[row.day];
+    const saved = savedByDay[row.day];
+    if (!flags || !saved) return row;
+    return {
+      ...row,
+      in: flags.in ? String(saved.in) : row.in,
+      out: flags.out ? String(saved.out) : row.out,
+      breaks: flags.breaks ? String(saved.breaks) : row.breaks,
+      note: flags.note ? String(saved.note ?? '') : row.note,
+    };
+  });
+
   return { rows: merged, manual };
 }
 

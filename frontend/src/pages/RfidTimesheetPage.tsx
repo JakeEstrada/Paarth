@@ -47,6 +47,7 @@ import {
   buildTimesheetRowsFromScans,
   defaultShiftProfile,
   isPayPeriodWorkday,
+  sanitizeManualByDay,
   mergeRfidRegistries,
   payPeriodScanRangeIso,
   profileMapFromApi,
@@ -118,6 +119,31 @@ type WeekSheetData = {
   ratePerHour: string;
   manualByDay?: Record<string, RfidManualDayFlags>;
 };
+
+type PersistedSheetSnapshot = {
+  workHours: Array<{ day: string; in: string; out: string; breaks: string; note?: string }>;
+  manualByDay: Record<string, RfidManualDayFlags>;
+};
+
+function toPersistedWorkHours(rows: DayRow[]): PersistedSheetSnapshot['workHours'] {
+  return rows.map(({ day, in: inTime, out, breaks, note }) => ({
+    day,
+    in: inTime,
+    out,
+    breaks,
+    note,
+  }));
+}
+
+function snapshotPersistedSheet(
+  workHours: DayRow[],
+  manualByDay: Record<string, RfidManualDayFlags>,
+): PersistedSheetSnapshot {
+  return {
+    workHours: toPersistedWorkHours(workHours),
+    manualByDay: sanitizeManualByDay(manualByDay, toPersistedWorkHours(workHours)),
+  };
+}
 
 
 function sheetPayload(
@@ -353,11 +379,14 @@ function RfidTimesheetPage() {
   const [shiftBreak, setShiftBreak] = useState(String(defaultShiftProfile().breakMinutes));
 
   const manualByDayRef = useRef(manualByDay);
+  const workHoursRef = useRef(workHours);
   const scansRef = useRef(scans);
+  const persistedSheetRef = useRef<PersistedSheetSnapshot>({ workHours: [], manualByDay: {} });
   const isEditModeRef = useRef(isEditMode);
   const lastPersistedRef = useRef('');
   const sheetReadyRef = useRef(false);
   manualByDayRef.current = manualByDay;
+  workHoursRef.current = workHours;
   scansRef.current = scans;
   isEditModeRef.current = isEditMode;
 
@@ -452,6 +481,16 @@ function RfidTimesheetPage() {
         payload,
       );
       lastPersistedRef.current = JSON.stringify(payload);
+      persistedSheetRef.current = {
+        workHours: payload.workHours.map((row) => ({
+          day: row.day,
+          in: String(row.in),
+          out: String(row.out),
+          breaks: String(row.breaks),
+          note: String(row.note ?? ''),
+        })),
+        manualByDay: payload.manualByDay || {},
+      };
       if (!options?.quiet) {
         try {
           localStorage.removeItem(storageKey(employeeKey, periodId));
@@ -470,27 +509,6 @@ function RfidTimesheetPage() {
     });
     return res.data?.scans || [];
   }, []);
-
-  const applyRfidToRows = useCallback(
-    (
-      scanList: RfidScanRecord[],
-      employee: RfidEmployeeOption,
-      period: PayPeriod,
-      manual: Record<string, RfidManualDayFlags>,
-      profile: RfidEmployeeShiftProfile,
-      savedWorkHours: DayRow[] = [],
-    ) => {
-      return buildTimesheetRowsFromScans(
-        period,
-        scanList,
-        employee,
-        profile,
-        manual,
-        savedWorkHours,
-      );
-    },
-    [],
-  );
 
   const mergeSheetWithScans = useCallback(
     (
@@ -600,6 +618,7 @@ function RfidTimesheetPage() {
 
         setScans(scanList);
         const merged = mergeSheetWithScans(sheet, scanList, selectedEmployee, payPeriod, profile);
+        persistedSheetRef.current = snapshotPersistedSheet(sheet.workHours, sheet.manualByDay || {});
         setManualByDay(merged.manual);
         setWorkHours(merged.rows);
         setReceipts(sheet.receipts);
@@ -616,6 +635,31 @@ function RfidTimesheetPage() {
           ),
         );
         sheetReadyRef.current = true;
+
+        if (
+          !cancelled &&
+          !isEditModeRef.current &&
+          remoteSheet &&
+          JSON.stringify(sheet.manualByDay || {}) !== JSON.stringify(merged.manual)
+        ) {
+          persistedSheetRef.current = {
+            ...persistedSheetRef.current,
+            manualByDay: merged.manual,
+          };
+          void persistTimesheet(
+            selectedEmployee.id,
+            payPeriod.id,
+            sheetPayload(
+              sheet.workHours,
+              sheet.receipts,
+              sheet.travelMiles,
+              sheet.additionalHours,
+              sheet.ratePerHour || profile.ratePerHour || '',
+              merged.manual,
+            ),
+            { quiet: true },
+          ).catch((error) => console.error('Failed to heal timesheet manual flags:', error));
+        }
 
         if (timesheetLoadFailed) {
           toast.error('Could not load saved adjustments — showing RFID scan hours');
@@ -653,17 +697,19 @@ function RfidTimesheetPage() {
       period: PayPeriod,
       profile: RfidEmployeeShiftProfile,
     ) => {
-      const merged = applyRfidToRows(
+      const persisted = persistedSheetRef.current;
+      const merged = buildTimesheetRowsFromScans(
+        period,
         scanList,
         employee,
-        period,
-        manualByDayRef.current,
         profile,
+        persisted.manualByDay,
+        persisted.workHours,
       );
       setManualByDay(merged.manual);
       setWorkHours(merged.rows);
     },
-    [applyRfidToRows],
+    [],
   );
 
   const handleRealtimeScan = useCallback(
@@ -724,6 +770,16 @@ function RfidTimesheetPage() {
         manualByDay: remote.manualByDay || {},
       };
 
+      const incomingPayload = sheetPayload(
+        sheet.workHours,
+        sheet.receipts,
+        sheet.travelMiles,
+        sheet.additionalHours,
+        sheet.ratePerHour,
+        sheet.manualByDay,
+      );
+      if (JSON.stringify(incomingPayload) === lastPersistedRef.current) return;
+
       const merged = mergeSheetWithScans(
         sheet,
         scansRef.current,
@@ -731,6 +787,7 @@ function RfidTimesheetPage() {
         payPeriod,
         activeShiftProfile,
       );
+      persistedSheetRef.current = snapshotPersistedSheet(sheet.workHours, sheet.manualByDay || {});
       setManualByDay(merged.manual);
       setReceipts(sheet.receipts);
       setTravelMiles(sheet.travelMiles);
@@ -789,7 +846,15 @@ function RfidTimesheetPage() {
 
   useEffect(() => {
     if (!selectedEmployee || !isCurrentWeek || !isEditMode || !sheetReadyRef.current) return undefined;
-    const payload = sheetPayload(workHours, receipts, travelMiles, additionalHours, ratePerHour, manualByDay);
+    const cleanedManual = sanitizeManualByDay(manualByDay, workHours);
+    const payload = sheetPayload(
+      workHours,
+      receipts,
+      travelMiles,
+      additionalHours,
+      ratePerHour,
+      cleanedManual,
+    );
     const serialized = JSON.stringify(payload);
     if (serialized === lastPersistedRef.current) return undefined;
 
@@ -865,7 +930,6 @@ function RfidTimesheetPage() {
     const nextManual: Record<string, RfidManualDayFlags> = {};
     const nextRows = workHours.map((row) => {
       if (!isPayPeriodWorkday(row.day)) {
-        nextManual[row.day] = { in: true, out: true, breaks: true, note: true };
         return { ...row, in: '0', out: '0', breaks: '0', note: '' };
       }
       nextManual[row.day] = { in: true, out: true, breaks: true, note: true };
@@ -877,7 +941,8 @@ function RfidTimesheetPage() {
         note: '',
       };
     });
-    setManualByDay(nextManual);
+    const cleanedManual = sanitizeManualByDay(nextManual, nextRows);
+    setManualByDay(cleanedManual);
     setWorkHours(nextRows);
     toast.success(`Applied shift (${profile.shiftIn}–${profile.shiftOut}) Mon–Fri; Sat/Sun cleared`);
   };
@@ -885,12 +950,13 @@ function RfidTimesheetPage() {
   const handleClearWeekHours = () => {
     if (!canEdit || !selectedEmployee) return;
     setManualByDay({});
-    const merged = applyRfidToRows(
+    const merged = buildTimesheetRowsFromScans(
+      payPeriod,
       scans,
       selectedEmployee,
-      payPeriod,
-      {},
       activeShiftProfile,
+      {},
+      [],
     );
     setWorkHours(merged.rows);
     setManualByDay(merged.manual);
@@ -930,9 +996,19 @@ function RfidTimesheetPage() {
 
   const handleExitEditMode = () => {
     if (!selectedEmployee) return;
-    const payload = sheetPayload(workHours, receipts, travelMiles, additionalHours, ratePerHour, manualByDay);
+    const cleanedManual = sanitizeManualByDay(manualByDay, workHours);
+    const payload = sheetPayload(
+      workHours,
+      receipts,
+      travelMiles,
+      additionalHours,
+      ratePerHour,
+      cleanedManual,
+    );
     void persistTimesheet(selectedEmployee.id, payPeriod.id, payload)
       .then(() => {
+        persistedSheetRef.current = snapshotPersistedSheet(workHours, cleanedManual);
+        setManualByDay(cleanedManual);
         toast.success('Timesheet saved');
         setIsEditMode(false);
       })

@@ -211,6 +211,24 @@ function buildRfidDayClocks(scans, employee, period, shiftProfile, now = new Dat
   return result;
 }
 
+function sanitizeManualByDay(manual, workHours) {
+  const savedByDay = Object.fromEntries((workHours || []).map((r) => [r.day, r]));
+  const result = {};
+
+  for (const [day, flags] of Object.entries(manual || {})) {
+    const saved = savedByDay[day];
+    const cleaned = {};
+    if (flags.in && saved?.in && saved.in !== '0') cleaned.in = true;
+    if (flags.out && saved?.out && saved.out !== '0') cleaned.out = true;
+    if (flags.breaks && saved?.breaks && saved.breaks !== '0') cleaned.breaks = true;
+    const note = String(saved?.note ?? '').trim();
+    if (flags.note && note.length > 0) cleaned.note = true;
+    if (Object.keys(cleaned).length > 0) result[day] = cleaned;
+  }
+
+  return result;
+}
+
 function mergeRfidIntoWorkHours(rows, rfidByDay, manualByDay) {
   return rows.map((row) => {
     const rfid = rfidByDay[row.day];
@@ -279,8 +297,10 @@ async function computeWeekTotalHours(displayName, options = {}) {
     };
   });
 
-  const manualByDay =
-    timesheet?.manualByDay && typeof timesheet.manualByDay === 'object' ? timesheet.manualByDay : {};
+  const manualByDay = sanitizeManualByDay(
+    timesheet?.manualByDay && typeof timesheet.manualByDay === 'object' ? timesheet.manualByDay : {},
+    baseRows,
+  );
   const rfidByDay = buildRfidDayClocks(scans, employee, period, shiftProfile, now);
   const rows = mergeRfidIntoWorkHours(baseRows, rfidByDay, manualByDay);
 
@@ -304,4 +324,5 @@ async function computeWeekTotalHours(displayName, options = {}) {
 module.exports = {
   computeWeekTotalHours,
   getPayPeriodForDate,
+  sanitizeManualByDay,
 };

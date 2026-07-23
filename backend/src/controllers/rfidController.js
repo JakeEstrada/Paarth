@@ -13,7 +13,7 @@ const {
   publishRfidEmployeeProfileUpdated,
 } = require('../services/eventBus');
 const { getTenantContext } = require('../middleware/tenantContext');
-const { computeWeekTotalHours } = require('../services/rfidWeekHours');
+const { computeWeekTotalHours, sanitizeManualByDay } = require('../services/rfidWeekHours');
 
 function normalizeUid(raw) {
   const s = String(raw || '').trim();
@@ -420,8 +420,10 @@ async function upsertTimesheetWeek(req, res) {
     const additionalHours = Array.isArray(req.body?.additionalHours) ? req.body.additionalHours : [];
     const travelMiles = Array.isArray(req.body?.travelMiles) ? req.body.travelMiles : [];
     const ratePerHour = String(req.body?.ratePerHour ?? '').trim();
-    const manualByDay =
-      req.body?.manualByDay && typeof req.body.manualByDay === 'object' ? req.body.manualByDay : {};
+    const manualByDay = sanitizeManualByDay(
+      req.body?.manualByDay && typeof req.body.manualByDay === 'object' ? req.body.manualByDay : {},
+      workHours,
+    );
 
     const timesheet = await RfidTimesheetWeek.findOneAndUpdate(
       { employeeKey, periodId },
