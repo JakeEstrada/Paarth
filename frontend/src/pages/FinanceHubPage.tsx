@@ -110,14 +110,14 @@ function collectDescriptionsFromEstimateSnapshot(est) {
 
 const TAB_DEFS = [
   {
-    key: 'register',
-    label: 'Register (Balance Sheet)',
-    subtitle: 'Track cash movement, balances, and account-level snapshots.',
-  },
-  {
     key: 'deposits',
     label: 'Deposits',
     subtitle: 'Incoming deposits and credits only — newest first.',
+  },
+  {
+    key: 'register',
+    label: 'Register (Balance Sheet)',
+    subtitle: 'Track cash movement, balances, and account-level snapshots.',
   },
   {
     key: 'estimates',
@@ -139,8 +139,9 @@ const TAB_DEFS = [
 const REMOVED_TAB_KEYS = new Set(['contracts', 'invoices']);
 
 function normalizeFinanceTab(tab) {
-  if (!tab || REMOVED_TAB_KEYS.has(tab)) return 'register';
-  return TAB_DEFS.some((x) => x.key === tab) ? tab : 'register';
+  const defaultTab = TAB_DEFS[0].key;
+  if (!tab || REMOVED_TAB_KEYS.has(tab)) return defaultTab;
+  return TAB_DEFS.some((x) => x.key === tab) ? tab : defaultTab;
 }
 
 /** Legacy browser snapshot key kept for one-time cleanup migration. */
@@ -1709,7 +1710,7 @@ function FinanceHubPage() {
           Finance Hub
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          One workspace for register, deposits, estimates, change orders, and payment schedules.
+          One workspace for deposits, register, estimates, change orders, and payment schedules.
         </Typography>
       </Box>
 
@@ -1728,23 +1729,23 @@ function FinanceHubPage() {
         </Tabs>
       </Card>
 
-      {activeTab === 'register' ? (
-            <Card>
-              <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
-                <RegisterLedgerSection
-                  active
-                  variant="register"
-                  headerTitle={activeSection.label}
-                  headerSubtitle={activeSection.subtitle}
-                />
-              </CardContent>
-            </Card>
-          ) : activeTab === 'deposits' ? (
+      {activeTab === 'deposits' ? (
             <Card>
               <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
                 <RegisterLedgerSection
                   active
                   variant="deposits"
+                  headerTitle={activeSection.label}
+                  headerSubtitle={activeSection.subtitle}
+                />
+              </CardContent>
+            </Card>
+          ) : activeTab === 'register' ? (
+            <Card>
+              <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+                <RegisterLedgerSection
+                  active
+                  variant="register"
                   headerTitle={activeSection.label}
                   headerSubtitle={activeSection.subtitle}
                 />
