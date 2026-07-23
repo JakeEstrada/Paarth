@@ -74,6 +74,7 @@ import {
 
 const STORAGE_PREFIX = 'rfidTimesheetWeek';
 const MIGRATED_PREFIX = 'rfidTimesheetMigrated';
+const LAST_EMPLOYEE_KEY = 'rfidTimesheetLastEmployee';
 /** IRS-style mileage rate (matches Payroll page). */
 const PRICE_PER_MILE = 0.725;
 
@@ -185,6 +186,23 @@ function storageKey(employeeId: string, periodId: string) {
 
 function migrationKey(employeeId: string, periodId: string) {
   return `${MIGRATED_PREFIX}:${employeeId}:${periodId}`;
+}
+
+function loadLastEmployeeId(): string | null {
+  try {
+    const id = localStorage.getItem(LAST_EMPLOYEE_KEY);
+    return id?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastEmployeeId(employeeId: string) {
+  try {
+    localStorage.setItem(LAST_EMPLOYEE_KEY, employeeId);
+  } catch {
+    /* ignore */
+  }
 }
 
 function sheetFromRemotePayload(
@@ -447,8 +465,15 @@ function RfidTimesheetPage() {
       setEmployees(options);
       setEmployeeProfiles(profileMapFromApi(profilesRes.data?.profiles || []));
       setSelectedEmployee((prev) => {
-        if (!prev) return options[0] ?? null;
-        return options.find((e) => e.id === prev.id) ?? options[0] ?? null;
+        if (prev) {
+          return options.find((e) => e.id === prev.id) ?? options[0] ?? null;
+        }
+        const lastId = loadLastEmployeeId();
+        if (lastId) {
+          const remembered = options.find((e) => e.id === lastId);
+          if (remembered) return remembered;
+        }
+        return options[0] ?? null;
       });
     } catch (error) {
       console.error('Failed to load RFID employees:', error);
@@ -1085,7 +1110,10 @@ function RfidTimesheetPage() {
               options={employees}
               value={selectedEmployee}
               loading={loadingEmployees}
-              onChange={(_, value) => setSelectedEmployee(value)}
+              onChange={(_, value) => {
+                setSelectedEmployee(value);
+                if (value?.id) saveLastEmployeeId(value.id);
+              }}
               getOptionLabel={(option) => option.name}
               isOptionEqualToValue={(a, b) => a.id === b.id}
               renderInput={(params) => (
