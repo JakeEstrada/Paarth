@@ -18,8 +18,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  ToggleButton,
-  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -67,14 +65,24 @@ function money(n) {
   return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function RegisterLedgerSection({ active, headerTitle, headerSubtitle }) {
+function isDepositTransaction(transaction) {
+  return Number(transaction?.amount || 0) < 0;
+}
+
+export default function RegisterLedgerSection({
+  active,
+  headerTitle,
+  headerSubtitle,
+  variant = 'register',
+}) {
+  const depositsOnly = variant === 'deposits';
   const showFinanceHeader = Boolean(headerTitle);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [accounts, setAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [accountId, setAccountId] = useState('');
-  const [sort, setSort] = useState('desc');
+  const sort = 'desc';
   const [days, setDays] = useState(90);
   const [registerSync, setRegisterSync] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -158,18 +166,24 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
+  const visibleTransactions = useMemo(() => {
+    if (!depositsOnly) return transactions;
+    return transactions.filter(isDepositTransaction);
+  }, [transactions, depositsOnly]);
+
   const rows = useMemo(() => {
     let running = 0;
-    return transactions.map((t) => {
+    return visibleTransactions.map((t) => {
       const signed = -Number(t.amount || 0); // Plaid positive = outflow
       running += signed;
       return {
         ...t,
         signed,
         running,
+        depositAmount: isDepositTransaction(t) ? Math.abs(Number(t.amount || 0)) : 0,
       };
     });
-  }, [transactions]);
+  }, [visibleTransactions]);
 
   const filteredRows = useMemo(() => {
     const q = String(searchTerm || '').trim().toLowerCase();
@@ -184,13 +198,16 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
         money(amount),
         money(debit),
         money(credit),
-        money(r.running),
+        money(r.depositAmount),
+        depositsOnly ? '' : money(r.running),
       ]
         .map((v) => String(v || '').toLowerCase())
         .join(' ');
       return haystack.includes(q);
     });
-  }, [rows, searchTerm]);
+  }, [rows, searchTerm, depositsOnly]);
+
+  const tableColumnCount = depositsOnly ? 4 : 6;
 
   if (!active) return null;
 
@@ -349,7 +366,7 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
             </Box>
           </Box>
 
-          {selectedAccount ? (
+          {selectedAccount && !depositsOnly ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
               <Paper
                 elevation={0}
@@ -426,23 +443,11 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
             </Select>
           </FormControl>
 
-          <ToggleButtonGroup
-            size="small"
-            value={sort}
-            exclusive
-            onChange={(_, v) => v && setSort(v)}
-            aria-label="transaction sort order"
-            sx={{ alignSelf: { xs: 'stretch', sm: 'center' } }}
-          >
-            <ToggleButton value="asc">Oldest first</ToggleButton>
-            <ToggleButton value="desc">Newest first</ToggleButton>
-          </ToggleButtonGroup>
-
           <TextField
             size="small"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search date, description, amount"
+            placeholder={depositsOnly ? 'Search date, description, deposit amount' : 'Search date, description, amount'}
             sx={{ minWidth: { xs: '100%', sm: 260 } }}
           />
 
@@ -529,23 +534,35 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
                 <TableCell>Date</TableCell>
                 <TableCell>Description</TableCell>
                 <TableCell>Account</TableCell>
-                <TableCell align="right">Debit</TableCell>
-                <TableCell align="right">Credit</TableCell>
-                <TableCell align="right">Running Balance</TableCell>
+                {depositsOnly ? (
+                  <TableCell align="right">Deposit</TableCell>
+                ) : (
+                  <>
+                    <TableCell align="right">Debit</TableCell>
+                    <TableCell align="right">Credit</TableCell>
+                    <TableCell align="right">Running Balance</TableCell>
+                  </>
+                )}
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6}>
-                    <Typography variant="body2" color="text.secondary">Loading register transactions...</Typography>
+                  <TableCell colSpan={tableColumnCount}>
+                    <Typography variant="body2" color="text.secondary">
+                      {depositsOnly ? 'Loading deposits...' : 'Loading register transactions...'}
+                    </Typography>
                   </TableCell>
                 </TableRow>
               ) : filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6}>
+                  <TableCell colSpan={tableColumnCount}>
                     <Typography variant="body2" color="text.secondary">
-                      {searchTerm ? 'No matching transactions for this search.' : 'No transactions in this date window.'}
+                      {searchTerm
+                        ? 'No matching transactions for this search.'
+                        : depositsOnly
+                          ? 'No deposits in this date window.'
+                          : 'No transactions in this date window.'}
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -579,9 +596,15 @@ export default function RegisterLedgerSection({ active, headerTitle, headerSubti
                         {r.pending ? <Typography variant="caption" color="warning.main">Pending</Typography> : null}
                       </TableCell>
                       <TableCell>{acct?.name || acct?.official_name || '—'}</TableCell>
-                      <TableCell align="right">{debit ? `$${money(debit)}` : '—'}</TableCell>
-                      <TableCell align="right">{credit ? `$${money(credit)}` : '—'}</TableCell>
-                      <TableCell align="right">${money(r.running)}</TableCell>
+                      {depositsOnly ? (
+                        <TableCell align="right">${money(r.depositAmount)}</TableCell>
+                      ) : (
+                        <>
+                          <TableCell align="right">{debit ? `$${money(debit)}` : '—'}</TableCell>
+                          <TableCell align="right">{credit ? `$${money(credit)}` : '—'}</TableCell>
+                          <TableCell align="right">${money(r.running)}</TableCell>
+                        </>
+                      )}
                     </TableRow>
                   );
                 })

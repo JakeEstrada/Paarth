@@ -115,6 +115,11 @@ const TAB_DEFS = [
     subtitle: 'Track cash movement, balances, and account-level snapshots.',
   },
   {
+    key: 'deposits',
+    label: 'Deposits',
+    subtitle: 'Incoming deposits and credits only — newest first.',
+  },
+  {
     key: 'estimates',
     label: 'Estimates',
     subtitle: 'Create and review estimate documents.',
@@ -1704,7 +1709,7 @@ function FinanceHubPage() {
           Finance Hub
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          One workspace for register, estimates, change orders, and payment schedules.
+          One workspace for register, deposits, estimates, change orders, and payment schedules.
         </Typography>
       </Box>
 
@@ -1728,6 +1733,18 @@ function FinanceHubPage() {
               <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
                 <RegisterLedgerSection
                   active
+                  variant="register"
+                  headerTitle={activeSection.label}
+                  headerSubtitle={activeSection.subtitle}
+                />
+              </CardContent>
+            </Card>
+          ) : activeTab === 'deposits' ? (
+            <Card>
+              <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+                <RegisterLedgerSection
+                  active
+                  variant="deposits"
                   headerTitle={activeSection.label}
                   headerSubtitle={activeSection.subtitle}
                 />
