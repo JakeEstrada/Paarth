@@ -42,9 +42,9 @@ import api from '../utils/axios';
 import { useAuth } from '../context/AuthContext';
 import { useSocketConnectionStatus, useSocketSubscription } from '../hooks/useSocketSubscription';
 import {
-  buildRfidDayClocks,
+  buildTimesheetRowsFromScans,
   defaultShiftProfile,
-  mergeRfidIntoWorkHours,
+  isPayPeriodWorkday,
   mergeRfidRegistries,
   payPeriodScanRangeIso,
   profileMapFromApi,
@@ -70,6 +70,7 @@ import {
 } from '../utils/payPeriod';
 
 const STORAGE_PREFIX = 'rfidTimesheetWeek';
+const MIGRATED_PREFIX = 'rfidTimesheetMigrated';
 
 const NO_NUMBER_SPINNER_SX = {
   '& input[type=number]': { MozAppearance: 'textfield' },
@@ -142,6 +143,48 @@ function newAdditionalHoursRow(): AdditionalHoursRow {
 
 function storageKey(employeeId: string, periodId: string) {
   return `${STORAGE_PREFIX}:${employeeId}:${periodId}`;
+}
+
+function migrationKey(employeeId: string, periodId: string) {
+  return `${MIGRATED_PREFIX}:${employeeId}:${periodId}`;
+}
+
+function sheetFromRemotePayload(
+  remote: RfidTimesheetWeekPayload,
+  period: PayPeriod,
+  profile: RfidEmployeeShiftProfile,
+): WeekSheetData {
+  return {
+    workHours: defaultWorkHours(period).map((d) => {
+      const saved = (remote.workHours || []).find((r) => r.day === d.day);
+      return {
+        ...d,
+        in: String(saved?.in ?? d.in),
+        out: String(saved?.out ?? d.out),
+        breaks: String(saved?.breaks ?? d.breaks),
+        scanCount: Number(saved?.scanCount) || 0,
+        note: String(saved?.note ?? ''),
+      };
+    }),
+    receipts: remote.receipts || [],
+    additionalHours: (remote.additionalHours || []).map((row) => ({
+      id: row.id || newAdditionalHoursRow().id,
+      description: String(row.description ?? ''),
+      hours: String(row.hours ?? ''),
+    })),
+    ratePerHour: String(remote.ratePerHour ?? profile.ratePerHour ?? ''),
+    manualByDay: remote.manualByDay || {},
+  };
+}
+
+function localSheetHasData(sheet: WeekSheetData): boolean {
+  return (
+    sheet.workHours.some((r) => r.in !== '0' || r.out !== '0') ||
+    sheet.receipts.length > 0 ||
+    sheet.additionalHours.length > 0 ||
+    Boolean(sheet.ratePerHour) ||
+    Object.keys(sheet.manualByDay || {}).length > 0
+  );
 }
 
 function defaultWorkHours(period: PayPeriod): DayRow[] {
@@ -283,6 +326,7 @@ function RfidTimesheetPage() {
   const scansRef = useRef(scans);
   const isEditModeRef = useRef(isEditMode);
   const lastPersistedRef = useRef('');
+  const sheetReadyRef = useRef(false);
   manualByDayRef.current = manualByDay;
   scansRef.current = scans;
   isEditModeRef.current = isEditMode;
@@ -358,14 +402,10 @@ function RfidTimesheetPage() {
   }, []);
 
   const fetchTimesheet = useCallback(async (employeeKey: string, periodId: string) => {
-    try {
-      const res = await api.get<{ timesheet: RfidTimesheetWeekPayload | null }>(
-        `/rfid/timesheets/${encodeURIComponent(employeeKey)}/${encodeURIComponent(periodId)}`,
-      );
-      return res.data?.timesheet;
-    } catch {
-      return null;
-    }
+    const res = await api.get<{ timesheet: RfidTimesheetWeekPayload | null }>(
+      `/rfid/timesheets/${encodeURIComponent(employeeKey)}/${encodeURIComponent(periodId)}`,
+    );
+    return res.data?.timesheet ?? null;
   }, []);
 
   const persistTimesheet = useCallback(
@@ -373,16 +413,19 @@ function RfidTimesheetPage() {
       employeeKey: string,
       periodId: string,
       payload: RfidTimesheetWeekPayload,
+      options?: { quiet?: boolean },
     ) => {
-      try {
-        await api.put(
-          `/rfid/timesheets/${encodeURIComponent(employeeKey)}/${encodeURIComponent(periodId)}`,
-          payload,
-        );
-      } catch (error) {
-        console.error('Failed to save timesheet:', error);
-        saveWeekSheet(employeeKey, periodId, payload);
-        toast.error('Could not sync timesheet to server — saved locally');
+      await api.put(
+        `/rfid/timesheets/${encodeURIComponent(employeeKey)}/${encodeURIComponent(periodId)}`,
+        payload,
+      );
+      lastPersistedRef.current = JSON.stringify(payload);
+      if (!options?.quiet) {
+        try {
+          localStorage.removeItem(storageKey(employeeKey, periodId));
+        } catch {
+          /* ignore */
+        }
       }
     },
     [],
@@ -398,15 +441,21 @@ function RfidTimesheetPage() {
 
   const applyRfidToRows = useCallback(
     (
-      baseRows: DayRow[],
       scanList: RfidScanRecord[],
       employee: RfidEmployeeOption,
       period: PayPeriod,
       manual: Record<string, RfidManualDayFlags>,
       profile: RfidEmployeeShiftProfile,
+      savedWorkHours: DayRow[] = [],
     ) => {
-      const rfidByDay = buildRfidDayClocks(scanList, employee, period, profile);
-      return mergeRfidIntoWorkHours(baseRows, rfidByDay, manual);
+      return buildTimesheetRowsFromScans(
+        period,
+        scanList,
+        employee,
+        profile,
+        manual,
+        savedWorkHours,
+      );
     },
     [],
   );
@@ -419,12 +468,16 @@ function RfidTimesheetPage() {
       period: PayPeriod,
       profile: RfidEmployeeShiftProfile,
     ) => {
-      const manual = sheet.manualByDay || {};
-      const baseRows =
-        sheet.workHours.length > 0 ? sheet.workHours : defaultWorkHours(period);
-      return applyRfidToRows(baseRows, scanList, employee, period, manual, profile);
+      return buildTimesheetRowsFromScans(
+        period,
+        scanList,
+        employee,
+        profile,
+        sheet.manualByDay || {},
+        sheet.workHours,
+      );
     },
-    [applyRfidToRows],
+    [],
   );
 
   useEffect(() => {
@@ -435,6 +488,7 @@ function RfidTimesheetPage() {
     if (!selectedEmployee) return undefined;
     setIsEditMode(false);
     lastPersistedRef.current = '';
+    sheetReadyRef.current = false;
 
     let cancelled = false;
 
@@ -443,55 +497,101 @@ function RfidTimesheetPage() {
       const profile =
         employeeProfiles[selectedEmployee.id] ||
         defaultShiftProfile();
-      const remoteSheet = await fetchTimesheet(selectedEmployee.id, payPeriod.id);
-      const localSheet = loadWeekSheet(selectedEmployee.id, payPeriod);
-      const sheet: WeekSheetData = remoteSheet
-        ? {
-            workHours: defaultWorkHours(payPeriod).map((d) => {
-              const saved = (remoteSheet.workHours || []).find((r) => r.day === d.day);
-              return {
-                ...d,
-                in: String(saved?.in ?? d.in),
-                out: String(saved?.out ?? d.out),
-                breaks: String(saved?.breaks ?? d.breaks),
-                scanCount: Number(saved?.scanCount) || 0,
-                note: String(saved?.note ?? ''),
-              };
-            }),
-            receipts: remoteSheet.receipts || [],
-            additionalHours: (remoteSheet.additionalHours || []).map((row) => ({
-              id: row.id || newAdditionalHoursRow().id,
-              description: String(row.description ?? ''),
-              hours: String(row.hours ?? ''),
-            })),
-            ratePerHour: String(remoteSheet.ratePerHour ?? profile.ratePerHour ?? ''),
-            manualByDay: remoteSheet.manualByDay || {},
-          }
-        : localSheet;
 
-      const manual = sheet.manualByDay || {};
-      setShiftIn(profile.shiftIn);
-      setShiftOut(profile.shiftOut);
-      setShiftBreak(String(profile.breakMinutes));
-      setRatePerHour(sheet.ratePerHour || profile.ratePerHour || '');
+      let sheet: WeekSheetData = {
+        workHours: defaultWorkHours(payPeriod),
+        receipts: [],
+        additionalHours: [],
+        ratePerHour: profile.ratePerHour || '',
+        manualByDay: {},
+      };
+
+      let timesheetLoadFailed = false;
 
       try {
+        let remoteSheet: RfidTimesheetWeekPayload | null = null;
+        try {
+          remoteSheet = await fetchTimesheet(selectedEmployee.id, payPeriod.id);
+        } catch (error) {
+          timesheetLoadFailed = true;
+          console.error('Failed to load saved timesheet:', error);
+        }
+
+        const migratedFlag = localStorage.getItem(
+          migrationKey(selectedEmployee.id, payPeriod.id),
+        );
+
+        if (!remoteSheet) {
+          const localSheet = loadWeekSheet(selectedEmployee.id, payPeriod);
+          if (localSheetHasData(localSheet) && !migratedFlag) {
+            try {
+              const migratePayload = sheetPayload(
+                localSheet.workHours,
+                localSheet.receipts,
+                localSheet.additionalHours,
+                localSheet.ratePerHour,
+                localSheet.manualByDay || {},
+              );
+              await persistTimesheet(
+                selectedEmployee.id,
+                payPeriod.id,
+                migratePayload,
+                { quiet: true },
+              );
+              localStorage.setItem(
+                migrationKey(selectedEmployee.id, payPeriod.id),
+                '1',
+              );
+              remoteSheet = await fetchTimesheet(selectedEmployee.id, payPeriod.id);
+            } catch (error) {
+              console.error('Timesheet migration failed:', error);
+              sheet = localSheet;
+            }
+          } else if (localSheetHasData(localSheet) && migratedFlag) {
+            sheet = localSheet;
+          }
+        }
+
+        if (remoteSheet) {
+          sheet = sheetFromRemotePayload(remoteSheet, payPeriod, profile);
+        }
+
+        setShiftIn(profile.shiftIn);
+        setShiftOut(profile.shiftOut);
+        setShiftBreak(String(profile.breakMinutes));
+        setRatePerHour(sheet.ratePerHour || profile.ratePerHour || '');
+
         const scanList = await fetchScans(payPeriod);
         if (cancelled) return;
 
         setScans(scanList);
-        setManualByDay(manual);
-        setWorkHours(mergeSheetWithScans(sheet, scanList, selectedEmployee, payPeriod, profile));
+        const merged = mergeSheetWithScans(sheet, scanList, selectedEmployee, payPeriod, profile);
+        setManualByDay(merged.manual);
+        setWorkHours(merged.rows);
         setReceipts(sheet.receipts);
         setAdditionalHours(sheet.additionalHours);
+        lastPersistedRef.current = JSON.stringify(
+          sheetPayload(
+            merged.rows,
+            sheet.receipts,
+            sheet.additionalHours,
+            sheet.ratePerHour || profile.ratePerHour || '',
+            merged.manual,
+          ),
+        );
+        sheetReadyRef.current = true;
+
+        if (timesheetLoadFailed) {
+          toast.error('Could not load saved adjustments — showing RFID scan hours');
+        }
       } catch (error) {
-        console.error('Failed to load RFID scans:', error);
+        console.error('Failed to load RFID timesheet:', error);
         if (!cancelled) {
-          setManualByDay(manual);
-          setWorkHours(sheet.workHours);
-          setReceipts(sheet.receipts);
-          setAdditionalHours(sheet.additionalHours);
-          toast.error('Could not load RFID scans for this pay period');
+          toast.error(
+            isAxiosError(error)
+              ? error.response?.data?.error || 'Could not load RFID scans for this pay period'
+              : 'Could not load RFID scans for this pay period',
+          );
         }
       } finally {
         if (!cancelled) setLoadingScans(false);
@@ -517,15 +617,22 @@ function RfidTimesheetPage() {
       period: PayPeriod,
       profile: RfidEmployeeShiftProfile,
     ) => {
-      setWorkHours((prev) =>
-        applyRfidToRows(prev, scanList, employee, period, manualByDayRef.current, profile),
+      const merged = applyRfidToRows(
+        scanList,
+        employee,
+        period,
+        manualByDayRef.current,
+        profile,
       );
+      setManualByDay(merged.manual);
+      setWorkHours(merged.rows);
     },
     [applyRfidToRows],
   );
 
   const handleRealtimeScan = useCallback(
     (payload: unknown) => {
+      if (isEditModeRef.current) return;
       const scan = (payload as { scan?: RfidScanRecord })?.scan;
       if (!scan?._id || !selectedEmployee) return;
       if (!scanMatchesEmployee(scan, selectedEmployee)) return;
@@ -558,7 +665,6 @@ function RfidTimesheetPage() {
       const remote = data.timesheet;
       if (!remote) return;
 
-      const manual = remote.manualByDay || {};
       const sheet: WeekSheetData = {
         workHours: defaultWorkHours(payPeriod).map((d) => {
           const saved = (remote.workHours || []).find((r) => r.day === d.day);
@@ -578,14 +684,21 @@ function RfidTimesheetPage() {
           hours: String(row.hours ?? ''),
         })),
         ratePerHour: String(remote.ratePerHour ?? ''),
-        manualByDay: manual,
+        manualByDay: remote.manualByDay || {},
       };
 
-      setManualByDay(manual);
+      const merged = mergeSheetWithScans(
+        sheet,
+        scansRef.current,
+        selectedEmployee,
+        payPeriod,
+        activeShiftProfile,
+      );
+      setManualByDay(merged.manual);
       setReceipts(sheet.receipts);
       setAdditionalHours(sheet.additionalHours);
       setRatePerHour(sheet.ratePerHour);
-      setWorkHours(mergeSheetWithScans(sheet, scansRef.current, selectedEmployee, payPeriod, activeShiftProfile));
+      setWorkHours(merged.rows);
     },
     [selectedEmployee, payPeriod, mergeSheetWithScans, activeShiftProfile],
   );
@@ -628,6 +741,7 @@ function RfidTimesheetPage() {
   useEffect(() => {
     if (!selectedEmployee) return undefined;
     const tick = () => {
+      if (isEditModeRef.current) return;
       recomputeFromScans(scansRef.current, selectedEmployee, payPeriod, activeShiftProfile);
     };
     tick();
@@ -636,22 +750,24 @@ function RfidTimesheetPage() {
   }, [selectedEmployee, payPeriod, activeShiftProfile, recomputeFromScans]);
 
   useEffect(() => {
-    if (!selectedEmployee || !isCurrentWeek) return undefined;
+    if (!selectedEmployee || !isCurrentWeek || !isEditMode || !sheetReadyRef.current) return undefined;
     const payload = sheetPayload(workHours, receipts, additionalHours, ratePerHour, manualByDay);
     const serialized = JSON.stringify(payload);
     if (serialized === lastPersistedRef.current) return undefined;
 
-    saveWeekSheet(selectedEmployee.id, payPeriod.id, payload);
     const timer = window.setTimeout(() => {
-      void persistTimesheet(selectedEmployee.id, payPeriod.id, payload).then(() => {
-        lastPersistedRef.current = serialized;
-      });
-    }, 400);
+      void persistTimesheet(selectedEmployee.id, payPeriod.id, payload, { quiet: true }).catch(
+        (error) => {
+          console.error('Failed to save timesheet while editing:', error);
+        },
+      );
+    }, 800);
     return () => window.clearTimeout(timer);
   }, [
     selectedEmployee,
     payPeriod.id,
     isCurrentWeek,
+    isEditMode,
     workHours,
     receipts,
     additionalHours,
@@ -698,42 +814,38 @@ function RfidTimesheetPage() {
   const handleApplyDayShift = () => {
     if (!canEdit || !selectedEmployee) return;
     const profile = activeShiftProfile;
-    const allManual = Object.fromEntries(
-      PAY_PERIOD_DAYS.map((day) => [day, { in: true, out: true, breaks: true, note: true }]),
-    );
-    setManualByDay(allManual);
-    setWorkHours((prev) =>
-      prev.map((row) => ({
+    const nextManual: Record<string, RfidManualDayFlags> = {};
+    const nextRows = workHours.map((row) => {
+      if (!isPayPeriodWorkday(row.day)) {
+        nextManual[row.day] = { in: true, out: true, breaks: true, note: true };
+        return { ...row, in: '0', out: '0', breaks: '0', note: '' };
+      }
+      nextManual[row.day] = { in: true, out: true, breaks: true, note: true };
+      return {
         ...row,
         in: profile.shiftIn,
         out: profile.shiftOut,
         breaks: String(profile.breakMinutes),
         note: '',
-      })),
-    );
-    toast.success(`Applied shift (${profile.shiftIn}–${profile.shiftOut}) to all days`);
+      };
+    });
+    setManualByDay(nextManual);
+    setWorkHours(nextRows);
+    toast.success(`Applied shift (${profile.shiftIn}–${profile.shiftOut}) Mon–Fri; Sat/Sun cleared`);
   };
 
   const handleClearWeekHours = () => {
     if (!canEdit || !selectedEmployee) return;
     setManualByDay({});
-    setWorkHours((prev) => {
-      const cleared = prev.map((row) => ({
-        ...row,
-        in: '0',
-        out: '0',
-        breaks: '0',
-        note: '',
-      }));
-      return applyRfidToRows(
-        cleared,
-        scans,
-        selectedEmployee,
-        payPeriod,
-        {},
-        activeShiftProfile,
-      );
-    });
+    const merged = applyRfidToRows(
+      scans,
+      selectedEmployee,
+      payPeriod,
+      {},
+      activeShiftProfile,
+    );
+    setWorkHours(merged.rows);
+    setManualByDay(merged.manual);
   };
 
   const handleSaveShiftProfile = async () => {
@@ -769,14 +881,17 @@ function RfidTimesheetPage() {
   };
 
   const handleExitEditMode = () => {
-    if (selectedEmployee) {
-      void persistTimesheet(
-        selectedEmployee.id,
-        payPeriod.id,
-        sheetPayload(workHours, receipts, additionalHours, ratePerHour, manualByDay),
-      );
-    }
-    setIsEditMode(false);
+    if (!selectedEmployee) return;
+    const payload = sheetPayload(workHours, receipts, additionalHours, ratePerHour, manualByDay);
+    void persistTimesheet(selectedEmployee.id, payPeriod.id, payload)
+      .then(() => {
+        toast.success('Timesheet saved');
+        setIsEditMode(false);
+      })
+      .catch((error) => {
+        console.error('Failed to save timesheet:', error);
+        toast.error('Could not save timesheet to server — try again');
+      });
   };
 
   const handleAdditionalHoursChange = (

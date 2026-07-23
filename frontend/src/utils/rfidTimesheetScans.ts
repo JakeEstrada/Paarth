@@ -1,6 +1,7 @@
 import { addDays, format, startOfDay } from 'date-fns';
 import {
   PAY_PERIOD_DAYS,
+  formatPayPeriodDayHeader,
   getPayPeriodDayDates,
   type PayPeriod,
 } from './payPeriod';
@@ -258,6 +259,63 @@ export function buildRfidDayClocks(
   });
 
   return result;
+}
+
+/** Weekend days in the Fri–Thu pay week — no scheduled shift by default. */
+export const PAY_PERIOD_WEEKEND_DAYS = ['Saturday', 'Sunday'] as const;
+
+export function isPayPeriodWorkday(day: string): boolean {
+  return !PAY_PERIOD_WEEKEND_DAYS.includes(day as (typeof PAY_PERIOD_WEEKEND_DAYS)[number]);
+}
+
+export function inferManualFromSavedRows(
+  rows: Array<{ day: string; in: string; out: string; breaks: string; note?: string }>,
+  rfidByDay: Record<string, RfidDayClock>,
+  existingManual: Record<string, RfidManualDayFlags> = {},
+): Record<string, RfidManualDayFlags> {
+  const result: Record<string, RfidManualDayFlags> = { ...existingManual };
+
+  for (const row of rows) {
+    const rfid = rfidByDay[row.day];
+    if (!rfid) continue;
+    const flags: RfidManualDayFlags = { ...(result[row.day] || {}) };
+    // Zeros in DB are not manual overrides — only non-empty values count.
+    if (!flags.in && row.in !== '0' && row.in !== rfid.in) flags.in = true;
+    if (!flags.out && row.out !== '0' && row.out !== rfid.out) flags.out = true;
+    if (!flags.breaks && row.breaks !== '0' && row.breaks !== rfid.breaks) flags.breaks = true;
+    const rowNote = row.note || '';
+    if (!flags.note && rowNote.length > 0 && rowNote !== (rfid.note || '')) flags.note = true;
+    if (flags.in || flags.out || flags.breaks || flags.note) {
+      result[row.day] = flags;
+    }
+  }
+
+  return result;
+}
+
+/** RFID scans + optional manual overrides — never treat blank DB rows as overrides. */
+export function buildTimesheetRowsFromScans(
+  period: PayPeriod,
+  scanList: RfidScanRecord[],
+  employee: RfidEmployeeIdentity,
+  profile: RfidEmployeeShiftProfile,
+  savedManual: Record<string, RfidManualDayFlags>,
+  savedWorkHours: Array<{ day: string; in: string; out: string; breaks: string; note?: string }> = [],
+): { rows: Array<RfidDayClock & { day: string; dateLabel: string }>; manual: Record<string, RfidManualDayFlags> } {
+  const dates = getPayPeriodDayDates(period).map((d) => formatPayPeriodDayHeader(d));
+  const baseRows = PAY_PERIOD_DAYS.map((day, index) => ({
+    day,
+    dateLabel: dates[index] || day,
+    in: '0',
+    out: '0',
+    breaks: '0',
+    scanCount: 0,
+    note: '',
+  }));
+  const rfidByDay = buildRfidDayClocks(scanList, employee, period, profile);
+  const manual = inferManualFromSavedRows(savedWorkHours, rfidByDay, savedManual);
+  const merged = mergeRfidIntoWorkHours(baseRows, rfidByDay, manual);
+  return { rows: merged, manual };
 }
 
 export function mergeRfidIntoWorkHours<

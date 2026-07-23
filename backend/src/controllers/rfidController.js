@@ -13,6 +13,7 @@ const {
   publishRfidEmployeeProfileUpdated,
 } = require('../services/eventBus');
 const { getTenantContext } = require('../middleware/tenantContext');
+const { computeWeekTotalHours } = require('../services/rfidWeekHours');
 
 function normalizeUid(raw) {
   const s = String(raw || '').trim();
@@ -84,6 +85,13 @@ async function recordScan(req, res) {
       sourceSocketId: req.headers['x-socket-id'] || null,
     });
 
+    let weekHours = null;
+    try {
+      weekHours = await computeWeekTotalHours(displayName);
+    } catch (weekErr) {
+      console.error('computeWeekTotalHours error:', weekErr?.message || weekErr);
+    }
+
     return res.status(201).json({
       success: true,
       scan: {
@@ -92,6 +100,8 @@ async function recordScan(req, res) {
         displayName: scan.displayName,
         scannedAt: scan.scannedAt,
         knownTag: Boolean(tag),
+        weekTotalHours: weekHours?.weekTotalHours ?? null,
+        payPeriodId: weekHours?.periodId ?? null,
       },
     });
   } catch (error) {
@@ -136,6 +146,13 @@ async function recordPinScan(req, res, pin) {
       sourceSocketId: req.headers['x-socket-id'] || null,
     });
 
+    let weekHours = null;
+    try {
+      weekHours = await computeWeekTotalHours(displayName);
+    } catch (weekErr) {
+      console.error('computeWeekTotalHours error:', weekErr?.message || weekErr);
+    }
+
     return res.status(201).json({
       success: true,
       scan: {
@@ -145,6 +162,8 @@ async function recordPinScan(req, res, pin) {
         displayName: scan.displayName,
         scannedAt: scan.scannedAt,
         knownPin: Boolean(pinEntry),
+        weekTotalHours: weekHours?.weekTotalHours ?? null,
+        payPeriodId: weekHours?.periodId ?? null,
       },
     });
   } catch (error) {
