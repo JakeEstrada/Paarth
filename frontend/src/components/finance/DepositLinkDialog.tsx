@@ -24,12 +24,21 @@ import { Link as LinkIcon } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import api from '../../utils/axios';
 import {
+  createDepositAllocation,
+  deleteDepositAllocation,
+  fetchDepositSuggestions,
+  type DepositAllocationRecord,
+  type DepositSuggestion,
+} from '../../utils/depositAllocationsApi';
+import {
   formatMoney,
   resolvePaymentSchedule,
   getScheduleItemTotal,
   sumChangeOrdersForFinal,
   getContractBase,
 } from '../../utils/paymentSchedule';
+
+export type DepositAllocation = DepositAllocationRecord;
 
 export type DepositTransaction = {
   transaction_id: string;
@@ -53,19 +62,7 @@ export type DepositAllocation = {
   markPaidApplied?: boolean;
 };
 
-type DepositSuggestion = {
-  score: number;
-  jobId: string;
-  jobTitle: string;
-  jobIdShort: string;
-  customerName: string;
-  paymentSortOrder: number;
-  paymentLabel: string;
-  scheduledAmount: number;
-  amountDiff: number;
-  paymentStatus: string;
-  reasons: string[];
-};
+type DepositSuggestionRow = DepositSuggestion;
 
 type JobOption = {
   _id: string;
@@ -110,7 +107,7 @@ export default function DepositLinkDialog({
   onLinked,
 }: DepositLinkDialogProps) {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const [suggestions, setSuggestions] = useState<DepositSuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<DepositSuggestionRow[]>([]);
   const [connectingKey, setConnectingKey] = useState('');
   const [unlinking, setUnlinking] = useState(false);
 
@@ -143,16 +140,8 @@ export default function DepositLinkDialog({
     (async () => {
       setLoadingSuggestions(true);
       try {
-        const res = await api.get<{ suggestions: DepositSuggestion[] }>(
-          '/deposit-allocations/suggestions',
-          {
-            params: {
-              amount: depositAmount,
-              description: transaction.name || '',
-            },
-          },
-        );
-        if (!cancelled) setSuggestions(res.data?.suggestions || []);
+        const rows = await fetchDepositSuggestions(depositAmount, transaction.name || '');
+        if (!cancelled) setSuggestions(rows);
       } catch (error) {
         console.error(error);
         if (!cancelled) toast.error('Could not load payment match suggestions');
@@ -246,7 +235,7 @@ export default function DepositLinkDialog({
     if (!transaction?.transaction_id) return;
     setConnectingKey(key);
     try {
-      await api.post('/deposit-allocations', {
+      await createDepositAllocation({
         ...connectPayload,
         jobId,
         paymentSortOrder,
@@ -279,7 +268,7 @@ export default function DepositLinkDialog({
     if (!existingAllocation?._id) return;
     setUnlinking(true);
     try {
-      await api.delete(`/deposit-allocations/${existingAllocation._id}`);
+      await deleteDepositAllocation(existingAllocation._id);
       toast.success('Deposit link removed');
       onLinked();
       onClose();

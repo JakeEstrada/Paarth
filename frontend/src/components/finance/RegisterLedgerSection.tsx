@@ -25,8 +25,12 @@ import {
 import { alpha } from '@mui/material/styles';
 import { Fullscreen, FullscreenExit, Refresh } from '@mui/icons-material';
 import PlaidBankLinkSection from './PlaidBankLinkSection';
-import DepositLinkDialog, { type DepositAllocation, type DepositTransaction } from './DepositLinkDialog';
-import api from '../../utils/axios';
+import DepositLinkDialog, { type DepositTransaction } from './DepositLinkDialog';
+import {
+  autoConnectDeposits,
+  fetchDepositAllocations,
+  type DepositAllocationRecord,
+} from '../../utils/depositAllocationsApi';
 import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -91,7 +95,7 @@ export default function RegisterLedgerSection({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [allocations, setAllocations] = useState<DepositAllocation[]>([]);
+  const [allocations, setAllocations] = useState<DepositAllocationRecord[]>([]);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [selectedDeposit, setSelectedDeposit] = useState<DepositTransaction | null>(null);
   const [autoConnecting, setAutoConnecting] = useState(false);
@@ -114,7 +118,7 @@ export default function RegisterLedgerSection({
   );
 
   const allocationByTransactionId = useMemo(() => {
-    const map = new Map<string, DepositAllocation>();
+    const map = new Map<string, DepositAllocationRecord>();
     for (const row of allocations) {
       if (row.plaidTransactionId) map.set(row.plaidTransactionId, row);
     }
@@ -124,8 +128,7 @@ export default function RegisterLedgerSection({
   const loadAllocations = useCallback(async () => {
     if (!active || !depositsOnly) return;
     try {
-      const { data } = await api.get<{ allocations: DepositAllocation[] }>('/deposit-allocations');
-      setAllocations(Array.isArray(data?.allocations) ? data.allocations : []);
+      setAllocations(await fetchDepositAllocations());
     } catch (error) {
       console.error('Failed to load deposit links:', error);
     }
@@ -152,10 +155,7 @@ export default function RegisterLedgerSection({
     if (!ok) return;
     setAutoConnecting(true);
     try {
-      const { data } = await api.post<{
-        summary: { depositsReviewed: number; linked: number; skipped: number };
-        linked: Array<{ customerName: string; paymentLabel: string; depositAmount: number; date: string }>;
-      }>('/deposit-allocations/auto-connect', { days });
+      const data = await autoConnectDeposits(days);
       const { summary, linked: linkedRows } = data;
       await loadAllocations();
       if (summary.linked === 0) {
