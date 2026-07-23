@@ -21,6 +21,83 @@ const RFID_DEFAULT_BREAK_MINUTES = 30;
 const RFID_MIN_SHIFT_FOR_BREAK_MINUTES = 60;
 const AUTO_LOGOUT_NOTE = 'Auto log out';
 
+/** Match RFID timesheet UI — shop local time, not UTC (Render default). */
+const SHOP_TIMEZONE = process.env.RFID_SHOP_TIMEZONE || 'America/Los_Angeles';
+
+const shopYmdFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: SHOP_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const shopClockFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: SHOP_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+});
+
+const shopWeekdayFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: SHOP_TIMEZONE,
+  weekday: 'short',
+});
+
+const SHOP_WEEKDAY_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+function formatToPartsMap(formatter, date) {
+  return Object.fromEntries(
+    formatter
+      .formatToParts(date)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value]),
+  );
+}
+
+function getShopClock(date = new Date()) {
+  const parts = formatToPartsMap(shopClockFormatter, date);
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+    second: Number(parts.second || 0),
+  };
+}
+
+function getShopWeekday(date = new Date()) {
+  const short = shopWeekdayFormatter.format(date);
+  return SHOP_WEEKDAY_MAP[short] ?? 0;
+}
+
+function formatYmd(date) {
+  const parts = formatToPartsMap(shopYmdFormatter, date);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function shopMidnightUtc(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const guess = Date.UTC(y, m - 1, d, 8, 0, 0);
+  for (let offsetMin = -18 * 60; offsetMin <= 18 * 60; offsetMin += 1) {
+    const candidate = new Date(guess + offsetMin * 60000);
+    const clock = getShopClock(candidate);
+    const key = `${clock.year}-${String(clock.month).padStart(2, '0')}-${String(clock.day).padStart(2, '0')}`;
+    if (key === ymd && clock.hour === 0 && clock.minute === 0) {
+      return candidate;
+    }
+  }
+  throw new Error(`Could not resolve shop midnight for ${ymd} (${SHOP_TIMEZONE})`);
+}
+
+function shopStartOfDay(date = new Date()) {
+  return shopMidnightUtc(formatYmd(date));
+}
+
 function normalizeEmployeeKey(name) {
   return String(name || '')
     .trim()
@@ -28,33 +105,18 @@ function normalizeEmployeeKey(name) {
     .replace(/\s+/g, ' ');
 }
 
-function startOfDay(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 function addDays(date, days) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function formatYmd(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return new Date(date.getTime() + days * 86400000);
 }
 
 function getPayPeriodForDate(date = new Date()) {
-  const d = startOfDay(date);
-  const weekday = d.getDay();
+  const weekday = getShopWeekday(date);
+  const todayStart = shopStartOfDay(date);
   let periodStart;
 
-  if (weekday === 5) periodStart = d;
-  else if (weekday === 6) periodStart = addDays(d, -1);
-  else periodStart = addDays(d, -(weekday + 2));
+  if (weekday === 5) periodStart = todayStart;
+  else if (weekday === 6) periodStart = addDays(todayStart, -1);
+  else periodStart = addDays(todayStart, -(weekday + 2));
 
   const periodEnd = addDays(periodStart, 6);
   return {
@@ -62,6 +124,25 @@ function getPayPeriodForDate(date = new Date()) {
     end: periodEnd,
     id: formatYmd(periodStart),
   };
+}
+
+function getTodayPayPeriodDay(period, now = new Date()) {
+  const nowYmd = formatYmd(now);
+  const endYmd = formatYmd(period.end);
+  const startYmd = formatYmd(period.start);
+  if (nowYmd < startYmd || nowYmd > endYmd) return null;
+
+  for (let index = 0; index < PAY_PERIOD_DAYS.length; index += 1) {
+    const dayDate = addDays(period.start, index);
+    if (formatYmd(dayDate) === nowYmd) return PAY_PERIOD_DAYS[index];
+  }
+
+  return null;
+}
+
+function rfidLiveDayNames(period, now = new Date()) {
+  const today = getTodayPayPeriodDay(period, now);
+  return today ? [today] : [];
 }
 
 function timeToMinutes(timeStr) {
@@ -95,12 +176,12 @@ function shiftDurationMinutes(inToken, outToken) {
 }
 
 function shouldAutoLogoutForDay(dayDate, now) {
-  const dayStart = startOfDay(dayDate);
-  const todayStart = startOfDay(now);
+  const dayStart = shopStartOfDay(dayDate);
+  const todayStart = shopStartOfDay(now);
   if (dayStart.getTime() < todayStart.getTime()) return true;
   if (dayStart.getTime() > todayStart.getTime()) return false;
-  const cutoff = new Date(dayDate);
-  cutoff.setHours(23, 59, 0, 0);
+  const nextDayStart = shopStartOfDay(addDays(dayStart, 1));
+  const cutoff = new Date(nextDayStart.getTime() - 60000);
   return now.getTime() >= cutoff.getTime();
 }
 
@@ -123,13 +204,13 @@ function dedupeScanTimes(sortedTimes, burstMs = RFID_SCAN_BURST_MS) {
 
 function clockFromScanTimes(times) {
   if (times.length === 0) return { in: '0', out: '0' };
-  const first = times[0];
-  const inToken = minutesToTimeInput(first.getHours() * 60 + first.getMinutes());
+  const first = getShopClock(times[0]);
+  const inToken = minutesToTimeInput(first.hour * 60 + first.minute);
   if (times.length === 1) return { in: inToken, out: '0' };
-  const last = times[times.length - 1];
+  const last = getShopClock(times[times.length - 1]);
   return {
     in: inToken,
-    out: minutesToTimeInput(last.getHours() * 60 + last.getMinutes()),
+    out: minutesToTimeInput(last.hour * 60 + last.minute),
   };
 }
 
@@ -169,8 +250,8 @@ function buildRfidDayClocks(scans, employee, period, shiftProfile, now = new Dat
   const dateKeys = dayDates.map((d) => formatYmd(d));
   const scansByDateKey = new Map(dateKeys.map((key) => [key, []]));
 
-  const periodStart = startOfDay(period.start).getTime();
-  const periodEnd = addDays(startOfDay(period.end), 1).getTime();
+  const periodStart = period.start.getTime();
+  const periodEnd = addDays(period.end, 1).getTime();
 
   for (const scan of scans) {
     if (!scanMatchesEmployee(scan, employee)) continue;
@@ -207,6 +288,26 @@ function buildRfidDayClocks(scans, employee, period, shiftProfile, now = new Dat
       note,
     };
   });
+
+  return result;
+}
+
+function inferManualFromSavedRows(rows, rfidByDay, existingManual = {}) {
+  const result = { ...existingManual };
+
+  for (const row of rows) {
+    const rfid = rfidByDay[row.day];
+    if (!rfid) continue;
+    const flags = { ...(result[row.day] || {}) };
+    if (!flags.in && row.in !== '0' && row.in !== rfid.in) flags.in = true;
+    if (!flags.out && row.out !== '0' && row.out !== rfid.out) flags.out = true;
+    if (!flags.breaks && row.breaks !== '0' && row.breaks !== rfid.breaks) flags.breaks = true;
+    const rowNote = row.note || '';
+    if (!flags.note && rowNote.length > 0 && rowNote !== (rfid.note || '')) flags.note = true;
+    if (flags.in || flags.out || flags.breaks || flags.note) {
+      result[row.day] = flags;
+    }
+  }
 
   return result;
 }
@@ -271,8 +372,8 @@ async function computeWeekTotalHours(displayName, options = {}) {
     RfidTimesheetWeek.findOne({ employeeKey, periodId: period.id }).lean(),
     RfidScan.find({
       scannedAt: {
-        $gte: startOfDay(period.start),
-        $lt: addDays(startOfDay(period.end), 1),
+        $gte: period.start,
+        $lt: addDays(period.end, 1),
       },
     }).lean(),
   ]);
@@ -297,12 +398,32 @@ async function computeWeekTotalHours(displayName, options = {}) {
     };
   });
 
-  const manualByDay = sanitizeManualByDay(
+  const rfidByDay = buildRfidDayClocks(scans, employee, period, shiftProfile, now);
+  let manualByDay = sanitizeManualByDay(
     timesheet?.manualByDay && typeof timesheet.manualByDay === 'object' ? timesheet.manualByDay : {},
     baseRows,
   );
-  const rfidByDay = buildRfidDayClocks(scans, employee, period, shiftProfile, now);
-  const rows = mergeRfidIntoWorkHours(baseRows, rfidByDay, manualByDay);
+  manualByDay = inferManualFromSavedRows(baseRows, rfidByDay, manualByDay);
+  manualByDay = sanitizeManualByDay(manualByDay, baseRows);
+
+  const ignoreManual = new Set(rfidLiveDayNames(period, now));
+  const effectiveManual = Object.fromEntries(
+    Object.entries(manualByDay).filter(([day]) => !ignoreManual.has(day)),
+  );
+  const savedByDay = Object.fromEntries(baseRows.map((row) => [row.day, row]));
+  let rows = mergeRfidIntoWorkHours(baseRows, rfidByDay, effectiveManual);
+  rows = rows.map((row) => {
+    const flags = effectiveManual[row.day];
+    const saved = savedByDay[row.day];
+    if (!flags || !saved) return row;
+    return {
+      ...row,
+      in: flags.in ? String(saved.in) : row.in,
+      out: flags.out ? String(saved.out) : row.out,
+      breaks: flags.breaks ? String(saved.breaks) : row.breaks,
+      note: flags.note ? String(saved.note ?? '') : row.note,
+    };
+  });
 
   const scheduleHours = rows.reduce(
     (sum, row) => sum + calculateHours(row.in, row.out, row.breaks),
