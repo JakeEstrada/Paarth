@@ -3,6 +3,7 @@ import axios from 'axios';
 import {
   Alert,
   Box,
+  Button,
   Chip,
   FormControl,
   IconButton,
@@ -93,6 +94,7 @@ export default function RegisterLedgerSection({
   const [allocations, setAllocations] = useState<DepositAllocation[]>([]);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [selectedDeposit, setSelectedDeposit] = useState<DepositTransaction | null>(null);
+  const [autoConnecting, setAutoConnecting] = useState(false);
   const panelRef = useRef(null);
   const accountIdRef = useRef(accountId);
   const registerSyncRef = useRef(registerSync);
@@ -141,6 +143,38 @@ export default function RegisterLedgerSection({
   const closeDepositLink = () => {
     setLinkDialogOpen(false);
     setSelectedDeposit(null);
+  };
+
+  const handleAutoConnect = async () => {
+    const ok = window.confirm(
+      'Auto-connect all unlinked deposits that match a job payment by date and amount? Already-linked deposits are skipped.',
+    );
+    if (!ok) return;
+    setAutoConnecting(true);
+    try {
+      const { data } = await api.post<{
+        summary: { depositsReviewed: number; linked: number; skipped: number };
+        linked: Array<{ customerName: string; paymentLabel: string; depositAmount: number; date: string }>;
+      }>('/deposit-allocations/auto-connect', { days });
+      const { summary, linked: linkedRows } = data;
+      await loadAllocations();
+      if (summary.linked === 0) {
+        toast(`No new matches found (${summary.skipped} skipped).`);
+      } else {
+        toast.success(
+          `Connected ${summary.linked} deposit${summary.linked === 1 ? '' : 's'} to payments` +
+            (summary.skipped ? ` (${summary.skipped} skipped)` : ''),
+        );
+        if (linkedRows?.length) {
+          console.info('Auto-connected deposits:', linkedRows);
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Auto-connect failed');
+    } finally {
+      setAutoConnecting(false);
+    }
   };
 
   const loadRegister = useCallback(async ({ forceRefresh = false, silent = false } = {}) => {
@@ -488,6 +522,18 @@ export default function RegisterLedgerSection({
             sx={{ minWidth: { xs: '100%', sm: 260 } }}
           />
 
+          {depositsOnly ? (
+            <Button
+              size="small"
+              variant="contained"
+              disabled={autoConnecting || loading}
+              onClick={() => void handleAutoConnect()}
+              sx={{ alignSelf: { xs: 'stretch', sm: 'center' }, whiteSpace: 'nowrap' }}
+            >
+              {autoConnecting ? 'Matching…' : 'Auto-connect by date & amount'}
+            </Button>
+          ) : null}
+
           <Tooltip title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
             <IconButton onClick={toggleFullscreen} size="small" aria-label="toggle register fullscreen">
               {isFullscreen ? <FullscreenExit fontSize="small" /> : <Fullscreen fontSize="small" />}
@@ -518,7 +564,8 @@ export default function RegisterLedgerSection({
 
       {depositsOnly && showFinanceHeader ? (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          Click a deposit to connect it to a job payment. Exact amount matches are suggested automatically.
+          Click a deposit to connect manually, or use <strong>Auto-connect</strong> to bulk-match
+          deposits to job payments when the date and amount line up.
         </Typography>
       ) : null}
 
