@@ -83,6 +83,15 @@ export function isPastPayPeriod(period: PayPeriod, anchor: Date = new Date()): b
   return period.start.getTime() < current.start.getTime();
 }
 
+/** View mode for the current week — RFID scans win whenever they exist for a day. */
+export function shouldPreferRfidOverManual(
+  period: PayPeriod,
+  isEditMode: boolean,
+  anchor: Date = new Date(),
+): boolean {
+  return !isEditMode && isCurrentPayPeriod(period, anchor);
+}
+
 /** Recent pay periods for dropdowns (current week first). */
 export function listRecentPayPeriods(anchor: Date, count = 12): PayPeriod[] {
   const current = getPayPeriodForDate(anchor);

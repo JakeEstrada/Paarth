@@ -385,32 +385,30 @@ async function computeWeekTotalHours(displayName, options = {}) {
     breakMinutes: Number(profile?.breakMinutes ?? RFID_DEFAULT_BREAK_MINUTES) || 0,
   };
 
-  const baseRows = defaultWorkHours().map((defaultRow) => {
-    const saved = (timesheet?.workHours || []).find((row) => row.day === defaultRow.day);
-    if (!saved) return defaultRow;
-    return {
-      ...defaultRow,
-      in: String(saved.in ?? defaultRow.in),
-      out: String(saved.out ?? defaultRow.out),
-      breaks: String(saved.breaks ?? defaultRow.breaks),
-      scanCount: Number(saved.scanCount) || 0,
-      note: String(saved.note ?? ''),
-    };
-  });
+  const baseRows = defaultWorkHours();
+  const savedWorkHours = (timesheet?.workHours || []).map((row) => ({
+    day: row.day,
+    in: String(row.in ?? '0'),
+    out: String(row.out ?? '0'),
+    breaks: String(row.breaks ?? '0'),
+    scanCount: Number(row.scanCount) || 0,
+    note: String(row.note ?? ''),
+  }));
 
   const rfidByDay = buildRfidDayClocks(scans, employee, period, shiftProfile, now);
   let manualByDay = sanitizeManualByDay(
     timesheet?.manualByDay && typeof timesheet.manualByDay === 'object' ? timesheet.manualByDay : {},
-    baseRows,
+    savedWorkHours,
   );
-  manualByDay = inferManualFromSavedRows(baseRows, rfidByDay, manualByDay);
-  manualByDay = sanitizeManualByDay(manualByDay, baseRows);
+  manualByDay = inferManualFromSavedRows(savedWorkHours, rfidByDay, manualByDay);
+  manualByDay = sanitizeManualByDay(manualByDay, savedWorkHours);
 
-  const ignoreManual = new Set(rfidLiveDayNames(period, now));
+  const liveDays = rfidLiveDayNames(period, now);
+  const ignoreManual = new Set(liveDays);
   const effectiveManual = Object.fromEntries(
     Object.entries(manualByDay).filter(([day]) => !ignoreManual.has(day)),
   );
-  const savedByDay = Object.fromEntries(baseRows.map((row) => [row.day, row]));
+  const savedByDay = Object.fromEntries(savedWorkHours.map((row) => [row.day, row]));
   let rows = mergeRfidIntoWorkHours(baseRows, rfidByDay, effectiveManual);
   rows = rows.map((row) => {
     const flags = effectiveManual[row.day];
@@ -423,6 +421,18 @@ async function computeWeekTotalHours(displayName, options = {}) {
       breaks: flags.breaks ? String(saved.breaks) : row.breaks,
       note: flags.note ? String(saved.note ?? '') : row.note,
     };
+  });
+
+  // Today always reflects live scans — ignore stale saved/manual clock times.
+  for (const day of liveDays) {
+    const rfid = rfidByDay[day];
+    const row = rows.find((entry) => entry.day === day);
+    if (!rfid || !row) continue;
+    row.in = rfid.in;
+    row.out = rfid.out;
+    row.breaks = rfid.breaks;
+    row.note = rfid.note;
+    row.scanCount = rfid.scanCount;
   });
 
   const scheduleHours = rows.reduce(

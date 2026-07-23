@@ -68,6 +68,7 @@ import {
   isCurrentPayPeriod,
   isPastPayPeriod,
   listRecentPayPeriods,
+  shouldPreferRfidOverManual,
   shiftPayPeriod,
   type PayPeriod,
 } from '../utils/payPeriod';
@@ -542,6 +543,7 @@ function RfidTimesheetPage() {
       employee: RfidEmployeeOption,
       period: PayPeriod,
       profile: RfidEmployeeShiftProfile,
+      isEditing = false,
     ) => {
       return buildTimesheetRowsFromScans(
         period,
@@ -550,6 +552,7 @@ function RfidTimesheetPage() {
         profile,
         sheet.manualByDay || {},
         sheet.workHours,
+        shouldPreferRfidOverManual(period, isEditing),
       );
     },
     [],
@@ -642,7 +645,14 @@ function RfidTimesheetPage() {
         if (cancelled) return;
 
         setScans(scanList);
-        const merged = mergeSheetWithScans(sheet, scanList, selectedEmployee, payPeriod, profile);
+        const merged = mergeSheetWithScans(
+          sheet,
+          scanList,
+          selectedEmployee,
+          payPeriod,
+          profile,
+          false,
+        );
         persistedSheetRef.current = snapshotPersistedSheet(sheet.workHours, sheet.manualByDay || {});
         setManualByDay(merged.manual);
         setWorkHours(merged.rows);
@@ -730,6 +740,7 @@ function RfidTimesheetPage() {
         profile,
         persisted.manualByDay,
         persisted.workHours,
+        shouldPreferRfidOverManual(period, isEditModeRef.current),
       );
       setManualByDay(merged.manual);
       setWorkHours(merged.rows);
@@ -811,6 +822,7 @@ function RfidTimesheetPage() {
         selectedEmployee,
         payPeriod,
         activeShiftProfile,
+        false,
       );
       persistedSheetRef.current = snapshotPersistedSheet(sheet.workHours, sheet.manualByDay || {});
       setManualByDay(merged.manual);

@@ -314,6 +314,22 @@ export function inferManualFromSavedRows(
   return result;
 }
 
+/** Drop manual locks for days that have RFID scans — scans are the live source of truth. */
+function applyRfidPreferenceToManual(
+  manual: Record<string, RfidManualDayFlags>,
+  rfidByDay: Record<string, RfidDayClock>,
+  preferRfidWhenScansExist: boolean,
+): Record<string, RfidManualDayFlags> {
+  if (!preferRfidWhenScansExist) return manual;
+  const result = { ...manual };
+  for (const day of Object.keys(result)) {
+    if ((rfidByDay[day]?.scanCount ?? 0) > 0) {
+      delete result[day];
+    }
+  }
+  return result;
+}
+
 /** RFID scans + optional manual overrides — never treat blank DB rows as overrides. */
 export function buildTimesheetRowsFromScans(
   period: PayPeriod,
@@ -322,6 +338,7 @@ export function buildTimesheetRowsFromScans(
   profile: RfidEmployeeShiftProfile,
   savedManual: Record<string, RfidManualDayFlags>,
   savedWorkHours: Array<{ day: string; in: string; out: string; breaks: string; note?: string }> = [],
+  preferRfidWhenScansExist = false,
 ): { rows: Array<RfidDayClock & { day: string; dateLabel: string }>; manual: Record<string, RfidManualDayFlags> } {
   const dates = getPayPeriodDayDates(period).map((d) => formatPayPeriodDayHeader(d));
   const baseRows = PAY_PERIOD_DAYS.map((day, index) => ({
@@ -338,6 +355,7 @@ export function buildTimesheetRowsFromScans(
   let manual = sanitizeManualByDay(savedManual, savedWorkHours);
   manual = inferManualFromSavedRows(savedWorkHours, rfidByDay, manual);
   manual = sanitizeManualByDay(manual, savedWorkHours);
+  manual = applyRfidPreferenceToManual(manual, rfidByDay, preferRfidWhenScansExist);
 
   let merged = mergeRfidIntoWorkHours(baseRows, rfidByDay, manual);
   merged = merged.map((row) => {
