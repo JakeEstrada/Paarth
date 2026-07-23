@@ -12,6 +12,7 @@ const {
   deletePin,
   listEmployeeProfiles,
   upsertEmployeeProfile,
+  getKioskWeekSummary,
   getTimesheetWeek,
   upsertTimesheetWeek,
 } = require('../controllers/rfidController');
@@ -20,6 +21,7 @@ const router = express.Router();
 
 /** Pi / device posts scans here */
 router.post('/scans', requireRfidDeviceOrAuth, recordScan);
+router.get('/kiosk/week-summary', requireRfidDeviceOrAuth, getKioskWeekSummary);
 
 router.use(requireAuth);
 router.get('/scans', listScans);

@@ -101,6 +101,7 @@ async function recordScan(req, res) {
         scannedAt: scan.scannedAt,
         knownTag: Boolean(tag),
         weekTotalHours: weekHours?.weekTotalHours ?? null,
+        weekDays: weekHours?.weekDays ?? null,
         payPeriodId: weekHours?.periodId ?? null,
       },
     });
@@ -163,6 +164,7 @@ async function recordPinScan(req, res, pin) {
         scannedAt: scan.scannedAt,
         knownPin: Boolean(pinEntry),
         weekTotalHours: weekHours?.weekTotalHours ?? null,
+        weekDays: weekHours?.weekDays ?? null,
         payPeriodId: weekHours?.periodId ?? null,
       },
     });
@@ -392,6 +394,29 @@ async function upsertEmployeeProfile(req, res) {
   }
 }
 
+async function getKioskWeekSummary(req, res) {
+  try {
+    const displayName = String(req.query?.displayName || req.query?.name || '').trim();
+    if (!displayName) {
+      return res.status(400).json({ error: 'displayName is required' });
+    }
+
+    const weekHours = await computeWeekTotalHours(displayName);
+    if (!weekHours) {
+      return res.status(404).json({ error: 'Employee not found or not mapped' });
+    }
+
+    return res.json({
+      weekTotalHours: weekHours.weekTotalHours ?? null,
+      weekDays: weekHours.weekDays ?? null,
+      periodId: weekHours.periodId ?? null,
+      employeeKey: weekHours.employeeKey ?? null,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
 async function getTimesheetWeek(req, res) {
   try {
     const employeeKey = normalizeEmployeeKey(req.params.employeeKey);
@@ -463,6 +488,7 @@ module.exports = {
   deletePin,
   listEmployeeProfiles,
   upsertEmployeeProfile,
+  getKioskWeekSummary,
   getTimesheetWeek,
   upsertTimesheetWeek,
 };

@@ -314,8 +314,17 @@ async function computeWeekTotalHours(displayName, options = {}) {
   );
   const totalHours = scheduleHours + additionalHours;
 
+  const weekDays = rows.map((row) => ({
+    day: row.day,
+    in: row.in,
+    out: row.out,
+    breaks: row.breaks,
+    hours: Math.round(calculateHours(row.in, row.out, row.breaks) * 100) / 100,
+  }));
+
   return {
     weekTotalHours: Math.round(totalHours * 100) / 100,
+    weekDays,
     periodId: period.id,
     employeeKey,
   };
