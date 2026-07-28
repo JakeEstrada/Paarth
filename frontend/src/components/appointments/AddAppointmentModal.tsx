@@ -14,7 +14,10 @@ import {
   Select,
   MenuItem,
   CircularProgress,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -694,37 +697,59 @@ function AddAppointmentModal({
               </FormControl>
             )}
 
-            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: reminderEnabled ? 2 : 0 }}>
-                <input
-                  id="appointment-reminder-enabled"
-                  type="checkbox"
-                  checked={reminderEnabled}
-                  onChange={(e) => setReminderEnabled(e.target.checked)}
-                />
-                <label htmlFor="appointment-reminder-enabled">Schedule reminder text</label>
-              </Box>
+            <Box
+              sx={(theme) => ({
+                border: '1px solid',
+                borderColor: alpha(theme.palette.info.main, theme.palette.mode === 'dark' ? 0.45 : 0.35),
+                borderRadius: 1,
+                p: 2,
+                bgcolor: alpha(theme.palette.info.main, theme.palette.mode === 'dark' ? 0.12 : 0.08),
+              })}
+            >
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    id="appointment-reminder-enabled"
+                    checked={reminderEnabled}
+                    onChange={(e) => setReminderEnabled(e.target.checked)}
+                    color="info"
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography component="span" variant="body1" sx={{ color: 'info.main', fontWeight: 600 }}>
+                      Schedule reminder text
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ color: 'text.secondary', mt: 0.25 }}>
+                      When the SMS goes out — not the appointment date/time above
+                    </Typography>
+                  </Box>
+                }
+                sx={{ alignItems: 'flex-start', m: 0, mb: reminderEnabled ? 2 : 0 }}
+              />
 
               {reminderEnabled && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <Grid container spacing={2}>
                     <Grid item xs={12} sm={6}>
                       <TextField
-                        label="Reminder Date"
+                        label="Text send date"
                         type="date"
                         value={reminderDate}
                         onChange={(e) => setReminderDate(e.target.value)}
                         fullWidth
+                        color="info"
                         InputLabelProps={{ shrink: true }}
                       />
                     </Grid>
                     <Grid item xs={12} sm={6}>
                       <TextField
-                        label="Reminder Time"
+                        label="Text send time"
                         type="time"
                         value={reminderTime}
                         onChange={(e) => setReminderTime(e.target.value)}
                         fullWidth
+                        color="info"
                         InputLabelProps={{ shrink: true }}
                       />
                     </Grid>
@@ -736,6 +761,7 @@ function AddAppointmentModal({
                     value={reminderPhone}
                     onChange={(e) => setReminderPhone(e.target.value)}
                     fullWidth
+                    color="info"
                     helperText="Separate multiple numbers with commas. Everyone gets the same reminder text."
                     inputProps={{ inputMode: 'tel' }}
                   />
@@ -745,6 +771,7 @@ function AddAppointmentModal({
                     value={reminderMessage}
                     onChange={(e) => setReminderMessage(e.target.value)}
                     fullWidth
+                    color="info"
                     multiline
                     rows={2}
                     placeholder="If blank, we'll generate a default reminder message."
