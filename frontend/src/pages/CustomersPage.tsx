@@ -801,6 +801,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     address: { street: '', city: '', state: '', zip: '' },
                     notes: '',
                     source: 'other',
+                    skipInitialJob: true,
                   });
                   const newCustomer = response.data;
                   setCustomers([newCustomer, ...customers]);

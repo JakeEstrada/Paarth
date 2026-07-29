@@ -260,6 +260,7 @@ interface SalesmanPaidEntry {
   customerName: string;
   jobLabel: string;
   paymentLabel: string;
+  customerPaidAmount: number | null;
   amount: number;
   date: string;
   check: string;
@@ -350,6 +351,8 @@ function buildSalesmanPaidEntries(rows: CommissionTableRow[]): SalesmanPaidEntry
         customerName: row.customerName,
         jobLabel: row.jobLabel,
         paymentLabel: payment.label,
+        customerPaidAmount:
+          payment.scheduledAmount > 0 ? roundMoney(payment.scheduledAmount) : null,
         amount: roundMoney(amount),
         date: String(payment.date || '').trim(),
         check: String(payment.check || '').trim(),
@@ -367,6 +370,7 @@ function buildSalesmanPaidEntries(rows: CommissionTableRow[]): SalesmanPaidEntry
         customerName: row.customerName,
         jobLabel: row.jobLabel,
         paymentLabel: adjustment.label,
+        customerPaidAmount: null,
         amount: roundMoney(adjustment.amount),
         date: String(adjustment.date || '').trim(),
         check: String(adjustment.check || '').trim(),
@@ -398,6 +402,7 @@ function matchesSalesmanPaidSearch(entry: SalesmanPaidEntry, rawQuery: string): 
     entry.date,
     formatCheckDisplayDate(entry.date),
     ...moneySearchTokens(entry.amount),
+    ...moneySearchTokens(entry.customerPaidAmount),
     ...moneySearchTokens(entry.balance),
   ];
 
@@ -529,11 +534,14 @@ function RecentSalesmanPaidTable({ entries, onOpenJob, onOpenJobDetail }: Recent
   const theme = useTheme();
 
   return (
-    <Table stickyHeader size="small" sx={{ minWidth: 760 }}>
+    <Table stickyHeader size="small" sx={{ minWidth: 860 }}>
       <TableHead>
         <TableRow>
           <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
             Paid date
+          </TableCell>
+          <TableCell sx={{ fontWeight: 700, minWidth: 110, bgcolor: 'background.paper' }} align="right">
+            Customer paid
           </TableCell>
           <TableCell sx={{ fontWeight: 700, minWidth: 160, bgcolor: 'background.paper' }}>
             Job
@@ -542,7 +550,7 @@ function RecentSalesmanPaidTable({ entries, onOpenJob, onOpenJobDetail }: Recent
             Payment
           </TableCell>
           <TableCell sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }} align="right">
-            Amount
+            Commission
           </TableCell>
           <TableCell sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }} align="right">
             Balance
@@ -572,6 +580,15 @@ function RecentSalesmanPaidTable({ entries, onOpenJob, onOpenJobDetail }: Recent
             }}
           >
             <TableCell sx={{ fontWeight: 600 }}>{formatCheckDisplayDate(entry.date)}</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 600 }}>
+              {entry.customerPaidAmount != null && entry.customerPaidAmount > 0 ? (
+                formatMoney(entry.customerPaidAmount)
+              ) : (
+                <Typography component="span" variant="body2" color="text.secondary">
+                  —
+                </Typography>
+              )}
+            </TableCell>
             <TableCell>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
                 {entry.jobLabel || entry.customerName}
