@@ -39,6 +39,7 @@ import PdfViewerPage from './pages/PdfViewerPage';
 import PictureViewerPage from './pages/PictureViewerPage';
 import FinanceHubPage from './pages/FinanceHubPage';
 import TakeoffSheetPage from './pages/TakeoffSheetPage';
+import VendorsPage from './pages/VendorsPage';
 import MessagePage from './pages/MessagePage';
 import RfidPage from './pages/RfidPage';
 
@@ -153,6 +154,7 @@ function App(): JSX.Element | null {
                   <Route path="/bills" element={<BillsPage />} />
                   <Route path="/finance" element={<FinanceHubPage />} />
                   <Route path="/takeoff-sheet" element={<TakeoffSheetPage />} />
+                  <Route path="/vendors" element={<VendorsPage />} />
                   <Route path="/users" element={<ProtectedRoute requireAdmin><UsersPage /></ProtectedRoute>} />
                   <Route path="/account-settings" element={<AccountSettingsPage />} />
                 </Routes>

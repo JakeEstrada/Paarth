@@ -34,6 +34,7 @@ import {
   AccountBalanceWallet as FinanceHubIcon,
   TableRows as TakeoffIcon,
   Sms as SmsIcon,
+  Store as StoreIcon,
   Nfc as NfcIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
@@ -60,6 +61,7 @@ const financeItems = [
 
 const operationsItems = [
   { text: 'Take Off Sheet', icon: <TakeoffIcon />, path: '/takeoff-sheet' },
+  { text: 'Vendors', icon: <StoreIcon />, path: '/vendors' },
   { text: 'Users', icon: <UsersIcon />, path: '/users', adminOnly: true },
 ];
 

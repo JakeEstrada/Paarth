@@ -193,6 +193,7 @@ const contractRoutes = require('./routes/contracts');
 const assistantRoutes = require('./routes/assistant');
 const rfidRoutes = require('./routes/rfid');
 const depositAllocationRoutes = require('./routes/depositAllocations');
+const vendorRoutes = require('./routes/vendors');
 
 // Use routes
 app.use('/auth', authRoutes);
@@ -217,6 +218,7 @@ app.use('/contracts', contractRoutes);
 app.use('/assistant', assistantRoutes);
 app.use('/rfid', rfidRoutes);
 app.use('/deposit-allocations', depositAllocationRoutes);
+app.use('/vendors', vendorRoutes);
 // Some deployments expose the API under `/api` without stripping the prefix from the path.
 app.use('/api/auth', authRoutes);
 app.use('/api/tenants', tenantRoutes);
@@ -240,6 +242,7 @@ app.use('/api/contracts', contractRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/rfid', rfidRoutes);
 app.use('/api/deposit-allocations', depositAllocationRoutes);
+app.use('/api/vendors', vendorRoutes);
 
 // Test route
 app.get('/', (req, res) => {
