@@ -31,6 +31,24 @@ export function formatPhoneForDisplay(input) {
   return raw;
 }
 
+/** Format each line (and comma-separated parts on a line) while typing in a multiline phone list */
+export function formatMultilinePhoneTyping(input) {
+  return String(input ?? '')
+    .split('\n')
+    .map((line) => {
+      if (!line.trim()) return '';
+      if (/[,;]/.test(line)) {
+        return line
+          .split(/[,;]+/)
+          .map((part) => formatNanpTyping(part.trim()))
+          .filter(Boolean)
+          .join(', ');
+      }
+      return formatNanpTyping(line);
+    })
+    .join('\n');
+}
+
 /** Split comma/semicolon/newline-separated reminder numbers into trimmed parts */
 export function splitReminderPhoneInput(input) {
   return String(input ?? '')

@@ -21,7 +21,11 @@ import {
 import { Save as SaveIcon, Settings as SettingsIcon, Sms as SmsIcon } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { formatPhoneForDisplay } from '../../utils/phoneFormat';
+import {
+  fetchPaymentNotificationSettings,
+  savePaymentNotificationSettings,
+} from '../../utils/paymentNotificationSettingsApi';
+import { formatMultilinePhoneTyping, formatPhoneForDisplay } from '../../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -87,11 +91,10 @@ export default function PaymentNotificationSettings({ canEdit, dialogTrigger = f
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const [settingsRes, employeesRes] = await Promise.all([
-        axios.get(`${API_URL}/tenants/payment-notification-settings`),
+      const [settings, employeesRes] = await Promise.all([
+        fetchPaymentNotificationSettings(),
         axios.get(`${API_URL}/users/employees-for-sms`),
       ]);
-      const settings = settingsRes.data || {};
       setEnabled(Boolean(settings.enabled));
       setSelectedKeys(recipientsToSelectionKeys(settings.recipients || []));
       setPhoneNumbersText(phoneNumbersToText(settings.phoneNumbers || []));
@@ -99,7 +102,12 @@ export default function PaymentNotificationSettings({ canEdit, dialogTrigger = f
       setRecipientOptions(rows.map(toRecipientOption));
     } catch (error) {
       console.error('Failed to load payment notification settings:', error);
-      toast.error('Failed to load payment alert settings');
+      const status = error?.response?.status;
+      if (status === 404) {
+        toast.error('Payment alert settings API not found — redeploy the backend, then try again.');
+      } else {
+        toast.error('Failed to load payment alert settings');
+      }
     } finally {
       setLoading(false);
     }
@@ -128,7 +136,7 @@ export default function PaymentNotificationSettings({ canEdit, dialogTrigger = f
         recipients: selectionKeysToRecipients(selectedKeys),
         phoneNumbers,
       };
-      const { data } = await axios.patch(`${API_URL}/tenants/payment-notification-settings`, payload);
+      const data = await savePaymentNotificationSettings(payload);
       setEnabled(Boolean(data.enabled));
       setSelectedKeys(recipientsToSelectionKeys(data.recipients || []));
       setPhoneNumbersText(phoneNumbersToText(data.phoneNumbers || []));
@@ -136,7 +144,12 @@ export default function PaymentNotificationSettings({ canEdit, dialogTrigger = f
       if (dialogTrigger) setOpen(false);
     } catch (error) {
       console.error('Failed to save payment notification settings:', error);
-      toast.error(error.response?.data?.error || 'Failed to save payment alert settings');
+      const status = error?.response?.status;
+      if (status === 404) {
+        toast.error('Payment alert settings API not found — redeploy the backend, then try again.');
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to save payment alert settings');
+      }
     } finally {
       setSaving(false);
     }
@@ -229,11 +242,11 @@ export default function PaymentNotificationSettings({ canEdit, dialogTrigger = f
         multiline
         minRows={3}
         label="Phone numbers"
-        placeholder={'9495551234\n9495555678'}
+        placeholder={'(949) 555-1234\n(949) 555-5678'}
         value={phoneNumbersText}
-        onChange={(e) => setPhoneNumbersText(e.target.value)}
+        onChange={(e) => setPhoneNumbersText(formatMultilinePhoneTyping(e.target.value))}
         disabled={!canEdit}
-        helperText="One number per line (or comma-separated). These are texted in addition to any team members above."
+        helperText="One number per line (or comma-separated). Formats as you type — e.g. 9499393802 becomes (949) 939-3802."
         sx={{ mb: 1.5 }}
       />
 
