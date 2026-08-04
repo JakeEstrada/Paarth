@@ -5,7 +5,7 @@
  * Docs: ../../../docs/PAGES.md#dashboardpagetsx
  */
 // @ts-nocheck — large page; tighten types incrementally
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Box,
   GridLegacy as Grid,
@@ -163,18 +163,25 @@ function DashboardQuickTile({ label, value, icon: Icon, accentColor, onClick, al
   );
 }
 
-function DashboardPanelHeader({ title, actionLabel, onAction }) {
+function DashboardPanelHeader({ title, actionLabel, onAction, subtitle }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, gap: 1 }}>
-      <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '-0.01em' }}>
-        {title}
-      </Typography>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2, gap: 1 }}>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '-0.01em' }}>
+          {title}
+        </Typography>
+        {subtitle ? (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+            {subtitle}
+          </Typography>
+        ) : null}
+      </Box>
       {actionLabel && onAction ? (
         <Button
           size="small"
           endIcon={<ChevronRightIcon sx={{ fontSize: 18 }} />}
           onClick={onAction}
-          sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2 }}
+          sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2, flexShrink: 0 }}
         >
           {actionLabel}
         </Button>
@@ -225,6 +232,7 @@ function DashboardPage() {
     totalCustomers: 0,
   });
   const [activities, setActivities] = useState([]);
+  const [markedPaidPayments, setMarkedPaidPayments] = useState([]);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [selectedPrintDate, setSelectedPrintDate] = useState(new Date().toISOString().split('T')[0]);
   const [summaryStartDate, setSummaryStartDate] = useState(() =>
@@ -267,12 +275,19 @@ function DashboardPage() {
       }
       
       // Fetch all data in parallel
-      const [jobsRes, appointmentsRes, tasksRes, customersRes, activitiesRes] = await Promise.all([
+      const paymentHistoryStart = format(subDays(new Date(), 365), 'yyyy-MM-dd');
+      const paymentHistoryEnd = format(new Date(), 'yyyy-MM-dd');
+      const [jobsRes, appointmentsRes, tasksRes, customersRes, activitiesRes, markedPaidRes] = await Promise.all([
         axios.get(`${API_URL}/jobs`),
         axios.get(`${API_URL}/appointments?status=scheduled&limit=50`),
         axios.get(`${API_URL}/tasks`),
         axios.get(`${API_URL}/customers?limit=1`),
         axios.get(`${API_URL}/activities/recent?limit=100`).catch(() => ({ data: [] })),
+        axios
+          .get(
+            `${API_URL}/activities/date-range?startDate=${paymentHistoryStart}&endDate=${paymentHistoryEnd}&types=payment_received`,
+          )
+          .catch(() => ({ data: [] })),
       ]);
 
       const jobs = jobsRes.data.jobs || jobsRes.data || [];
@@ -281,6 +296,7 @@ function DashboardPage() {
       const customersResData = customersRes.data;
       const customerTotal = customersResData?.total ?? (Array.isArray(customersResData?.customers) ? customersResData.customers.length : 0);
       const allActivities = activitiesRes.data || [];
+      const paidActivities = Array.isArray(markedPaidRes.data) ? markedPaidRes.data : [];
 
       // Filter out archived and dead estimates
       const activeJobs = jobs.filter(job => !job.isArchived && !job.isDeadEstimate);
@@ -345,6 +361,11 @@ function DashboardPage() {
         totalCustomers: customerTotal,
       });
       setActivities(sortedActivities);
+      setMarkedPaidPayments(
+        [...paidActivities].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        ),
+      );
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       toast.error('Failed to load dashboard data');
@@ -536,6 +557,38 @@ function DashboardPage() {
     return '';
   };
 
+  const formatMarkedPaidAt = (dateString) => {
+    if (!dateString) return '';
+    try {
+      const date = typeof dateString === 'string' ? parseISO(dateString) : new Date(dateString);
+      return `${format(date, 'MMM d, yyyy')} · ${format(date, 'h:mm a')}`;
+    } catch (error) {
+      return '';
+    }
+  };
+
+  const parsePaymentReceivedLabel = (activity) => {
+    const note = String(activity?.note || '').trim();
+    const prefix = 'Payment received: ';
+    if (note.startsWith(prefix)) return note.slice(prefix.length);
+    if (note) return note;
+    if (activity?.paymentType) {
+      return activity.paymentType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    return 'Payment';
+  };
+
+  const recentMarkedPaidPayments = useMemo(
+    () => markedPaidPayments.slice(0, 25),
+    [markedPaidPayments],
+  );
+
+  const markedPaidTotal = useMemo(
+    () =>
+      recentMarkedPaidPayments.reduce((sum, activity) => sum + (Number(activity.amount) || 0), 0),
+    [recentMarkedPaidPayments],
+  );
+
   const formatActivityTime = (dateString) => {
     if (!dateString) return '';
     try {
@@ -561,6 +614,7 @@ function DashboardPage() {
       
       // Remove the activity from the list
       setActivities(activities.filter(a => a._id !== activityToDelete._id));
+      setMarkedPaidPayments((prev) => prev.filter((a) => a._id !== activityToDelete._id));
       
       setDeleteConfirmOpen(false);
       setActivityToDelete(null);
@@ -1297,6 +1351,97 @@ function DashboardPage() {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* Payments marked paid — ordered by when PAID was clicked */}
+      <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), mb: 3 }}>
+        <DashboardPanelHeader
+          title="Deposits & payments marked paid"
+          subtitle="Newest first by when you clicked Paid — not the payment date on the schedule"
+          actionLabel="Finance Hub"
+          onAction={() => navigate('/finance?tab=deposits')}
+        />
+        {recentMarkedPaidPayments.length === 0 ? (
+          <DashboardEmptyState message="No payments marked paid yet — use Paid on a job payment schedule to log them here." />
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+              {recentMarkedPaidPayments.length} recent
+              {hideSensitive ? '' : ` · ${formatCurrency(markedPaidTotal)} shown`}
+            </Typography>
+            {recentMarkedPaidPayments.map((activity, idx) => {
+              const jobId = activity.jobId?._id || activity.jobId;
+              const jobLabel = activity.jobId?.title || '';
+              const customerLabel = activity.customerId?.name || '';
+              const paymentLabel = parsePaymentReceivedLabel(activity);
+
+              return (
+                <Box
+                  key={activity._id || idx}
+                  onClick={() => {
+                    if (jobId) navigate(`/pipeline?jobId=${jobId}`);
+                  }}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 1.5,
+                    p: 1.5,
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    cursor: jobId ? 'pointer' : 'default',
+                    bgcolor:
+                      idx === 0
+                        ? alpha(
+                            theme.palette.success.main,
+                            theme.palette.mode === 'dark' ? 0.1 : 0.05,
+                          )
+                        : 'transparent',
+                    '&:hover': jobId ? { bgcolor: 'action.hover' } : undefined,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 2,
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: alpha(theme.palette.success.main, 0.12),
+                    }}
+                  >
+                    <MoneyIcon sx={{ fontSize: 20, color: 'success.main' }} />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        {hideSensitive ? 'Locked' : formatCurrency(activity.amount || 0)}
+                      </Typography>
+                      <Chip
+                        label={paymentLabel}
+                        size="small"
+                        color="success"
+                        variant="outlined"
+                        sx={{ height: 22, fontSize: '0.7rem', maxWidth: '100%' }}
+                      />
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35 }}>
+                      Marked paid {formatMarkedPaidAt(activity.createdAt)}
+                      {activity.createdBy?.name ? ` · ${activity.createdBy.name}` : ''}
+                    </Typography>
+                    {(jobLabel || customerLabel) && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                        {[customerLabel, jobLabel].filter(Boolean).join(' · ')}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+      </Paper>
 
       {/* Recent Activity */}
       <Paper elevation={0} sx={dashboardPanelSx(theme)}>
