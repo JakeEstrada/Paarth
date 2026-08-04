@@ -1438,13 +1438,6 @@ function DashboardPage() {
                     border: '1px solid',
                     borderColor: 'divider',
                     cursor: jobId ? 'pointer' : 'default',
-                    bgcolor:
-                      idx === 0
-                        ? alpha(
-                            theme.palette.success.main,
-                            theme.palette.mode === 'dark' ? 0.1 : 0.05,
-                          )
-                        : 'transparent',
                     '&:hover': jobId ? { bgcolor: 'action.hover' } : undefined,
                   }}
                 >
@@ -1475,7 +1468,7 @@ function DashboardPage() {
                         sx={{ height: 22, fontSize: '0.7rem', maxWidth: '100%' }}
                       />
                     </Box>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 0.35 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, mt: 0.35 }}>
                       <Typography variant="caption" color="text.secondary">
                         <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
                           Marked paid
