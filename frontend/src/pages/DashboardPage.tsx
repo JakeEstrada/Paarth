@@ -44,7 +44,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { formatMoney, roundMoney } from '../utils/paymentSchedule';
+import { formatMoney, roundMoney, getJobPaymentSummary } from '../utils/paymentSchedule';
 import toast from 'react-hot-toast';
 import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
@@ -100,9 +100,13 @@ function lookupSchedulePaidAt(activity, jobsById) {
 }
 
 function enrichMarkedPaidPayment(activity, jobsById) {
+  const jobId = String(activity?.jobId?._id || activity?.jobId || '');
+  const job = jobsById.get(jobId);
+  const jobBalanceDue = job ? getJobPaymentSummary(job).balanceDue : null;
   return {
     ...activity,
     resolvedPaymentPaidAt: lookupSchedulePaidAt(activity, jobsById),
+    jobBalanceDue,
   };
 }
 
@@ -1422,6 +1426,9 @@ function DashboardPage() {
               const jobLabel = activity.jobId?.title || '';
               const customerLabel = activity.customerId?.name || '';
               const paymentLabel = parsePaymentReceivedLabel(activity);
+              const isJobFullyPaid =
+                activity.jobBalanceDue !== null && activity.jobBalanceDue !== undefined
+                  && activity.jobBalanceDue <= 0.01;
 
               return (
                 <Box
@@ -1436,9 +1443,15 @@ function DashboardPage() {
                     p: 1.5,
                     borderRadius: 2,
                     border: '1px solid',
-                    borderColor: 'divider',
+                    borderColor: isJobFullyPaid ? 'success.main' : 'divider',
                     cursor: jobId ? 'pointer' : 'default',
-                    '&:hover': jobId ? { bgcolor: 'action.hover' } : undefined,
+                    bgcolor: isJobFullyPaid
+                      ? alpha(
+                          theme.palette.success.main,
+                          theme.palette.mode === 'dark' ? 0.12 : 0.06,
+                        )
+                      : 'transparent',
+                    '&:hover': jobId ? { bgcolor: isJobFullyPaid ? alpha(theme.palette.success.main, theme.palette.mode === 'dark' ? 0.18 : 0.1) : 'action.hover' } : undefined,
                   }}
                 >
                   <Box
