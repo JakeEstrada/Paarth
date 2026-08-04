@@ -433,7 +433,7 @@ async function computeWeekTotalHours(displayName, options = {}) {
     row.breaks = rfid.breaks;
     row.note = rfid.note;
     row.scanCount = rfid.scanCount;
-  });
+  }
 
   const scheduleHours = rows.reduce(
     (sum, row) => sum + calculateHours(row.in, row.out, row.breaks),
