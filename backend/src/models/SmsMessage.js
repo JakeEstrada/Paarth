@@ -37,7 +37,7 @@ const smsMessageSchema = new mongoose.Schema(
     errorMessage: String,
     source: {
       type: String,
-      enum: ['adhoc', 'employee', 'appointment', 'inbound', 'other'],
+      enum: ['adhoc', 'employee', 'appointment', 'inbound', 'payment_notification', 'other'],
       default: 'other',
     },
     createdBy: {

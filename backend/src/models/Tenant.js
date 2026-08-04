@@ -69,6 +69,16 @@ const tenantSchema = new mongoose.Schema(
       linkedAt: { type: Date },
       linkedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     },
+    /** SMS alert when a job payment schedule row is marked paid. */
+    paymentNotificationSettings: {
+      enabled: { type: Boolean, default: false },
+      recipients: [
+        {
+          kind: { type: String, enum: ['user', 'contact'], required: true },
+          id: { type: mongoose.Schema.Types.ObjectId, required: true },
+        },
+      ],
+    },
   },
   {
     timestamps: true,

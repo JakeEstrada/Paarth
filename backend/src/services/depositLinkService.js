@@ -11,6 +11,7 @@ const {
   normalizePaymentScheduleInput,
   diffPaymentScheduleActivities,
 } = require('../utils/paymentSchedule');
+const { notifyPaymentMarkedPaid } = require('../services/paymentNotificationService');
 
 function parseDepositAmount(raw) {
   return roundMoney(Math.abs(Number(raw) || 0));
@@ -246,6 +247,19 @@ async function linkDepositToPayment({
         });
       } catch (activityError) {
         console.error('deposit allocation activity error:', activityError);
+      }
+    }
+    const newPaymentActivities = activities.filter((a) => a.type === 'payment_received');
+    if (newPaymentActivities.length > 0) {
+      const populatedJob = await Job.findById(job._id).populate('customerId', 'name');
+      const tenantId = job.tenantId;
+      for (const paymentActivity of newPaymentActivities) {
+        notifyPaymentMarkedPaid({
+          tenantId,
+          job: populatedJob || job,
+          paymentActivity,
+          createdBy: linkedBy,
+        });
       }
     }
     markPaidApplied = true;

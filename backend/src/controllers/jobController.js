@@ -11,6 +11,7 @@ const {
   findScheduleAmountForKind,
   diffPaymentScheduleActivities,
 } = require('../utils/paymentSchedule');
+const { notifyPaymentMarkedPaid } = require('../services/paymentNotificationService');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
@@ -374,6 +375,20 @@ async function updateJob(req, res) {
         });
       } catch (activityError) {
         console.error('Error creating payment schedule activity:', activityError);
+      }
+    }
+
+    const newPaymentActivities = paymentScheduleActivities.filter((a) => a.type === 'payment_received');
+    if (newPaymentActivities.length > 0) {
+      const populatedJob = await Job.findById(job._id).populate('customerId', 'name');
+      const tenantId = req.user?.tenantId || job.tenantId;
+      for (const paymentActivity of newPaymentActivities) {
+        notifyPaymentMarkedPaid({
+          tenantId,
+          job: populatedJob || job,
+          paymentActivity,
+          createdBy: req.user?._id || job.createdBy,
+        });
       }
     }
     

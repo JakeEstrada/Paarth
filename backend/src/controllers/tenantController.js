@@ -1,4 +1,5 @@
 const Tenant = require('../models/Tenant');
+const { sanitizeRecipients } = require('../services/paymentNotificationService');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
 
 // 1x1 transparent PNG — used when a tenant has no logo yet so <img> requests don't 404 cross-origin.
@@ -467,6 +468,51 @@ async function getTenantEstimateDocumentLogo(req, res) {
   }
 }
 
+async function getTenantPaymentNotificationSettings(req, res) {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    const tenant = await Tenant.findById(tenantId).select('paymentNotificationSettings').lean();
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    const settings = tenant.paymentNotificationSettings || {};
+    res.json({
+      enabled: Boolean(settings.enabled),
+      recipients: sanitizeRecipients(settings.recipients),
+    });
+  } catch (error) {
+    console.error('getTenantPaymentNotificationSettings:', error);
+    res.status(500).json({ error: error.message || 'Failed to load payment notification settings' });
+  }
+}
+
+async function updateTenantPaymentNotificationSettings(req, res) {
+  try {
+    if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to update payment alerts.' });
+    }
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    const enabled = Boolean(req.body?.enabled);
+    const recipients = sanitizeRecipients(req.body?.recipients);
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    tenant.paymentNotificationSettings = { enabled, recipients };
+    await tenant.save();
+    res.json({ enabled, recipients });
+  } catch (error) {
+    console.error('updateTenantPaymentNotificationSettings:', error);
+    res.status(500).json({ error: error.message || 'Failed to save payment notification settings' });
+  }
+}
+
 module.exports = {
   uploadTenantLogo,
   uploadTenantLogoLight,
@@ -478,4 +524,6 @@ module.exports = {
   updateTenantEstimateDocumentSettings,
   uploadEstimateDocumentLogo,
   getTenantEstimateDocumentLogo,
+  getTenantPaymentNotificationSettings,
+  updateTenantPaymentNotificationSettings,
 };

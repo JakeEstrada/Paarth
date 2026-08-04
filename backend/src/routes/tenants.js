@@ -13,6 +13,8 @@ const {
   updateTenantEstimateDocumentSettings,
   uploadEstimateDocumentLogo,
   getTenantEstimateDocumentLogo,
+  getTenantPaymentNotificationSettings,
+  updateTenantPaymentNotificationSettings,
 } = require('../controllers/tenantController');
 
 // Public branding image (no auth — used on login page with tenant id)
@@ -28,6 +30,8 @@ router.patch('/pipeline-settings', requireAuth, updateTenantPipelineSettings);
 
 router.get('/estimate-document-settings', requireAuth, getTenantEstimateDocumentSettings);
 router.patch('/estimate-document-settings', requireAuth, updateTenantEstimateDocumentSettings);
+router.get('/payment-notification-settings', requireAuth, getTenantPaymentNotificationSettings);
+router.patch('/payment-notification-settings', requireAuth, updateTenantPaymentNotificationSettings);
 router.post(
   '/estimate-document-logo',
   requireAuth,
