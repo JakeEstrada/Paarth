@@ -41,6 +41,7 @@ import {
   Delete as DeleteIcon,
   AutoAwesome as AutoAwesomeIcon,
   ChevronRight as ChevronRightIcon,
+  Sms as SmsIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -50,6 +51,7 @@ import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } f
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
 import PaymentNotificationSettings from '../components/finance/PaymentNotificationSettings';
+import { sendUnsentPaymentNotifications } from '../utils/paymentNotificationSettingsApi';
 import { APP_LOGO_LIGHT } from '../utils/tenantBranding';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { renderSummaryBlocks } from '../utils/summaryMarkdown';
@@ -326,6 +328,7 @@ function DashboardPage() {
   });
   const [activities, setActivities] = useState([]);
   const [markedPaidPayments, setMarkedPaidPayments] = useState([]);
+  const [sendingUnsentPaymentAlerts, setSendingUnsentPaymentAlerts] = useState(false);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [selectedPrintDate, setSelectedPrintDate] = useState(new Date().toISOString().split('T')[0]);
   const [summaryStartDate, setSummaryStartDate] = useState(() =>
@@ -681,6 +684,50 @@ function DashboardPage() {
       recentMarkedPaidPayments.reduce((sum, activity) => sum + (Number(activity.amount) || 0), 0),
     [recentMarkedPaidPayments],
   );
+
+  const unsentPaymentAlertCount = useMemo(
+    () => markedPaidPayments.filter((activity) => !activity.paymentNotificationSentAt).length,
+    [markedPaidPayments],
+  );
+
+  const handleSendUnsentPaymentAlerts = async () => {
+    if (unsentPaymentAlertCount === 0) return;
+    try {
+      setSendingUnsentPaymentAlerts(true);
+      let totalSent = 0;
+      let totalSms = 0;
+      let lastError = null;
+
+      for (let round = 0; round < 10; round += 1) {
+        const result = await sendUnsentPaymentNotifications();
+        if (result.error) {
+          lastError = result.error;
+          break;
+        }
+        if (!result.total) break;
+        totalSent += result.sentActivities || 0;
+        totalSms += result.smsCount || 0;
+        if ((result.sentActivities || 0) === 0) break;
+      }
+
+      await fetchDashboardData();
+
+      if (totalSent > 0) {
+        toast.success(
+          `Sent ${totalSent} payment alert${totalSent === 1 ? '' : 's'} (${totalSms} text${totalSms === 1 ? '' : 's'})`,
+        );
+      } else if (lastError) {
+        toast.error(lastError);
+      } else {
+        toast.error('Could not send payment alerts — check Twilio and alert settings.');
+      }
+    } catch (error) {
+      console.error('Failed to send unsent payment alerts:', error);
+      toast.error(error.response?.data?.error || 'Failed to send payment alerts');
+    } finally {
+      setSendingUnsentPaymentAlerts(false);
+    }
+  };
 
   const formatActivityTime = (dateString) => {
     if (!dateString) return '';
@@ -1458,10 +1505,35 @@ function DashboardPage() {
           <DashboardEmptyState message="No payments marked paid yet — use Paid on a job payment schedule to log them here." />
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
-              {recentMarkedPaidPayments.length} recent
-              {hideSensitive ? '' : ` · ${formatCurrency(markedPaidTotal)} shown`}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">
+                {recentMarkedPaidPayments.length} recent
+                {hideSensitive ? '' : ` · ${formatCurrency(markedPaidTotal)} shown`}
+                {unsentPaymentAlertCount > 0
+                  ? ` · ${unsentPaymentAlertCount} unsent alert${unsentPaymentAlertCount === 1 ? '' : 's'}`
+                  : ''}
+              </Typography>
+              {canEditPaymentAlerts && unsentPaymentAlertCount > 0 ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={
+                    sendingUnsentPaymentAlerts ? (
+                      <CircularProgress size={14} color="inherit" />
+                    ) : (
+                      <SmsIcon fontSize="small" />
+                    )
+                  }
+                  onClick={handleSendUnsentPaymentAlerts}
+                  disabled={sendingUnsentPaymentAlerts}
+                  sx={{ textTransform: 'none', borderRadius: 2, flexShrink: 0 }}
+                >
+                  {sendingUnsentPaymentAlerts
+                    ? 'Sending…'
+                    : `Send ${unsentPaymentAlertCount} unsent`}
+                </Button>
+              ) : null}
+            </Box>
             {recentMarkedPaidPayments.map((activity, idx) => {
               const jobId = activity.jobId?._id || activity.jobId;
               const jobLabel = activity.jobId?.title || '';

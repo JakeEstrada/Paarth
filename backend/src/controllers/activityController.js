@@ -1,4 +1,5 @@
 const Activity = require('../models/Activity');
+const { sendUnsentPaymentNotifications } = require('../services/paymentNotificationService');
 
 /**
  * YYYY-MM-DD as local calendar day bounds (matches browser <input type="date" />).
@@ -1007,6 +1008,33 @@ async function generateActivitySummary(req, res) {
   }
 }
 
+async function sendUnsentPaymentNotificationAlerts(req, res) {
+  try {
+    if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to send payment alerts.' });
+    }
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+
+    const result = await sendUnsentPaymentNotifications({
+      tenantId,
+      createdBy: req.user._id,
+      limit: req.body?.limit,
+    });
+
+    if (result.error) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('sendUnsentPaymentNotificationAlerts:', error);
+    res.status(500).json({ error: error.message || 'Failed to send payment alerts' });
+  }
+}
+
 module.exports = {
   getJobActivities,
   getCustomerActivities,
@@ -1017,5 +1045,6 @@ module.exports = {
   generateActivitySummary,
   generateJobSummary,
   deleteActivity,
-  logPayrollPrint
+  logPayrollPrint,
+  sendUnsentPaymentNotificationAlerts,
 };

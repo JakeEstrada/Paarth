@@ -167,3 +167,46 @@ export async function savePaymentNotificationSettings(
     throw error;
   }
 }
+
+export type SendUnsentPaymentNotificationsResult = {
+  sentActivities: number;
+  failedActivities: number;
+  total: number;
+  smsCount?: number;
+  message?: string;
+  error?: string;
+};
+
+function activityPaths(suffix: string): string[] {
+  const path = suffix.startsWith('/') ? suffix : suffix ? `/${suffix}` : '';
+  const primary = `/activities${path}`;
+  if (apiBaseEndsWithApi()) {
+    return [primary];
+  }
+  return [primary, `/api${primary}`];
+}
+
+async function withActivityPathFallback<T>(
+  suffix: string,
+  request: (url: string) => Promise<{ data: T }>,
+): Promise<T> {
+  const paths = activityPaths(suffix);
+  let lastError: unknown;
+  for (let i = 0; i < paths.length; i += 1) {
+    try {
+      const res = await request(paths[i]);
+      return res.data;
+    } catch (error) {
+      lastError = error;
+      const status = isAxiosError(error) ? error.response?.status : undefined;
+      if (status !== 404 || i === paths.length - 1) {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
+}
+
+export async function sendUnsentPaymentNotifications(): Promise<SendUnsentPaymentNotificationsResult> {
+  return withActivityPathFallback('/payment-notifications/send-unsent', (url) => api.post(url));
+}

@@ -11,7 +11,8 @@ const {
   generateActivitySummary,
   generateJobSummary,
   deleteActivity,
-  logPayrollPrint
+  logPayrollPrint,
+  sendUnsentPaymentNotificationAlerts,
 } = require('../controllers/activityController');
 
 router.use(requireAuth);
@@ -25,6 +26,7 @@ router.get('/customer/:customerId', getCustomerActivities);
 router.post('/job/:jobId', createActivity);
 router.post('/manual', createManualActivity);
 router.post('/payroll/print', logPayrollPrint);
+router.post('/payment-notifications/send-unsent', sendUnsentPaymentNotificationAlerts);
 router.delete('/:id', deleteActivity);
 
 module.exports = router;
