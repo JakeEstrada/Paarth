@@ -102,12 +102,7 @@ export default function PaymentNotificationSettings({ canEdit, dialogTrigger = f
       setRecipientOptions(rows.map(toRecipientOption));
     } catch (error) {
       console.error('Failed to load payment notification settings:', error);
-      const status = error?.response?.status;
-      if (status === 404) {
-        toast.error('Payment alert settings API not found — redeploy the backend, then try again.');
-      } else {
-        toast.error('Failed to load payment alert settings');
-      }
+      toast.error('Failed to load payment alert settings');
     } finally {
       setLoading(false);
     }
@@ -144,12 +139,7 @@ export default function PaymentNotificationSettings({ canEdit, dialogTrigger = f
       if (dialogTrigger) setOpen(false);
     } catch (error) {
       console.error('Failed to save payment notification settings:', error);
-      const status = error?.response?.status;
-      if (status === 404) {
-        toast.error('Payment alert settings API not found — redeploy the backend, then try again.');
-      } else {
-        toast.error(error.response?.data?.error || 'Failed to save payment alert settings');
-      }
+      toast.error(error.response?.data?.error || 'Failed to save payment alert settings');
     } finally {
       setSaving(false);
     }

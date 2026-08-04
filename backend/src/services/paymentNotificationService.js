@@ -110,6 +110,51 @@ function buildPaymentNotificationMessage(job, paymentActivity) {
   ].join('\n');
 }
 
+function parsePaymentSettingsFromPipelineOverrides(overrides) {
+  const o = overrides && typeof overrides === 'object' && !Array.isArray(overrides) ? overrides : {};
+  const enabled = o.PAYMENT_SMS_ENABLED?.hidden === true;
+  const phoneNumbers = Object.entries(o)
+    .filter(([k]) => /^PAYMENT_SMS_PHONE_\d+$/.test(k))
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(([, v]) => String(v?.label || '').trim())
+    .filter(Boolean);
+  const recipients = Object.entries(o)
+    .filter(([k]) => /^PAYMENT_SMS_RECIPIENT_\d+$/.test(k))
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(([, v]) => {
+      const label = String(v?.label || '').trim();
+      if (label.startsWith('user:')) return { kind: 'user', id: label.slice(5) };
+      if (label.startsWith('contact:')) return { kind: 'contact', id: label.slice(8) };
+      return null;
+    })
+    .filter(Boolean);
+  return { enabled, recipients, phoneNumbers };
+}
+
+function resolvePaymentNotificationSettings(tenant) {
+  const dedicated = tenant?.paymentNotificationSettings;
+  const hasDedicated =
+    dedicated &&
+    (dedicated.enabled ||
+      (Array.isArray(dedicated.recipients) && dedicated.recipients.length > 0) ||
+      (Array.isArray(dedicated.phoneNumbers) && dedicated.phoneNumbers.length > 0));
+
+  if (hasDedicated) {
+    return {
+      enabled: Boolean(dedicated.enabled),
+      recipients: sanitizeRecipients(dedicated.recipients),
+      phoneNumbers: sanitizePhoneNumbers(dedicated.phoneNumbers),
+    };
+  }
+
+  const fromPipeline = parsePaymentSettingsFromPipelineOverrides(tenant?.pipelineStageOverrides);
+  return {
+    enabled: Boolean(fromPipeline.enabled),
+    recipients: sanitizeRecipients(fromPipeline.recipients),
+    phoneNumbers: sanitizePhoneNumbers(fromPipeline.phoneNumbers),
+  };
+}
+
 async function logPaymentNotificationSms({ from, to, body, twilioSid, createdBy, tenantId, deliveryStatus }) {
   const SmsMessage = require('../models/SmsMessage');
   await SmsMessage.create({
@@ -134,12 +179,14 @@ async function notifyPaymentMarkedPaid({ tenantId, job, paymentActivity, activit
   if (!tenantId || !job || !paymentActivity) return;
 
   try {
-    const tenant = await Tenant.findById(tenantId).select('paymentNotificationSettings').lean();
-    const settings = tenant?.paymentNotificationSettings;
-    if (!settings?.enabled) return;
+    const tenant = await Tenant.findById(tenantId)
+      .select('paymentNotificationSettings pipelineStageOverrides')
+      .lean();
+    const settings = resolvePaymentNotificationSettings(tenant);
+    if (!settings.enabled) return;
 
-    const recipients = sanitizeRecipients(settings.recipients);
-    const phoneNumbers = sanitizePhoneNumbers(settings.phoneNumbers);
+    const recipients = settings.recipients;
+    const phoneNumbers = settings.phoneNumbers;
     if (recipients.length === 0 && phoneNumbers.length === 0) return;
 
     const message = buildPaymentNotificationMessage(job, paymentActivity);
@@ -192,4 +239,6 @@ module.exports = {
   sanitizePhoneNumbers,
   notifyPaymentMarkedPaid,
   buildPaymentNotificationMessage,
+  parsePaymentSettingsFromPipelineOverrides,
+  resolvePaymentNotificationSettings,
 };
