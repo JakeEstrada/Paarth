@@ -1,6 +1,7 @@
 const Tenant = require('../models/Tenant');
 const User = require('../models/User');
 const EmployeeContact = require('../models/EmployeeContact');
+const Activity = require('../models/Activity');
 const { sendSmsViaTwilio } = require('../controllers/twilioController');
 const { getJobPaymentSummary, roundMoney, describeScheduleItem } = require('../utils/paymentSchedule');
 const { runWithTenantContext } = require('../middleware/tenantContext');
@@ -35,9 +36,29 @@ function sanitizeRecipients(raw) {
   return out;
 }
 
-async function resolveRecipientPhones(recipients) {
+function sanitizePhoneNumbers(raw) {
+  if (!Array.isArray(raw)) {
+    if (typeof raw === 'string') {
+      raw = raw.split(/[\n,;]+/);
+    } else {
+      return [];
+    }
+  }
+  const out = [];
+  const seen = new Set();
+  for (const entry of raw) {
+    const normalized = normalizeToE164(entry);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+async function resolveRecipientPhones(recipients, phoneNumbers = []) {
   const phones = [];
   const seen = new Set();
+
   for (const row of recipients) {
     let mobile = '';
     if (row.kind === 'user') {
@@ -54,6 +75,13 @@ async function resolveRecipientPhones(recipients) {
     seen.add(normalized);
     phones.push(normalized);
   }
+
+  for (const phone of sanitizePhoneNumbers(phoneNumbers)) {
+    if (!phone || seen.has(phone)) continue;
+    seen.add(phone);
+    phones.push(phone);
+  }
+
   return phones;
 }
 
@@ -102,7 +130,7 @@ async function logPaymentNotificationSms({ from, to, body, twilioSid, createdBy,
  * Text everyone in the tenant's payment alert group when a schedule row is newly marked paid.
  * Fire-and-forget — errors are logged, not thrown to callers.
  */
-async function notifyPaymentMarkedPaid({ tenantId, job, paymentActivity, createdBy }) {
+async function notifyPaymentMarkedPaid({ tenantId, job, paymentActivity, activityId, createdBy }) {
   if (!tenantId || !job || !paymentActivity) return;
 
   try {
@@ -111,17 +139,20 @@ async function notifyPaymentMarkedPaid({ tenantId, job, paymentActivity, created
     if (!settings?.enabled) return;
 
     const recipients = sanitizeRecipients(settings.recipients);
-    if (recipients.length === 0) return;
+    const phoneNumbers = sanitizePhoneNumbers(settings.phoneNumbers);
+    if (recipients.length === 0 && phoneNumbers.length === 0) return;
 
     const message = buildPaymentNotificationMessage(job, paymentActivity);
 
     await runWithTenantContext({ tenantId: String(tenantId), bypassTenant: false }, async () => {
-      const phones = await resolveRecipientPhones(recipients);
+      const phones = await resolveRecipientPhones(recipients, phoneNumbers);
       if (phones.length === 0) return;
 
+      let sentCount = 0;
       for (const to of phones) {
         try {
           const data = await sendSmsViaTwilio({ to, message });
+          sentCount += 1;
           try {
             await logPaymentNotificationSms({
               from: data.from,
@@ -139,6 +170,17 @@ async function notifyPaymentMarkedPaid({ tenantId, job, paymentActivity, created
           console.error('Payment notification SMS failed for', to, sendError?.message || sendError);
         }
       }
+
+      if (activityId && sentCount > 0) {
+        try {
+          await Activity.findByIdAndUpdate(activityId, {
+            paymentNotificationSentAt: new Date(),
+            paymentNotificationCount: sentCount,
+          });
+        } catch (markError) {
+          console.error('Failed to mark payment notification sent:', markError?.message || markError);
+        }
+      }
     });
   } catch (error) {
     console.error('notifyPaymentMarkedPaid error:', error?.message || error);
@@ -147,6 +189,7 @@ async function notifyPaymentMarkedPaid({ tenantId, job, paymentActivity, created
 
 module.exports = {
   sanitizeRecipients,
+  sanitizePhoneNumbers,
   notifyPaymentMarkedPaid,
   buildPaymentNotificationMessage,
 };

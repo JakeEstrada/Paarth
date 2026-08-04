@@ -15,6 +15,7 @@ import {
 import { Save as SaveIcon, Sms as SmsIcon } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { formatPhoneForDisplay } from '../../utils/phoneFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -55,11 +56,25 @@ function recipientsToSelectionKeys(recipients) {
   return (recipients || []).map((row) => `${row.kind}:${row.id}`);
 }
 
-export default function PaymentNotificationSettings({ canEdit }) {
+function phoneNumbersToText(phoneNumbers) {
+  return (phoneNumbers || [])
+    .map((phone) => formatPhoneForDisplay(String(phone).replace(/^\+1/, '')) || String(phone))
+    .join('\n');
+}
+
+function textToPhoneNumbers(text) {
+  return String(text || '')
+    .split(/[\n,;]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+export default function PaymentNotificationSettings({ canEdit, embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState([]);
+  const [phoneNumbersText, setPhoneNumbersText] = useState('');
   const [recipientOptions, setRecipientOptions] = useState([]);
 
   const loadSettings = useCallback(async () => {
@@ -72,6 +87,7 @@ export default function PaymentNotificationSettings({ canEdit }) {
       const settings = settingsRes.data || {};
       setEnabled(Boolean(settings.enabled));
       setSelectedKeys(recipientsToSelectionKeys(settings.recipients || []));
+      setPhoneNumbersText(phoneNumbersToText(settings.phoneNumbers || []));
       const rows = employeesRes.data?.recipients || employeesRes.data?.employees || [];
       setRecipientOptions(rows.map(toRecipientOption));
     } catch (error) {
@@ -92,8 +108,9 @@ export default function PaymentNotificationSettings({ canEdit }) {
   );
 
   const handleSave = async () => {
-    if (enabled && selectedKeys.length === 0) {
-      toast.error('Choose at least one person for payment alerts');
+    const phoneNumbers = textToPhoneNumbers(phoneNumbersText);
+    if (enabled && selectedKeys.length === 0 && phoneNumbers.length === 0) {
+      toast.error('Add at least one team member or phone number for payment alerts');
       return;
     }
     setSaving(true);
@@ -101,10 +118,12 @@ export default function PaymentNotificationSettings({ canEdit }) {
       const payload = {
         enabled,
         recipients: selectionKeysToRecipients(selectedKeys),
+        phoneNumbers,
       };
       const { data } = await axios.patch(`${API_URL}/tenants/payment-notification-settings`, payload);
       setEnabled(Boolean(data.enabled));
       setSelectedKeys(recipientsToSelectionKeys(data.recipients || []));
+      setPhoneNumbersText(phoneNumbersToText(data.phoneNumbers || []));
       toast.success('Payment alert settings saved');
     } catch (error) {
       console.error('Failed to save payment notification settings:', error);
@@ -122,15 +141,8 @@ export default function PaymentNotificationSettings({ canEdit }) {
     );
   }
 
-  return (
-    <Paper
-      variant="outlined"
-      sx={{
-        p: 2,
-        mb: 2,
-        borderRadius: 2,
-      }}
-    >
+  const content = (
+    <>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1.5 }}>
         <SmsIcon color="primary" sx={{ mt: 0.25 }} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -138,7 +150,8 @@ export default function PaymentNotificationSettings({ canEdit }) {
             Payment text alerts
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Automatically text your team when a job payment is marked paid on the payment schedule.
+            Automatically text your group when a job payment is marked paid. Each payment shows a
+            &ldquo;Text sent&rdquo; flag after alerts go out.
           </Typography>
         </Box>
       </Box>
@@ -167,9 +180,8 @@ export default function PaymentNotificationSettings({ canEdit }) {
         renderInput={(params) => (
           <TextField
             {...params}
-            label="Alert group"
+            label="Team members (optional)"
             placeholder="Search team members..."
-            helperText="Everyone selected here gets the same text when a new payment is marked paid."
           />
         )}
         renderOption={(props, option) => (
@@ -204,15 +216,24 @@ export default function PaymentNotificationSettings({ canEdit }) {
         sx={{ mb: 1.5 }}
       />
 
+      <TextField
+        fullWidth
+        multiline
+        minRows={3}
+        label="Phone numbers"
+        placeholder={'9495551234\n9495555678'}
+        value={phoneNumbersText}
+        onChange={(e) => setPhoneNumbersText(e.target.value)}
+        disabled={!canEdit}
+        helperText="One number per line (or comma-separated). These are texted in addition to any team members above."
+        sx={{ mb: 1.5 }}
+      />
+
       {enabled && selectedOptions.some((row) => !row.hasMobile) && (
         <Alert severity="warning" sx={{ mb: 1.5 }}>
-          Some selected people have no mobile number on file and will not receive texts.
+          Some selected team members have no mobile number on file and will not receive texts.
         </Alert>
       )}
-
-      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>
-        Example message: &ldquo;New payment marked paid — Customer · Job — Deposit — Balance due: $0.00&rdquo;
-      </Typography>
 
       {canEdit ? (
         <Button
@@ -223,13 +244,23 @@ export default function PaymentNotificationSettings({ canEdit }) {
           disabled={saving}
           sx={{ textTransform: 'none', borderRadius: 2 }}
         >
-          {saving ? 'Saving…' : 'Save alert group'}
+          {saving ? 'Saving…' : 'Save alert settings'}
         </Button>
       ) : (
         <Typography variant="caption" color="text.secondary">
           Only admins can change payment alert settings.
         </Typography>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return <Box sx={{ mb: 2 }}>{content}</Box>;
+  }
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+      {content}
     </Paper>
   );
 }

@@ -56,7 +56,6 @@ import {
   validatePaymentSchedule,
 } from '../utils/paymentSchedule';
 import RegisterLedgerSection from '../components/finance/RegisterLedgerSection';
-import PaymentNotificationSettings from '../components/finance/PaymentNotificationSettings';
 import { useAuth } from '../context/AuthContext';
 import {
   DEFAULT_ESTIMATE_DOCUMENT_SETTINGS,
@@ -365,7 +364,6 @@ function buildFreshEstimateDraftForJob(job) {
 function FinanceHubPage() {
   const { user, tenantIdForBranding } = useAuth();
   const canEditEstimateHeader = ['super_admin', 'admin'].includes(user?.role);
-  const canEditPaymentAlerts = canEditEstimateHeader;
   const [searchParams, setSearchParams] = useSearchParams();
   const estimateJobId = searchParams.get('jobId');
   const estimateIdParam = searchParams.get('estimateId');
@@ -1734,7 +1732,6 @@ function FinanceHubPage() {
       {activeTab === 'deposits' ? (
             <Card>
               <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
-                <PaymentNotificationSettings canEdit={canEditPaymentAlerts} />
                 <RegisterLedgerSection
                   active
                   variant="deposits"

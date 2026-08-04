@@ -233,9 +233,10 @@ async function linkDepositToPayment({
     await job.save();
 
     const activities = diffPaymentScheduleActivities(oldSchedule, schedule);
+    const createdPaymentActivityDocs = [];
     for (const activity of activities) {
       try {
-        await Activity.create({
+        const doc = await Activity.create({
           type: activity.type,
           jobId: job._id,
           customerId: job.customerId?._id || job.customerId,
@@ -245,19 +246,22 @@ async function linkDepositToPayment({
           paymentPaidAt: activity.paymentPaidAt || undefined,
           createdBy: linkedBy,
         });
+        if (activity.type === 'payment_received') {
+          createdPaymentActivityDocs.push(doc);
+        }
       } catch (activityError) {
         console.error('deposit allocation activity error:', activityError);
       }
     }
-    const newPaymentActivities = activities.filter((a) => a.type === 'payment_received');
-    if (newPaymentActivities.length > 0) {
+    if (createdPaymentActivityDocs.length > 0) {
       const populatedJob = await Job.findById(job._id).populate('customerId', 'name');
       const tenantId = job.tenantId;
-      for (const paymentActivity of newPaymentActivities) {
+      for (const activityDoc of createdPaymentActivityDocs) {
         notifyPaymentMarkedPaid({
           tenantId,
           job: populatedJob || job,
-          paymentActivity,
+          paymentActivity: activityDoc,
+          activityId: activityDoc._id,
           createdBy: linkedBy,
         });
       }

@@ -95,6 +95,9 @@ const activitySchema = new mongoose.Schema({
   paymentMethod: String,
   /** Schedule "Paid date" when payment_received was logged (not the same as createdAt). */
   paymentPaidAt: Date,
+  /** When auto payment-alert texts were sent for this payment_received activity. */
+  paymentNotificationSentAt: Date,
+  paymentNotificationCount: Number,
   
   // Meeting/call related
   duration: String,

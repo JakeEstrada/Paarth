@@ -1,5 +1,5 @@
 const Tenant = require('../models/Tenant');
-const { sanitizeRecipients } = require('../services/paymentNotificationService');
+const { sanitizeRecipients, sanitizePhoneNumbers } = require('../services/paymentNotificationService');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
 
 // 1x1 transparent PNG — used when a tenant has no logo yet so <img> requests don't 404 cross-origin.
@@ -482,6 +482,7 @@ async function getTenantPaymentNotificationSettings(req, res) {
     res.json({
       enabled: Boolean(settings.enabled),
       recipients: sanitizeRecipients(settings.recipients),
+      phoneNumbers: sanitizePhoneNumbers(settings.phoneNumbers),
     });
   } catch (error) {
     console.error('getTenantPaymentNotificationSettings:', error);
@@ -500,13 +501,14 @@ async function updateTenantPaymentNotificationSettings(req, res) {
     }
     const enabled = Boolean(req.body?.enabled);
     const recipients = sanitizeRecipients(req.body?.recipients);
+    const phoneNumbers = sanitizePhoneNumbers(req.body?.phoneNumbers);
     const tenant = await Tenant.findById(tenantId);
     if (!tenant) {
       return res.status(404).json({ error: 'Organization not found' });
     }
-    tenant.paymentNotificationSettings = { enabled, recipients };
+    tenant.paymentNotificationSettings = { enabled, recipients, phoneNumbers };
     await tenant.save();
-    res.json({ enabled, recipients });
+    res.json({ enabled, recipients, phoneNumbers });
   } catch (error) {
     console.error('updateTenantPaymentNotificationSettings:', error);
     res.status(500).json({ error: error.message || 'Failed to save payment notification settings' });

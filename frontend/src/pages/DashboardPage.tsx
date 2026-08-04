@@ -49,6 +49,7 @@ import toast from 'react-hot-toast';
 import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
+import PaymentNotificationSettings from '../components/finance/PaymentNotificationSettings';
 import { APP_LOGO_LIGHT } from '../utils/tenantBranding';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { renderSummaryBlocks } from '../utils/summaryMarkdown';
@@ -271,6 +272,7 @@ function DashboardPage() {
   const theme = useTheme();
   const { user, tenantIdForBranding } = useAuth();
   const { hideSensitive } = useShopViewSensitive(user?.role);
+  const canEditPaymentAlerts = ['super_admin', 'admin'].includes(user?.role);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalJobs: 0,
@@ -1407,6 +1409,7 @@ function DashboardPage() {
 
       {/* Payments marked paid — ordered by when PAID was clicked */}
       <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), mb: 3 }}>
+        <PaymentNotificationSettings canEdit={canEditPaymentAlerts} embedded />
         <DashboardPanelHeader
           title="Deposits & payments marked paid"
           subtitle="Marked paid = when you clicked Paid · Paid date = date entered on the payment schedule"
@@ -1480,6 +1483,14 @@ function DashboardPage() {
                         variant="outlined"
                         sx={{ height: 22, fontSize: '0.7rem', maxWidth: '100%' }}
                       />
+                      {activity.paymentNotificationSentAt ? (
+                        <Chip
+                          label="Text sent"
+                          size="small"
+                          color="info"
+                          sx={{ height: 22, fontSize: '0.7rem' }}
+                        />
+                      ) : null}
                     </Box>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, mt: 0.35 }}>
                       <Typography variant="caption" color="text.secondary">
