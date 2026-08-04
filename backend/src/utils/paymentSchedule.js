@@ -49,6 +49,56 @@ function sumChangeOrdersForFinal(job) {
   );
 }
 
+function sumChangeOrders(job) {
+  const rows = Array.isArray(job?.changeOrders) ? job.changeOrders : [];
+  return roundMoney(rows.reduce((sum, row) => sum + (Number(row?.amount) || 0), 0));
+}
+
+function resolveItemPaidAmount(item, scheduledTotal) {
+  if (item?.status !== 'paid') return 0;
+  const scheduled = roundMoney(scheduledTotal);
+  const rawPaid = roundMoney(Number(item?.paidAmount) || scheduled);
+  if (rawPaid > scheduled + 0.01) return scheduled;
+  return rawPaid;
+}
+
+function getJobPaymentSummary(job) {
+  const base = getContractBase(job);
+  const coTotal = sumChangeOrders(job);
+  const jobTotal = roundMoney(base + coTotal);
+  const coAddedToFinal = sumChangeOrdersForFinal(job);
+  const contractBase = base;
+  const schedule = resolvePaymentSchedule(job);
+  const items = schedule.items || [];
+
+  let paidToDate = 0;
+  let hasStalePaidAmounts = false;
+  for (const item of items) {
+    if (item.status !== 'paid') continue;
+    const scheduledTotal = getScheduleItemTotal(item, contractBase, coAddedToFinal);
+    const rawPaid = roundMoney(Number(item.paidAmount) || scheduledTotal);
+    if (rawPaid > scheduledTotal + 0.01) hasStalePaidAmounts = true;
+    paidToDate += resolveItemPaidAmount(item, scheduledTotal);
+  }
+  paidToDate = roundMoney(paidToDate);
+
+  const balanceRaw = roundMoney(jobTotal - paidToDate);
+  const balanceDue = roundMoney(Math.max(0, balanceRaw));
+  const overpaidAmount = balanceRaw < -0.01 ? roundMoney(Math.abs(balanceRaw)) : 0;
+
+  return {
+    base,
+    coTotal,
+    coAddedToFinal,
+    jobTotal,
+    paidToDate,
+    balanceDue,
+    balanceRaw,
+    overpaidAmount,
+    hasStalePaidAmounts,
+  };
+}
+
 function inferDueTypeFromLabel(label) {
   const text = String(label || '').trim().toLowerCase();
   if (/\bdeposit\b/.test(text)) return 'deposit';
@@ -347,7 +397,9 @@ module.exports = {
   roundMoney,
   STANDARD_4060_TEMPLATE,
   getContractBase,
+  sumChangeOrders,
   sumChangeOrdersForFinal,
+  getJobPaymentSummary,
   inferDueTypeFromLabel,
   isFinalScheduleItem,
   getScheduleItemTotal,

@@ -270,76 +270,91 @@ async function sendUnsentPaymentNotifications({ tenantId, createdBy, limit = 100
     return { error: 'Tenant required', sentActivities: 0, failedActivities: 0, total: 0 };
   }
 
-  const tenant = await Tenant.findById(tenantId)
-    .select('paymentNotificationSettings pipelineStageOverrides')
-    .lean();
-  if (!tenant) {
-    return { error: 'Organization not found', sentActivities: 0, failedActivities: 0, total: 0 };
-  }
-
-  const settings = resolvePaymentNotificationSettings(tenant);
-  if (!settings.enabled) {
-    return { error: 'Payment alerts are disabled', sentActivities: 0, failedActivities: 0, total: 0 };
-  }
-
-  const phones = await resolveRecipientPhones(settings.recipients, settings.phoneNumbers);
-  if (phones.length === 0) {
-    return { error: 'Add at least one phone number for payment alerts', sentActivities: 0, failedActivities: 0, total: 0 };
-  }
-
-  const cap = Math.min(Math.max(Number(limit) || 100, 1), 200);
-  const activities = await Activity.find({
-    type: 'payment_received',
-    $or: [{ paymentNotificationSentAt: { $exists: false } }, { paymentNotificationSentAt: null }],
-  })
-    .sort({ createdAt: -1 })
-    .limit(cap)
-    .lean();
-
-  if (activities.length === 0) {
-    return { sentActivities: 0, failedActivities: 0, total: 0, message: 'No unsent payments' };
-  }
-
-  const jobIds = [...new Set(activities.map((row) => String(row.jobId || '')).filter(Boolean))];
-  const jobs = await Job.find({ _id: { $in: jobIds } }).populate('customerId', 'name').lean();
-  const jobsById = new Map(jobs.map((job) => [String(job._id), job]));
-
-  let sentActivities = 0;
-  let failedActivities = 0;
-  let smsCount = 0;
-
-  await runWithTenantContext({ tenantId: String(tenantId), bypassTenant: false }, async () => {
-    for (const activity of activities) {
-      const job = jobsById.get(String(activity.jobId || ''));
-      if (!job) {
-        failedActivities += 1;
-        continue;
-      }
-
-      const { sentCount } = await sendPaymentNotificationForActivity({
-        tenantId,
-        job,
-        paymentActivity: activity,
-        activityId: activity._id,
-        createdBy,
-        phones,
-      });
-
-      if (sentCount > 0) {
-        sentActivities += 1;
-        smsCount += sentCount;
-      } else {
-        failedActivities += 1;
-      }
+  try {
+    const tenant = await Tenant.findById(tenantId)
+      .select('paymentNotificationSettings pipelineStageOverrides')
+      .lean();
+    if (!tenant) {
+      return { error: 'Organization not found', sentActivities: 0, failedActivities: 0, total: 0 };
     }
-  });
 
-  return {
-    sentActivities,
-    failedActivities,
-    total: activities.length,
-    smsCount,
-  };
+    const settings = resolvePaymentNotificationSettings(tenant);
+    if (!settings.enabled) {
+      return { error: 'Payment alerts are disabled', sentActivities: 0, failedActivities: 0, total: 0 };
+    }
+
+    const phones = await resolveRecipientPhones(settings.recipients, settings.phoneNumbers);
+    if (phones.length === 0) {
+      return {
+        error: 'Add at least one phone number for payment alerts',
+        sentActivities: 0,
+        failedActivities: 0,
+        total: 0,
+      };
+    }
+
+    const cap = Math.min(Math.max(Number(limit) || 100, 1), 200);
+    const activities = await Activity.find({
+      type: 'payment_received',
+      $or: [{ paymentNotificationSentAt: { $exists: false } }, { paymentNotificationSentAt: null }],
+    })
+      .sort({ createdAt: -1 })
+      .limit(cap)
+      .lean();
+
+    if (activities.length === 0) {
+      return { sentActivities: 0, failedActivities: 0, total: 0, message: 'No unsent payments' };
+    }
+
+    const jobIds = [...new Set(activities.map((row) => String(row.jobId || '')).filter(Boolean))];
+    const jobs = await Job.find({ _id: { $in: jobIds } }).populate('customerId', 'name').lean();
+    const jobsById = new Map(jobs.map((job) => [String(job._id), job]));
+
+    let sentActivities = 0;
+    let failedActivities = 0;
+    let smsCount = 0;
+
+    await runWithTenantContext({ tenantId: String(tenantId), bypassTenant: false }, async () => {
+      for (const activity of activities) {
+        try {
+          const job = jobsById.get(String(activity.jobId || ''));
+          if (!job) {
+            failedActivities += 1;
+            continue;
+          }
+
+          const { sentCount } = await sendPaymentNotificationForActivity({
+            tenantId,
+            job,
+            paymentActivity: activity,
+            activityId: activity._id,
+            createdBy,
+            phones,
+          });
+
+          if (sentCount > 0) {
+            sentActivities += 1;
+            smsCount += sentCount;
+          } else {
+            failedActivities += 1;
+          }
+        } catch (activityError) {
+          console.error('sendUnsentPaymentNotifications activity error:', activityError?.message || activityError);
+          failedActivities += 1;
+        }
+      }
+    });
+
+    return {
+      sentActivities,
+      failedActivities,
+      total: activities.length,
+      smsCount,
+    };
+  } catch (error) {
+    console.error('sendUnsentPaymentNotifications error:', error?.message || error);
+    throw error;
+  }
 }
 
 module.exports = {
