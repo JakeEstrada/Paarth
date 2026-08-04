@@ -22,6 +22,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import PhoneTextField from '../common/PhoneTextField';
 import { formatNanpTyping, formatPhoneForDisplay } from '../../utils/phoneFormat';
+import { JOB_SOURCE_OPTIONS, sanitizeMoneyTypingInput } from '../../utils/jobSources';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -32,15 +33,7 @@ function parseCreateNewOptionName(option) {
   return m ? m[1] : '';
 }
 
-const SOURCE_OPTIONS = [
-  { value: 'referral', label: 'Referral' },
-  { value: 'yelp', label: 'Yelp' },
-  { value: 'instagram', label: 'Instagram' },
-  { value: 'facebook', label: 'Facebook' },
-  { value: 'website', label: 'Website' },
-  { value: 'repeat', label: 'Repeat Customer' },
-  { value: 'other', label: 'Other' },
-];
+const SOURCE_OPTIONS = JOB_SOURCE_OPTIONS;
 
 function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, initialStage = null }) {
   const [formData, setFormData] = useState({
@@ -502,13 +495,25 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
 
           <TextField
             label="Estimated Value"
-            type="number"
+            type="text"
+            inputMode="decimal"
             value={formData.valueEstimated}
-            onChange={(e) => handleChange('valueEstimated', e.target.value)}
+            onChange={(e) => handleChange('valueEstimated', sanitizeMoneyTypingInput(e.target.value))}
             error={!!errors.valueEstimated}
-            helperText={errors.valueEstimated}
+            helperText={errors.valueEstimated || 'Optional'}
             fullWidth
-            inputProps={{ min: 0, step: 0.01 }}
+            placeholder="0.00"
+            slotProps={{
+              input: {
+                sx: {
+                  MozAppearance: 'textfield',
+                  '&::-webkit-outer-spin-button, &::-webkit-inner-spin-button': {
+                    WebkitAppearance: 'none',
+                    margin: 0,
+                  },
+                },
+              },
+            }}
           />
 
           <FormControl fullWidth>

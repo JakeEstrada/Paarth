@@ -75,7 +75,7 @@ const customerSchema = new mongoose.Schema({
   },
   source: {
     type: String,
-    enum: ['referral', 'yelp', 'instagram', 'facebook', 'website', 'repeat', 'other'],
+    enum: ['referral', 'vehicle_advertisement', 'yelp', 'instagram', 'facebook', 'website', 'repeat', 'other'],
     default: 'other'
   },
   createdBy: {

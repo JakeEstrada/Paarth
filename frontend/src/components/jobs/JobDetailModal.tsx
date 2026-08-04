@@ -88,6 +88,7 @@ import {
   shopDisplayCalendarPath,
   shopDisplayCustomerPath,
 } from '../../utils/shopDisplay';
+import { JOB_SOURCE_OPTIONS, formatJobSource, sanitizeMoneyTypingInput } from '../../utils/jobSources';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -532,7 +533,10 @@ function JobDetailModal({
       const updates = {
         title: editedJob.title,
         description: editedJob.description || '',
-        valueEstimated: editedJob.valueEstimated,
+        valueEstimated:
+          editedJob.valueEstimated === '' || editedJob.valueEstimated == null
+            ? 0
+            : parseFloat(String(editedJob.valueEstimated)) || 0,
         valueContracted: editedJob.valueContracted,
         source: editedJob.source,
         jobAddress,
@@ -1012,9 +1016,17 @@ function JobDetailModal({
                     Job total (base + change orders)
                   </Typography>
                   <TextField
-                    type="number"
-                    value={editedJob?.valueEstimated || 0}
-                    onChange={(e) => handleFieldChange('valueEstimated', parseFloat(e.target.value) || 0)}
+                    type="text"
+                    inputMode="decimal"
+                    value={
+                      editedJob?.valueEstimated === '' || editedJob?.valueEstimated == null
+                        ? ''
+                        : String(editedJob.valueEstimated)
+                    }
+                    onChange={(e) => {
+                      const raw = sanitizeMoneyTypingInput(e.target.value);
+                      handleFieldChange('valueEstimated', raw === '' ? '' : raw);
+                    }}
                     variant="outlined"
                     size="small"
                     sx={{ width: '150px', mt: 1 }}
@@ -1371,13 +1383,11 @@ function JobDetailModal({
                       onChange={(e) => handleFieldChange('source', e.target.value)}
                       label="Source"
                     >
-                      <MenuItem value="referral">Referral</MenuItem>
-                      <MenuItem value="yelp">Yelp</MenuItem>
-                      <MenuItem value="instagram">Instagram</MenuItem>
-                      <MenuItem value="facebook">Facebook</MenuItem>
-                      <MenuItem value="website">Website</MenuItem>
-                      <MenuItem value="repeat">Repeat Customer</MenuItem>
-                      <MenuItem value="other">Other</MenuItem>
+                      {JOB_SOURCE_OPTIONS.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                 </Paper>
@@ -1423,8 +1433,8 @@ function JobDetailModal({
                     <Typography variant="caption" color="text.secondary">
                       Source
                     </Typography>
-                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-                      {job.source || 'Other'}
+                    <Typography variant="body2">
+                      {formatJobSource(job.source)}
                     </Typography>
                   </Grid>
                   <Grid item xs={6} sm={4}>

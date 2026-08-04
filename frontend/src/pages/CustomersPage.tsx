@@ -65,6 +65,7 @@ import { formatMoney } from '../utils/paymentSchedule';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
+import { JOB_SOURCE_OPTIONS, formatJobSource } from '../utils/jobSources';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function CustomersPage({ viewMode = false, externalViewControls = false }) {
@@ -926,7 +927,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={customer.source || 'other'}
+                        label={formatJobSource(customer.source)}
                         size="small"
                         sx={{ textTransform: 'capitalize' }}
                       />
@@ -1200,13 +1201,11 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                       onChange={(e) => setEditCustomerForm({ ...editCustomerForm, source: e.target.value })}
                       label="Source"
                     >
-                      <MenuItem value="referral">Referral</MenuItem>
-                      <MenuItem value="yelp">Yelp</MenuItem>
-                      <MenuItem value="instagram">Instagram</MenuItem>
-                      <MenuItem value="facebook">Facebook</MenuItem>
-                      <MenuItem value="website">Website</MenuItem>
-                      <MenuItem value="repeat">Repeat</MenuItem>
-                      <MenuItem value="other">Other</MenuItem>
+                      {JOB_SOURCE_OPTIONS.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
 
