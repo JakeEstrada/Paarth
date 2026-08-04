@@ -241,6 +241,7 @@ async function linkDepositToPayment({
           note: activity.note,
           amount: activity.amount,
           paymentType: activity.paymentType,
+          paymentPaidAt: activity.paymentPaidAt || undefined,
           createdBy: linkedBy,
         });
       } catch (activityError) {

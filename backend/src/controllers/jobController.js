@@ -369,6 +369,7 @@ async function updateJob(req, res) {
           note: activity.note,
           amount: activity.amount,
           paymentType: activity.paymentType,
+          paymentPaidAt: activity.paymentPaidAt || undefined,
           createdBy: req.user?._id || job.createdBy || createdBy,
         });
       } catch (activityError) {

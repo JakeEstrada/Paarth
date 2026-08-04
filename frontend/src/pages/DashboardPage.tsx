@@ -44,7 +44,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { formatMoney } from '../utils/paymentSchedule';
+import { formatMoney, roundMoney } from '../utils/paymentSchedule';
 import toast from 'react-hot-toast';
 import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
@@ -56,6 +56,55 @@ import { useSocketSubscription } from '../hooks/useSocketSubscription';
 import { getConnectedSocketId } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+function parsePaymentReceivedLabel(activity) {
+  const note = String(activity?.note || '').trim();
+  const prefix = 'Payment received: ';
+  if (note.startsWith(prefix)) return note.slice(prefix.length);
+  if (note) return note;
+  if (activity?.paymentType) {
+    return activity.paymentType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return 'Payment';
+}
+
+function lookupSchedulePaidAt(activity, jobsById) {
+  if (activity?.paymentPaidAt) return activity.paymentPaidAt;
+
+  const jobId = String(activity?.jobId?._id || activity?.jobId || '');
+  const job = jobsById.get(jobId);
+  const items = job?.paymentSchedule?.items;
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  const activityLabel = parsePaymentReceivedLabel(activity).toLowerCase();
+  const activityAmount = roundMoney(Number(activity?.amount) || 0);
+
+  for (const item of items) {
+    if (item.status !== 'paid') continue;
+    const itemLabel = String(item.label || '').trim().toLowerCase();
+    const itemAmount = roundMoney(Number(item.paidAmount ?? item.amount) || 0);
+    if (itemLabel && activityLabel.includes(itemLabel) && Math.abs(itemAmount - activityAmount) < 0.02) {
+      return item.paidAt || null;
+    }
+  }
+
+  for (const item of items) {
+    if (item.status !== 'paid') continue;
+    const itemLabel = String(item.label || '').trim().toLowerCase();
+    if (itemLabel && activityLabel.includes(itemLabel)) {
+      return item.paidAt || null;
+    }
+  }
+
+  return null;
+}
+
+function enrichMarkedPaidPayment(activity, jobsById) {
+  return {
+    ...activity,
+    resolvedPaymentPaidAt: lookupSchedulePaidAt(activity, jobsById),
+  };
+}
 
 const AI_SUMMARY_HOVER_JOKE =
   'Tired of looking through big ass work logs... fuck that. Have AI generate a summary of that shit.';
@@ -291,6 +340,7 @@ function DashboardPage() {
       ]);
 
       const jobs = jobsRes.data.jobs || jobsRes.data || [];
+      const jobsById = new Map(jobs.map((job) => [String(job._id), job]));
       const appointments = appointmentsRes.data.appointments || appointmentsRes.data || [];
       const tasks = tasksRes.data.tasks || tasksRes.data || [];
       const customersResData = customersRes.data;
@@ -362,9 +412,9 @@ function DashboardPage() {
       });
       setActivities(sortedActivities);
       setMarkedPaidPayments(
-        [...paidActivities].sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        ),
+        [...paidActivities]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .map((activity) => enrichMarkedPaidPayment(activity, jobsById)),
       );
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -567,15 +617,14 @@ function DashboardPage() {
     }
   };
 
-  const parsePaymentReceivedLabel = (activity) => {
-    const note = String(activity?.note || '').trim();
-    const prefix = 'Payment received: ';
-    if (note.startsWith(prefix)) return note.slice(prefix.length);
-    if (note) return note;
-    if (activity?.paymentType) {
-      return activity.paymentType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const formatPaymentPaidDate = (dateString) => {
+    if (!dateString) return '—';
+    try {
+      const date = typeof dateString === 'string' ? parseISO(dateString) : new Date(dateString);
+      return format(date, 'MMM d, yyyy');
+    } catch (error) {
+      return '—';
     }
-    return 'Payment';
   };
 
   const recentMarkedPaidPayments = useMemo(
@@ -1356,7 +1405,7 @@ function DashboardPage() {
       <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), mb: 3 }}>
         <DashboardPanelHeader
           title="Deposits & payments marked paid"
-          subtitle="Newest first by when you clicked Paid — not the payment date on the schedule"
+          subtitle="Marked paid = when you clicked Paid · Paid date = date entered on the payment schedule"
           actionLabel="Finance Hub"
           onAction={() => navigate('/finance?tab=deposits')}
         />
@@ -1426,10 +1475,23 @@ function DashboardPage() {
                         sx={{ height: 22, fontSize: '0.7rem', maxWidth: '100%' }}
                       />
                     </Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35 }}>
-                      Marked paid {formatMarkedPaidAt(activity.createdAt)}
-                      {activity.createdBy?.name ? ` · ${activity.createdBy.name}` : ''}
-                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 0.35 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                          Marked paid
+                        </Box>
+                        {' '}
+                        {formatMarkedPaidAt(activity.createdAt)}
+                        {activity.createdBy?.name ? ` · ${activity.createdBy.name}` : ''}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                          Paid date
+                        </Box>
+                        {' '}
+                        {formatPaymentPaidDate(activity.resolvedPaymentPaidAt || activity.paymentPaidAt)}
+                      </Typography>
+                    </Box>
                     {(jobLabel || customerLabel) && (
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
                         {[customerLabel, jobLabel].filter(Boolean).join(' · ')}

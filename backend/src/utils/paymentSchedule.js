@@ -302,6 +302,7 @@ function diffPaymentScheduleActivities(oldSchedule, newSchedule) {
           note: `Payment received: ${describeScheduleItem(newItem)}`,
           amount: roundMoney(newItem.paidAmount || newItem.amount),
           paymentType: newItem.dueType || 'milestone',
+          paymentPaidAt: newItem.paidAt || null,
         });
       }
       continue;
@@ -318,6 +319,7 @@ function diffPaymentScheduleActivities(oldSchedule, newSchedule) {
         note: `Payment received: ${describeScheduleItem(newItem)}`,
         amount: roundMoney(newItem.paidAmount || newItem.amount),
         paymentType: newItem.dueType || 'milestone',
+        paymentPaidAt: newItem.paidAt || null,
       });
     } else if (newItem.status === 'paid' && oldItem.status === 'paid') {
       const amountChanged =
