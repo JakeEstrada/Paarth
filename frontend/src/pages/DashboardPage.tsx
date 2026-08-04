@@ -217,7 +217,7 @@ function DashboardQuickTile({ label, value, icon: Icon, accentColor, onClick, al
   );
 }
 
-function DashboardPanelHeader({ title, actionLabel, onAction, subtitle }) {
+function DashboardPanelHeader({ title, actionLabel, onAction, subtitle, headerActions }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2, gap: 1 }}>
       <Box sx={{ minWidth: 0 }}>
@@ -230,16 +230,19 @@ function DashboardPanelHeader({ title, actionLabel, onAction, subtitle }) {
           </Typography>
         ) : null}
       </Box>
-      {actionLabel && onAction ? (
-        <Button
-          size="small"
-          endIcon={<ChevronRightIcon sx={{ fontSize: 18 }} />}
-          onClick={onAction}
-          sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2, flexShrink: 0 }}
-        >
-          {actionLabel}
-        </Button>
-      ) : null}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+        {headerActions}
+        {actionLabel && onAction ? (
+          <Button
+            size="small"
+            endIcon={<ChevronRightIcon sx={{ fontSize: 18 }} />}
+            onClick={onAction}
+            sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2 }}
+          >
+            {actionLabel}
+          </Button>
+        ) : null}
+      </Box>
     </Box>
   );
 }
@@ -1409,12 +1412,12 @@ function DashboardPage() {
 
       {/* Payments marked paid — ordered by when PAID was clicked */}
       <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), mb: 3 }}>
-        <PaymentNotificationSettings canEdit={canEditPaymentAlerts} embedded />
         <DashboardPanelHeader
           title="Deposits & payments marked paid"
           subtitle="Marked paid = when you clicked Paid · Paid date = date entered on the payment schedule"
           actionLabel="Finance Hub"
           onAction={() => navigate('/finance?tab=deposits')}
+          headerActions={<PaymentNotificationSettings canEdit={canEditPaymentAlerts} dialogTrigger />}
         />
         {recentMarkedPaidPayments.length === 0 ? (
           <DashboardEmptyState message="No payments marked paid yet — use Paid on a job payment schedule to log them here." />

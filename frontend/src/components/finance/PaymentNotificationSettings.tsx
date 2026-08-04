@@ -6,13 +6,19 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
+  IconButton,
   Paper,
   Switch,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import { Save as SaveIcon, Sms as SmsIcon } from '@mui/icons-material';
+import { Save as SaveIcon, Settings as SettingsIcon, Sms as SmsIcon } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { formatPhoneForDisplay } from '../../utils/phoneFormat';
@@ -69,8 +75,9 @@ function textToPhoneNumbers(text) {
     .filter(Boolean);
 }
 
-export default function PaymentNotificationSettings({ canEdit, embedded = false }) {
-  const [loading, setLoading] = useState(true);
+export default function PaymentNotificationSettings({ canEdit, dialogTrigger = false }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(!dialogTrigger);
   const [saving, setSaving] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState([]);
@@ -99,8 +106,9 @@ export default function PaymentNotificationSettings({ canEdit, embedded = false 
   }, []);
 
   useEffect(() => {
+    if (dialogTrigger && !open) return;
     loadSettings();
-  }, [loadSettings]);
+  }, [loadSettings, dialogTrigger, open]);
 
   const selectedOptions = useMemo(
     () => recipientOptions.filter((opt) => selectedKeys.includes(opt.selectionKey)),
@@ -125,6 +133,7 @@ export default function PaymentNotificationSettings({ canEdit, embedded = false 
       setSelectedKeys(recipientsToSelectionKeys(data.recipients || []));
       setPhoneNumbersText(phoneNumbersToText(data.phoneNumbers || []));
       toast.success('Payment alert settings saved');
+      if (dialogTrigger) setOpen(false);
     } catch (error) {
       console.error('Failed to save payment notification settings:', error);
       toast.error(error.response?.data?.error || 'Failed to save payment alert settings');
@@ -133,28 +142,27 @@ export default function PaymentNotificationSettings({ canEdit, embedded = false 
     }
   };
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-        <CircularProgress size={24} />
-      </Box>
-    );
-  }
-
   const content = (
     <>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1.5 }}>
-        <SmsIcon color="primary" sx={{ mt: 0.25 }} />
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-            Payment text alerts
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Automatically text your group when a job payment is marked paid. Each payment shows a
-            &ldquo;Text sent&rdquo; flag after alerts go out.
-          </Typography>
+      {!dialogTrigger ? (
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1.5 }}>
+          <SmsIcon color="primary" sx={{ mt: 0.25 }} />
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Payment text alerts
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Automatically text your group when a job payment is marked paid. Each payment shows a
+              &ldquo;Text sent&rdquo; flag after alerts go out.
+            </Typography>
+          </Box>
         </Box>
-      </Box>
+      ) : (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Automatically text your group when a job payment is marked paid. Each payment shows a
+          &ldquo;Text sent&rdquo; flag after alerts go out.
+        </Typography>
+      )}
 
       <FormControlLabel
         control={
@@ -235,27 +243,85 @@ export default function PaymentNotificationSettings({ canEdit, embedded = false 
         </Alert>
       )}
 
-      {canEdit ? (
-        <Button
-          variant="contained"
-          size="small"
-          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-          onClick={handleSave}
-          disabled={saving}
-          sx={{ textTransform: 'none', borderRadius: 2 }}
-        >
-          {saving ? 'Saving…' : 'Save alert settings'}
-        </Button>
-      ) : (
-        <Typography variant="caption" color="text.secondary">
-          Only admins can change payment alert settings.
-        </Typography>
+      {!dialogTrigger && (
+        canEdit ? (
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+            onClick={handleSave}
+            disabled={saving}
+            sx={{ textTransform: 'none', borderRadius: 2 }}
+          >
+            {saving ? 'Saving…' : 'Save alert settings'}
+          </Button>
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            Only admins can change payment alert settings.
+          </Typography>
+        )
       )}
     </>
   );
 
-  if (embedded) {
-    return <Box sx={{ mb: 2 }}>{content}</Box>;
+  if (dialogTrigger) {
+    return (
+      <>
+        <Tooltip title="Payment text alert settings">
+          <IconButton
+            size="small"
+            aria-label="Payment text alert settings"
+            onClick={() => setOpen(true)}
+            sx={{ borderRadius: 2 }}
+          >
+            <SettingsIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <SmsIcon color="primary" fontSize="small" />
+            Payment text alerts
+          </DialogTitle>
+          <DialogContent dividers>
+            {loading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress size={28} />
+              </Box>
+            ) : (
+              content
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={() => setOpen(false)} sx={{ textTransform: 'none' }}>
+              Cancel
+            </Button>
+            {canEdit ? (
+              <Button
+                variant="contained"
+                startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+                onClick={handleSave}
+                disabled={saving || loading}
+                sx={{ textTransform: 'none', borderRadius: 2 }}
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </Button>
+            ) : (
+              <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
+                Only admins can change these settings.
+              </Typography>
+            )}
+          </DialogActions>
+        </Dialog>
+      </>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
   }
 
   return (
