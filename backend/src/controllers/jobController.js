@@ -12,6 +12,7 @@ const {
   diffPaymentScheduleActivities,
 } = require('../utils/paymentSchedule');
 const { notifyPaymentMarkedPaid } = require('../services/paymentNotificationService');
+const { syncPaymentReceivedActivity } = require('../services/paymentActivitySync');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
@@ -364,6 +365,19 @@ async function updateJob(req, res) {
     const createdPaymentActivityDocs = [];
     for (const activity of paymentScheduleActivities) {
       try {
+        if (activity.type === 'payment_received_sync') {
+          await syncPaymentReceivedActivity({
+            jobId: job._id,
+            customerId: job.customerId,
+            scheduleLabel: activity.scheduleLabel,
+            note: activity.note,
+            amount: activity.amount,
+            paymentType: activity.paymentType,
+            paymentPaidAt: activity.paymentPaidAt,
+            createdBy: req.user?._id || job.createdBy || createdBy,
+          });
+          continue;
+        }
         const doc = await Activity.create({
           type: activity.type,
           jobId: job._id,

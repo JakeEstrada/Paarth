@@ -44,7 +44,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { formatMoney, roundMoney, getJobPaymentSummary } from '../utils/paymentSchedule';
+import { formatMoney, roundMoney, getJobPaymentSummary, formatPaidScheduleItemLabel } from '../utils/paymentSchedule';
 import toast from 'react-hot-toast';
 import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
@@ -100,13 +100,48 @@ function lookupSchedulePaidAt(activity, jobsById) {
   return null;
 }
 
+function lookupSchedulePaidItem(activity, jobsById) {
+  const jobId = String(activity?.jobId?._id || activity?.jobId || '');
+  const job = jobsById.get(jobId);
+  const items = job?.paymentSchedule?.items;
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  const activityLabel = parsePaymentReceivedLabel(activity).toLowerCase();
+  const labelBeforeColon = activityLabel.split(':')[0]?.trim() || activityLabel;
+
+  for (const item of items) {
+    if (item.status !== 'paid') continue;
+    const itemLabel = String(item.label || '').trim().toLowerCase();
+    if (!itemLabel) continue;
+    if (
+      activityLabel.includes(itemLabel) ||
+      labelBeforeColon === itemLabel ||
+      labelBeforeColon.startsWith(itemLabel)
+    ) {
+      return item;
+    }
+  }
+
+  return null;
+}
+
 function enrichMarkedPaidPayment(activity, jobsById) {
   const jobId = String(activity?.jobId?._id || activity?.jobId || '');
   const job = jobsById.get(jobId);
   const jobBalanceDue = job ? getJobPaymentSummary(job).balanceDue : null;
+  const scheduleItem = lookupSchedulePaidItem(activity, jobsById);
+  const amount = scheduleItem
+    ? roundMoney(Number(scheduleItem.paidAmount ?? scheduleItem.amount) || 0)
+    : roundMoney(Number(activity.amount) || 0);
+  const paymentLabel = scheduleItem
+    ? formatPaidScheduleItemLabel(scheduleItem)
+    : parsePaymentReceivedLabel(activity);
   return {
     ...activity,
-    resolvedPaymentPaidAt: lookupSchedulePaidAt(activity, jobsById),
+    amount,
+    paymentLabel,
+    resolvedPaymentPaidAt:
+      scheduleItem?.paidAt || lookupSchedulePaidAt(activity, jobsById),
     jobBalanceDue,
   };
 }
@@ -1431,7 +1466,7 @@ function DashboardPage() {
               const jobId = activity.jobId?._id || activity.jobId;
               const jobLabel = activity.jobId?.title || '';
               const customerLabel = activity.customerId?.name || '';
-              const paymentLabel = parsePaymentReceivedLabel(activity);
+              const paymentLabel = activity.paymentLabel || parsePaymentReceivedLabel(activity);
               const isJobFullyPaid =
                 activity.jobBalanceDue !== null && activity.jobBalanceDue !== undefined
                   && activity.jobBalanceDue <= 0.01;

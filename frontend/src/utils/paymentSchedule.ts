@@ -279,6 +279,16 @@ export function formatScheduleItemLabel(item) {
   return `${item.label}: ${formatMoney(amount)}`;
 }
 
+/** Label + amount for a paid row — uses paidAmount when set. */
+export function formatPaidScheduleItemLabel(item) {
+  if (!item) return '';
+  const amount = roundMoney(Number(item.paidAmount ?? item.amount) || 0);
+  if (item.amountType === 'percentage' && Number.isFinite(Number(item.percentage))) {
+    return `${item.label} (${item.percentage}%): ${formatMoney(amount)}`;
+  }
+  return `${item.label}: ${formatMoney(amount)}`;
+}
+
 export function buildCustomScheduleFromItems(items, contractBase) {
   return {
     type: 'custom',

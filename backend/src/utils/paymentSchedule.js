@@ -329,10 +329,12 @@ function diffPaymentScheduleActivities(oldSchedule, newSchedule) {
       const newPaidAt = newItem.paidAt ? new Date(newItem.paidAt).toISOString() : '';
       if (amountChanged || oldPaidAt !== newPaidAt) {
         activities.push({
-          type: 'payment_schedule_updated',
-          note: `Payment record updated: ${describeScheduleItem(newItem)}`,
+          type: 'payment_received_sync',
+          scheduleLabel: newItem.label || 'Payment',
+          note: `Payment received: ${describeScheduleItem(newItem)}`,
           amount: roundMoney(newItem.paidAmount || newItem.amount),
           paymentType: newItem.dueType || 'milestone',
+          paymentPaidAt: newItem.paidAt || null,
         });
       }
     }
