@@ -1593,14 +1593,6 @@ function DashboardPage() {
                         variant="outlined"
                         sx={{ height: 22, fontSize: '0.7rem', maxWidth: '100%' }}
                       />
-                      {activity.paymentNotificationSentAt ? (
-                        <Chip
-                          label="Text sent"
-                          size="small"
-                          color="info"
-                          sx={{ height: 22, fontSize: '0.7rem' }}
-                        />
-                      ) : null}
                     </Box>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, mt: 0.35 }}>
                       <Typography variant="caption" color="text.secondary">
@@ -1625,6 +1617,20 @@ function DashboardPage() {
                       </Typography>
                     )}
                   </Box>
+                  {activity.paymentNotificationSentAt ? (
+                    <Chip
+                      label="Text sent"
+                      size="small"
+                      color="info"
+                      sx={{
+                        height: 22,
+                        fontSize: '0.7rem',
+                        flexShrink: 0,
+                        alignSelf: 'flex-start',
+                        mt: 0.15,
+                      }}
+                    />
+                  ) : null}
                 </Box>
               );
             })}
