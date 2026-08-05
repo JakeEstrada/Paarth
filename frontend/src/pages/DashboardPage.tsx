@@ -45,7 +45,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { formatMoney, roundMoney, getJobPaymentSummary, formatPaidScheduleItemLabel } from '../utils/paymentSchedule';
+import { formatMoney, roundMoney, getJobPaymentSummary, formatPaidScheduleItemLabel, resolvePaymentSchedule } from '../utils/paymentSchedule';
 import toast from 'react-hot-toast';
 import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
@@ -56,8 +56,6 @@ import { APP_LOGO_LIGHT } from '../utils/tenantBranding';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { renderSummaryBlocks } from '../utils/summaryMarkdown';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
-import { getConnectedSocketId } from '../services/socket';
-
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function parsePaymentReceivedLabel(activity) {
@@ -146,6 +144,67 @@ function enrichMarkedPaidPayment(activity, jobsById) {
       scheduleItem?.paidAt || lookupSchedulePaidAt(activity, jobsById),
     jobBalanceDue,
   };
+}
+
+function paidRowMatchKey(jobId, label) {
+  return `${String(jobId)}|${String(label || '').trim().toLowerCase()}`;
+}
+
+function extractPaymentLabelKey(activity) {
+  const label = activity?.paymentLabel || parsePaymentReceivedLabel(activity);
+  return String(label).split(':')[0]?.trim().toLowerCase() || '';
+}
+
+function buildSyntheticPaidActivities(jobs) {
+  const rows = [];
+  for (const job of jobs) {
+    if (!job || job.isArchived || job.isDeadEstimate) continue;
+    const schedule = resolvePaymentSchedule(job);
+    for (const item of schedule.items || []) {
+      if (item.status !== 'paid') continue;
+      const label = String(item.label || '').trim();
+      if (!label) continue;
+      const paymentLabel = formatPaidScheduleItemLabel(item);
+      rows.push({
+        _id: `schedule-paid-${job._id}-${item.sortOrder}-${label}`,
+        synthetic: true,
+        type: 'payment_received',
+        jobId: job,
+        customerId: job.customerId,
+        amount: roundMoney(Number(item.paidAmount ?? item.amount) || 0),
+        paymentPaidAt: item.paidAt,
+        createdAt: item.paidAt || job.updatedAt || job.createdAt || new Date().toISOString(),
+        note: `Payment received: ${paymentLabel}`,
+        paymentLabel,
+      });
+    }
+  }
+  return rows;
+}
+
+function mergeMarkedPaidPayments(activities, jobs) {
+  const jobsById = new Map(jobs.map((job) => [String(job._id), job]));
+  const fromActivities = (activities || []).map((activity) =>
+    enrichMarkedPaidPayment(activity, jobsById),
+  );
+  const coveredKeys = new Set(
+    fromActivities.map((activity) => {
+      const jobId = String(activity.jobId?._id || activity.jobId || '');
+      return paidRowMatchKey(jobId, extractPaymentLabelKey(activity));
+    }),
+  );
+
+  const synthetic = buildSyntheticPaidActivities(jobs)
+    .filter((row) => {
+      const jobId = String(row.jobId?._id || row.jobId || '');
+      const labelKey = extractPaymentLabelKey(row);
+      return !coveredKeys.has(paidRowMatchKey(jobId, labelKey));
+    })
+    .map((row) => enrichMarkedPaidPayment(row, jobsById));
+
+  return [...fromActivities, ...synthetic].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
 }
 
 const AI_SUMMARY_HOVER_JOKE =
@@ -358,6 +417,12 @@ function DashboardPage() {
     // Load dashboard data once on mount; no auto-refresh to avoid
     // scrolling the page back to the top while you're reading.
     fetchDashboardData();
+
+    const onFocus = () => {
+      fetchDashboardData();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, []);
 
   const fetchDashboardData = async () => {
@@ -382,7 +447,10 @@ function DashboardPage() {
           .get(
             `${API_URL}/activities/date-range?startDate=${paymentHistoryStart}&endDate=${paymentHistoryEnd}&types=payment_received`,
           )
-          .catch(() => ({ data: [] })),
+          .catch((err) => {
+            console.error('Failed to load marked paid payments:', err);
+            return { data: [] };
+          }),
       ]);
 
       const jobs = jobsRes.data.jobs || jobsRes.data || [];
@@ -450,11 +518,7 @@ function DashboardPage() {
         totalCustomers: customerTotal,
       });
       setActivities(sortedActivities);
-      setMarkedPaidPayments(
-        [...paidActivities]
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .map((activity) => enrichMarkedPaidPayment(activity, jobsById)),
-      );
+      setMarkedPaidPayments(mergeMarkedPaidPayments(paidActivities, jobs));
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       toast.error('Failed to load dashboard data');
@@ -464,10 +528,7 @@ function DashboardPage() {
   };
 
   const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
-  const handleRealtimeDashboardUpdate = useCallback((payload) => {
-    const sourceSocketId = payload?.sourceSocketId || null;
-    const ownSocketId = getConnectedSocketId();
-    if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
+  const handleRealtimeDashboardUpdate = useCallback(() => {
     fetchDashboardData();
   }, []);
   useSocketSubscription(tenantRoom, 'task.created', handleRealtimeDashboardUpdate);

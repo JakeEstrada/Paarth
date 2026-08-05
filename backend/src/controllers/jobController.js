@@ -12,7 +12,7 @@ const {
   diffPaymentScheduleActivities,
 } = require('../utils/paymentSchedule');
 const { notifyPaymentMarkedPaid } = require('../services/paymentNotificationService');
-const { upsertPaymentReceivedActivity, voidPaymentReceivedActivity } = require('../services/paymentActivitySync');
+const { upsertPaymentReceivedActivity, voidPaymentReceivedActivity, reconcilePaymentReceivedActivities } = require('../services/paymentActivitySync');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
@@ -403,6 +403,18 @@ async function updateJob(req, res) {
         }
       } catch (activityError) {
         console.error('Error creating payment schedule activity:', activityError);
+      }
+    }
+
+    if (jobUpdateData.paymentSchedule !== undefined) {
+      try {
+        await reconcilePaymentReceivedActivities({
+          job,
+          schedule: job.paymentSchedule,
+          createdBy: req.user?._id || job.createdBy || createdBy,
+        });
+      } catch (reconcileError) {
+        console.error('Error reconciling payment_received activities:', reconcileError);
       }
     }
 

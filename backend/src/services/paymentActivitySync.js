@@ -1,4 +1,5 @@
 const Activity = require('../models/Activity');
+const { describeScheduleItem, roundMoney } = require('../utils/paymentSchedule');
 
 function escapeRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -17,7 +18,7 @@ function matchingPaymentReceivedQuery(jobId, scheduleLabel) {
 async function findMatchingPaymentReceived(jobId, scheduleLabel) {
   const query = matchingPaymentReceivedQuery(jobId, scheduleLabel);
   if (!query) return null;
-  return Activity.findOne(query).sort({ createdAt: -1 });
+  return Activity.findOne(query).sort({ createdAt: -1 }).setOptions({ bypassTenant: true });
 }
 
 /**
@@ -26,7 +27,7 @@ async function findMatchingPaymentReceived(jobId, scheduleLabel) {
 async function voidPaymentReceivedActivity({ jobId, scheduleLabel }) {
   const query = matchingPaymentReceivedQuery(jobId, scheduleLabel);
   if (!query) return 0;
-  const result = await Activity.deleteMany(query);
+  const result = await Activity.deleteMany(query).setOptions({ bypassTenant: true });
   return result.deletedCount || 0;
 }
 
@@ -79,9 +80,32 @@ async function syncPaymentReceivedActivity(args) {
   return doc;
 }
 
+/**
+ * Ensure every paid schedule line has a matching payment_received activity.
+ * Covers cases where diff missed a change or activity creation failed silently.
+ */
+async function reconcilePaymentReceivedActivities({ job, schedule, createdBy }) {
+  const items = Array.isArray(schedule?.items) ? schedule.items : [];
+  for (const item of items) {
+    if (item.status !== 'paid') continue;
+    const label = String(item.label || '').trim() || 'Payment';
+    await upsertPaymentReceivedActivity({
+      jobId: job._id,
+      customerId: job.customerId,
+      scheduleLabel: label,
+      note: `Payment received: ${describeScheduleItem(item)}`,
+      amount: roundMoney(item.paidAmount || item.amount),
+      paymentType: item.dueType || 'milestone',
+      paymentPaidAt: item.paidAt || null,
+      createdBy,
+    });
+  }
+}
+
 module.exports = {
   voidPaymentReceivedActivity,
   upsertPaymentReceivedActivity,
   syncPaymentReceivedActivity,
   findMatchingPaymentReceived,
+  reconcilePaymentReceivedActivities,
 };
