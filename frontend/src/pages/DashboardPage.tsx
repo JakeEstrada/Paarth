@@ -320,7 +320,6 @@ function DashboardPage() {
     totalRevenue: 0,
     contractedRevenue: 0,
     potentialRevenue: 0,
-    jobsByStage: {},
     upcomingAppointments: [],
     pendingTasks: [],
     urgentTasks: [],
@@ -407,12 +406,6 @@ function DashboardPage() {
         .filter(job => ['APPOINTMENT_SCHEDULED', 'ESTIMATE_IN_PROGRESS', 'ESTIMATE_SENT', 'ENGAGED_DESIGN_REVIEW', 'CONTRACT_OUT'].includes(job.stage))
         .reduce((sum, job) => sum + (job.valueEstimated || 0), 0);
 
-      // Jobs by stage
-      const jobsByStage = {};
-      activeJobs.forEach(job => {
-        jobsByStage[job.stage] = (jobsByStage[job.stage] || 0) + 1;
-      });
-
       // Upcoming appointments: scheduled, date in next 7 days (use date field; model has date + time)
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
@@ -451,7 +444,6 @@ function DashboardPage() {
         totalRevenue,
         contractedRevenue,
         potentialRevenue,
-        jobsByStage,
         upcomingAppointments,
         pendingTasks,
         urgentTasks,
@@ -540,25 +532,6 @@ function DashboardPage() {
   const formatTime = (dateString) => {
     if (!dateString) return '';
     return format(parseISO(dateString), 'h:mm a');
-  };
-
-  const getStageLabel = (stage) => {
-    const labels = {
-      APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
-      ESTIMATE_IN_PROGRESS: 'Estimate In Progress',
-      ESTIMATE_SENT: 'Estimate Sent',
-      ENGAGED_DESIGN_REVIEW: 'Design Review',
-      CONTRACT_OUT: 'Contract Out',
-      DEPOSIT_PENDING: 'Deposit Pending',
-      JOB_PREP: 'Job Prep',
-      TAKEOFF_COMPLETE: 'Fabrication',
-      READY_TO_SCHEDULE: 'Ready to Schedule',
-      SCHEDULED: 'Scheduled',
-      IN_PRODUCTION: 'In Production',
-      INSTALLED: 'Installed',
-      FINAL_PAYMENT_CLOSED: 'Final Payment Closed',
-    };
-    return labels[stage] || stage;
   };
 
   const getActivityTitle = (activity) => {
@@ -1245,8 +1218,6 @@ function DashboardPage() {
 
   const greetingName = user?.name?.split(' ')[0] || 'there';
   const todayLabel = format(new Date(), 'EEEE, MMMM d');
-  const stageEntries = Object.entries(stats.jobsByStage).sort((a, b) => b[1] - a[1]);
-  const maxStageCount = Math.max(...stageEntries.map(([, count]) => count), 1);
 
   if (loading) {
     return (
@@ -1354,42 +1325,8 @@ function DashboardPage() {
 
       {/* Main panels */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={7}>
-          <Paper elevation={0} sx={dashboardPanelSx(theme)}>
-            <DashboardPanelHeader title="Jobs by stage" actionLabel="Pipeline" onAction={() => navigate('/pipeline')} />
-            {stageEntries.length === 0 ? (
-              <DashboardEmptyState message="No active jobs in the pipeline right now." />
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75 }}>
-                {stageEntries.map(([stage, count]) => (
-                  <Box key={stage}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5, gap: 1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {getStageLabel(stage)}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                        {count}
-                      </Typography>
-                    </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={(count / maxStageCount) * 100}
-                      sx={{
-                        height: 6,
-                        borderRadius: 3,
-                        bgcolor: alpha(theme.palette.primary.main, 0.1),
-                        '& .MuiLinearProgress-bar': { borderRadius: 3 },
-                      }}
-                    />
-                  </Box>
-                ))}
-              </Box>
-            )}
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={5} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), height: 'auto' }}>
+        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+          <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), width: '100%' }}>
             <DashboardPanelHeader title="Pending tasks" actionLabel="View all" onAction={() => navigate('/tasks')} />
             {stats.pendingTasks.length === 0 ? (
               <DashboardEmptyState message="You're caught up — no pending tasks." />
@@ -1429,8 +1366,10 @@ function DashboardPage() {
               </Box>
             )}
           </Paper>
+        </Grid>
 
-          <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), height: 'auto' }}>
+        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+          <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), width: '100%' }}>
             <DashboardPanelHeader title="Upcoming appointments" actionLabel="Calendar" onAction={() => navigate('/calendar')} />
             {stats.upcomingAppointments.length === 0 ? (
               <DashboardEmptyState message="Nothing scheduled ahead — check the calendar to book time." />
