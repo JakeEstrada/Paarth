@@ -6,7 +6,7 @@ const Job = require('../models/Job');
 const { sendSmsViaTwilio } = require('../controllers/twilioController');
 const { getJobPaymentSummary, roundMoney, describeScheduleItem } = require('../utils/paymentSchedule');
 const { runWithTenantContext } = require('../middleware/tenantContext');
-const { matchingPaymentReceivedQuery } = require('./paymentActivitySync');
+const { matchingPaymentReceivedQuery, upsertPaymentReceivedActivity } = require('./paymentActivitySync');
 
 function normalizeToE164(value) {
   const raw = String(value || '').trim();
@@ -247,6 +247,7 @@ async function sendPaymentNotificationForActivity({
   createdBy,
   phones,
   scheduleLabel,
+  force = false,
 }) {
   if (!tenantId || !job || !paymentActivity || !phones?.length) {
     return { sentCount: 0, skipped: true };
@@ -258,11 +259,12 @@ async function sendPaymentNotificationForActivity({
     String(paymentActivity?.paymentType || '').trim();
 
   if (
-    await hasPaymentAlertAlreadyBeenSent({
+    !force &&
+    (await hasPaymentAlertAlreadyBeenSent({
       jobId: job._id || job.id,
       scheduleLabel: label,
       activityId,
-    })
+    }))
   ) {
     if (activityId) {
       try {
@@ -274,7 +276,7 @@ async function sendPaymentNotificationForActivity({
         console.error('Failed to backfill payment notification sent flag:', backfillError?.message || backfillError);
       }
     }
-    return { sentCount: 0, skipped: true };
+    return { sentCount: 0, skipped: true, alreadySent: true };
   }
 
   const message = buildPaymentNotificationMessage(job, paymentActivity);
@@ -490,12 +492,133 @@ async function sendUnsentPaymentNotifications({ tenantId, createdBy, limit = 100
   }
 }
 
+function isValidObjectId(value) {
+  return /^[a-fA-F0-9]{24}$/.test(String(value || '').trim());
+}
+
+/**
+ * Manually send a payment alert for one payment line (dashboard right-click).
+ */
+async function sendManualPaymentNotification({
+  tenantId,
+  createdBy,
+  activityId,
+  jobId,
+  scheduleLabel,
+  force = false,
+}) {
+  if (!tenantId) {
+    return { error: 'Tenant required', sentCount: 0 };
+  }
+
+  const tenant = await Tenant.findById(tenantId)
+    .select('paymentNotificationSettings pipelineStageOverrides')
+    .lean();
+  if (!tenant) {
+    return { error: 'Organization not found', sentCount: 0 };
+  }
+
+  const settings = resolvePaymentNotificationSettings(tenant);
+  if (!settings.enabled) {
+    return { error: 'Payment alerts are disabled', sentCount: 0 };
+  }
+
+  const phones = await resolveRecipientPhones(settings.recipients, settings.phoneNumbers);
+  if (phones.length === 0) {
+    return { error: 'Add at least one phone number for payment alerts', sentCount: 0 };
+  }
+
+  let paymentActivity = null;
+  let resolvedActivityId = null;
+  let job = null;
+  let label = String(scheduleLabel || '').trim();
+
+  if (activityId && isValidObjectId(activityId)) {
+    paymentActivity = await Activity.findById(activityId).lean();
+    if (!paymentActivity || paymentActivity.type !== 'payment_received') {
+      return { error: 'Payment activity not found', sentCount: 0 };
+    }
+    resolvedActivityId = paymentActivity._id;
+    job = await Job.findById(paymentActivity.jobId).populate('customerId', 'name').lean();
+    if (!label) {
+      label = extractScheduleLabelFromPaymentNote(paymentActivity.note);
+    }
+  } else if (jobId && label) {
+    job = await Job.findById(jobId).populate('customerId', 'name').lean();
+    if (!job) {
+      return { error: 'Job not found', sentCount: 0 };
+    }
+
+    const scheduleItem = (job.paymentSchedule?.items || []).find(
+      (item) => String(item.label || '').trim().toLowerCase() === label.toLowerCase(),
+    );
+    if (!scheduleItem || scheduleItem.status !== 'paid') {
+      return { error: 'Paid payment line not found on this job', sentCount: 0 };
+    }
+
+    const { doc } = await upsertPaymentReceivedActivity({
+      jobId: job._id,
+      customerId: job.customerId?._id || job.customerId,
+      scheduleLabel: label,
+      note: `Payment received: ${describeScheduleItem(scheduleItem)}`,
+      amount: roundMoney(scheduleItem.paidAmount || scheduleItem.amount),
+      paymentType: scheduleItem.dueType || 'milestone',
+      paymentPaidAt: scheduleItem.paidAt || null,
+      createdBy,
+    });
+
+    if (!doc) {
+      return { error: 'Could not resolve payment activity', sentCount: 0 };
+    }
+
+    paymentActivity = doc.toObject ? doc.toObject() : doc;
+    resolvedActivityId = paymentActivity._id;
+  } else {
+    return { error: 'Payment activity or job payment line required', sentCount: 0 };
+  }
+
+  if (!job) {
+    return { error: 'Job not found', sentCount: 0 };
+  }
+
+  let result = { sentCount: 0, skipped: true };
+  await runWithTenantContext({ tenantId: String(tenantId), bypassTenant: false }, async () => {
+    result = await sendPaymentNotificationForActivity({
+      tenantId,
+      job,
+      paymentActivity,
+      activityId: resolvedActivityId,
+      createdBy,
+      phones,
+      scheduleLabel: label,
+      force: Boolean(force),
+    });
+  });
+
+  if (result.alreadySent) {
+    return {
+      ...result,
+      message: 'Alert already sent for this payment. Use resend to text the group again.',
+    };
+  }
+
+  if (result.skipped && result.sentCount === 0) {
+    return {
+      ...result,
+      error: result.error || 'Could not send payment alert — check Twilio settings',
+    };
+  }
+
+  return result;
+}
+
 module.exports = {
   sanitizeRecipients,
   sanitizePhoneNumbers,
   notifyPaymentMarkedPaid,
   sendPaymentNotificationForActivity,
   sendUnsentPaymentNotifications,
+  sendManualPaymentNotification,
   buildPaymentNotificationMessage,
   parsePaymentSettingsFromPipelineOverrides,
   resolvePaymentNotificationSettings,

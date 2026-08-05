@@ -1,5 +1,5 @@
 const Activity = require('../models/Activity');
-const { sendUnsentPaymentNotifications } = require('../services/paymentNotificationService');
+const { sendUnsentPaymentNotifications, sendManualPaymentNotification } = require('../services/paymentNotificationService');
 
 /**
  * YYYY-MM-DD as local calendar day bounds (matches browser <input type="date" />).
@@ -1035,6 +1035,36 @@ async function sendUnsentPaymentNotificationAlerts(req, res) {
   }
 }
 
+async function sendManualPaymentNotificationAlert(req, res) {
+  try {
+    if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to send payment alerts.' });
+    }
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+
+    const result = await sendManualPaymentNotification({
+      tenantId,
+      createdBy: req.user._id,
+      activityId: req.body?.activityId,
+      jobId: req.body?.jobId,
+      scheduleLabel: req.body?.scheduleLabel,
+      force: Boolean(req.body?.force),
+    });
+
+    if (result.error && !result.alreadySent && (result.sentCount || 0) === 0) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('sendManualPaymentNotificationAlert:', error);
+    res.status(500).json({ error: error.message || 'Failed to send payment alert' });
+  }
+}
+
 module.exports = {
   getJobActivities,
   getCustomerActivities,
@@ -1047,4 +1077,5 @@ module.exports = {
   deleteActivity,
   logPayrollPrint,
   sendUnsentPaymentNotificationAlerts,
+  sendManualPaymentNotificationAlert,
 };

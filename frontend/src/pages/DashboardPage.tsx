@@ -25,6 +25,10 @@ import {
   LinearProgress,
   Tooltip,
   alpha,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   AccountTree as JobsIcon,
@@ -51,7 +55,7 @@ import { format, isToday, isTomorrow, parseISO, formatDistanceToNow, subDays } f
 import { useAuth } from '../context/AuthContext';
 import BrandLogo from '../components/common/BrandLogo';
 import PaymentNotificationSettings from '../components/finance/PaymentNotificationSettings';
-import { sendUnsentPaymentNotifications } from '../utils/paymentNotificationSettingsApi';
+import { sendUnsentPaymentNotifications, sendManualPaymentNotification } from '../utils/paymentNotificationSettingsApi';
 import { APP_LOGO_LIGHT } from '../utils/tenantBranding';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { renderSummaryBlocks } from '../utils/summaryMarkdown';
@@ -387,6 +391,9 @@ function DashboardPage() {
   const [activities, setActivities] = useState([]);
   const [markedPaidPayments, setMarkedPaidPayments] = useState([]);
   const [sendingUnsentPaymentAlerts, setSendingUnsentPaymentAlerts] = useState(false);
+  const [paymentContextMenu, setPaymentContextMenu] = useState(null);
+  const [paymentContextActivity, setPaymentContextActivity] = useState(null);
+  const [sendingPaymentAlertKey, setSendingPaymentAlertKey] = useState(null);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [selectedPrintDate, setSelectedPrintDate] = useState(new Date().toISOString().split('T')[0]);
   const [summaryStartDate, setSummaryStartDate] = useState(() =>
@@ -760,6 +767,67 @@ function DashboardPage() {
       toast.error(error.response?.data?.error || 'Failed to send payment alerts');
     } finally {
       setSendingUnsentPaymentAlerts(false);
+    }
+  };
+
+  const resolvePaymentScheduleLabel = (activity) => {
+    const label = activity?.paymentLabel || parsePaymentReceivedLabel(activity);
+    return String(label).split(':')[0]?.trim() || '';
+  };
+
+  const handlePaymentContextMenu = (event, activity) => {
+    if (!canEditPaymentAlerts) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setPaymentContextMenu({
+      mouseX: event.clientX + 2,
+      mouseY: event.clientY - 6,
+    });
+    setPaymentContextActivity(activity);
+  };
+
+  const handleClosePaymentContextMenu = () => {
+    setPaymentContextMenu(null);
+    setPaymentContextActivity(null);
+  };
+
+  const handleSendPaymentAlertToGroup = async (force = false) => {
+    const activity = paymentContextActivity;
+    handleClosePaymentContextMenu();
+    if (!activity) return;
+
+    const alertKey = String(activity._id || `${activity.jobId?._id || activity.jobId}-${resolvePaymentScheduleLabel(activity)}`);
+    const jobId = activity.jobId?._id || activity.jobId;
+    const scheduleLabel = resolvePaymentScheduleLabel(activity);
+    const activityId = activity.synthetic ? undefined : activity._id;
+
+    try {
+      setSendingPaymentAlertKey(alertKey);
+      const result = await sendManualPaymentNotification({
+        activityId,
+        jobId,
+        scheduleLabel,
+        force,
+      });
+
+      await fetchDashboardData();
+
+      if (result.alreadySent && !force) {
+        toast(result.message || 'Alert already sent for this payment.');
+        return;
+      }
+      if ((result.sentCount || 0) > 0) {
+        toast.success(
+          `Sent alert to group (${result.sentCount} text${result.sentCount === 1 ? '' : 's'})`,
+        );
+        return;
+      }
+      toast.error(result.error || 'Could not send payment alert.');
+    } catch (error) {
+      console.error('Failed to send payment alert:', error);
+      toast.error(error.response?.data?.error || 'Failed to send payment alert');
+    } finally {
+      setSendingPaymentAlertKey(null);
     }
   };
 
@@ -1549,6 +1617,7 @@ function DashboardPage() {
                   onClick={() => {
                     if (jobId) navigate(`/pipeline?jobId=${jobId}`);
                   }}
+                  onContextMenu={(event) => handlePaymentContextMenu(event, activity)}
                   sx={{
                     display: 'flex',
                     alignItems: 'flex-start',
@@ -1636,6 +1705,46 @@ function DashboardPage() {
             })}
           </Box>
         )}
+        {canEditPaymentAlerts ? (
+          <Menu
+            open={paymentContextMenu !== null}
+            onClose={handleClosePaymentContextMenu}
+            anchorReference="anchorPosition"
+            anchorPosition={
+              paymentContextMenu !== null
+                ? { top: paymentContextMenu.mouseY, left: paymentContextMenu.mouseX }
+                : undefined
+            }
+          >
+            {paymentContextActivity?.paymentNotificationSentAt ? (
+              <MenuItem
+                onClick={() => handleSendPaymentAlertToGroup(true)}
+                disabled={Boolean(sendingPaymentAlertKey)}
+              >
+                <ListItemIcon>
+                  <SmsIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Resend alert to group"
+                  secondary="Text the payment alert group again"
+                />
+              </MenuItem>
+            ) : (
+              <MenuItem
+                onClick={() => handleSendPaymentAlertToGroup(false)}
+                disabled={Boolean(sendingPaymentAlertKey)}
+              >
+                <ListItemIcon>
+                  <SmsIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Send alert to group"
+                  secondary="Text everyone in the payment alert group"
+                />
+              </MenuItem>
+            )}
+          </Menu>
+        ) : null}
       </Paper>
 
       {/* Recent Activity */}

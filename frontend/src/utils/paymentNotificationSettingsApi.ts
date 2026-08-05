@@ -207,6 +207,23 @@ async function withActivityPathFallback<T>(
   throw lastError;
 }
 
+export type SendManualPaymentNotificationResult = {
+  sentCount?: number;
+  skipped?: boolean;
+  alreadySent?: boolean;
+  message?: string;
+  error?: string;
+};
+
+export async function sendManualPaymentNotification(payload: {
+  activityId?: string;
+  jobId?: string;
+  scheduleLabel?: string;
+  force?: boolean;
+}): Promise<SendManualPaymentNotificationResult> {
+  return withActivityPathFallback('/payment-notifications/send', (url) => api.post(url, payload));
+}
+
 export async function sendUnsentPaymentNotifications(): Promise<SendUnsentPaymentNotificationsResult> {
   return withActivityPathFallback('/payment-notifications/send-unsent', (url) => api.post(url));
 }

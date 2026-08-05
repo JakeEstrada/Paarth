@@ -13,6 +13,7 @@ const {
   deleteActivity,
   logPayrollPrint,
   sendUnsentPaymentNotificationAlerts,
+  sendManualPaymentNotificationAlert,
 } = require('../controllers/activityController');
 
 router.use(requireAuth);
@@ -27,6 +28,7 @@ router.post('/job/:jobId', createActivity);
 router.post('/manual', createManualActivity);
 router.post('/payroll/print', logPayrollPrint);
 router.post('/payment-notifications/send-unsent', sendUnsentPaymentNotificationAlerts);
+router.post('/payment-notifications/send', sendManualPaymentNotificationAlert);
 router.delete('/:id', deleteActivity);
 
 module.exports = router;
