@@ -360,6 +360,11 @@ function diffPaymentScheduleActivities(oldSchedule, newSchedule) {
 
     if (oldItem.status === 'paid' && newItem.status !== 'paid') {
       activities.push({
+        type: 'payment_received_void',
+        scheduleLabel: newItem.label || 'Payment',
+        note: `Payment status reset: ${newItem.label || 'item'}`,
+      });
+      activities.push({
         type: 'payment_schedule_updated',
         note: `Payment status reset: ${newItem.label || 'item'}`,
       });

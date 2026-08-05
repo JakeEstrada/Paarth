@@ -4,11 +4,36 @@ function escapeRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function matchingPaymentReceivedQuery(jobId, scheduleLabel) {
+  const label = String(scheduleLabel || '').trim();
+  if (!jobId || !label) return null;
+  return {
+    jobId,
+    type: 'payment_received',
+    note: { $regex: new RegExp(`Payment received:.*${escapeRegex(label)}`, 'i') },
+  };
+}
+
+async function findMatchingPaymentReceived(jobId, scheduleLabel) {
+  const query = matchingPaymentReceivedQuery(jobId, scheduleLabel);
+  if (!query) return null;
+  return Activity.findOne(query).sort({ createdAt: -1 });
+}
+
 /**
- * When a paid schedule row is edited, update the matching payment_received activity
- * instead of leaving a stale amount/note on the dashboard.
+ * Remove dashboard payment rows when a schedule line is cleared / reset to unpaid.
  */
-async function syncPaymentReceivedActivity({
+async function voidPaymentReceivedActivity({ jobId, scheduleLabel }) {
+  const query = matchingPaymentReceivedQuery(jobId, scheduleLabel);
+  if (!query) return 0;
+  const result = await Activity.deleteMany(query);
+  return result.deletedCount || 0;
+}
+
+/**
+ * Update the matching payment_received row, or create one if missing.
+ */
+async function upsertPaymentReceivedActivity({
   jobId,
   customerId,
   scheduleLabel,
@@ -19,26 +44,44 @@ async function syncPaymentReceivedActivity({
   createdBy,
 }) {
   const label = String(scheduleLabel || '').trim();
-  if (!jobId || !label) return null;
+  if (!jobId || !label) return { doc: null, created: false };
 
-  const existing = await Activity.findOne({
-    jobId,
+  const existing = await findMatchingPaymentReceived(jobId, label);
+  if (existing) {
+    existing.note = note;
+    existing.amount = amount;
+    if (paymentType) existing.paymentType = paymentType;
+    if (paymentPaidAt) existing.paymentPaidAt = paymentPaidAt;
+    if (customerId) existing.customerId = customerId;
+    if (createdBy) existing.createdBy = createdBy;
+    existing.paymentNotificationSentAt = undefined;
+    existing.paymentNotificationCount = undefined;
+    await existing.save();
+    return { doc: existing, created: false };
+  }
+
+  const doc = await Activity.create({
     type: 'payment_received',
-    note: { $regex: new RegExp(`Payment received:.*${escapeRegex(label)}`, 'i') },
-  }).sort({ createdAt: -1 });
+    jobId,
+    customerId,
+    note,
+    amount,
+    paymentType,
+    paymentPaidAt: paymentPaidAt || undefined,
+    createdBy,
+  });
+  return { doc, created: true };
+}
 
-  if (!existing) return null;
-
-  existing.note = note;
-  existing.amount = amount;
-  if (paymentType) existing.paymentType = paymentType;
-  if (paymentPaidAt) existing.paymentPaidAt = paymentPaidAt;
-  if (customerId) existing.customerId = customerId;
-  if (createdBy) existing.createdBy = createdBy;
-  await existing.save();
-  return existing;
+/** @deprecated use upsertPaymentReceivedActivity */
+async function syncPaymentReceivedActivity(args) {
+  const { doc } = await upsertPaymentReceivedActivity(args);
+  return doc;
 }
 
 module.exports = {
+  voidPaymentReceivedActivity,
+  upsertPaymentReceivedActivity,
   syncPaymentReceivedActivity,
+  findMatchingPaymentReceived,
 };

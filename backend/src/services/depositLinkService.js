@@ -12,7 +12,7 @@ const {
   diffPaymentScheduleActivities,
 } = require('../utils/paymentSchedule');
 const { notifyPaymentMarkedPaid } = require('../services/paymentNotificationService');
-const { syncPaymentReceivedActivity } = require('../services/paymentActivitySync');
+const { upsertPaymentReceivedActivity, voidPaymentReceivedActivity } = require('../services/paymentActivitySync');
 
 function parseDepositAmount(raw) {
   return roundMoney(Math.abs(Number(raw) || 0));
@@ -216,7 +216,9 @@ async function linkDepositToPayment({
       return {
         ...item,
         status: 'paid',
-        paidAmount: roundMoney(depositAmount || scheduledTotal),
+        paidAmount: roundMoney(
+          Number(depositAmount) > 0 ? Number(depositAmount) : scheduledTotal,
+        ),
         paidAt: Number.isNaN(paidAt.getTime()) ? new Date() : paidAt,
       };
     });
@@ -237,8 +239,15 @@ async function linkDepositToPayment({
     const createdPaymentActivityDocs = [];
     for (const activity of activities) {
       try {
+        if (activity.type === 'payment_received_void') {
+          await voidPaymentReceivedActivity({
+            jobId: job._id,
+            scheduleLabel: activity.scheduleLabel,
+          });
+          continue;
+        }
         if (activity.type === 'payment_received_sync') {
-          await syncPaymentReceivedActivity({
+          const { doc, created } = await upsertPaymentReceivedActivity({
             jobId: job._id,
             customerId: job.customerId?._id || job.customerId,
             scheduleLabel: activity.scheduleLabel,
@@ -248,6 +257,9 @@ async function linkDepositToPayment({
             paymentPaidAt: activity.paymentPaidAt,
             createdBy: linkedBy,
           });
+          if (created && doc) {
+            createdPaymentActivityDocs.push(doc);
+          }
           continue;
         }
         const doc = await Activity.create({
