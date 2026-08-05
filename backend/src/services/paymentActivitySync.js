@@ -27,6 +27,14 @@ async function findMatchingPaymentReceived(jobId, scheduleLabel) {
 async function voidPaymentReceivedActivity({ jobId, scheduleLabel }) {
   const query = matchingPaymentReceivedQuery(jobId, scheduleLabel);
   if (!query) return 0;
+
+  const existing = await Activity.find(query).setOptions({ bypassTenant: true });
+  const hadSentAlert = existing.some((row) => row.paymentNotificationSentAt);
+  if (hadSentAlert) {
+    const { markPaymentAlertSentOnJob } = require('./paymentNotificationService');
+    await markPaymentAlertSentOnJob({ jobId, scheduleLabel });
+  }
+
   const result = await Activity.deleteMany(query).setOptions({ bypassTenant: true });
   return result.deletedCount || 0;
 }
@@ -55,8 +63,6 @@ async function upsertPaymentReceivedActivity({
     if (paymentPaidAt) existing.paymentPaidAt = paymentPaidAt;
     if (customerId) existing.customerId = customerId;
     if (createdBy) existing.createdBy = createdBy;
-    existing.paymentNotificationSentAt = undefined;
-    existing.paymentNotificationCount = undefined;
     await existing.save();
     return { doc: existing, created: false };
   }
@@ -86,9 +92,18 @@ async function syncPaymentReceivedActivity(args) {
  */
 async function reconcilePaymentReceivedActivities({ job, schedule, createdBy }) {
   const items = Array.isArray(schedule?.items) ? schedule.items : [];
+  let scheduleAlertBackfill = false;
+
   for (const item of items) {
     if (item.status !== 'paid') continue;
     const label = String(item.label || '').trim() || 'Payment';
+
+    const existing = await findMatchingPaymentReceived(job._id, label);
+    if (!item.paymentAlertSentAt && existing?.paymentNotificationSentAt) {
+      item.paymentAlertSentAt = existing.paymentNotificationSentAt;
+      scheduleAlertBackfill = true;
+    }
+
     await upsertPaymentReceivedActivity({
       jobId: job._id,
       customerId: job.customerId,
@@ -100,6 +115,12 @@ async function reconcilePaymentReceivedActivities({ job, schedule, createdBy }) 
       createdBy,
     });
   }
+
+  if (scheduleAlertBackfill) {
+    job.paymentSchedule = schedule;
+    job.markModified('paymentSchedule');
+    await job.save();
+  }
 }
 
 module.exports = {
@@ -108,4 +129,5 @@ module.exports = {
   syncPaymentReceivedActivity,
   findMatchingPaymentReceived,
   reconcilePaymentReceivedActivities,
+  matchingPaymentReceivedQuery,
 };

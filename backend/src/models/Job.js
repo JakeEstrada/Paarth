@@ -91,6 +91,8 @@ const jobSchema = new mongoose.Schema({
         },
         paidAmount: { type: Number, default: 0 },
         paidAt: Date,
+        /** Set when auto payment-alert SMS was sent for this line (once per line). */
+        paymentAlertSentAt: Date,
         sortOrder: { type: Number, default: 0 },
       },
     ],

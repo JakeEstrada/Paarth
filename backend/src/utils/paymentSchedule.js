@@ -236,6 +236,7 @@ function normalizeScheduleItem(raw, idx, contractBase) {
     status,
     paidAmount: roundMoney(Number(raw?.paidAmount) || 0),
     paidAt: raw?.paidAt ? new Date(raw.paidAt) : undefined,
+    paymentAlertSentAt: raw?.paymentAlertSentAt ? new Date(raw.paymentAlertSentAt) : undefined,
     sortOrder: Number.isFinite(Number(raw?.sortOrder)) ? Number(raw.sortOrder) : idx,
   };
 
@@ -249,6 +250,9 @@ function normalizeScheduleItem(raw, idx, contractBase) {
   }
   if (item.paidAt && Number.isNaN(item.paidAt.getTime())) {
     delete item.paidAt;
+  }
+  if (item.paymentAlertSentAt && Number.isNaN(item.paymentAlertSentAt.getTime())) {
+    delete item.paymentAlertSentAt;
   }
 
   return item;
@@ -349,6 +353,7 @@ function diffPaymentScheduleActivities(oldSchedule, newSchedule) {
       if (newItem.status === 'paid') {
         activities.push({
           type: 'payment_received',
+          scheduleLabel: newItem.label || 'Payment',
           note: `Payment received: ${describeScheduleItem(newItem)}`,
           amount: roundMoney(newItem.paidAmount || newItem.amount),
           paymentType: newItem.dueType || 'milestone',
@@ -371,6 +376,7 @@ function diffPaymentScheduleActivities(oldSchedule, newSchedule) {
     } else if (newItem.status === 'paid' && oldItem.status !== 'paid') {
       activities.push({
         type: 'payment_received',
+        scheduleLabel: newItem.label || 'Payment',
         note: `Payment received: ${describeScheduleItem(newItem)}`,
         amount: roundMoney(newItem.paidAmount || newItem.amount),
         paymentType: newItem.dueType || 'milestone',

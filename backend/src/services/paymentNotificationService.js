@@ -6,6 +6,7 @@ const Job = require('../models/Job');
 const { sendSmsViaTwilio } = require('../controllers/twilioController');
 const { getJobPaymentSummary, roundMoney, describeScheduleItem } = require('../utils/paymentSchedule');
 const { runWithTenantContext } = require('../middleware/tenantContext');
+const { matchingPaymentReceivedQuery } = require('./paymentActivitySync');
 
 function normalizeToE164(value) {
   const raw = String(value || '').trim();
@@ -156,6 +157,69 @@ function resolvePaymentNotificationSettings(tenant) {
   };
 }
 
+function extractScheduleLabelFromPaymentNote(note) {
+  const raw = String(note || '').trim();
+  const prefix = 'Payment received: ';
+  const body = raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
+  return body.split(':')[0]?.trim() || '';
+}
+
+async function hasPaymentAlertAlreadyBeenSent({ jobId, scheduleLabel, activityId }) {
+  const label = String(scheduleLabel || '').trim();
+  if (!jobId || !label) return false;
+
+  if (activityId) {
+    const current = await Activity.findById(activityId).select('paymentNotificationSentAt').lean();
+    if (current?.paymentNotificationSentAt) return true;
+  }
+
+  const labelLower = label.toLowerCase();
+  const job = await Job.findById(jobId).select('paymentSchedule.items').lean();
+  if (job?.paymentSchedule?.items) {
+    for (const item of job.paymentSchedule.items) {
+      if (String(item.label || '').trim().toLowerCase() === labelLower && item.paymentAlertSentAt) {
+        return true;
+      }
+    }
+  }
+
+  const query = matchingPaymentReceivedQuery(jobId, label);
+  if (!query) return false;
+
+  const priorSent = await Activity.findOne({
+    ...query,
+    paymentNotificationSentAt: { $exists: true, $ne: null },
+  })
+    .select('_id paymentNotificationSentAt')
+    .setOptions({ bypassTenant: true })
+    .lean();
+
+  return Boolean(priorSent);
+}
+
+async function markPaymentAlertSentOnJob({ jobId, scheduleLabel }) {
+  const label = String(scheduleLabel || '').trim();
+  if (!jobId || !label) return;
+
+  const job = await Job.findById(jobId);
+  if (!job?.paymentSchedule?.items?.length) return;
+
+  const labelLower = label.toLowerCase();
+  let changed = false;
+  for (const item of job.paymentSchedule.items) {
+    if (String(item.label || '').trim().toLowerCase() === labelLower) {
+      item.paymentAlertSentAt = new Date();
+      changed = true;
+      break;
+    }
+  }
+
+  if (changed) {
+    job.markModified('paymentSchedule');
+    await job.save();
+  }
+}
+
 async function logPaymentNotificationSms({ from, to, body, twilioSid, createdBy, tenantId, deliveryStatus }) {
   const SmsMessage = require('../models/SmsMessage');
   await SmsMessage.create({
@@ -182,9 +246,35 @@ async function sendPaymentNotificationForActivity({
   activityId,
   createdBy,
   phones,
+  scheduleLabel,
 }) {
   if (!tenantId || !job || !paymentActivity || !phones?.length) {
-    return { sentCount: 0 };
+    return { sentCount: 0, skipped: true };
+  }
+
+  const label =
+    scheduleLabel ||
+    extractScheduleLabelFromPaymentNote(paymentActivity?.note) ||
+    String(paymentActivity?.paymentType || '').trim();
+
+  if (
+    await hasPaymentAlertAlreadyBeenSent({
+      jobId: job._id || job.id,
+      scheduleLabel: label,
+      activityId,
+    })
+  ) {
+    if (activityId) {
+      try {
+        await Activity.findByIdAndUpdate(activityId, {
+          paymentNotificationSentAt: new Date(),
+          paymentNotificationCount: 0,
+        });
+      } catch (backfillError) {
+        console.error('Failed to backfill payment notification sent flag:', backfillError?.message || backfillError);
+      }
+    }
+    return { sentCount: 0, skipped: true };
   }
 
   const message = buildPaymentNotificationMessage(job, paymentActivity);
@@ -218,20 +308,46 @@ async function sendPaymentNotificationForActivity({
         paymentNotificationSentAt: new Date(),
         paymentNotificationCount: sentCount,
       });
+      await markPaymentAlertSentOnJob({
+        jobId: job._id || job.id,
+        scheduleLabel: label,
+      });
     } catch (markError) {
       console.error('Failed to mark payment notification sent:', markError?.message || markError);
     }
   }
 
-  return { sentCount };
+  return { sentCount, skipped: sentCount === 0 };
 }
 
 /**
  * Text everyone in the tenant's payment alert group when a schedule row is newly marked paid.
  * Fire-and-forget — errors are logged, not thrown to callers.
  */
-async function notifyPaymentMarkedPaid({ tenantId, job, paymentActivity, activityId, createdBy }) {
+async function notifyPaymentMarkedPaid({
+  tenantId,
+  job,
+  paymentActivity,
+  activityId,
+  createdBy,
+  scheduleLabel,
+}) {
   if (!tenantId || !job || !paymentActivity) return;
+
+  const label =
+    scheduleLabel ||
+    extractScheduleLabelFromPaymentNote(paymentActivity?.note) ||
+    String(paymentActivity?.paymentType || '').trim();
+
+  if (
+    await hasPaymentAlertAlreadyBeenSent({
+      jobId: job._id || job.id,
+      scheduleLabel: label,
+      activityId,
+    })
+  ) {
+    return;
+  }
 
   try {
     const tenant = await Tenant.findById(tenantId)
@@ -255,6 +371,7 @@ async function notifyPaymentMarkedPaid({ tenantId, job, paymentActivity, activit
         activityId,
         createdBy,
         phones,
+        scheduleLabel: label,
       });
     });
   } catch (error) {
@@ -323,14 +440,30 @@ async function sendUnsentPaymentNotifications({ tenantId, createdBy, limit = 100
             continue;
           }
 
-          const { sentCount } = await sendPaymentNotificationForActivity({
+          const label = extractScheduleLabelFromPaymentNote(activity.note);
+          if (
+            await hasPaymentAlertAlreadyBeenSent({
+              jobId: activity.jobId,
+              scheduleLabel: label,
+              activityId: activity._id,
+            })
+          ) {
+            continue;
+          }
+
+          const { sentCount, skipped } = await sendPaymentNotificationForActivity({
             tenantId,
             job,
             paymentActivity: activity,
             activityId: activity._id,
             createdBy,
             phones,
+            scheduleLabel: label,
           });
+
+          if (skipped && sentCount === 0) {
+            continue;
+          }
 
           if (sentCount > 0) {
             sentActivities += 1;
@@ -366,4 +499,7 @@ module.exports = {
   buildPaymentNotificationMessage,
   parsePaymentSettingsFromPipelineOverrides,
   resolvePaymentNotificationSettings,
+  markPaymentAlertSentOnJob,
+  hasPaymentAlertAlreadyBeenSent,
+  extractScheduleLabelFromPaymentNote,
 };

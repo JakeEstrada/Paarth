@@ -362,7 +362,7 @@ async function updateJob(req, res) {
     }
     await job.save();
 
-    const createdPaymentActivityDocs = [];
+    const pendingPaymentNotifications = [];
     for (const activity of paymentScheduleActivities) {
       try {
         if (activity.type === 'payment_received_void') {
@@ -384,7 +384,10 @@ async function updateJob(req, res) {
             createdBy: req.user?._id || job.createdBy || createdBy,
           });
           if (created && doc) {
-            createdPaymentActivityDocs.push(doc);
+            pendingPaymentNotifications.push({
+              doc,
+              scheduleLabel: activity.scheduleLabel,
+            });
           }
           continue;
         }
@@ -399,7 +402,10 @@ async function updateJob(req, res) {
           createdBy: req.user?._id || job.createdBy || createdBy,
         });
         if (activity.type === 'payment_received') {
-          createdPaymentActivityDocs.push(doc);
+          pendingPaymentNotifications.push({
+            doc,
+            scheduleLabel: activity.scheduleLabel,
+          });
         }
       } catch (activityError) {
         console.error('Error creating payment schedule activity:', activityError);
@@ -418,16 +424,17 @@ async function updateJob(req, res) {
       }
     }
 
-    if (createdPaymentActivityDocs.length > 0) {
+    if (pendingPaymentNotifications.length > 0) {
       const populatedJob = await Job.findById(job._id).populate('customerId', 'name');
       const tenantId = req.user?.tenantId || job.tenantId;
-      for (const activityDoc of createdPaymentActivityDocs) {
+      for (const row of pendingPaymentNotifications) {
         notifyPaymentMarkedPaid({
           tenantId,
           job: populatedJob || job,
-          paymentActivity: activityDoc,
-          activityId: activityDoc._id,
+          paymentActivity: row.doc,
+          activityId: row.doc._id,
           createdBy: req.user?._id || job.createdBy,
+          scheduleLabel: row.scheduleLabel,
         });
       }
     }
