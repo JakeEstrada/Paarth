@@ -4,7 +4,7 @@ const EmployeeContact = require('../models/EmployeeContact');
 const Activity = require('../models/Activity');
 const Job = require('../models/Job');
 const { sendSmsViaTwilio } = require('../controllers/twilioController');
-const { getJobPaymentSummary, roundMoney, describeScheduleItem } = require('../utils/paymentSchedule');
+const { roundMoney, describeScheduleItem } = require('../utils/paymentSchedule');
 const { runWithTenantContext } = require('../middleware/tenantContext');
 const { matchingPaymentReceivedQuery, upsertPaymentReceivedActivity } = require('./paymentActivitySync');
 
@@ -92,23 +92,14 @@ function buildPaymentNotificationMessage(job, paymentActivity) {
     typeof job?.customerId === 'object' && job.customerId?.name
       ? job.customerId.name
       : 'Customer';
-  const jobTitle = String(job?.title || 'Job').trim() || 'Job';
   const note = String(paymentActivity?.note || '').trim();
-  const paymentLine = note.startsWith('Payment received: ')
-    ? note.slice('Payment received: '.length)
-    : note || describeScheduleItem(paymentActivity) || 'Payment';
-
-  const summary = getJobPaymentSummary(job);
-  const balanceLine =
-    summary.balanceDue <= 0.01
-      ? 'Balance due: $0.00 (paid in full)'
-      : `Balance due: $${formatMoneyPlain(summary.balanceDue)}`;
+  const label = extractScheduleLabelFromPaymentNote(note) || 'Payment';
+  const amountPaid = roundMoney(Number(paymentActivity?.amount) || 0);
 
   return [
     'New payment marked paid',
-    `${customer} · ${jobTitle}`,
-    paymentLine,
-    balanceLine,
+    customer,
+    `${label}: $${formatMoneyPlain(amountPaid)}`,
   ].join('\n');
 }
 
