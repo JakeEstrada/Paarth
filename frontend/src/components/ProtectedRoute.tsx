@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Box, CircularProgress } from '@mui/material';
+import { isKioskViewPath } from '../utils/authSession';
 
 function ProtectedRoute({ children, requireAdmin = false }: { children: ReactNode; requireAdmin?: boolean }) {
   const { user, loading, isAdmin } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -22,6 +24,10 @@ function ProtectedRoute({ children, requireAdmin = false }: { children: ReactNod
   }
 
   if (!user) {
+    if (isKioskViewPath()) {
+      const redirect = encodeURIComponent(location.pathname + location.search);
+      return <Navigate to={`/login?kiosk=1&redirect=${redirect}`} replace />;
+    }
     return <Navigate to="/login" replace />;
   }
 

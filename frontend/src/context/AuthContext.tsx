@@ -7,6 +7,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { connectSocket, disconnectSocket } from '../services/socket';
+import { enableKioskDisplayMode, isKioskDisplayMode, isAccessTokenExpiredOrMissing, refreshAccessToken } from '../utils/authSession';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const TENANT_HEADER = 'x-tenant-id';
@@ -23,6 +24,7 @@ export interface AuthContextValue {
   login: (
     email: string,
     password: string,
+    options?: { kiosk?: boolean },
   ) => Promise<{ success: boolean; user?: AuthUser; error?: string }>;
   logout: () => Promise<void>;
   isAdmin: () => boolean;
@@ -85,9 +87,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Check for existing token on mount
     const token = localStorage.getItem('accessToken');
-    if (token) {
+    if (token && !isAccessTokenExpiredOrMissing()) {
       setAxiosAuthHeader(token);
       fetchCurrentUser(token);
+    } else if (token || localStorage.getItem('refreshToken')) {
+      refreshAccessToken({ kiosk: isKioskDisplayMode() })
+        .then((refreshed) => {
+          if (refreshed) {
+            const nextToken = localStorage.getItem('accessToken');
+            if (nextToken) {
+              setAxiosAuthHeader(nextToken);
+              return fetchCurrentUser(nextToken);
+            }
+          }
+          setLoading(false);
+        })
+        .catch(() => {
+          setLoading(false);
+        });
     } else {
       setLoading(false);
     }
@@ -125,11 +142,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, options: { kiosk?: boolean } = {}) => {
     try {
+      const kiosk = Boolean(options.kiosk || isKioskDisplayMode());
       const response = await axios.post(`${API_URL}/auth/login`, {
         email,
-        password
+        password,
+        kiosk,
       });
 
       const { user, accessToken, refreshToken } = response.data as {
@@ -146,6 +165,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Set user
       setUser(user);
       setAxiosTenantHeader(user?.tenantId || null);
+
+      if (kiosk) {
+        enableKioskDisplayMode();
+      }
 
       toast.success(`Welcome back, ${user.name}!`);
       return { success: true, user };
@@ -173,6 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear tokens and user
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
+      localStorage.removeItem('kioskDisplayMode');
       setAxiosTenantHeader(null);
       setAxiosAuthHeader(null);
       setUser(null);

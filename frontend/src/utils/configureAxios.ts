@@ -1,11 +1,13 @@
 import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import {
   attachSessionExpiryGuards,
+  handleUnauthorizedResponse,
   isAuthFlowPagePath,
   isAuthLoginOrRegisterRequest,
-  redirectToLoginDueToSessionExpiry,
 } from './authSession';
 import { getConnectedSocketId } from '../services/socket';
+
+type RetryableConfig = InternalAxiosRequestConfig & { __authRetry?: boolean };
 
 /**
  * Default axios is used across many pages. Attach auth + tenant on every request from
@@ -29,20 +31,29 @@ axios.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 });
 
 /**
- * Global 401 handling for the default axios client used across pages.
- * If a token expires mid-session, clear auth and return user to login.
+ * On 401, try refresh token once before sending user to login.
  */
 axios.interceptors.response.use(
   (response: AxiosResponse) => response,
-  (error: AxiosError) => {
-    if (error?.response?.status === 401) {
-      if (isAuthFlowPagePath() || isAuthLoginOrRegisterRequest(error.config)) {
+  async (error: AxiosError) => {
+    const config = error.config as RetryableConfig | undefined;
+    if (error?.response?.status === 401 && config && !config.__authRetry) {
+      if (isAuthFlowPagePath() || isAuthLoginOrRegisterRequest(config)) {
         return Promise.reject(error);
       }
-      redirectToLoginDueToSessionExpiry();
+
+      config.__authRetry = true;
+      const refreshed = await handleUnauthorizedResponse(config);
+      if (refreshed) {
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return axios(config);
+      }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 attachSessionExpiryGuards();

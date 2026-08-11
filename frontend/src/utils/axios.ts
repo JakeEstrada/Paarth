@@ -1,22 +1,23 @@
 /**
  * axios api client — Prefer this over raw axios in new code.
- * Attaches JWT, tenant id, socket id; redirects to login on 401.
+ * Attaches JWT, tenant id, socket id; refreshes session on 401 before login redirect.
  */
 import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import {
+  handleUnauthorizedResponse,
   isAuthFlowPagePath,
   isAuthLoginOrRegisterRequest,
-  redirectToLoginDueToSessionExpiry,
 } from './authSession';
 import { getConnectedSocketId } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+type RetryableConfig = InternalAxiosRequestConfig & { __authRetry?: boolean };
+
 const api = axios.create({
   baseURL: API_URL,
 });
 
-// Add token to requests automatically
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('accessToken');
@@ -35,21 +36,30 @@ api.interceptors.request.use(
   },
   (error: AxiosError) => {
     return Promise.reject(error);
-  }
+  },
 );
 
-// Same session-expiry behavior as default axios (configureAxios.js)
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
-  (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      if (!isAuthFlowPagePath() && !isAuthLoginOrRegisterRequest(error.config)) {
-        redirectToLoginDueToSessionExpiry();
+  async (error: AxiosError) => {
+    const config = error.config as RetryableConfig | undefined;
+    if (error?.response?.status === 401 && config && !config.__authRetry) {
+      if (isAuthFlowPagePath() || isAuthLoginOrRegisterRequest(config)) {
+        return Promise.reject(error);
+      }
+
+      config.__authRetry = true;
+      const refreshed = await handleUnauthorizedResponse(config);
+      if (refreshed) {
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return api(config);
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;
-

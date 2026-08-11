@@ -3,6 +3,7 @@ const router = express.Router();
 const { 
   register, 
   login, 
+  refresh,
   me, 
   logout, 
   forgotPassword, 
@@ -19,6 +20,7 @@ const uploadUserProfilePhotoMw = require('../middleware/uploadUserProfilePhoto')
 // Public routes
 router.post('/register', register);
 router.post('/login', login);
+router.post('/refresh', refresh);
 router.post('/forgot-password', forgotPassword);
 router.post('/forgot-username', forgotUsername);
 router.post('/reset-password', resetPassword);

@@ -5,7 +5,7 @@
  * Docs: ../../../docs/PAGES.md#loginpagetsx
  */
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -27,9 +27,13 @@ import {
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import BrandLogo from '../components/common/BrandLogo';
+import { enableKioskDisplayMode } from '../utils/authSession';
 
 function LoginPage() {
   const theme = useTheme();
+  const [searchParams] = useSearchParams();
+  const kioskLogin = searchParams.get('kiosk') === '1';
+  const redirectTarget = searchParams.get('redirect') || (kioskLogin ? '/pipeline-view' : '/pipeline');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -46,11 +50,14 @@ function LoginPage() {
     }
 
     setLoading(true);
-    const result = await login(email, password);
+    if (kioskLogin) {
+      enableKioskDisplayMode();
+    }
+    const result = await login(email, password, { kiosk: kioskLogin });
     setLoading(false);
 
     if (result.success) {
-      navigate('/pipeline');
+      navigate(redirectTarget);
     }
   };
 

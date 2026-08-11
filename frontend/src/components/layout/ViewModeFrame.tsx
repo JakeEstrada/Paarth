@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -11,6 +11,11 @@ import {
   TextField,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import {
+  disableKioskDisplayMode,
+  enableKioskDisplayMode,
+  refreshAccessToken,
+} from '../../utils/authSession';
 
 function ViewModeFrame({ currentView, children }) {
   const navigate = useNavigate();
@@ -29,10 +34,16 @@ function ViewModeFrame({ currentView, children }) {
   };
   const handleExitConfirm = () => {
     if (exitPin.trim() !== '7212') return;
+    disableKioskDisplayMode();
     navigate(exitPathByView[currentView] || '/pipeline');
     setExitDialogOpen(false);
     setExitPin('');
   };
+
+  useEffect(() => {
+    enableKioskDisplayMode();
+    void refreshAccessToken({ kiosk: true });
+  }, []);
 
   return (
     <Box sx={{ position: 'relative', minHeight: '100vh' }}>

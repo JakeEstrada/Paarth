@@ -1,18 +1,23 @@
 const jwt = require('jsonwebtoken');
 
-function generateAccessToken(userId) {
+const DEFAULT_ACCESS = process.env.JWT_ACCESS_EXPIRES_IN || '24h';
+const DEFAULT_REFRESH = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+const KIOSK_ACCESS = process.env.JWT_KIOSK_ACCESS_EXPIRES_IN || '90d';
+const KIOSK_REFRESH = process.env.JWT_KIOSK_REFRESH_EXPIRES_IN || '365d';
+
+function generateAccessToken(userId, { kiosk = false } = {}) {
   return jwt.sign(
-    { userId }, 
-    process.env.JWT_SECRET, 
-    { expiresIn: '24h' }
+    { userId },
+    process.env.JWT_SECRET,
+    { expiresIn: kiosk ? KIOSK_ACCESS : DEFAULT_ACCESS },
   );
 }
 
-function generateRefreshToken(userId) {
+function generateRefreshToken(userId, { kiosk = false } = {}) {
   return jwt.sign(
-    { userId }, 
-    process.env.JWT_REFRESH_SECRET, 
-    { expiresIn: '7d' }
+    { userId },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: kiosk ? KIOSK_REFRESH : DEFAULT_REFRESH },
   );
 }
 

@@ -4,6 +4,7 @@ const {
   generateRefreshToken,
   generatePasswordResetToken,
   verifyPasswordResetToken,
+  verifyRefreshToken,
 } = require('../utils/generateToken');
 const { sendPasswordResetEmail } = require('../services/emailService');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
@@ -120,9 +121,11 @@ async function login(req, res) {
       .populate('tenantId', 'name slug logo updatedAt')
       .setOptions({ bypassTenant: true });
 
+    const kioskMode = Boolean(req.body?.kiosk);
+
     // Generate tokens
-    const accessToken = generateAccessToken(user._id);
-    const refreshToken = generateRefreshToken(user._id);
+    const accessToken = generateAccessToken(user._id, { kiosk: kioskMode });
+    const refreshToken = generateRefreshToken(user._id, { kiosk: kioskMode });
 
     res.json({
       user: userWithTenant,
@@ -145,6 +148,36 @@ async function me(req, res) {
 // Logout (client-side handles token removal)
 async function logout(req, res) {
   res.json({ message: 'Logged out successfully' });
+}
+
+async function refresh(req, res) {
+  try {
+    const refreshToken = req.body?.refreshToken;
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'Refresh token required' });
+    }
+
+    const payload = verifyRefreshToken(refreshToken);
+    if (!payload?.userId) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    const user = await User.findById(payload.userId).setOptions({ bypassTenant: true });
+    if (!user || user.isPending || !user.isActive) {
+      return res.status(401).json({ error: 'User not found or inactive' });
+    }
+
+    const kioskMode = Boolean(req.body?.kiosk);
+    const accessToken = generateAccessToken(user._id, { kiosk: kioskMode });
+    const newRefreshToken = generateRefreshToken(user._id, { kiosk: kioskMode });
+
+    res.json({
+      accessToken,
+      refreshToken: newRefreshToken,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 }
 
 // Forgot password - find user by email
@@ -393,6 +426,7 @@ async function changePassword(req, res) {
 module.exports = {
   register,
   login,
+  refresh,
   me,
   logout,
   forgotPassword,
