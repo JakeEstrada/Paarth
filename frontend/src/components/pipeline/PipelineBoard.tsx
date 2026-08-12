@@ -31,6 +31,7 @@ import {
   History as HistoryIcon,
   Edit as EditIcon,
   Lock as LockIcon,
+  InfoOutlined as InfoOutlinedIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -137,6 +138,8 @@ function PipelineBoard({
 
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [stageOverrides, setStageOverrides] = useState({});
+  const [stageDescriptionEdit, setStageDescriptionEdit] = useState(null);
+  const [savingStageDescription, setSavingStageDescription] = useState(false);
 
   /** Server is source of truth per tenant; localStorage is fallback if API fails or old deploy. */
   useEffect(() => {
@@ -211,6 +214,95 @@ function PipelineBoard({
     const override = getStageOverride(stageId);
     if (override?.label && String(override.label).trim()) return String(override.label).trim();
     return STAGE_LABELS[stageId] || stageId;
+  };
+  const getStageDescription = (stageId) => {
+    const override = getStageOverride(stageId);
+    if (override?.description && String(override.description).trim()) {
+      return String(override.description).trim();
+    }
+    return '';
+  };
+
+  const saveStageDescription = async () => {
+    if (!stageDescriptionEdit?.stageId || !canModifyPipeline()) return;
+    const stageId = stageDescriptionEdit.stageId;
+    const description = String(stageDescriptionEdit.description || '').trim();
+    const nextOverrides = {
+      ...stageOverrides,
+      [stageId]: {
+        ...(stageOverrides?.[stageId] || {}),
+        description,
+      },
+    };
+    if (!description) {
+      const { description: _removed, ...rest } = nextOverrides[stageId] || {};
+      if (Object.keys(rest).length) {
+        nextOverrides[stageId] = rest;
+      } else {
+        delete nextOverrides[stageId];
+      }
+    }
+
+    try {
+      setSavingStageDescription(true);
+      const { data } = await axios.patch(`${API_URL}/tenants/pipeline-settings`, {
+        overrides: nextOverrides,
+      });
+      const saved =
+        data?.overrides && typeof data.overrides === 'object' && !Array.isArray(data.overrides)
+          ? data.overrides
+          : nextOverrides;
+      setStageOverrides(saved);
+      toast.success('Stage description saved');
+      setStageDescriptionEdit(null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.message || 'Failed to save description');
+    } finally {
+      setSavingStageDescription(false);
+    }
+  };
+
+  const renderStageDescriptionIcon = (stageId) => {
+    const description = getStageDescription(stageId);
+    const hasDescription = Boolean(description);
+    if (!hasDescription && !canModifyPipeline()) return null;
+
+    const tooltipTitle = hasDescription
+      ? description
+      : canModifyPipeline()
+        ? 'Click to add a stage description'
+        : '';
+
+    return (
+      <Tooltip
+        title={tooltipTitle}
+        enterDelay={300}
+        slotProps={{ tooltip: { sx: { maxWidth: 340, whiteSpace: 'pre-wrap' } } }}
+      >
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!canModifyPipeline()) return;
+            setStageDescriptionEdit({
+              stageId,
+              description: description || '',
+            });
+          }}
+          sx={{
+            p: 0,
+            width: 16,
+            height: 16,
+            flexShrink: 0,
+            color: hasDescription ? 'info.main' : 'text.disabled',
+            cursor: canModifyPipeline() ? 'pointer' : 'default',
+          }}
+          aria-label={`${getStageLabel(stageId)} description`}
+        >
+          <InfoOutlinedIcon sx={{ fontSize: '0.85rem' }} />
+        </IconButton>
+      </Tooltip>
+    );
   };
 
   const handleDragOver = (e, stageId) => {
@@ -307,20 +399,22 @@ function PipelineBoard({
                 mb: 0.75,
               }}
             >
-              <Typography
-                variant="caption"
-                sx={{
-                  color: theme.palette.text.secondary,
-                  fontWeight: 500,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  fontSize: '0.75rem',
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
-                {getStageLabel(stageId)}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1, minWidth: 0 }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: theme.palette.text.secondary,
+                    fontWeight: 500,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    fontSize: '0.75rem',
+                    minWidth: 0,
+                  }}
+                >
+                  {getStageLabel(stageId)}
+                </Typography>
+                {renderStageDescriptionIcon(stageId)}
+              </Box>
               <Box
                 sx={{
                   flexShrink: 0,
@@ -760,6 +854,7 @@ function PipelineBoard({
                 override?.label && String(override.label).trim()
                   ? String(override.label).trim()
                   : STAGE_LABELS[stageId];
+              const descriptionValue = override?.description ? String(override.description) : '';
 
               return (
                 <Box
@@ -774,9 +869,10 @@ function PipelineBoard({
                   <Box
                     sx={{
                       display: 'flex',
-                      alignItems: 'center',
+                      alignItems: 'flex-start',
                       justifyContent: 'space-between',
                       gap: 2,
+                      flexWrap: 'wrap',
                     }}
                   >
                     <FormControlLabel
@@ -814,6 +910,26 @@ function PipelineBoard({
                       sx={{ minWidth: 260 }}
                     />
                   </Box>
+                  <TextField
+                    size="small"
+                    label="Description (hover tooltip on pipeline)"
+                    value={descriptionValue}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setStageOverrides((prev) => ({
+                        ...prev,
+                        [stageId]: {
+                          ...(prev?.[stageId] || {}),
+                          description: val,
+                        },
+                      }));
+                    }}
+                    multiline
+                    minRows={2}
+                    fullWidth
+                    sx={{ mt: 1.5 }}
+                    placeholder="What belongs in this stage? Shown when staff hover the info icon."
+                  />
                 </Box>
               );
             })}
@@ -850,6 +966,41 @@ function PipelineBoard({
             }}
           >
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(stageDescriptionEdit)}
+        onClose={() => !savingStageDescription && setStageDescriptionEdit(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {stageDescriptionEdit ? `${getStageLabel(stageDescriptionEdit.stageId)} — description` : 'Stage description'}
+        </DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={4}
+            label="Description"
+            value={stageDescriptionEdit?.description || ''}
+            onChange={(e) =>
+              setStageDescriptionEdit((prev) =>
+                prev ? { ...prev, description: e.target.value } : prev,
+              )
+            }
+            placeholder="Explain what belongs in this stage — shown when someone hovers the info icon."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setStageDescriptionEdit(null)} disabled={savingStageDescription}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={saveStageDescription} disabled={savingStageDescription}>
+            {savingStageDescription ? 'Saving…' : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>

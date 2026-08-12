@@ -43,7 +43,7 @@ export type PaymentNotificationSettings = {
   phoneNumbers: string[];
 };
 
-type PipelineOverrideEntry = { hidden?: boolean; label?: string };
+type PipelineOverrideEntry = { hidden?: boolean; label?: string; description?: string };
 type PipelineOverrides = Record<string, PipelineOverrideEntry>;
 
 const PAYMENT_SMS_PREFIX = 'PAYMENT_SMS_';
@@ -92,6 +92,9 @@ function encodePaymentSettingsToPipelineOverrides(
     if (typeof v.hidden === 'boolean') entry.hidden = v.hidden;
     if (v.label != null && String(v.label).trim()) {
       entry.label = String(v.label).trim().slice(0, 160);
+    }
+    if (v.description != null && String(v.description).trim()) {
+      entry.description = String(v.description).trim().slice(0, 500);
     }
     if (Object.keys(entry).length) out[k] = entry;
   }

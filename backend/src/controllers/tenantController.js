@@ -252,6 +252,9 @@ function sanitizePipelineOverrides(raw) {
     const entry = {};
     if (typeof v.hidden === 'boolean') entry.hidden = v.hidden;
     if (v.label != null && String(v.label).trim()) entry.label = String(v.label).trim().slice(0, 160);
+    if (v.description != null && String(v.description).trim()) {
+      entry.description = String(v.description).trim().slice(0, 500);
+    }
     if (Object.keys(entry).length) out[k] = entry;
   }
   return out;
