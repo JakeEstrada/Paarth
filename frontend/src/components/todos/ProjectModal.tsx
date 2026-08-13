@@ -38,6 +38,7 @@ import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import AddAppointmentModal from '../appointments/AddAppointmentModal';
 import PdfThumbnail from '../common/PdfThumbnail';
+import AuthenticatedFileImage from '../common/AuthenticatedFileImage';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -926,17 +927,10 @@ function ProjectModal({ open, onClose, projectId, onUpdate }) {
                               borderColor: 'divider',
                             }}
                           >
-                            <img
-                              src={`${API_URL}/files/${file._id}`}
+                            <AuthenticatedFileImage
+                              fileId={file._id}
                               alt={file.originalName || 'Project file'}
-                              style={{
-                                width: '100%',
-                                height: 'auto',
-                                maxHeight: '200px',
-                                objectFit: 'cover',
-                                cursor: 'pointer',
-                                display: 'block',
-                              }}
+                              maxHeight={200}
                               onClick={() => openPictureViewer(file._id)}
                             />
                           </Box>

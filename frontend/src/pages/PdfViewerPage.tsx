@@ -1,25 +1,22 @@
 /**
  * PdfViewerPage — Full-page PDF file viewer.
  * Route: /pdf/:fileId
- * API: GET /files/:id/download
+ * API: GET /files/:id
  * Docs: ../../../docs/PAGES.md#pdfviewerpagetsx
  */
-import { Box, Button, Stack, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, Stack, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate, useParams } from 'react-router-dom';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+import { useAuthenticatedFileUrl } from '../hooks/useAuthenticatedFileUrl';
 
 export default function PdfViewerPage() {
   const { fileId } = useParams();
   const navigate = useNavigate();
-  const pdfUrl = `${API_URL}/files/${fileId}`;
+  const { url, error, loading } = useAuthenticatedFileUrl(fileId);
 
   const handleClose = () => {
-    // If this page was opened in a new tab via window.open, this closes it.
     window.close();
 
-    // Fallback: if browser blocks close, navigate to a safe in-app page.
     window.setTimeout(() => {
       if (!window.closed) {
         navigate('/dashboard', { replace: true });
@@ -57,12 +54,25 @@ export default function PdfViewerPage() {
         </Button>
       </Stack>
 
-      <Box
-        component="iframe"
-        title="PDF Document"
-        src={pdfUrl}
-        sx={{ width: '100%', height: 'calc(100vh - 49px)', border: 0 }}
-      />
+      {loading && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      )}
+      {!loading && error && (
+        <Typography color="error" sx={{ p: 3 }}>
+          Could not open this PDF. If this keeps happening, AWS S3 credentials or the stored file key may be
+          wrong.
+        </Typography>
+      )}
+      {!loading && url && (
+        <Box
+          component="iframe"
+          title="PDF Document"
+          src={url}
+          sx={{ width: '100%', height: 'calc(100vh - 49px)', border: 0 }}
+        />
+      )}
     </Box>
   );
 }

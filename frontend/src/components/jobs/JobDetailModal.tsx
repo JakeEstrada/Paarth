@@ -56,6 +56,7 @@ import {
 import { format } from 'date-fns';
 import axios from 'axios';
 import PdfThumbnail from '../common/PdfThumbnail';
+import AuthenticatedFileImage from '../common/AuthenticatedFileImage';
 import toast from 'react-hot-toast';
 import AddNoteModal from './AddNoteModal';
 import AddJobTaskModal from './AddJobTaskModal';
@@ -1633,20 +1634,11 @@ function JobDetailModal({
                       {/* Preview for images */}
                       {file.mimetype.startsWith('image/') && (
                         <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
-                          <img
-                            src={`${API_URL}/files/${file._id}`}
+                          <AuthenticatedFileImage
+                            fileId={file._id}
                             alt={file.originalName}
-                            style={{
-                              width: '100%',
-                              height: 'auto',
-                              maxHeight: '200px',
-                              objectFit: 'cover',
-                              cursor: 'pointer',
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openPictureViewer(file._id);
-                            }}
+                            maxHeight={200}
+                            onClick={() => openPictureViewer(file._id)}
                           />
                         </Box>
                       )}

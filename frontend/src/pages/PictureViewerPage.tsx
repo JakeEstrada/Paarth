@@ -3,16 +3,15 @@
  * Route: /picture/:fileId
  * Docs: ../../../docs/PAGES.md#pictureviewerpagetsx
  */
-import { Box, Button, Stack, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, Stack, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate, useParams } from 'react-router-dom';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+import { useAuthenticatedFileUrl } from '../hooks/useAuthenticatedFileUrl';
 
 export default function PictureViewerPage() {
   const { fileId } = useParams();
   const navigate = useNavigate();
-  const imageUrl = `${API_URL}/files/${fileId}`;
+  const { url, error, loading } = useAuthenticatedFileUrl(fileId);
 
   const handleClose = () => {
     window.close();
@@ -66,18 +65,27 @@ export default function PictureViewerPage() {
           boxSizing: 'border-box',
         }}
       >
-        <Box
-          component="img"
-          src={imageUrl}
-          alt=""
-          sx={{
-            maxWidth: '100%',
-            maxHeight: 'calc(100vh - 49px - 16px)',
-            width: 'auto',
-            height: 'auto',
-            objectFit: 'contain',
-          }}
-        />
+        {loading && <CircularProgress />}
+        {!loading && error && (
+          <Typography color="error" sx={{ px: 2, textAlign: 'center' }}>
+            Could not open this photo. The file record exists, but the image bytes could not be loaded.
+            If this keeps happening, AWS S3 credentials or the stored file key may be wrong.
+          </Typography>
+        )}
+        {!loading && url && (
+          <Box
+            component="img"
+            src={url}
+            alt=""
+            sx={{
+              maxWidth: '100%',
+              maxHeight: 'calc(100vh - 49px - 16px)',
+              width: 'auto',
+              height: 'auto',
+              objectFit: 'contain',
+            }}
+          />
+        )}
       </Box>
     </Box>
   );

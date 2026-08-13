@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import axios from 'axios';
 import { Box, CircularProgress } from '@mui/material';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import api from '../../utils/axios';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -20,7 +20,7 @@ export function PdfThumbnail({ fileId, apiUrl, maxWidth = 56, maxHeight = 72 }) 
 
     (async () => {
       try {
-        const res = await axios.get(`${apiUrl}/files/${fileId}/download`, {
+        const res = await api.get(`/files/${fileId}`, {
           responseType: 'arraybuffer',
         });
         if (cancelled) return;
