@@ -61,8 +61,7 @@ export default function PdfViewerPage() {
       )}
       {!loading && error && (
         <Typography color="error" sx={{ p: 3 }}>
-          Could not open this PDF. If this keeps happening, AWS S3 credentials or the stored file key may be
-          wrong.
+          {error}
         </Typography>
       )}
       {!loading && url && (

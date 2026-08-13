@@ -1,10 +1,31 @@
+import { isAxiosError } from 'axios';
 import { useEffect, useRef, useState } from 'react';
 import api from '../utils/axios';
 
+async function errorMessageFromUnknown(err: unknown): Promise<string> {
+  if (isAxiosError(err)) {
+    const data = err.response?.data;
+    if (data instanceof Blob) {
+      try {
+        const text = await data.text();
+        const parsed = JSON.parse(text) as { error?: string; message?: string };
+        return parsed.error || parsed.message || text || err.message;
+      } catch {
+        return err.message;
+      }
+    }
+    if (data && typeof data === 'object') {
+      const parsed = data as { error?: string; message?: string };
+      return parsed.error || parsed.message || err.message;
+    }
+    return err.message;
+  }
+  if (err instanceof Error) return err.message;
+  return 'Failed to load file';
+}
+
 /**
  * Fetches a job/task file with auth + tenant headers and returns a blob object URL.
- * Bare <img src="/files/:id"> cannot send those headers, so previews look empty
- * even when the file record exists in Mongo (and even when S3 itself is fine).
  */
 export function useAuthenticatedFileUrl(fileId: string | undefined | null) {
   const [url, setUrl] = useState<string | null>(null);
@@ -34,14 +55,22 @@ export function useAuthenticatedFileUrl(fileId: string | undefined | null) {
         if (cancelled) return;
         const contentType = String(res.headers['content-type'] || '');
         if (contentType.includes('application/json')) {
-          throw new Error('File request returned JSON instead of the file');
+          const text = await (res.data as Blob).text();
+          let message = 'File request returned JSON instead of the file';
+          try {
+            const parsed = JSON.parse(text) as { error?: string; message?: string };
+            message = parsed.error || parsed.message || message;
+          } catch {
+            /* keep default */
+          }
+          throw new Error(message);
         }
         const objectUrl = URL.createObjectURL(res.data);
         blobRef.current = objectUrl;
         setUrl(objectUrl);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load file');
+          setError(await errorMessageFromUnknown(err));
           setUrl(null);
         }
       } finally {

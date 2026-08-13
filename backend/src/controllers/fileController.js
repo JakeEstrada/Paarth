@@ -3,8 +3,10 @@ const Job = require('../models/Job');
 const Activity = require('../models/Activity');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const { s3Client, BUCKET_NAME, isS3Configured } = require('../config/s3');
+const { getTenantContext } = require('../middleware/tenantContext');
 // Get uploads directory - same as in upload.js middleware
 // Use environment variable if set, otherwise use relative path
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
@@ -20,43 +22,153 @@ const ALLOWED_DOCUMENT_MIME_TYPES = new Set([
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ]);
-// Helper function to check if file is stored in S3
+function normalizeS3Key(value) {
+  if (!value) return '';
+  let s = String(value).trim();
+  if (!s) return '';
+  try {
+    if (/^https?:\/\//i.test(s)) {
+      const u = new URL(s);
+      s = decodeURIComponent(u.pathname.replace(/^\/+/, ''));
+      if (BUCKET_NAME && (s === BUCKET_NAME || s.startsWith(`${BUCKET_NAME}/`))) {
+        s = s.slice(BUCKET_NAME.length).replace(/^\/+/, '');
+      }
+    }
+  } catch (_) {
+    /* keep original */
+  }
+  return s.replace(/^\/+/, '');
+}
+
+function candidateS3Keys(file) {
+  const keys = [];
+  const add = (raw) => {
+    const n = normalizeS3Key(raw);
+    if (n && !keys.includes(n)) keys.push(n);
+  };
+  add(file.s3Key);
+  add(file.path);
+  if (file.filename) {
+    add(`uploads/${file.filename}`);
+    add(`tenant-logos/${file.filename}`);
+    add(file.filename);
+  }
+  return keys;
+}
+
 function isS3File(file) {
   if (file.s3Key) return true;
   const storedPath = file.path && String(file.path);
-  if (!storedPath || path.isAbsolute(storedPath)) return false;
+  if (!storedPath) return false;
+  if (/^https?:\/\//i.test(storedPath)) return true;
+  if (path.isAbsolute(storedPath)) return false;
   return storedPath.startsWith('uploads/') || storedPath.startsWith('tenant-logos/');
 }
 
-// Helper function to get file stream from S3 or local filesystem
-async function getFileStream(file) {
-  if (isS3Configured() && isS3File(file)) {
-    // Get file from S3
-    const s3Key = file.s3Key || file.path;
-    console.log('Fetching file from S3:', s3Key);
-    
-    try {
-      const command = new GetObjectCommand({
-        Bucket: BUCKET_NAME,
-        Key: s3Key,
-      });
-      
-      const response = await s3Client.send(command);
-      return response.Body; // This is a stream
-    } catch (error) {
-      console.error('Error fetching file from S3:', error);
-      throw error;
-    }
-  } else {
-    // Get file from local filesystem
-    const filePath = findLocalFilePath(file);
-    if (!filePath) {
-      throw new Error('File not found on server');
-    }
-    
-    console.log('Reading file from local filesystem:', filePath);
-    return fs.createReadStream(filePath);
+async function s3BodyToNodeStream(body) {
+  if (!body) {
+    throw new Error('Empty S3 body');
   }
+  if (typeof body.pipe === 'function') {
+    return body;
+  }
+  if (typeof body.transformToByteArray === 'function') {
+    const bytes = await body.transformToByteArray();
+    return Readable.from(Buffer.from(bytes));
+  }
+  if (typeof Readable.fromWeb === 'function' && typeof body.getReader === 'function') {
+    return Readable.fromWeb(body);
+  }
+  throw new Error('Unsupported S3 body type');
+}
+
+function storageErrorStatus(error) {
+  const code = error?.name || error?.Code || error?.code || '';
+  if (code === 'NoSuchKey' || code === 'NotFound' || error?.$metadata?.httpStatusCode === 404) {
+    return 404;
+  }
+  if (code === 'AccessDenied' || code === 'InvalidAccessKeyId' || code === 'SignatureDoesNotMatch') {
+    return 403;
+  }
+  return 500;
+}
+
+function storageErrorMessage(error) {
+  const code = error?.name || error?.Code || error?.code || '';
+  if (code === 'NoSuchKey' || code === 'NotFound' || error?.$metadata?.httpStatusCode === 404) {
+    return 'The file record exists, but the object is missing from S3 (wrong key or it was never uploaded to this bucket).';
+  }
+  if (code === 'AccessDenied' || code === 'InvalidAccessKeyId' || code === 'SignatureDoesNotMatch') {
+    return 'S3 denied access. Check AWS credentials, bucket policy, and region.';
+  }
+  if (error?.message === 'File not found on server') {
+    return 'The file is not on the server disk and S3 is not configured or the object was not found.';
+  }
+  return error?.message || 'Failed to retrieve file';
+}
+
+async function getFileStream(file) {
+  const keys = candidateS3Keys(file);
+  if (isS3Configured() && (isS3File(file) || keys.length)) {
+    let lastError = null;
+    for (const Key of keys) {
+      try {
+        console.log('Fetching file from S3:', Key);
+        const response = await s3Client.send(
+          new GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key,
+          })
+        );
+        return await s3BodyToNodeStream(response.Body);
+      } catch (error) {
+        lastError = error;
+        console.error('Error fetching file from S3:', Key, error?.name || error?.message || error);
+      }
+    }
+
+    const localPath = findLocalFilePath(file);
+    if (localPath) {
+      console.log('S3 miss; reading file from local filesystem:', localPath);
+      return fs.createReadStream(localPath);
+    }
+
+    if (lastError) throw lastError;
+  }
+
+  const filePath = findLocalFilePath(file);
+  if (!filePath) {
+    throw new Error('File not found on server');
+  }
+
+  console.log('Reading file from local filesystem:', filePath);
+  return fs.createReadStream(filePath);
+}
+
+async function findFileDocument(id) {
+  let file = await File.findOne({ _id: id });
+  if (file) return file;
+
+  file = await File.findOne({ _id: id }).setOptions({ bypassTenant: true });
+  if (!file) return null;
+
+  const { tenantId } = getTenantContext();
+  if (file.tenantId && tenantId && String(file.tenantId) !== String(tenantId)) {
+    return null;
+  }
+  return file;
+}
+
+function pipeFileStream(fileStream, res) {
+  fileStream.on('error', (err) => {
+    console.error('File stream error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: storageErrorMessage(err) });
+    } else {
+      res.destroy();
+    }
+  });
+  fileStream.pipe(res);
 }
 
 // Helper function to find file path on local filesystem (fallback)
@@ -568,7 +680,7 @@ async function uploadDocument(req, res) {
 // Download file
 async function downloadFile(req, res) {
   try {
-    const file = await File.findById(req.params.id);
+    const file = await findFileDocument(req.params.id);
 
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
@@ -577,17 +689,19 @@ async function downloadFile(req, res) {
     res.setHeader('Content-Type', file.mimetype);
 
     const fileStream = await getFileStream(file);
-    fileStream.pipe(res);
+    pipeFileStream(fileStream, res);
   } catch (error) {
     console.error('Error downloading file:', error);
-    res.status(500).json({ error: error.message || 'Failed to download file' });
+    if (!res.headersSent) {
+      res.status(storageErrorStatus(error)).json({ error: storageErrorMessage(error) });
+    }
   }
 }
 
 // Get file (for viewing images/PDFs)
 async function getFile(req, res) {
   try {
-    const file = await File.findById(req.params.id);
+    const file = await findFileDocument(req.params.id);
 
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
@@ -596,10 +710,12 @@ async function getFile(req, res) {
     res.setHeader('Content-Disposition', `inline; filename="${file.originalName}"`);
 
     const fileStream = await getFileStream(file);
-    fileStream.pipe(res);
+    pipeFileStream(fileStream, res);
   } catch (error) {
     console.error('Error getting file:', error);
-    res.status(500).json({ error: error.message || 'Failed to retrieve file' });
+    if (!res.headersSent) {
+      res.status(storageErrorStatus(error)).json({ error: storageErrorMessage(error) });
+    }
   }
 }
 

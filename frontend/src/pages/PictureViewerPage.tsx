@@ -67,9 +67,8 @@ export default function PictureViewerPage() {
       >
         {loading && <CircularProgress />}
         {!loading && error && (
-          <Typography color="error" sx={{ px: 2, textAlign: 'center' }}>
-            Could not open this photo. The file record exists, but the image bytes could not be loaded.
-            If this keeps happening, AWS S3 credentials or the stored file key may be wrong.
+          <Typography color="error" sx={{ px: 2, textAlign: 'center', maxWidth: 560 }}>
+            {error}
           </Typography>
         )}
         {!loading && url && (
