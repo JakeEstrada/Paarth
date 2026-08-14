@@ -45,6 +45,7 @@ import {
   Email as EmailIcon,
   Phone as PhoneIcon,
   InsertDriveFile as InsertDriveFileIcon,
+  CloudUpload as CloudUploadIcon,
   Share as ShareIcon,
   AutoAwesome as AutoAwesomeIcon,
   ContentCopy as ContentCopyIcon,
@@ -75,11 +76,7 @@ import {
 import { renderSummaryBlocks } from '../../utils/summaryMarkdown';
 import {
   formatMoney,
-  formatScheduleItemLabel,
   getJobTotalWithChangeOrders,
-  resolvePaymentSchedule,
-  sumChangeOrders,
-  validatePaymentSchedule,
 } from '../../utils/paymentSchedule';
 import {
   isShopDisplayPath,
@@ -225,7 +222,7 @@ function JobDetailModal({
   const [deleting, setDeleting] = useState(false);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [fileType, setFileType] = useState('other');
+  const [fileType] = useState('other');
   const [dragActive, setDragActive] = useState(false);
   const dragDepthRef = useRef(0);
   const [addNoteOpen, setAddNoteOpen] = useState(false);
@@ -365,7 +362,6 @@ function JobDetailModal({
         }
       }
       await fetchJobFiles({ force: true });
-      setFileType('other');
       if (resetInput) resetInput.value = '';
       if (succeeded && !failed) {
         toast.success(succeeded === 1 ? 'File uploaded successfully' : `Uploaded ${succeeded} files`);
@@ -420,15 +416,8 @@ function JobDetailModal({
 
   const headerBaseEstimatedValue = Number((isEditing ? editedJob?.valueEstimated : job?.valueEstimated) || 0);
   const headerContractedValue = Number((isEditing ? editedJob?.valueContracted : job?.valueContracted) || 0);
-  const headerContractBase = headerContractedValue > 0 ? headerContractedValue : headerBaseEstimatedValue;
   const headerScheduleSource = isEditing ? editedJob || job : job;
-  const headerChangeOrderValue = sumChangeOrders(headerScheduleSource);
   const headerFullTotal = getJobTotalWithChangeOrders({
-    ...headerScheduleSource,
-    valueEstimated: headerBaseEstimatedValue,
-    valueContracted: headerContractedValue,
-  });
-  const headerPaymentSchedule = resolvePaymentSchedule({
     ...headerScheduleSource,
     valueEstimated: headerBaseEstimatedValue,
     valueContracted: headerContractedValue,
@@ -660,7 +649,7 @@ function JobDetailModal({
     return (
       <Box
         sx={{
-          mt: 1.25,
+          mt: 0.5,
           py: 0.75,
           px: 1,
           borderRadius: 0.75,
@@ -871,9 +860,9 @@ function JobDetailModal({
         },
       }}
     >
-      <DialogTitle sx={{ pb: 1, pt: 2 }}>
+      <DialogTitle sx={{ pb: 0.75, pt: 1.25 }}>
         {job._id != null && String(job._id).trim() !== '' && (
-          <Box sx={{ textAlign: 'center', width: '100%', mb: 1.25 }}>
+          <Box sx={{ textAlign: 'center', width: '100%', mb: 0.5 }}>
             <Tooltip title={`Full job id: ${job._id}`} placement="bottom">
               <Typography
                 variant="caption"
@@ -881,7 +870,7 @@ function JobDetailModal({
                 sx={{
                   color: 'text.disabled',
                   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                  fontSize: '0.7rem',
+                  fontSize: '0.65rem',
                   letterSpacing: '0.04em',
                   userSelect: 'all',
                   cursor: 'default',
@@ -893,8 +882,8 @@ function JobDetailModal({
             </Tooltip>
           </Box>
         )}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <Box sx={{ flex: 1 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
             {isEditing ? (
               <>
                 <TextField
@@ -964,7 +953,7 @@ function JobDetailModal({
               </>
             ) : (
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 600, display: 'block' }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, display: 'block', lineHeight: 1.25 }}>
                   {job.title}
                 </Typography>
                 {renderCustomerHeaderStrip(job)}
@@ -972,12 +961,12 @@ function JobDetailModal({
                   <Typography
                     variant="body2"
                     sx={{
-                      mt: 1.5,
+                      mt: 0.75,
                       color: 'text.secondary',
                       fontStyle: 'italic',
                       fontWeight: 400,
                       display: 'block',
-                      lineHeight: 1.5,
+                      lineHeight: 1.4,
                     }}
                   >
                     {job.description}
@@ -986,7 +975,57 @@ function JobDetailModal({
               </Box>
             )}
           </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+          {!isShopDisplay ? (
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                alignSelf: 'center',
+                flexShrink: 0,
+                px: 1,
+              }}
+            >
+              {jobEstimates.length > 0
+                ? jobEstimates.slice(0, 2).map((est) => (
+                    <Button
+                      key={est._id}
+                      size="small"
+                      variant="text"
+                      component={RouterLink}
+                      to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${est._id}`}
+                      onClick={onClose}
+                      sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+                    >
+                      {est.estimateNumber || 'Estimate'}
+                    </Button>
+                  ))
+                : (
+                  <Button
+                    size="small"
+                    variant="text"
+                    component={RouterLink}
+                    to={`/finance?tab=estimates&jobId=${job._id}`}
+                    onClick={onClose}
+                    sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+                  >
+                    Estimate
+                  </Button>
+                  )}
+              <Button
+                size="small"
+                variant="text"
+                component={RouterLink}
+                to={`/takeoff-sheet?jobId=${job._id}`}
+                onClick={onClose}
+                sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+              >
+                Takeoff
+              </Button>
+            </Box>
+          ) : null}
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5, flex: 1, minWidth: 0 }}>
             {/* Estimated Value in Header */}
             <Box sx={{ textAlign: 'right' }}>
               {hideFinancials ? (
@@ -1039,89 +1078,22 @@ function JobDetailModal({
                   />
                 </>
               ) : (
-                <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
+                <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600, lineHeight: 1.2 }}>
                   {formatCurrency(headerFullTotal)}
                 </Typography>
               )}
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                {isEditing ? 'Job total (base + change orders)' : 'Job total (base + change orders)'}
-              </Typography>
               {!hideFinancials && (
-                <>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
-                    Base contract: {formatCurrency(headerContractBase)}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
-                    Change Orders: {formatCurrency(headerChangeOrderValue)}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75, fontWeight: 600 }}>
-                    Payment schedule
-                  </Typography>
-                  {headerPaymentSchedule.items.map((item, idx) => (
-                    <Typography
-                      key={`${item.label}-${idx}`}
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ display: 'block', lineHeight: 1.25 }}
-                    >
-                      {formatScheduleItemLabel(item)}
-                      {item.status === 'paid' ? ' · Paid' : ''}
-                    </Typography>
-                  ))}
-                  <Button
-                    size="small"
-                    variant="text"
-                    sx={{ mt: 0.5, p: 0, minWidth: 0, textTransform: 'none' }}
-                    onClick={() => setActiveTab(JOB_MODAL_TAB.payments)}
-                  >
-                    Edit payments
-                  </Button>
-                </>
-              )}
-            </Box>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 0.5, mr: 0.5 }}>
-              {!isShopDisplay && jobEstimates.length > 0
-                ? jobEstimates.slice(0, 2).map((est) => (
-                    <Button
-                      key={est._id}
-                      size="small"
-                      variant="text"
-                      component={RouterLink}
-                      to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${est._id}`}
-                      onClick={onClose}
-                      sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0, minWidth: 0, px: 0.75 }}
-                    >
-                      {est.estimateNumber || 'Estimate'}
-                    </Button>
-                  ))
-                : !isShopDisplay
-                  ? (
-                    <Button
-                      size="small"
-                      variant="text"
-                      component={RouterLink}
-                      to={`/finance?tab=estimates&jobId=${job._id}`}
-                      onClick={onClose}
-                      sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0, minWidth: 0, px: 0.75 }}
-                    >
-                      Estimate
-                    </Button>
-                    )
-                  : null}
-              {!isShopDisplay ? (
                 <Button
                   size="small"
                   variant="text"
-                  component={RouterLink}
-                  to={`/takeoff-sheet?jobId=${job._id}`}
-                  onClick={onClose}
-                  sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0, minWidth: 0, px: 0.75 }}
+                  sx={{ p: 0, minWidth: 0, textTransform: 'none', fontSize: '0.75rem' }}
+                  onClick={() => setActiveTab(JOB_MODAL_TAB.payments)}
                 >
-                  Takeoff
+                  Edit payments
                 </Button>
-              ) : null}
+              )}
             </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
               {!isEditing ? (
                 <>
                   <IconButton onClick={handleEdit} size="small" color="primary" title="Edit">
@@ -1574,42 +1546,14 @@ function JobDetailModal({
               </Paper>
             ) : null}
             <>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-              <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 160 }}>
-                {dragActive ? 'Drop to upload' : 'Drop files anywhere here, or browse'}
-              </Typography>
-              <FormControl size="small" sx={{ minWidth: 110 }}>
-                <InputLabel>Type</InputLabel>
-                <Select
-                  value={fileType}
-                  onChange={(e) => setFileType(e.target.value)}
-                  label="Type"
-                  disabled={uploading}
-                >
-                  <MenuItem value="estimate">Estimate</MenuItem>
-                  <MenuItem value="contract">Contract</MenuItem>
-                  <MenuItem value="photo">Photo</MenuItem>
-                  <MenuItem value="other">Other</MenuItem>
-                </Select>
-              </FormControl>
-              <input
-                style={{ display: 'none' }}
-                id="file-upload"
-                type="file"
-                multiple
-                onChange={handleFileInputChange}
-                disabled={uploading}
-              />
-              <Button
-                variant="text"
-                size="small"
-                disabled={uploading}
-                sx={{ textTransform: 'none' }}
-                onClick={() => document.getElementById('file-upload')?.click()}
-              >
-                {uploading ? 'Uploading…' : 'Browse'}
-              </Button>
-            </Box>
+            <input
+              style={{ display: 'none' }}
+              id="file-upload"
+              type="file"
+              multiple
+              onChange={handleFileInputChange}
+              disabled={uploading}
+            />
 
             {files.length > 0 ? (
               <Box
@@ -1617,6 +1561,7 @@ function JobDetailModal({
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
                   gap: 1.5,
+                  mb: 2,
                 }}
               >
                 {files.map((file) => {
@@ -1737,13 +1682,49 @@ function JobDetailModal({
                   );
                 })}
               </Box>
-            ) : (
-              <Box sx={{ py: 6, textAlign: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  No files yet — drop them here
-                </Typography>
               </Box>
-            )}
+            ) : null}
+
+            <Box
+              onClick={() => {
+                if (!uploading) document.getElementById('file-upload')?.click();
+              }}
+              sx={{
+                mt: files.length ? 0 : 0,
+                py: files.length ? 4 : 7,
+                px: 2,
+                minHeight: files.length ? 140 : 260,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+                cursor: uploading ? 'default' : 'pointer',
+                border: '2px dashed',
+                borderColor: dragActive ? 'primary.main' : 'text.secondary',
+                borderRadius: 2,
+                bgcolor: dragActive ? 'action.selected' : (theme) =>
+                  theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'grey.100',
+              }}
+            >
+              <CloudUploadIcon
+                sx={{
+                  fontSize: files.length ? 40 : 56,
+                  color: 'text.primary',
+                  mb: 1.5,
+                }}
+              />
+              <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.75 }}>
+                {uploading
+                  ? 'Uploading…'
+                  : dragActive
+                    ? 'Drop files to upload'
+                    : 'Drag & Drop your files here and start uploading'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Or simply click this box and select files manually
+              </Typography>
+            </Box>
             </>
           </Box>
         )}
