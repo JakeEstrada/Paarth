@@ -2,7 +2,7 @@
  * JobDetailModal — Full job editor: notes, files, tasks, AI summary.
  * Docs: ../../../docs/COMPONENTS.md
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   Dialog,
@@ -44,7 +44,6 @@ import {
   SwapHoriz as SwapHorizIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
-  CloudUpload as CloudUploadIcon,
   InsertDriveFile as InsertDriveFileIcon,
   Share as ShareIcon,
   AutoAwesome as AutoAwesomeIcon,
@@ -228,6 +227,7 @@ function JobDetailModal({
   const [uploading, setUploading] = useState(false);
   const [fileType, setFileType] = useState('other');
   const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
   const [addNoteOpen, setAddNoteOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
@@ -379,12 +379,24 @@ function JobDetailModal({
     }
   };
 
-  const handleDrag = (e) => {
+  const handleDragEnter = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current -= 1;
+    if (dragDepthRef.current <= 0) {
+      dragDepthRef.current = 0;
       setDragActive(false);
     }
   };
@@ -392,6 +404,7 @@ function JobDetailModal({
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    dragDepthRef.current = 0;
     setDragActive(false);
 
     if (e.dataTransfer.files?.length) {
@@ -1066,6 +1079,48 @@ function JobDetailModal({
                 </>
               )}
             </Box>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 0.5, mr: 0.5 }}>
+              {!isShopDisplay && jobEstimates.length > 0
+                ? jobEstimates.slice(0, 2).map((est) => (
+                    <Button
+                      key={est._id}
+                      size="small"
+                      variant="text"
+                      component={RouterLink}
+                      to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${est._id}`}
+                      onClick={onClose}
+                      sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0, minWidth: 0, px: 0.75 }}
+                    >
+                      {est.estimateNumber || 'Estimate'}
+                    </Button>
+                  ))
+                : !isShopDisplay
+                  ? (
+                    <Button
+                      size="small"
+                      variant="text"
+                      component={RouterLink}
+                      to={`/finance?tab=estimates&jobId=${job._id}`}
+                      onClick={onClose}
+                      sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0, minWidth: 0, px: 0.75 }}
+                    >
+                      Estimate
+                    </Button>
+                    )
+                  : null}
+              {!isShopDisplay ? (
+                <Button
+                  size="small"
+                  variant="text"
+                  component={RouterLink}
+                  to={`/takeoff-sheet?jobId=${job._id}`}
+                  onClick={onClose}
+                  sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0, minWidth: 0, px: 0.75 }}
+                >
+                  Takeoff
+                </Button>
+              ) : null}
+            </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
               {!isEditing ? (
                 <>
@@ -1491,7 +1546,20 @@ function JobDetailModal({
         )}
 
         {activeTab === JOB_MODAL_TAB.files && (
-          <Box>
+          <Box
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            sx={{
+              position: 'relative',
+              minHeight: 280,
+              borderRadius: 1,
+              outline: dragActive ? '2px dashed' : 'none',
+              outlineColor: 'primary.main',
+              bgcolor: dragActive ? 'action.selected' : 'transparent',
+            }}
+          >
             {hideFinancials ? (
               <Paper sx={{ p: 4, textAlign: 'center' }}>
                 <Tooltip title="Unlock financial amounts">
@@ -1506,75 +1574,55 @@ function JobDetailModal({
               </Paper>
             ) : null}
             <>
-            {!hideFinancials && (
-              <Grid container spacing={3} sx={{ mb: 3 }}>
-                <Grid item xs={12}>
-                  <Paper sx={{ p: 2 }}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                      Estimate Amount
-                    </Typography>
-                    <Typography variant="h5" sx={{ color: 'success.main', fontWeight: 600 }}>
-                      {formatCurrency(job.estimate?.amount || job.valueEstimated || 0)}
-                    </Typography>
-                    {job.estimate?.sentAt && (
-                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                        Sent: {formatDate(job.estimate.sentAt)}
-                      </Typography>
-                    )}
-                    <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {!isShopDisplay && jobEstimates.length > 0 ? (
-                        jobEstimates.map((est) => (
-                          <Button
-                            key={est._id}
-                            size="small"
-                            variant="outlined"
-                            component={RouterLink}
-                            to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${est._id}`}
-                          >
-                            Open {est.estimateNumber || 'estimate'}
-                          </Button>
-                        ))
-                      ) : !isShopDisplay ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          component={RouterLink}
-                          to={`/finance?tab=estimates&jobId=${job._id}`}
-                        >
-                          Create estimate
-                        </Button>
-                      ) : null}
-                      {!isShopDisplay ? (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        component={RouterLink}
-                        to={`/takeoff-sheet?jobId=${job._id}`}
-                      >
-                        Open takeoff sheet
-                      </Button>
-                      ) : null}
-                    </Box>
-                  </Paper>
-                </Grid>
-              </Grid>
-            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+              <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 160 }}>
+                {dragActive ? 'Drop to upload' : 'Drop files anywhere here, or browse'}
+              </Typography>
+              <FormControl size="small" sx={{ minWidth: 110 }}>
+                <InputLabel>Type</InputLabel>
+                <Select
+                  value={fileType}
+                  onChange={(e) => setFileType(e.target.value)}
+                  label="Type"
+                  disabled={uploading}
+                >
+                  <MenuItem value="estimate">Estimate</MenuItem>
+                  <MenuItem value="contract">Contract</MenuItem>
+                  <MenuItem value="photo">Photo</MenuItem>
+                  <MenuItem value="other">Other</MenuItem>
+                </Select>
+              </FormControl>
+              <input
+                style={{ display: 'none' }}
+                id="file-upload"
+                type="file"
+                multiple
+                onChange={handleFileInputChange}
+                disabled={uploading}
+              />
+              <Button
+                variant="text"
+                size="small"
+                disabled={uploading}
+                sx={{ textTransform: 'none' }}
+                onClick={() => document.getElementById('file-upload')?.click()}
+              >
+                {uploading ? 'Uploading…' : 'Browse'}
+              </Button>
+            </Box>
 
-            {/* Files Display */}
             {files.length > 0 ? (
               <Box
                 sx={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
                   gap: 1.5,
-                  mb: 2,
                 }}
               >
                 {files.map((file) => {
                   const isImage = file.mimetype?.startsWith('image/');
                   const isPdf = file.mimetype === 'application/pdf';
                   const hoverDetails = [
-                    file.originalName,
                     `${formatFileSize(file.size)} • ${formatDate(file.createdAt)}`,
                     String(file.fileType || 'other').replace(/^\w/, (c) => c.toUpperCase()),
                   ].join('\n');
@@ -1607,7 +1655,7 @@ function JobDetailModal({
                           },
                         }}
                       >
-                        <Box sx={{ position: 'absolute', inset: 0 }}>
+                        <Box sx={{ position: 'absolute', inset: 0, bottom: 28 }}>
                           {isImage ? (
                             <AuthenticatedFileImage
                               fileId={file._id}
@@ -1625,7 +1673,7 @@ function JobDetailModal({
                                 overflow: 'hidden',
                               }}
                             >
-                              <PdfThumbnail fileId={file._id} apiUrl={API_URL} maxWidth={160} maxHeight={160} fill />
+                              <PdfThumbnail fileId={file._id} apiUrl={API_URL} maxWidth={160} maxHeight={132} fill />
                             </Box>
                           ) : (
                             <Box
@@ -1640,6 +1688,28 @@ function JobDetailModal({
                               <InsertDriveFileIcon sx={{ fontSize: 40, color: 'text.secondary' }} />
                             </Box>
                           )}
+                        </Box>
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            px: 1,
+                            py: 0.5,
+                            bgcolor: 'background.paper',
+                            borderTop: '1px solid',
+                            borderColor: 'divider',
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            noWrap
+                            title={file.originalName}
+                            sx={{ display: 'block', fontWeight: 600 }}
+                          >
+                            {file.originalName}
+                          </Typography>
                         </Box>
                         <IconButton
                           className="file-tile-delete"
@@ -1668,84 +1738,12 @@ function JobDetailModal({
                 })}
               </Box>
             ) : (
-              <Paper sx={{ p: 3, textAlign: 'center', mb: 2, border: '1px dashed', borderColor: 'grey.300' }}>
-                <DescriptionIcon sx={{ fontSize: 32, color: 'text.secondary', mb: 1 }} />
+              <Box sx={{ py: 6, textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  No files uploaded yet
+                  No files yet — drop them here
                 </Typography>
-              </Paper>
-            )}
-
-            {/* File Upload Section with Drag and Drop - Compact */}
-            <Paper
-              sx={{
-                p: 2,
-                border: '2px dashed',
-                borderColor: dragActive ? 'primary.main' : 'grey.300',
-                backgroundColor: dragActive ? 'primary.50' : 'grey.50',
-                transition: 'all 0.2s ease',
-                cursor: 'pointer',
-              }}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => document.getElementById('file-upload')?.click()}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                <CloudUploadIcon
-                  sx={{
-                    fontSize: 32,
-                    color: 'primary.main',
-                    transition: 'transform 0.2s ease',
-                    transform: dragActive ? 'scale(1.1)' : 'scale(1)',
-                  }}
-                />
-                <Box sx={{ flex: 1, minWidth: 200 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
-                    {dragActive ? 'Drop files here' : 'Upload Files'}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Drag & drop multiple files or click to browse • Images and PDFs supported • Max 10MB each
-                  </Typography>
-                </Box>
-                <FormControl size="small" sx={{ minWidth: 120 }} onClick={(e) => e.stopPropagation()}>
-                  <InputLabel>File Type</InputLabel>
-                  <Select
-                    value={fileType}
-                    onChange={(e) => setFileType(e.target.value)}
-                    label="File Type"
-                    disabled={uploading}
-                  >
-                    <MenuItem value="estimate">Estimate</MenuItem>
-                    <MenuItem value="contract">Contract</MenuItem>
-                    <MenuItem value="photo">Photo</MenuItem>
-                    <MenuItem value="other">Other</MenuItem>
-                  </Select>
-                </FormControl>
-                <input
-                  style={{ display: 'none' }}
-                  id="file-upload"
-                  type="file"
-                  multiple
-                  onChange={handleFileInputChange}
-                  disabled={uploading}
-                />
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={uploading ? <CircularProgress size={16} /> : <CloudUploadIcon />}
-                  disabled={uploading}
-                  sx={{ textTransform: 'none' }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    document.getElementById('file-upload')?.click();
-                  }}
-                >
-                  {uploading ? 'Uploading...' : 'Browse'}
-                </Button>
               </Box>
-            </Paper>
+            )}
             </>
           </Box>
         )}
