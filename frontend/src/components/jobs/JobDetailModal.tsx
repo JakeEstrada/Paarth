@@ -76,7 +76,10 @@ import {
 import { renderSummaryBlocks } from '../../utils/summaryMarkdown';
 import {
   formatMoney,
+  formatScheduleItemLabel,
   getJobTotalWithChangeOrders,
+  resolvePaymentSchedule,
+  sumChangeOrders,
 } from '../../utils/paymentSchedule';
 import {
   isShopDisplayPath,
@@ -416,8 +419,15 @@ function JobDetailModal({
 
   const headerBaseEstimatedValue = Number((isEditing ? editedJob?.valueEstimated : job?.valueEstimated) || 0);
   const headerContractedValue = Number((isEditing ? editedJob?.valueContracted : job?.valueContracted) || 0);
+  const headerContractBase = headerContractedValue > 0 ? headerContractedValue : headerBaseEstimatedValue;
   const headerScheduleSource = isEditing ? editedJob || job : job;
+  const headerChangeOrderValue = sumChangeOrders(headerScheduleSource);
   const headerFullTotal = getJobTotalWithChangeOrders({
+    ...headerScheduleSource,
+    valueEstimated: headerBaseEstimatedValue,
+    valueContracted: headerContractedValue,
+  });
+  const headerPaymentSchedule = resolvePaymentSchedule({
     ...headerScheduleSource,
     valueEstimated: headerBaseEstimatedValue,
     valueContracted: headerContractedValue,
@@ -979,40 +989,41 @@ function JobDetailModal({
             <Box
               sx={{
                 display: 'flex',
-                flexDirection: 'column',
+                flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
                 alignSelf: 'center',
                 flexShrink: 0,
                 px: 1,
+                gap: 0.5,
               }}
             >
-              {jobEstimates.length > 0
-                ? jobEstimates.slice(0, 2).map((est) => (
-                    <Button
-                      key={est._id}
-                      size="small"
-                      variant="text"
-                      component={RouterLink}
-                      to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${est._id}`}
-                      onClick={onClose}
-                      sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
-                    >
-                      {est.estimateNumber || 'Estimate'}
-                    </Button>
-                  ))
-                : (
-                  <Button
-                    size="small"
-                    variant="text"
-                    component={RouterLink}
-                    to={`/finance?tab=estimates&jobId=${job._id}`}
-                    onClick={onClose}
-                    sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
-                  >
-                    Estimate
-                  </Button>
-                  )}
+              {jobEstimates.length > 0 ? (
+                <Button
+                  size="small"
+                  variant="text"
+                  component={RouterLink}
+                  to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${jobEstimates[0]._id}`}
+                  onClick={onClose}
+                  sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+                >
+                  {jobEstimates[0].estimateNumber || 'Estimate'}
+                </Button>
+              ) : (
+                <Button
+                  size="small"
+                  variant="text"
+                  component={RouterLink}
+                  to={`/finance?tab=estimates&jobId=${job._id}`}
+                  onClick={onClose}
+                  sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+                >
+                  Estimate
+                </Button>
+              )}
+              <Typography variant="body2" color="text.secondary" sx={{ px: 0.25, userSelect: 'none' }}>
+                |
+              </Typography>
               <Button
                 size="small"
                 variant="text"
@@ -1082,15 +1093,40 @@ function JobDetailModal({
                   {formatCurrency(headerFullTotal)}
                 </Typography>
               )}
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Job total (base + change orders)
+              </Typography>
               {!hideFinancials && (
-                <Button
-                  size="small"
-                  variant="text"
-                  sx={{ p: 0, minWidth: 0, textTransform: 'none', fontSize: '0.75rem' }}
-                  onClick={() => setActiveTab(JOB_MODAL_TAB.payments)}
-                >
-                  Edit payments
-                </Button>
+                <>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
+                    Base contract: {formatCurrency(headerContractBase)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
+                    Change Orders: {formatCurrency(headerChangeOrderValue)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75, fontWeight: 600 }}>
+                    Payment schedule
+                  </Typography>
+                  {headerPaymentSchedule.items.map((item, idx) => (
+                    <Typography
+                      key={`${item.label}-${idx}`}
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', lineHeight: 1.25 }}
+                    >
+                      {formatScheduleItemLabel(item)}
+                      {item.status === 'paid' ? ' · Paid' : ''}
+                    </Typography>
+                  ))}
+                  <Button
+                    size="small"
+                    variant="text"
+                    sx={{ mt: 0.5, p: 0, minWidth: 0, textTransform: 'none' }}
+                    onClick={() => setActiveTab(JOB_MODAL_TAB.payments)}
+                  >
+                    Edit payments
+                  </Button>
+                </>
               )}
             </Box>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
