@@ -726,7 +726,7 @@ function JobDetailModal({
             theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'action.hover',
           display: 'inline-flex',
           flexDirection: 'column',
-          alignSelf: 'center',
+          alignSelf: 'flex-start',
           gap: 0.4,
           maxWidth: '100%',
           width: 'auto',
@@ -974,12 +974,13 @@ function JobDetailModal({
           <Box
             sx={{
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-start',
-              gap: 0.25,
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              minWidth: 0,
               order: { xs: 3, md: 1 },
             }}
           >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
             {!isEditing ? (
               <>
                 <IconButton onClick={handleEdit} size="small" color="primary" title="Edit">
@@ -1020,6 +1021,8 @@ function JobDetailModal({
                 </IconButton>
               </>
             )}
+            </Box>
+            {renderCustomerHeaderStrip(job)}
           </Box>
           <Box
             sx={{
@@ -1121,7 +1124,6 @@ function JobDetailModal({
                 {job.description}
               </Typography>
             )}
-            {renderCustomerHeaderStrip(job)}
           </Box>
           <Box
             sx={{
