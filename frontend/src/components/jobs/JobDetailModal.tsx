@@ -1287,8 +1287,6 @@ function JobDetailModal({
               </Paper>
             </Grid>
 
-            </Grid>
-
             <Grid item xs={12}>
               <Paper sx={{ p: 2 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
