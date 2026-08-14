@@ -869,9 +869,17 @@ function JobDetailModal({
         },
       }}
     >
-      <DialogTitle sx={{ pb: 0.75, pt: 1.25 }}>
+      <DialogTitle sx={{ pb: 0.75, pt: 1.25, pr: 6, position: 'relative' }}>
+        <IconButton
+          onClick={onClose}
+          size="small"
+          title="Close"
+          sx={{ position: 'absolute', top: 8, right: 8 }}
+        >
+          <CloseIcon />
+        </IconButton>
         {job._id != null && String(job._id).trim() !== '' && (
-          <Box sx={{ textAlign: 'center', width: '100%', mb: 0.5 }}>
+          <Box sx={{ mb: 0.5 }}>
             <Tooltip title={`Full job id: ${job._id}`} placement="bottom">
               <Typography
                 variant="caption"
@@ -958,227 +966,219 @@ function JobDetailModal({
                     </Grid>
                   </Grid>
                 </Box>
-                {renderCustomerHeaderStrip(job)}
               </>
             ) : (
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 600, display: 'block', lineHeight: 1.25 }}>
-                  {job.title}
-                </Typography>
-                {renderCustomerHeaderStrip(job)}
-                {job.description && (
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      mt: 0.75,
-                      color: 'text.secondary',
-                      fontStyle: 'italic',
-                      fontWeight: 400,
-                      display: 'block',
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    {job.description}
-                  </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 600, display: 'block', lineHeight: 1.25 }}>
+                {job.title}
+              </Typography>
+            )}
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75, mt: 0.5, flexWrap: 'wrap' }}>
+              {renderCustomerHeaderStrip(job)}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, pt: 0.25 }}>
+                {!isEditing ? (
+                  <>
+                    <IconButton onClick={handleEdit} size="small" color="primary" title="Edit">
+                      <EditIcon />
+                    </IconButton>
+                    {!job?.isArchived && !job?.isDeadEstimate && (
+                      <IconButton onClick={handleArchive} size="small" color="warning" title="Archive" disabled={saving}>
+                        <ArchiveIcon />
+                      </IconButton>
+                    )}
+                    {customerEntityId && (
+                      <IconButton
+                        component={RouterLink}
+                        to={
+                          isShopDisplay
+                            ? shopDisplayCustomerPath(customerEntityId)
+                            : `/customers?customerId=${customerEntityId}`
+                        }
+                        onClick={onClose}
+                        size="small"
+                        color="info"
+                        title={isShopDisplay ? 'Open customer in shop view' : 'Open customer card'}
+                      >
+                        <PersonIcon />
+                      </IconButton>
+                    )}
+                    <IconButton onClick={handleDeleteClick} size="small" color="error" title="Delete">
+                      <DeleteIcon />
+                    </IconButton>
+                  </>
+                ) : (
+                  <>
+                    <IconButton onClick={handleSave} size="small" color="primary" disabled={saving} title="Save">
+                      <SaveIcon />
+                    </IconButton>
+                    <IconButton onClick={handleCancel} size="small" disabled={saving} title="Cancel">
+                      <CancelIcon />
+                    </IconButton>
+                  </>
                 )}
               </Box>
+            </Box>
+            {!isEditing && job.description && (
+              <Typography
+                variant="body2"
+                sx={{
+                  mt: 0.75,
+                  color: 'text.secondary',
+                  fontStyle: 'italic',
+                  fontWeight: 400,
+                  display: 'block',
+                  lineHeight: 1.4,
+                }}
+              >
+                {job.description}
+              </Typography>
             )}
           </Box>
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              alignSelf: 'center',
-              flexShrink: 0,
-              px: 1,
-              gap: 0.5,
-            }}
-          >
-            {!isShopDisplay ? (
+          <Box sx={{ textAlign: 'right', flexShrink: 0, minWidth: 160 }}>
+            {hideFinancials ? (
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  alignItems: 'flex-start',
+                  minHeight: 32,
+                  minWidth: 80,
+                }}
+              >
+                <Tooltip title="Unlock financial amounts">
+                  <IconButton
+                    size="small"
+                    onClick={() => onRequestSensitiveUnlock?.()}
+                    sx={{ color: 'text.secondary', p: 0, width: 20, height: 20, mt: 0.25 }}
+                    aria-label="Unlock financial amounts"
+                  >
+                    <LockIcon sx={{ fontSize: '0.95rem' }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            ) : isEditing ? (
               <>
-                {jobEstimates.length > 0 ? (
-                  <Button
-                    size="small"
-                    variant="text"
-                    component={RouterLink}
-                    to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${jobEstimates[0]._id}`}
-                    onClick={onClose}
-                    sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
-                  >
-                    {jobEstimates[0].estimateNumber || 'Estimate'}
-                  </Button>
-                ) : (
-                  <Button
-                    size="small"
-                    variant="text"
-                    component={RouterLink}
-                    to={`/finance?tab=estimates&jobId=${job._id}`}
-                    onClick={onClose}
-                    sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
-                  >
-                    Estimate
-                  </Button>
-                )}
-                <Typography variant="body2" color="text.secondary" sx={{ px: 0.25, userSelect: 'none' }}>
-                  |
+                <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
+                  {formatCurrency(headerFullTotal)}
                 </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Job total (base + change orders)
+                </Typography>
+                <TextField
+                  type="text"
+                  inputMode="decimal"
+                  value={
+                    editedJob?.valueEstimated === '' || editedJob?.valueEstimated == null
+                      ? ''
+                      : String(editedJob.valueEstimated)
+                  }
+                  onChange={(e) => {
+                    const raw = sanitizeMoneyTypingInput(e.target.value);
+                    handleFieldChange('valueEstimated', raw === '' ? '' : raw);
+                  }}
+                  variant="outlined"
+                  size="small"
+                  sx={{ width: '150px', mt: 1 }}
+                  InputProps={{
+                    startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>,
+                  }}
+                />
+              </>
+            ) : (
+              <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600, lineHeight: 1.2 }}>
+                {formatCurrency(headerFullTotal)}
+              </Typography>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              Job total (base + change orders)
+            </Typography>
+            {!hideFinancials && (
+              <>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
+                  Base contract: {formatCurrency(headerContractBase)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
+                  Change Orders: {formatCurrency(headerChangeOrderValue)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75, fontWeight: 600 }}>
+                  Payment schedule
+                </Typography>
+                {headerPaymentSchedule.items.map((item, idx) => (
+                  <Typography
+                    key={`${item.label}-${idx}`}
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: 'block', lineHeight: 1.25 }}
+                  >
+                    {formatScheduleItemLabel(item)}
+                    {item.status === 'paid' ? ' · Paid' : ''}
+                  </Typography>
+                ))}
+              </>
+            )}
+          </Box>
+        </Box>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            gap: 0.5,
+            mt: 1.25,
+            pt: 0.75,
+          }}
+        >
+          {!isShopDisplay ? (
+            <>
+              {jobEstimates.length > 0 ? (
                 <Button
                   size="small"
                   variant="text"
                   component={RouterLink}
-                  to={`/takeoff-sheet?jobId=${job._id}`}
+                  to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${jobEstimates[0]._id}`}
                   onClick={onClose}
                   sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
                 >
-                  Takeoff
+                  {jobEstimates[0].estimateNumber || 'Estimate'}
                 </Button>
-                <Typography variant="body2" color="text.secondary" sx={{ px: 0.25, userSelect: 'none' }}>
-                  |
-                </Typography>
-              </>
-            ) : null}
-            <Button
-              size="small"
-              variant="text"
-              onClick={() => setActiveTab(JOB_MODAL_TAB.payments)}
-              sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
-            >
-              Edit Payments
-            </Button>
-          </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5, flex: 1, minWidth: 0 }}>
-            {/* Estimated Value in Header */}
-            <Box sx={{ textAlign: 'right' }}>
-              {hideFinancials ? (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    alignItems: 'flex-start',
-                    minHeight: 32,
-                    minWidth: 80,
-                  }}
+              ) : (
+                <Button
+                  size="small"
+                  variant="text"
+                  component={RouterLink}
+                  to={`/finance?tab=estimates&jobId=${job._id}`}
+                  onClick={onClose}
+                  sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
                 >
-                  <Tooltip title="Unlock financial amounts">
-                    <IconButton
-                      size="small"
-                      onClick={() => onRequestSensitiveUnlock?.()}
-                      sx={{ color: 'text.secondary', p: 0, width: 20, height: 20, mt: 0.25 }}
-                      aria-label="Unlock financial amounts"
-                    >
-                      <LockIcon sx={{ fontSize: '0.95rem' }} />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              ) : isEditing ? (
-                <>
-                  <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
-                    {formatCurrency(headerFullTotal)}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    Job total (base + change orders)
-                  </Typography>
-                  <TextField
-                    type="text"
-                    inputMode="decimal"
-                    value={
-                      editedJob?.valueEstimated === '' || editedJob?.valueEstimated == null
-                        ? ''
-                        : String(editedJob.valueEstimated)
-                    }
-                    onChange={(e) => {
-                      const raw = sanitizeMoneyTypingInput(e.target.value);
-                      handleFieldChange('valueEstimated', raw === '' ? '' : raw);
-                    }}
-                    variant="outlined"
-                    size="small"
-                    sx={{ width: '150px', mt: 1 }}
-                    InputProps={{
-                      startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>,
-                    }}
-                  />
-                </>
-              ) : (
-                <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600, lineHeight: 1.2 }}>
-                  {formatCurrency(headerFullTotal)}
-                </Typography>
+                  Estimate
+                </Button>
               )}
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                Job total (base + change orders)
+              <Typography variant="body2" color="text.secondary" sx={{ px: 0.25, userSelect: 'none' }}>
+                |
               </Typography>
-              {!hideFinancials && (
-                <>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
-                    Base contract: {formatCurrency(headerContractBase)}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
-                    Change Orders: {formatCurrency(headerChangeOrderValue)}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75, fontWeight: 600 }}>
-                    Payment schedule
-                  </Typography>
-                  {headerPaymentSchedule.items.map((item, idx) => (
-                    <Typography
-                      key={`${item.label}-${idx}`}
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ display: 'block', lineHeight: 1.25 }}
-                    >
-                      {formatScheduleItemLabel(item)}
-                      {item.status === 'paid' ? ' · Paid' : ''}
-                    </Typography>
-                  ))}
-                </>
-              )}
-            </Box>
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
-              {!isEditing ? (
-                <>
-                  <IconButton onClick={handleEdit} size="small" color="primary" title="Edit">
-                    <EditIcon />
-                  </IconButton>
-                  {!job?.isArchived && !job?.isDeadEstimate && (
-                    <IconButton onClick={handleArchive} size="small" color="warning" title="Archive" disabled={saving}>
-                      <ArchiveIcon />
-                    </IconButton>
-                  )}
-                  {customerEntityId && (
-                    <IconButton
-                      component={RouterLink}
-                      to={
-                        isShopDisplay
-                          ? shopDisplayCustomerPath(customerEntityId)
-                          : `/customers?customerId=${customerEntityId}`
-                      }
-                      onClick={onClose}
-                      size="small"
-                      color="info"
-                      title={isShopDisplay ? 'Open customer in shop view' : 'Open customer card'}
-                    >
-                      <PersonIcon />
-                    </IconButton>
-                  )}
-                  <IconButton onClick={handleDeleteClick} size="small" color="error" title="Delete">
-                    <DeleteIcon />
-                  </IconButton>
-                </>
-              ) : (
-                <>
-                  <IconButton onClick={handleSave} size="small" color="primary" disabled={saving} title="Save">
-                    <SaveIcon />
-                  </IconButton>
-                  <IconButton onClick={handleCancel} size="small" disabled={saving} title="Cancel">
-                    <CancelIcon />
-                  </IconButton>
-                </>
-              )}
-              <IconButton onClick={onClose} size="small" title="Close">
-                <CloseIcon />
-              </IconButton>
-            </Box>
-          </Box>
+              <Button
+                size="small"
+                variant="text"
+                component={RouterLink}
+                to={`/takeoff-sheet?jobId=${job._id}`}
+                onClick={onClose}
+                sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+              >
+                Takeoff
+              </Button>
+              <Typography variant="body2" color="text.secondary" sx={{ px: 0.25, userSelect: 'none' }}>
+                |
+              </Typography>
+            </>
+          ) : null}
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => setActiveTab(JOB_MODAL_TAB.payments)}
+            sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+          >
+            Edit Payments
+          </Button>
         </Box>
       </DialogTitle>
 
