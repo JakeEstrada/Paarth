@@ -668,7 +668,7 @@ function JobDetailModal({
             theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'action.hover',
           display: 'inline-flex',
           flexDirection: 'column',
-          alignSelf: 'flex-start',
+          alignSelf: 'center',
           gap: 0.4,
           maxWidth: '100%',
           width: 'auto',
@@ -899,10 +899,60 @@ function JobDetailModal({
             </Tooltip>
           </Box>
         )}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            {isEditing ? (
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: 'minmax(120px, 1fr) auto minmax(160px, 1fr)' },
+            alignItems: 'start',
+            columnGap: 1,
+            rowGap: 1,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 0.25, pt: 0.25 }}>
+            {!isEditing ? (
               <>
+                <IconButton onClick={handleEdit} size="small" color="primary" title="Edit">
+                  <EditIcon />
+                </IconButton>
+                {!job?.isArchived && !job?.isDeadEstimate && (
+                  <IconButton onClick={handleArchive} size="small" color="warning" title="Archive" disabled={saving}>
+                    <ArchiveIcon />
+                  </IconButton>
+                )}
+                {customerEntityId && (
+                  <IconButton
+                    component={RouterLink}
+                    to={
+                      isShopDisplay
+                        ? shopDisplayCustomerPath(customerEntityId)
+                        : `/customers?customerId=${customerEntityId}`
+                    }
+                    onClick={onClose}
+                    size="small"
+                    color="info"
+                    title={isShopDisplay ? 'Open customer in shop view' : 'Open customer card'}
+                  >
+                    <PersonIcon />
+                  </IconButton>
+                )}
+                <IconButton onClick={handleDeleteClick} size="small" color="error" title="Delete">
+                  <DeleteIcon />
+                </IconButton>
+              </>
+            ) : (
+              <>
+                <IconButton onClick={handleSave} size="small" color="primary" disabled={saving} title="Save">
+                  <SaveIcon />
+                </IconButton>
+                <IconButton onClick={handleCancel} size="small" disabled={saving} title="Cancel">
+                  <CancelIcon />
+                </IconButton>
+              </>
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', minWidth: 0, px: 1 }}>
+            {isEditing ? (
+              <Box sx={{ width: '100%', maxWidth: 420, textAlign: 'left' }}>
                 <TextField
                   fullWidth
                   value={editedJob?.title || ''}
@@ -966,57 +1016,13 @@ function JobDetailModal({
                     </Grid>
                   </Grid>
                 </Box>
-              </>
+              </Box>
             ) : (
               <Typography variant="h6" sx={{ fontWeight: 600, display: 'block', lineHeight: 1.25 }}>
                 {job.title}
               </Typography>
             )}
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75, mt: 0.5, flexWrap: 'wrap' }}>
-              {renderCustomerHeaderStrip(job)}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, pt: 0.25 }}>
-                {!isEditing ? (
-                  <>
-                    <IconButton onClick={handleEdit} size="small" color="primary" title="Edit">
-                      <EditIcon />
-                    </IconButton>
-                    {!job?.isArchived && !job?.isDeadEstimate && (
-                      <IconButton onClick={handleArchive} size="small" color="warning" title="Archive" disabled={saving}>
-                        <ArchiveIcon />
-                      </IconButton>
-                    )}
-                    {customerEntityId && (
-                      <IconButton
-                        component={RouterLink}
-                        to={
-                          isShopDisplay
-                            ? shopDisplayCustomerPath(customerEntityId)
-                            : `/customers?customerId=${customerEntityId}`
-                        }
-                        onClick={onClose}
-                        size="small"
-                        color="info"
-                        title={isShopDisplay ? 'Open customer in shop view' : 'Open customer card'}
-                      >
-                        <PersonIcon />
-                      </IconButton>
-                    )}
-                    <IconButton onClick={handleDeleteClick} size="small" color="error" title="Delete">
-                      <DeleteIcon />
-                    </IconButton>
-                  </>
-                ) : (
-                  <>
-                    <IconButton onClick={handleSave} size="small" color="primary" disabled={saving} title="Save">
-                      <SaveIcon />
-                    </IconButton>
-                    <IconButton onClick={handleCancel} size="small" disabled={saving} title="Cancel">
-                      <CancelIcon />
-                    </IconButton>
-                  </>
-                )}
-              </Box>
-            </Box>
+            {renderCustomerHeaderStrip(job)}
             {!isEditing && job.description && (
               <Typography
                 variant="body2"
@@ -1033,7 +1039,7 @@ function JobDetailModal({
               </Typography>
             )}
           </Box>
-          <Box sx={{ textAlign: 'right', flexShrink: 0, minWidth: 160 }}>
+          <Box sx={{ textAlign: 'right', minWidth: 0 }}>
             {hideFinancials ? (
               <Box
                 sx={{
