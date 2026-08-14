@@ -10,7 +10,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 /**
  * Renders the first page of a PDF as a canvas thumbnail (uses authenticated download).
  */
-export function PdfThumbnail({ fileId, apiUrl, maxWidth = 56, maxHeight = 72 }) {
+export function PdfThumbnail({ fileId, apiUrl, maxWidth = 56, maxHeight = 72, fill = false }) {
   const canvasRef = useRef(null);
   const [status, setStatus] = useState('loading'); // loading | ready | error
 
@@ -29,8 +29,10 @@ export function PdfThumbnail({ fileId, apiUrl, maxWidth = 56, maxHeight = 72 }) 
         if (cancelled) return;
         const page = await pdf.getPage(1);
         const baseViewport = page.getViewport({ scale: 1 });
-        const scale = Math.min(maxWidth / baseViewport.width, maxHeight / baseViewport.height);
-        const viewport = page.getViewport({ scale });
+        const fitScale = fill
+          ? Math.max(maxWidth / baseViewport.width, maxHeight / baseViewport.height)
+          : Math.min(maxWidth / baseViewport.width, maxHeight / baseViewport.height);
+        const viewport = page.getViewport({ scale: fitScale });
         if (!canvas || cancelled) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
@@ -50,14 +52,17 @@ export function PdfThumbnail({ fileId, apiUrl, maxWidth = 56, maxHeight = 72 }) 
     return () => {
       cancelled = true;
     };
-  }, [fileId, apiUrl, maxWidth, maxHeight]);
+  }, [fileId, apiUrl, maxWidth, maxHeight, fill]);
+
+  const sizeSx = fill
+    ? { width: '100%', height: '100%', borderRadius: 0, border: 0 }
+    : { width: maxWidth, height: maxHeight, borderRadius: 1, border: '1px solid', borderColor: 'divider' };
 
   if (status === 'error') {
     return (
       <Box
         sx={{
-          width: maxWidth,
-          height: maxHeight,
+          ...sizeSx,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -71,18 +76,14 @@ export function PdfThumbnail({ fileId, apiUrl, maxWidth = 56, maxHeight = 72 }) 
   return (
     <Box
       sx={{
-        width: maxWidth,
-        height: maxHeight,
+        ...sizeSx,
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
-        borderRadius: 1,
         overflow: 'hidden',
         bgcolor: 'grey.100',
-        border: '1px solid',
-        borderColor: 'divider',
       }}
     >
       {status === 'loading' && (
@@ -92,9 +93,11 @@ export function PdfThumbnail({ fileId, apiUrl, maxWidth = 56, maxHeight = 72 }) 
         ref={canvasRef}
         style={{
           display: status === 'ready' ? 'block' : 'none',
+          width: fill ? '100%' : undefined,
+          height: fill ? '100%' : undefined,
           maxWidth: '100%',
           maxHeight: '100%',
-          objectFit: 'contain',
+          objectFit: fill ? 'cover' : 'contain',
         }}
       />
     </Box>

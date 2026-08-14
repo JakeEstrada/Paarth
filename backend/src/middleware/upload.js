@@ -13,7 +13,7 @@ if (isS3Configured()) {
   storage = multerS3({
     s3: s3Client,
     bucket: BUCKET_NAME,
-    acl: 'private', // Files are private by default
+    // Do not set ACL — buckets with "Bucket owner enforced" reject canned ACLs with AccessDenied.
     key: (req, file, cb) => {
       // Generate unique filename: timestamp-random-originalname
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);

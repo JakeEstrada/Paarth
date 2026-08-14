@@ -45,8 +45,6 @@ import {
   Email as EmailIcon,
   Phone as PhoneIcon,
   CloudUpload as CloudUploadIcon,
-  PictureAsPdf as PictureAsPdfIcon,
-  Image as ImageIcon,
   InsertDriveFile as InsertDriveFileIcon,
   Share as ShareIcon,
   AutoAwesome as AutoAwesomeIcon,
@@ -455,15 +453,6 @@ function JobDetailModal({
   const handleFileCardClick = (file) => {
     if (!file) return;
     openFileByType(file);
-  };
-
-  const getFileIcon = (mimetype) => {
-    if (mimetype.startsWith('image/')) {
-      return <ImageIcon />;
-    } else if (mimetype === 'application/pdf') {
-      return <PictureAsPdfIcon />;
-    }
-    return <InsertDriveFileIcon />;
   };
 
   const formatFileSize = (bytes) => {
@@ -1573,111 +1562,111 @@ function JobDetailModal({
 
             {/* Files Display */}
             {files.length > 0 ? (
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                {files.map((file) => (
-                  <Grid item xs={12} sm={6} md={4} key={file._id}>
-                    <Paper
-                      onClick={() => handleFileCardClick(file)}
-                      sx={{
-                        p: 2,
-                        position: 'relative',
-                        border: '2px solid',
-                        borderColor: 'primary.main',
-                        backgroundColor: 'primary.50',
-                        cursor: 'pointer',
-                        '&:hover': {
-                          boxShadow: 6,
-                          borderColor: 'primary.dark',
-                        },
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-                        <Box sx={{ color: 'primary.main', mt: 0.5 }}>
-                          {getFileIcon(file.mimetype)}
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                  gap: 1.5,
+                  mb: 2,
+                }}
+              >
+                {files.map((file) => {
+                  const isImage = file.mimetype?.startsWith('image/');
+                  const isPdf = file.mimetype === 'application/pdf';
+                  const hoverDetails = [
+                    file.originalName,
+                    `${formatFileSize(file.size)} • ${formatDate(file.createdAt)}`,
+                    String(file.fileType || 'other').replace(/^\w/, (c) => c.toUpperCase()),
+                  ].join('\n');
+
+                  return (
+                    <Tooltip
+                      key={file._id}
+                      title={
+                        <Box sx={{ whiteSpace: 'pre-line' }}>
+                          {hoverDetails}
                         </Box>
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography
-                            variant="body1"
-                            sx={{
-                              fontWeight: 600,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              color: 'primary.dark',
-                            }}
-                          >
-                            {file.originalName}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                            {formatFileSize(file.size)} • {formatDate(file.createdAt)}
-                          </Typography>
-                          <Chip
-                            label={file.fileType}
-                            size="small"
-                            sx={{ mt: 0.5, textTransform: 'capitalize', fontWeight: 600 }}
-                            color="primary"
-                          />
+                      }
+                      placement="top"
+                      enterDelay={400}
+                    >
+                      <Paper
+                        onClick={() => handleFileCardClick(file)}
+                        sx={{
+                          position: 'relative',
+                          aspectRatio: '1',
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          bgcolor: 'action.hover',
+                          '&:hover': {
+                            boxShadow: 4,
+                            borderColor: 'primary.main',
+                            '& .file-tile-delete': { opacity: 1 },
+                          },
+                        }}
+                      >
+                        <Box sx={{ position: 'absolute', inset: 0 }}>
+                          {isImage ? (
+                            <AuthenticatedFileImage
+                              fileId={file._id}
+                              alt=""
+                              fill
+                            />
+                          ) : isPdf ? (
+                            <Box
+                              sx={{
+                                width: '100%',
+                                height: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <PdfThumbnail fileId={file._id} apiUrl={API_URL} maxWidth={160} maxHeight={160} fill />
+                            </Box>
+                          ) : (
+                            <Box
+                              sx={{
+                                width: '100%',
+                                height: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <InsertDriveFileIcon sx={{ fontSize: 40, color: 'text.secondary' }} />
+                            </Box>
+                          )}
                         </Box>
                         <IconButton
+                          className="file-tile-delete"
                           size="small"
                           color="error"
+                          aria-label="Delete file"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleFileDelete(file._id);
                           }}
-                          sx={{ mt: -1 }}
+                          sx={{
+                            position: 'absolute',
+                            top: 4,
+                            right: 4,
+                            opacity: 0,
+                            bgcolor: 'background.paper',
+                            boxShadow: 1,
+                            '&:hover': { bgcolor: 'background.paper' },
+                          }}
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
-                      </Box>
-
-                      {/* Preview for images */}
-                      {file.mimetype.startsWith('image/') && (
-                        <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
-                          <AuthenticatedFileImage
-                            fileId={file._id}
-                            alt={file.originalName}
-                            maxHeight={200}
-                            onClick={() => openPictureViewer(file._id)}
-                          />
-                        </Box>
-                      )}
-
-                      {/* PDF first-page thumbnail (click to open) */}
-                      {file.mimetype === 'application/pdf' && (
-                        <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
-                          <Box
-                            onClick={() => openPdfViewer(file._id)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                openPdfViewer(file._id);
-                              }
-                            }}
-                            role="button"
-                            tabIndex={0}
-                            sx={{
-                              cursor: 'pointer',
-                              display: 'flex',
-                              justifyContent: 'center',
-                              alignItems: 'center',
-                              bgcolor: 'action.hover',
-                              py: 1,
-                              '&:hover': { bgcolor: 'action.selected' },
-                            }}
-                            title="Open PDF"
-                          >
-                            <PdfThumbnail fileId={file._id} apiUrl={API_URL} maxWidth={360} maxHeight={200} />
-                          </Box>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', py: 0.75 }}>
-                            Click preview to open PDF
-                          </Typography>
-                        </Box>
-                      )}
-                    </Paper>
-                  </Grid>
-                ))}
-              </Grid>
+                      </Paper>
+                    </Tooltip>
+                  );
+                })}
+              </Box>
             ) : (
               <Paper sx={{ p: 3, textAlign: 'center', mb: 2, border: '1px dashed', borderColor: 'grey.300' }}>
                 <DescriptionIcon sx={{ fontSize: 32, color: 'text.secondary', mb: 1 }} />

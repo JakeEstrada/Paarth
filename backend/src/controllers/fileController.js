@@ -98,8 +98,14 @@ function storageErrorMessage(error) {
   if (code === 'NoSuchKey' || code === 'NotFound' || error?.$metadata?.httpStatusCode === 404) {
     return 'The file record exists, but the object is missing from S3 (wrong key or it was never uploaded to this bucket).';
   }
-  if (code === 'AccessDenied' || code === 'InvalidAccessKeyId' || code === 'SignatureDoesNotMatch') {
-    return 'S3 denied access. Check AWS credentials, bucket policy, and region.';
+  if (code === 'InvalidAccessKeyId') {
+    return 'AWS access key is invalid or was deleted. Create a new IAM access key and update AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY on the API host.';
+  }
+  if (code === 'SignatureDoesNotMatch') {
+    return 'AWS secret key does not match the access key. Update AWS_SECRET_ACCESS_KEY (no extra spaces or quotes).';
+  }
+  if (code === 'AccessDenied') {
+    return 'S3 denied this IAM user. Grant s3:GetObject, s3:PutObject, s3:DeleteObject, and s3:ListBucket on this bucket, and confirm AWS_REGION matches the bucket region.';
   }
   if (error?.message === 'File not found on server') {
     return 'The file is not on the server disk and S3 is not configured or the object was not found.';
