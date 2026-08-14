@@ -1682,7 +1682,6 @@ function JobDetailModal({
                   );
                 })}
               </Box>
-              </Box>
             ) : null}
 
             <Box
