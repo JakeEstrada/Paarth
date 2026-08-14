@@ -75,7 +75,6 @@ import {
 import { renderSummaryBlocks } from '../../utils/summaryMarkdown';
 import {
   formatMoney,
-  formatScheduleItemLabel,
   getJobTotalWithChangeOrders,
   resolvePaymentSchedule,
   sumChangeOrders,
@@ -194,6 +193,65 @@ function resolveJobModalTab(tab) {
   if (typeof tab === 'number' && tab >= 0 && tab <= 4) return tab;
   if (typeof tab === 'string' && tab in JOB_MODAL_TAB) return JOB_MODAL_TAB[tab];
   return JOB_MODAL_TAB.overview;
+}
+
+/** Flat, bordered card used for every panel inside the modal body. */
+const MODAL_CARD_SX = {
+  p: 2,
+  width: '100%',
+  borderRadius: 2,
+  border: '1px solid',
+  borderColor: 'divider',
+  display: 'flex',
+  flexDirection: 'column',
+};
+
+const HEADER_LINK_SX = {
+  textTransform: 'none',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  py: 0.25,
+  px: 0.75,
+  minWidth: 0,
+};
+
+/** Label on the left, amount right-aligned in a fixed column so figures stack cleanly. */
+function HeaderMoneyRow({ label, value, muted = false, strong = false, note = '' }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 1.5 }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: muted ? 'text.disabled' : 'text.secondary',
+          fontWeight: strong ? 600 : 400,
+          lineHeight: 1.5,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {label}
+        {note ? (
+          <Typography component="span" variant="caption" sx={{ color: 'success.main', ml: 0.5 }}>
+            {note}
+          </Typography>
+        ) : null}
+      </Typography>
+      <Typography
+        variant="caption"
+        sx={{
+          color: muted ? 'text.disabled' : 'text.secondary',
+          fontWeight: strong ? 600 : 500,
+          lineHeight: 1.5,
+          fontVariantNumeric: 'tabular-nums',
+          flexShrink: 0,
+        }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  );
 }
 
 function JobDetailModal({
@@ -869,18 +927,18 @@ function JobDetailModal({
         },
       }}
     >
-      <DialogTitle sx={{ pb: 0.75, pt: 1.25, pr: 6, position: 'relative' }}>
-        <IconButton
-          onClick={onClose}
-          size="small"
-          title="Close"
-          sx={{ position: 'absolute', top: 8, right: 8 }}
+      <DialogTitle sx={{ px: 2.5, pt: 1.25, pb: 1.5 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            minHeight: 28,
+          }}
         >
-          <CloseIcon />
-        </IconButton>
-        {job._id != null && String(job._id).trim() !== '' && (
-          <Box sx={{ mb: 0.5 }}>
-            <Tooltip title={`Full job id: ${job._id}`} placement="bottom">
+          {job._id != null && String(job._id).trim() !== '' ? (
+            <Tooltip title={`Full job id: ${job._id}`} placement="bottom-start">
               <Typography
                 variant="caption"
                 component="span"
@@ -897,18 +955,31 @@ function JobDetailModal({
                 {String(job._id).length >= 8 ? String(job._id).slice(-8) : String(job._id)}
               </Typography>
             </Tooltip>
-          </Box>
-        )}
+          ) : (
+            <span />
+          )}
+          <IconButton onClick={onClose} size="small" title="Close" sx={{ mr: -0.75 }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: 'minmax(120px, 1fr) auto minmax(160px, 1fr)' },
+            gridTemplateColumns: { xs: '1fr', md: 'minmax(150px, 1fr) minmax(0, auto) minmax(150px, 1fr)' },
             alignItems: 'start',
-            columnGap: 1,
-            rowGap: 1,
+            columnGap: 2,
+            rowGap: 1.5,
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 0.25, pt: 0.25 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              gap: 0.25,
+              order: { xs: 3, md: 1 },
+            }}
+          >
             {!isEditing ? (
               <>
                 <IconButton onClick={handleEdit} size="small" color="primary" title="Edit">
@@ -950,7 +1021,16 @@ function JobDetailModal({
               </>
             )}
           </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', minWidth: 0, px: 1 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              textAlign: 'center',
+              minWidth: 0,
+              order: { xs: 1, md: 2 },
+            }}
+          >
             {isEditing ? (
               <Box sx={{ width: '100%', maxWidth: 420, textAlign: 'left' }}>
                 <TextField
@@ -1018,16 +1098,19 @@ function JobDetailModal({
                 </Box>
               </Box>
             ) : (
-              <Typography variant="h6" sx={{ fontWeight: 600, display: 'block', lineHeight: 1.25 }}>
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: 700, display: 'block', lineHeight: 1.25, letterSpacing: '-0.01em' }}
+              >
                 {job.title}
               </Typography>
             )}
-            {renderCustomerHeaderStrip(job)}
             {!isEditing && job.description && (
               <Typography
                 variant="body2"
                 sx={{
-                  mt: 0.75,
+                  mt: 0.25,
+                  maxWidth: 480,
                   color: 'text.secondary',
                   fontStyle: 'italic',
                   fontWeight: 400,
@@ -1038,88 +1121,129 @@ function JobDetailModal({
                 {job.description}
               </Typography>
             )}
+            {renderCustomerHeaderStrip(job)}
           </Box>
-          <Box sx={{ textAlign: 'right', minWidth: 0 }}>
+          <Box
+            sx={{
+              order: { xs: 2, md: 3 },
+              display: 'flex',
+              justifyContent: { xs: 'flex-start', md: 'flex-end' },
+              alignItems: 'flex-start',
+              minWidth: 0,
+            }}
+          >
             {hideFinancials ? (
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  alignItems: 'flex-start',
-                  minHeight: 32,
-                  minWidth: 80,
-                }}
-              >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minHeight: 32 }}>
+                <Typography variant="caption" color="text.disabled">
+                  Financials hidden
+                </Typography>
                 <Tooltip title="Unlock financial amounts">
                   <IconButton
                     size="small"
                     onClick={() => onRequestSensitiveUnlock?.()}
-                    sx={{ color: 'text.secondary', p: 0, width: 20, height: 20, mt: 0.25 }}
+                    sx={{ color: 'text.secondary', p: 0.25 }}
                     aria-label="Unlock financial amounts"
                   >
                     <LockIcon sx={{ fontSize: '0.95rem' }} />
                   </IconButton>
                 </Tooltip>
               </Box>
-            ) : isEditing ? (
-              <>
-                <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>
+            ) : (
+              <Box
+                sx={{
+                  width: '100%',
+                  maxWidth: 264,
+                  px: 1.25,
+                  py: 1,
+                  borderRadius: 1.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: (theme) =>
+                    theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'action.hover',
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'block',
+                    color: 'text.secondary',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    fontSize: '0.62rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Job total
+                </Typography>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: 'success.main',
+                    fontWeight: 700,
+                    lineHeight: 1.2,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
                   {formatCurrency(headerFullTotal)}
                 </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                  Job total (base + change orders)
-                </Typography>
-                <TextField
-                  type="text"
-                  inputMode="decimal"
-                  value={
-                    editedJob?.valueEstimated === '' || editedJob?.valueEstimated == null
-                      ? ''
-                      : String(editedJob.valueEstimated)
-                  }
-                  onChange={(e) => {
-                    const raw = sanitizeMoneyTypingInput(e.target.value);
-                    handleFieldChange('valueEstimated', raw === '' ? '' : raw);
-                  }}
-                  variant="outlined"
-                  size="small"
-                  sx={{ width: '150px', mt: 1 }}
-                  InputProps={{
-                    startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>,
-                  }}
-                />
-              </>
-            ) : (
-              <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600, lineHeight: 1.2 }}>
-                {formatCurrency(headerFullTotal)}
-              </Typography>
-            )}
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              Job total (base + change orders)
-            </Typography>
-            {!hideFinancials && (
-              <>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.25 }}>
-                  Base contract: {formatCurrency(headerContractBase)}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
-                  Change Orders: {formatCurrency(headerChangeOrderValue)}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75, fontWeight: 600 }}>
-                  Payment schedule
-                </Typography>
-                {headerPaymentSchedule.items.map((item, idx) => (
-                  <Typography
-                    key={`${item.label}-${idx}`}
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ display: 'block', lineHeight: 1.25 }}
-                  >
-                    {formatScheduleItemLabel(item)}
-                    {item.status === 'paid' ? ' · Paid' : ''}
-                  </Typography>
-                ))}
-              </>
+                {isEditing && (
+                  <TextField
+                    type="text"
+                    inputMode="decimal"
+                    label="Base contract"
+                    value={
+                      editedJob?.valueEstimated === '' || editedJob?.valueEstimated == null
+                        ? ''
+                        : String(editedJob.valueEstimated)
+                    }
+                    onChange={(e) => {
+                      const raw = sanitizeMoneyTypingInput(e.target.value);
+                      handleFieldChange('valueEstimated', raw === '' ? '' : raw);
+                    }}
+                    variant="outlined"
+                    size="small"
+                    fullWidth
+                    sx={{ mt: 1 }}
+                    InputProps={{
+                      startAdornment: <Typography sx={{ mr: 0.5 }}>$</Typography>,
+                    }}
+                  />
+                )}
+                <Divider sx={{ my: 0.75 }} />
+                <HeaderMoneyRow label="Base contract" value={formatCurrency(headerContractBase)} />
+                <HeaderMoneyRow label="Change orders" value={formatCurrency(headerChangeOrderValue)} />
+                {headerPaymentSchedule.items.length > 0 && (
+                  <>
+                    <Divider sx={{ my: 0.75 }} />
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        display: 'block',
+                        mb: 0.25,
+                        color: 'text.secondary',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        fontSize: '0.62rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Payment schedule
+                    </Typography>
+                    {headerPaymentSchedule.items.map((item, idx) => (
+                      <HeaderMoneyRow
+                        key={`${item.label}-${idx}`}
+                        label={
+                          item.amountType === 'percentage' && Number.isFinite(Number(item.percentage))
+                            ? `${item.label} (${item.percentage}%)`
+                            : item.label
+                        }
+                        value={formatCurrency(item.amount)}
+                        note={item.status === 'paid' ? '· Paid' : ''}
+                      />
+                    ))}
+                  </>
+                )}
+              </Box>
             )}
           </Box>
         </Box>
@@ -1129,9 +1253,12 @@ function JobDetailModal({
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'flex-start',
+            flexWrap: 'wrap',
             gap: 0.5,
-            mt: 1.25,
-            pt: 0.75,
+            mt: 1.5,
+            pt: 1,
+            borderTop: '1px solid',
+            borderColor: 'divider',
           }}
         >
           {!isShopDisplay ? (
@@ -1143,7 +1270,7 @@ function JobDetailModal({
                   component={RouterLink}
                   to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${jobEstimates[0]._id}`}
                   onClick={onClose}
-                  sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+                  sx={HEADER_LINK_SX}
                 >
                   {jobEstimates[0].estimateNumber || 'Estimate'}
                 </Button>
@@ -1154,57 +1281,75 @@ function JobDetailModal({
                   component={RouterLink}
                   to={`/finance?tab=estimates&jobId=${job._id}`}
                   onClick={onClose}
-                  sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+                  sx={HEADER_LINK_SX}
                 >
                   Estimate
                 </Button>
               )}
-              <Typography variant="body2" color="text.secondary" sx={{ px: 0.25, userSelect: 'none' }}>
-                |
-              </Typography>
+              <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
               <Button
                 size="small"
                 variant="text"
                 component={RouterLink}
                 to={`/takeoff-sheet?jobId=${job._id}`}
                 onClick={onClose}
-                sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+                sx={HEADER_LINK_SX}
               >
                 Takeoff
               </Button>
-              <Typography variant="body2" color="text.secondary" sx={{ px: 0.25, userSelect: 'none' }}>
-                |
-              </Typography>
+              <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
             </>
           ) : null}
           <Button
             size="small"
             variant="text"
             onClick={() => setActiveTab(JOB_MODAL_TAB.payments)}
-            sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+            sx={HEADER_LINK_SX}
           >
             Edit Payments
           </Button>
         </Box>
       </DialogTitle>
 
-      <Divider />
-
-      <DialogContent sx={{ pt: 2 }}>
-        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
+      <Box
+        sx={{
+          px: 2.5,
+          borderTop: '1px solid',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          flexShrink: 0,
+        }}
+      >
+        <Tabs
+          value={activeTab}
+          onChange={(e, newValue) => setActiveTab(newValue)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{
+            minHeight: 44,
+            '& .MuiTab-root': {
+              minHeight: 44,
+              textTransform: 'none',
+              fontWeight: 600,
+              fontSize: '0.875rem',
+            },
+          }}
+        >
           <Tab label="Overview" />
           <Tab label="Schedule" />
           <Tab label="Payments" />
           <Tab label="Files" />
           <Tab label="Notes" />
         </Tabs>
+      </Box>
 
+      <DialogContent sx={{ px: 2.5, py: 2.5 }}>
         {activeTab === 0 && (
-          <Grid container spacing={3}>
+          <Grid container spacing={2} alignItems="stretch">
             {/* Recent Activity - First thing users see */}
-            <Grid item xs={12}>
-              <Paper sx={{ p: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+              <Paper elevation={0} sx={MODAL_CARD_SX}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 2 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <DescriptionIcon sx={{ mr: 1, color: 'primary.main' }} />
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
@@ -1217,13 +1362,14 @@ function JobDetailModal({
                     startIcon={<AutoAwesomeIcon />}
                     onClick={handleOpenAiSummary}
                     disabled={!jobId || aiSummaryLoading}
+                    sx={{ textTransform: 'none', flexShrink: 0 }}
                   >
                     AI summary
                   </Button>
                 </Box>
-                
+
                 {job.notes && job.notes.length > 0 ? (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: '400px', overflowY: 'auto' }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: 380, overflowY: 'auto' }}>
                     {[...job.notes]
                       .sort((a, b) => {
                         const dateA = new Date(a.createdAt || 0).getTime();
@@ -1293,11 +1439,11 @@ function JobDetailModal({
               </Paper>
             </Grid>
 
-            <Grid item xs={12}>
-              <Paper sx={{ p: 2 }}>
+            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+              <Paper elevation={0} sx={MODAL_CARD_SX}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <MoneyIcon sx={{ mr: 1, color: 'primary.main' }} />
+                    <AssignmentIcon sx={{ mr: 1, color: 'primary.main' }} />
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                       Tasks
                     </Typography>
@@ -1313,7 +1459,7 @@ function JobDetailModal({
                 </Box>
 
                 {jobTasks.length > 0 ? (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: 320, overflowY: 'auto' }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: 380, overflowY: 'auto' }}>
                     {jobTasks
                       .slice()
                       .sort(
@@ -1358,8 +1504,8 @@ function JobDetailModal({
             </Grid>
 
             {isEditing && (
-              <Grid item xs={12} sm={6}>
-                <Paper sx={{ p: 2, height: '100%' }}>
+              <Grid item xs={12} sm={6} sx={{ display: 'flex' }}>
+                <Paper elevation={0} sx={MODAL_CARD_SX}>
                   <FormControl fullWidth size="small" sx={{ mt: 1 }}>
                     <InputLabel>Source</InputLabel>
                     <Select
@@ -1380,7 +1526,7 @@ function JobDetailModal({
 
             {job.appointment?.dateTime && (
               <Grid item xs={12}>
-                <Paper sx={{ p: 2 }}>
+                <Paper elevation={0} sx={MODAL_CARD_SX}>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                     <CalendarIcon sx={{ mr: 1, color: 'primary.main' }} />
                     <Typography variant="subtitle2" color="text.secondary">
@@ -1408,7 +1554,7 @@ function JobDetailModal({
             )}
 
             <Grid item xs={12}>
-              <Paper sx={{ p: 2 }}>
+              <Paper elevation={0} sx={MODAL_CARD_SX}>
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
                   Additional Information
                 </Typography>

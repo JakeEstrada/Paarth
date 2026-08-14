@@ -214,6 +214,16 @@ function mergeMarkedPaidPayments(activities, jobs) {
 const AI_SUMMARY_HOVER_JOKE =
   'Tired of looking through big ass work logs... fuck that. Have AI generate a summary of that shit.';
 
+/** Long feeds scroll inside their panel so the page keeps a predictable height. */
+const dashboardScrollListSx = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 1,
+  overflowY: 'auto',
+  pr: 0.5,
+  mr: -0.5,
+};
+
 function dashboardPanelSx(theme) {
   return {
     p: { xs: 2, sm: 2.5 },
@@ -272,14 +282,16 @@ function DashboardQuickTile({ label, value, icon: Icon, accentColor, onClick, al
       elevation={0}
       onClick={onClick}
       sx={{
-        p: 1.75,
-        borderRadius: 2.5,
+        p: { xs: 1.75, sm: 2 },
+        borderRadius: 3,
         border: '1px solid',
         borderColor: alert ? 'error.main' : 'divider',
         bgcolor: alert ? alpha(theme.palette.error.main, 0.06) : 'background.paper',
         cursor: onClick ? 'pointer' : 'default',
-        flex: '1 1 120px',
+        width: '100%',
         minWidth: 0,
+        display: 'flex',
+        alignItems: 'center',
         transition: 'transform 0.15s ease, box-shadow 0.15s ease',
         '&:hover': onClick
           ? {
@@ -289,12 +301,12 @@ function DashboardQuickTile({ label, value, icon: Icon, accentColor, onClick, al
           : undefined,
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, width: '100%', minWidth: 0 }}>
         <Box
           sx={{
             width: 36,
             height: 36,
-            borderRadius: 1.5,
+            borderRadius: 2,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -308,7 +320,12 @@ function DashboardQuickTile({ label, value, icon: Icon, accentColor, onClick, al
           <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
             {value}
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            noWrap
+            sx={{ display: 'block', fontWeight: 500 }}
+          >
             {label}
           </Typography>
         </Box>
@@ -330,7 +347,7 @@ function DashboardPanelHeader({ title, actionLabel, onAction, subtitle, headerAc
           </Typography>
         ) : null}
       </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, flexShrink: 0 }}>
         {headerActions}
         {actionLabel && onAction ? (
           <Button
@@ -1366,6 +1383,10 @@ function DashboardPage() {
           borderRadius: 3,
           border: '1px solid',
           borderColor: 'divider',
+          boxShadow:
+            theme.palette.mode === 'dark'
+              ? '0 1px 0 rgba(255,255,255,0.04)'
+              : '0 1px 3px rgba(15, 23, 42, 0.06)',
           background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.14 : 0.08)} 0%, ${alpha(theme.palette.background.paper, 0.95)} 55%)`,
         }}
       >
@@ -1396,7 +1417,7 @@ function DashboardPage() {
       </Box>
 
       {/* KPI row */}
-      <Grid container spacing={2} sx={{ mb: 2.5, alignItems: 'stretch' }}>
+      <Grid container spacing={2} sx={{ mb: 2, alignItems: 'stretch' }}>
         <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
           <DashboardStatCard label="Active Jobs" value={stats.activeJobs} icon={JobsIcon} accentColor={theme.palette.primary.main} theme={theme} />
         </Grid>
@@ -1429,28 +1450,50 @@ function DashboardPage() {
         </Grid>
       </Grid>
 
-      {/* Quick stats strip */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 3 }}>
-        <DashboardQuickTile label="Customers" value={stats.totalCustomers} icon={PeopleIcon} accentColor={theme.palette.primary.main} onClick={() => navigate('/customers')} theme={theme} />
-        <DashboardQuickTile
-          label="Upcoming"
-          value={stats.upcomingAppointments.length}
-          icon={CalendarIcon}
-          accentColor={theme.palette.primary.main}
-          onClick={() => navigate('/calendar')}
-          theme={theme}
-        />
-        <DashboardQuickTile label="Pending tasks" value={stats.pendingTasks.length} icon={TasksIcon} accentColor={theme.palette.primary.main} onClick={() => navigate('/tasks')} theme={theme} />
-        <DashboardQuickTile
-          label="Urgent"
-          value={stats.urgentTasks.length}
-          icon={WarningIcon}
-          accentColor={stats.urgentTasks.length > 0 ? theme.palette.error.main : theme.palette.text.secondary}
-          onClick={() => navigate('/tasks')}
-          alert={stats.urgentTasks.length > 0}
-          theme={theme}
-        />
-      </Box>
+      {/* Quick stats strip — same 4-column rhythm as the KPI row above */}
+      <Grid container spacing={2} sx={{ mb: 3, alignItems: 'stretch' }}>
+        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
+          <DashboardQuickTile
+            label="Customers"
+            value={stats.totalCustomers}
+            icon={PeopleIcon}
+            accentColor={theme.palette.primary.main}
+            onClick={() => navigate('/customers')}
+            theme={theme}
+          />
+        </Grid>
+        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
+          <DashboardQuickTile
+            label="Upcoming"
+            value={stats.upcomingAppointments.length}
+            icon={CalendarIcon}
+            accentColor={theme.palette.primary.main}
+            onClick={() => navigate('/calendar')}
+            theme={theme}
+          />
+        </Grid>
+        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
+          <DashboardQuickTile
+            label="Pending tasks"
+            value={stats.pendingTasks.length}
+            icon={TasksIcon}
+            accentColor={theme.palette.primary.main}
+            onClick={() => navigate('/tasks')}
+            theme={theme}
+          />
+        </Grid>
+        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
+          <DashboardQuickTile
+            label="Urgent"
+            value={stats.urgentTasks.length}
+            icon={WarningIcon}
+            accentColor={stats.urgentTasks.length > 0 ? theme.palette.error.main : theme.palette.text.secondary}
+            onClick={() => navigate('/tasks')}
+            alert={stats.urgentTasks.length > 0}
+            theme={theme}
+          />
+        </Grid>
+      </Grid>
 
       {/* Main panels */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -1602,6 +1645,7 @@ function DashboardPage() {
                 </Button>
               ) : null}
             </Box>
+            <Box sx={{ ...dashboardScrollListSx, maxHeight: 460 }}>
             {recentMarkedPaidPayments.map((activity, idx) => {
               const jobId = activity.jobId?._id || activity.jobId;
               const jobLabel = activity.jobId?.title || '';
@@ -1703,6 +1747,7 @@ function DashboardPage() {
                 </Box>
               );
             })}
+            </Box>
           </Box>
         )}
         {canEditPaymentAlerts ? (
@@ -1749,46 +1794,42 @@ function DashboardPage() {
 
       {/* Recent Activity */}
       <Paper elevation={0} sx={dashboardPanelSx(theme)}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-          <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '-0.01em' }}>
-              Recent activity
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Log work, generate summaries, or print a daily report
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Tooltip
-              title={AI_SUMMARY_HOVER_JOKE}
-              enterDelay={250}
-              placement="top"
-              slotProps={{ tooltip: { sx: { maxWidth: 340 } } }}
-            >
-              <span>
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  size="small"
-                  startIcon={<AutoAwesomeIcon />}
-                  onClick={openSummarySetup}
-                  sx={{ textTransform: 'none', borderRadius: 2 }}
-                >
-                  AI summary
-                </Button>
-              </span>
-            </Tooltip>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<PrintIcon />}
-              onClick={() => setPrintDialogOpen(true)}
-              sx={{ textTransform: 'none', borderRadius: 2 }}
-            >
-              Print activity
-            </Button>
-          </Box>
-        </Box>
+        <DashboardPanelHeader
+          title="Recent activity"
+          subtitle="Log work, generate summaries, or print a daily report"
+          headerActions={
+            <>
+              <Tooltip
+                title={AI_SUMMARY_HOVER_JOKE}
+                enterDelay={250}
+                placement="top"
+                slotProps={{ tooltip: { sx: { maxWidth: 340 } } }}
+              >
+                <span>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    size="small"
+                    startIcon={<AutoAwesomeIcon />}
+                    onClick={openSummarySetup}
+                    sx={{ textTransform: 'none', borderRadius: 2 }}
+                  >
+                    AI summary
+                  </Button>
+                </span>
+              </Tooltip>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<PrintIcon />}
+                onClick={() => setPrintDialogOpen(true)}
+                sx={{ textTransform: 'none', borderRadius: 2 }}
+              >
+                Print activity
+              </Button>
+            </>
+          }
+        />
 
         <Box
           component="form"
@@ -1837,7 +1878,7 @@ function DashboardPage() {
         {sortedActivities.length === 0 ? (
           <DashboardEmptyState message="No activity logged yet — add a quick note above to get started." />
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box sx={{ ...dashboardScrollListSx, maxHeight: 560 }}>
             {sortedActivities.slice(0, 50).map((activity, idx) => {
               const title = getActivityTitle(activity);
               const description = getActivityDescription(activity);
