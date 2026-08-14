@@ -13,7 +13,6 @@ import {
   Typography,
   Box,
   GridLegacy as Grid,
-  Chip,
   Divider,
   Tabs,
   Tab,
@@ -985,57 +984,70 @@ function JobDetailModal({
               </Box>
             )}
           </Box>
-          {!isShopDisplay ? (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                alignSelf: 'center',
-                flexShrink: 0,
-                px: 1,
-                gap: 0.5,
-              }}
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              alignSelf: 'center',
+              flexShrink: 0,
+              px: 1,
+              gap: 0.5,
+            }}
+          >
+            {!isShopDisplay ? (
+              <>
+                {jobEstimates.length > 0 ? (
+                  <Button
+                    size="small"
+                    variant="text"
+                    component={RouterLink}
+                    to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${jobEstimates[0]._id}`}
+                    onClick={onClose}
+                    sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+                  >
+                    {jobEstimates[0].estimateNumber || 'Estimate'}
+                  </Button>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="text"
+                    component={RouterLink}
+                    to={`/finance?tab=estimates&jobId=${job._id}`}
+                    onClick={onClose}
+                    sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+                  >
+                    Estimate
+                  </Button>
+                )}
+                <Typography variant="body2" color="text.secondary" sx={{ px: 0.25, userSelect: 'none' }}>
+                  |
+                </Typography>
+                <Button
+                  size="small"
+                  variant="text"
+                  component={RouterLink}
+                  to={`/takeoff-sheet?jobId=${job._id}`}
+                  onClick={onClose}
+                  sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
+                >
+                  Takeoff
+                </Button>
+                <Typography variant="body2" color="text.secondary" sx={{ px: 0.25, userSelect: 'none' }}>
+                  |
+                </Typography>
+              </>
+            ) : null}
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => setActiveTab(JOB_MODAL_TAB.payments)}
+              sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
             >
-              {jobEstimates.length > 0 ? (
-                <Button
-                  size="small"
-                  variant="text"
-                  component={RouterLink}
-                  to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${jobEstimates[0]._id}`}
-                  onClick={onClose}
-                  sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
-                >
-                  {jobEstimates[0].estimateNumber || 'Estimate'}
-                </Button>
-              ) : (
-                <Button
-                  size="small"
-                  variant="text"
-                  component={RouterLink}
-                  to={`/finance?tab=estimates&jobId=${job._id}`}
-                  onClick={onClose}
-                  sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
-                >
-                  Estimate
-                </Button>
-              )}
-              <Typography variant="body2" color="text.secondary" sx={{ px: 0.25, userSelect: 'none' }}>
-                |
-              </Typography>
-              <Button
-                size="small"
-                variant="text"
-                component={RouterLink}
-                to={`/takeoff-sheet?jobId=${job._id}`}
-                onClick={onClose}
-                sx={{ textTransform: 'none', fontSize: '0.8rem', py: 0, minWidth: 0, px: 0.5 }}
-              >
-                Takeoff
-              </Button>
-            </Box>
-          ) : null}
+              Edit Payments
+            </Button>
+          </Box>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5, flex: 1, minWidth: 0 }}>
             {/* Estimated Value in Header */}
             <Box sx={{ textAlign: 'right' }}>
@@ -1118,14 +1130,6 @@ function JobDetailModal({
                       {item.status === 'paid' ? ' · Paid' : ''}
                     </Typography>
                   ))}
-                  <Button
-                    size="small"
-                    variant="text"
-                    sx={{ mt: 0.5, p: 0, minWidth: 0, textTransform: 'none' }}
-                    onClick={() => setActiveTab(JOB_MODAL_TAB.payments)}
-                  >
-                    Edit payments
-                  </Button>
                 </>
               )}
             </Box>
@@ -1283,83 +1287,6 @@ function JobDetailModal({
               </Paper>
             </Grid>
 
-            {/* Current Stage - At the top */}
-            <Grid item xs={12} sm={6}>
-              <Paper sx={{ p: 2, height: '100%' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <AssignmentIcon sx={{ mr: 1, color: 'primary.main' }} />
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Current Stage
-                  </Typography>
-                </Box>
-                <Chip
-                  label={STAGE_LABELS[job.stage] || job.stage}
-                  color="primary"
-                  sx={{ mt: 1 }}
-                />
-              </Paper>
-            </Grid>
-
-            {/* Customer Information - At the bottom */}
-            <Grid item xs={12} sm={6}>
-              <Paper sx={{ p: 2, height: '100%' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Customer Information
-                  </Typography>
-                </Box>
-                <Box sx={{ mt: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                    {job.customerId?.name || 'Unknown Customer'}
-                  </Typography>
-                  {job.customerId?._id && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      Customer #: {job.customerId._id.toString().slice(-6).toUpperCase()}
-                    </Typography>
-                  )}
-                  {/* Show job-specific contact if available, otherwise show customer contact */}
-                  {(job.jobContact?.phone || job.customerId?.primaryPhone) && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      Phone:{' '}
-                      {formatPhoneForDisplay(
-                        String(job.jobContact?.phone || job.customerId?.primaryPhone || '').trim()
-                      )}
-                    </Typography>
-                  )}
-                  {(job.jobContact?.email || job.customerId?.primaryEmail) && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      Email: {job.jobContact?.email || job.customerId.primaryEmail}
-                    </Typography>
-                  )}
-                  {/* Show job-specific address if available, otherwise show customer address */}
-                  {(job.jobAddress?.street || job.jobAddress?.city || 
-                    (!job.jobAddress && (job.customerId?.address?.street || job.customerId?.address?.city))) && (
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', mt: 1 }}>
-                      <LocationIcon sx={{ fontSize: 16, color: 'text.secondary', mr: 0.5, mt: 0.25 }} />
-                      <Typography variant="caption" color="text.secondary">
-                        {job.jobAddress ? (
-                          // Job-specific address
-                          [
-                            job.jobAddress.street,
-                            job.jobAddress.city,
-                            job.jobAddress.state,
-                            job.jobAddress.zip
-                          ].filter(Boolean).join(', ')
-                        ) : (
-                          // Customer address
-                          [
-                            job.customerId.address?.street,
-                            job.customerId.address?.city,
-                            job.customerId.address?.state,
-                            job.customerId.address?.zip
-                          ].filter(Boolean).join(', ')
-                        )}
-                      </Typography>
-                    </Box>
-                  )}
-                </Box>
-              </Paper>
             </Grid>
 
             <Grid item xs={12}>
