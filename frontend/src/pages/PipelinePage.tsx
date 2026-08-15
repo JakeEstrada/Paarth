@@ -548,12 +548,9 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
                     },
                   }}
                 >
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      color: theme.palette.mode === 'dark' ? '#FF8A65' : '#FF6B35',
-                      fontWeight: 600,
-                    }}
+                  <Typography
+                    variant="body1"
+                    sx={{ color: 'primary.main', fontWeight: 600 }}
                   >
                     View all ({tasksCount}) {tasksCount === 1 ? 'task' : 'tasks'}
                   </Typography>
@@ -623,12 +620,9 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
                     },
                   }}
                 >
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      color: theme.palette.mode === 'dark' ? '#FF8A65' : '#FF6B35',
-                      fontWeight: 600,
-                    }}
+                  <Typography
+                    variant="body1"
+                    sx={{ color: 'primary.main', fontWeight: 600 }}
                   >
                     View all ({appointmentsCount}) {appointmentsCount === 1 ? 'appointment' : 'appointments'}
                   </Typography>

@@ -152,15 +152,16 @@ function JobCard(props: Record<string, unknown>) {
           </Typography>
           {job.description && (
             <>
-              <Typography 
-                component="span" 
-                sx={{ 
-                  mx: compactCard ? 0.5 : 0.75, 
-                  color: theme.palette.text.secondary,
-                  fontSize: descFontRem
+              <Typography
+                component="span"
+                aria-hidden
+                sx={{
+                  mx: compactCard ? 0.5 : 0.75,
+                  color: theme.palette.text.disabled,
+                  fontSize: descFontRem,
                 }}
               >
-                |
+                ·
               </Typography>
               <Typography
                 component="span"

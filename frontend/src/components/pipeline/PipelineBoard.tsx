@@ -23,6 +23,7 @@ import {
   MenuItem,
   Chip,
   Autocomplete,
+  alpha,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -86,6 +87,16 @@ const EXECUTION_PHASE = [
 ];
 
 const STAGE_NAME_SUGGESTIONS = Object.values(STAGE_LABELS);
+
+/** Compact stage total. Keeps sub-$1K columns readable instead of collapsing them to "$0K". */
+function formatStageValue(value) {
+  const n = Number(value) || 0;
+  if (n <= 0) return '$0';
+  if (n < 1000) return `$${Math.round(n)}`;
+  if (n < 10000) return `$${(n / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+  if (n < 1000000) return `$${Math.round(n / 1000)}K`;
+  return `$${(n / 1000000).toFixed(1).replace(/\.0$/, '')}M`;
+}
 
 const LEGACY_PIPELINE_STAGE_CONFIG_KEY = 'pipelineStageConfigV1';
 
@@ -365,15 +376,15 @@ function PipelineBoard({
           minWidth: 280,
           flex: '1 1 0',
           maxWidth: '100%',
-          transition: 'all 0.2s ease',
-          backgroundColor: isDraggedOver 
-            ? theme.palette.mode === 'dark' 
-              ? 'rgba(25, 118, 210, 0.2)' 
-              : 'rgba(25, 118, 210, 0.08)' 
+          // Border/padding stay constant so columns don't shift as a card is dragged across them.
+          transition: 'background-color 0.2s ease, border-color 0.2s ease',
+          backgroundColor: isDraggedOver
+            ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.07)
             : 'transparent',
-          borderRadius: isDraggedOver ? '8px' : '0',
-          border: isDraggedOver ? `2px dashed ${theme.palette.primary.main}` : '2px solid transparent',
-          p: isDraggedOver ? 1 : 0,
+          borderRadius: '8px',
+          border: '2px dashed',
+          borderColor: isDraggedOver ? theme.palette.primary.main : 'transparent',
+          p: 1,
         }}
       >
         {/* Column Header */}
@@ -454,9 +465,10 @@ function PipelineBoard({
                       color: theme.palette.primary.main,
                       lineHeight: 1.1,
                       textAlign: 'right',
+                      fontVariantNumeric: 'tabular-nums',
                     }}
                   >
-                    {`$${Math.round(value / 1000)}K`}
+                    {formatStageValue(value)}
                   </Typography>
                 )}
               </Box>
@@ -464,13 +476,17 @@ function PipelineBoard({
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box
                 sx={{
-                  background: theme.palette.mode === 'dark' ? '#424242' : 'white',
+                  minWidth: 24,
+                  textAlign: 'center',
+                  bgcolor: 'background.paper',
+                  border: '1px solid',
+                  borderColor: 'divider',
                   px: 1,
                   py: 0.25,
                   borderRadius: '12px',
                   fontSize: '0.75rem',
-                  fontWeight: 500,
-                  color: theme.palette.text.secondary,
+                  fontWeight: 600,
+                  color: count > 0 ? 'text.primary' : 'text.disabled',
                 }}
               >
                 {count}
@@ -540,13 +556,15 @@ function PipelineBoard({
             <Box
               sx={{
                 py: 3,
+                px: 1,
                 textAlign: 'center',
-                color: isDraggedOver 
-                  ? theme.palette.primary.main 
-                  : theme.palette.text.disabled,
+                borderRadius: '8px',
+                border: '1px dashed',
+                borderColor: isDraggedOver ? 'primary.main' : 'divider',
+                color: isDraggedOver ? 'primary.main' : 'text.disabled',
                 fontSize: '0.75rem',
                 fontWeight: isDraggedOver ? 600 : 400,
-                transition: 'all 0.2s ease',
+                transition: 'color 0.2s ease, border-color 0.2s ease',
               }}
             >
               {isDraggedOver ? 'Drop here' : 'No jobs'}
@@ -699,9 +717,6 @@ function PipelineBoard({
               New Job
             </Button>
           )}
-          <Typography variant="h2" sx={{ fontSize: '1.5rem', fontWeight: 400 }}>
-            Pipeline Overview
-          </Typography>
         </Box>
 
         <Box
