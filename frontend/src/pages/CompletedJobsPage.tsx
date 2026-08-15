@@ -39,13 +39,15 @@ import toast from 'react-hot-toast';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
+import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function CompletedJobsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const theme = useTheme();
-  const { user } = useAuth();
+  const { user, tenantIdForBranding } = useAuth();
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
   const { hideSensitive } = useShopViewSensitive(user?.role);
   const [completedJobs, setCompletedJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,6 +66,8 @@ function CompletedJobsPage() {
     fetchCompletedJobs();
   }, []);
 
+  useTenantRealtimeRefresh(tenantRoom, () => fetchCompletedJobs({ background: true }));
+
   useEffect(() => {
     const jobIdFromUrl = searchParams.get('jobId');
     if (!jobIdFromUrl) return;
@@ -73,16 +77,16 @@ function CompletedJobsPage() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const fetchCompletedJobs = async () => {
+  const fetchCompletedJobs = async ({ background = false } = {}) => {
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
       const response = await axios.get(`${API_URL}/jobs/completed`);
       setCompletedJobs(response.data);
     } catch (error) {
       console.error('Error fetching completed jobs:', error);
-      toast.error('Failed to load completed jobs');
+      if (!background) toast.error('Failed to load completed jobs');
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   };
 

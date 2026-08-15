@@ -66,13 +66,15 @@ import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import { JOB_SOURCE_OPTIONS, formatJobSource } from '../utils/jobSources';
+import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, tenantIdForBranding } = useAuth();
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
   const { isShopViewRole, hideSensitive: shopHideSensitive } = useShopViewSensitive(user?.role);
   const financialPin = useFinancialPinLockContext();
   const hideSensitive = shopHideSensitive || financialPin.hideFinancials;
@@ -96,18 +98,20 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const [sendingShare, setSendingShare] = useState(false);
 
   // Load customer list (up to 1000) for directory and search
-  const fetchCustomers = async () => {
+  const fetchCustomers = async ({ background = false } = {}) => {
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
       const response = await axios.get(`${API_URL}/customers?limit=1000`);
       setCustomers(response.data.customers || response.data || []);
     } catch (error) {
       console.error('Error fetching customers:', error);
-      toast.error('Failed to load customers');
+      if (!background) toast.error('Failed to load customers');
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   };
+
+  useTenantRealtimeRefresh(tenantRoom, () => fetchCustomers({ background: true }));
 
   useEffect(() => {
     const loadData = async () => {

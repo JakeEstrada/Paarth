@@ -269,10 +269,17 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
     setTodoRefreshTrigger((prev) => prev + 1);
   }, []);
+  const handleRealtimeAppointmentChange = useCallback((payload) => {
+    const sourceSocketId = payload?.sourceSocketId || null;
+    const ownSocketId = getConnectedSocketId();
+    if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
+    setAppointmentRefreshTrigger((prev) => prev + 1);
+  }, []);
   useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeProjectUpdate);
   useSocketSubscription(tenantRoom, 'project.created', handleRealtimeProjectUpdate);
   useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeTaskUpdate);
   useSocketSubscription(tenantRoom, 'task.created', handleRealtimeTaskUpdate);
+  useSocketSubscription(tenantRoom, 'appointment.changed', handleRealtimeAppointmentChange);
 
   const handleJobUpdate = async (jobId, updates) => {
     try {

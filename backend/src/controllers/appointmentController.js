@@ -1,7 +1,25 @@
 const Appointment = require('../models/Appointment');
 const Activity = require('../models/Activity');
 const ScheduledSms = require('../models/ScheduledSms');
-const { publishProjectUpdated } = require('../services/eventBus');
+const { publishProjectUpdated, publishAppointmentChanged } = require('../services/eventBus');
+const { getTenantContext } = require('../middleware/tenantContext');
+
+/**
+ * Broadcast an appointment write so calendars and dashboards update without a reload.
+ * Documents created before tenant scoping may lack tenantId, so fall back to the
+ * request's tenant context rather than dropping the event.
+ */
+function emitAppointmentChanged(req, appointment, action) {
+  if (!appointment) return;
+  const plain = appointment.toObject ? appointment.toObject() : appointment;
+  const tenantId = plain.tenantId || getTenantContext().tenantId || null;
+  if (!tenantId) return;
+
+  publishAppointmentChanged(req.app.get('io'), { ...plain, tenantId }, {
+    action,
+    sourceSocketId: req.headers['x-socket-id'] || null,
+  });
+}
 
 function normalizeToE164(value) {
   const raw = String(value || '').trim();
@@ -293,7 +311,9 @@ async function createAppointment(req, res) {
     
     await appointment.populate('customerId', 'name primaryPhone primaryEmail');
     await appointment.populate('jobId', 'title stage');
-    
+
+    emitAppointmentChanged(req, appointment, 'created');
+
     res.status(201).json(appointment);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -315,7 +335,9 @@ async function updateAppointment(req, res) {
     
     await appointment.populate('customerId', 'name primaryPhone primaryEmail');
     await appointment.populate('jobId', 'title stage');
-    
+
+    emitAppointmentChanged(req, appointment, 'updated');
+
     res.json(appointment);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -387,7 +409,9 @@ async function completeAppointment(req, res) {
     
     await appointment.populate('customerId', 'name primaryPhone primaryEmail');
     await appointment.populate('jobId', 'title stage');
-    
+
+    emitAppointmentChanged(req, appointment, 'completed');
+
     res.json(appointment);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -407,7 +431,9 @@ async function cancelAppointment(req, res) {
     appointment.cancelledAt = new Date();
     await appointment.save();
     await cancelAppointmentReminderSms(appointment, 'Appointment cancelled before reminder send');
-    
+
+    emitAppointmentChanged(req, appointment, 'cancelled');
+
     res.json(appointment);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -475,7 +501,10 @@ async function deleteAppointment(req, res) {
     
     // Delete the appointment
     await cancelAppointmentReminderSms(appointment, 'Appointment deleted before reminder send');
+    const deletedSnapshot = appointment.toObject();
     await Appointment.findByIdAndDelete(req.params.id);
+
+    emitAppointmentChanged(req, { ...deletedSnapshot, deleted: true }, 'deleted');
     
     // Log activity for appointment deletion
     let customerId = appointmentCustomerId;

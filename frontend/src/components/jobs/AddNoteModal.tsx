@@ -62,20 +62,21 @@ function AddNoteModal({ open, onClose, onSuccess, job }) {
       ];
 
       // Update job with new notes array
-      await axios.patch(`${API_URL}/jobs/${job._id}`, {
+      const response = await axios.patch(`${API_URL}/jobs/${job._id}`, {
         notes: updatedNotes,
         // Pass explicit actor so note attribution is correct even when auth middleware is disabled on jobs routes
         createdBy: user?._id,
         createdByName: user?.name,
       });
-      
+
       toast.success('Note added successfully');
       
       // Reset form
       setNoteContent('');
       setImportant(false);
 
-      onSuccess?.();
+      // Hand back the saved job so callers can render the note without waiting on a refetch.
+      onSuccess?.(response.data);
       onClose();
     } catch (error) {
       console.error('Error adding note:', error);

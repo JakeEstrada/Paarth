@@ -30,6 +30,8 @@ import {
 import { format, subDays, addDays } from 'date-fns';
 import api from '../utils/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -60,6 +62,8 @@ const getWeekRange = (date) => {
 
 function CompletedTasksPage() {
   const theme = useTheme();
+  const { tenantIdForBranding } = useAuth();
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
   const [allTasks, setAllTasks] = useState([]);
   const [allAppointments, setAllAppointments] = useState([]);
   const [allActivities, setAllActivities] = useState([]);
@@ -71,9 +75,11 @@ function CompletedTasksPage() {
     fetchAllData();
   }, []);
 
-  const fetchAllData = async () => {
+  useTenantRealtimeRefresh(tenantRoom, () => fetchAllData({ background: true }));
+
+  const fetchAllData = async ({ background = false } = {}) => {
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
       const [tasksResponse, appointmentsResponse] = await Promise.all([
         api.get(`/tasks/completed`),
         api.get(`/appointments/completed`)
@@ -105,14 +111,14 @@ function CompletedTasksPage() {
       } catch (error) {
         console.error('Error fetching activities:', error);
         console.error('Error response:', error.response?.data);
-        toast.error('Failed to load activities. Check console for details.');
+        if (!background) toast.error('Failed to load activities. Check console for details.');
         setAllActivities([]);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
-      toast.error('Failed to load completed items');
+      if (!background) toast.error('Failed to load completed items');
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   };
 

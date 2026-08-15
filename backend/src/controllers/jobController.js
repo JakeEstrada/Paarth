@@ -2,7 +2,11 @@ const mongoose = require('mongoose');
 const Job = require('../models/Job');
 const Activity = require('../models/Activity');
 const Estimate = require('../models/Estimate');
-const { publishProjectCreated, publishProjectUpdated } = require('../services/eventBus');
+const {
+  publishProjectCreated,
+  publishProjectUpdated,
+  publishProjectDeleted,
+} = require('../services/eventBus');
 const {
   roundMoney,
   getContractBase,
@@ -763,7 +767,12 @@ async function deleteJob(req, res) {
     });
     
     await Job.findByIdAndDelete(req.params.id);
-    
+
+    const io = req.app.get('io');
+    publishProjectDeleted(io, { _id: job._id, tenantId: job.tenantId }, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
     res.json({ message: 'Job deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1351,7 +1360,12 @@ async function archiveJob(req, res) {
     
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
-    
+
+    const io = req.app.get('io');
+    publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
     res.json(job);
   } catch (error) {
     res.status(500).json({ error: error.message });

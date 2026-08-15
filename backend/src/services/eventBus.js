@@ -37,6 +37,39 @@ function publishProjectUpdated(io, project, opts = {}) {
   }
 }
 
+/**
+ * Removals ride on `project.updated` with a `deleted` flag — the same convention
+ * `deleteTask` uses — so existing listeners drop the row without a new event name.
+ */
+function publishProjectDeleted(io, project, opts = {}) {
+  if (!project?._id) return;
+  const stub = {
+    _id: project._id,
+    tenantId: project.tenantId || null,
+    deleted: true,
+  };
+  const data = shapeEntityEvent('project.updated', 'project', stub, opts.sourceSocketId);
+  safeEmit(io, `project:${project._id}`, 'project.updated', data);
+  if (project.tenantId) {
+    safeEmit(io, `tenant:${project.tenantId}`, 'project.updated', data);
+  }
+}
+
+/** Any appointment write — create, edit, complete, cancel, delete. */
+function publishAppointmentChanged(io, appointment, opts = {}) {
+  const tenantId = appointment?.tenantId ? String(appointment.tenantId) : null;
+  if (!tenantId) return;
+  const data = {
+    type: 'appointment.changed',
+    tenantId,
+    entityId: appointment?._id ? String(appointment._id) : null,
+    action: opts.action || 'updated',
+    appointment: appointment && typeof appointment === 'object' ? appointment : null,
+    sourceSocketId: opts.sourceSocketId || null,
+  };
+  safeEmit(io, `tenant:${tenantId}`, 'appointment.changed', data);
+}
+
 function publishTaskCreated(io, task, opts = {}) {
   if (!task?._id) return;
   const data = shapeEntityEvent('task.created', 'task', task, opts.sourceSocketId);
@@ -179,6 +212,8 @@ function publishRfidEmployeeProfileUpdated(io, profile, opts = {}) {
 module.exports = {
   publishProjectCreated,
   publishProjectUpdated,
+  publishProjectDeleted,
+  publishAppointmentChanged,
   publishTaskCreated,
   publishTaskUpdated,
   publishRfidScanCreated,

@@ -68,6 +68,8 @@ import EmployeeSmsRecipientField, {
 } from '../common/EmployeeSmsRecipientField';
 import { formatPhoneForDisplay, telHref } from '../../utils/phoneFormat';
 import { useFinancialPinLockContext } from '../../context/FinancialPinLockContext';
+import { useAuth } from '../../context/AuthContext';
+import { useSocketSubscription } from '../../hooks/useSocketSubscription';
 import {
   getJobFilesCache,
   invalidateJobFilesCache,
@@ -207,6 +209,29 @@ const MODAL_CARD_SX = {
   flexDirection: 'column',
 };
 
+/**
+ * Job writes and socket payloads populate `customerId` with only name/phone/email,
+ * while the detail fetch returns the full customer. Merge so a save never drops the
+ * address shown in the header card.
+ */
+function mergeJobPreservingCustomer(prev, incoming) {
+  if (!prev) return incoming || null;
+  if (!incoming) return prev;
+
+  const merged = { ...prev, ...incoming };
+  const idOf = (value) =>
+    value && typeof value === 'object' ? String(value._id || '') : String(value || '');
+  const prevCustomer = prev.customerId;
+  const nextCustomer = incoming.customerId;
+
+  const sameCustomer = idOf(prevCustomer) && idOf(prevCustomer) === idOf(nextCustomer);
+  const nextIsDetailed = nextCustomer && typeof nextCustomer === 'object' && nextCustomer.address;
+  if (sameCustomer && prevCustomer && typeof prevCustomer === 'object' && !nextIsDetailed) {
+    merged.customerId = prevCustomer;
+  }
+  return merged;
+}
+
 const HEADER_LINK_SX = {
   textTransform: 'none',
   fontSize: '0.8rem',
@@ -272,6 +297,7 @@ function JobDetailModal({
 }) {
   const location = useLocation();
   const financialPin = useFinancialPinLockContext();
+  const { tenantIdForBranding } = useAuth();
   const isShopDisplay = shopDisplayMode || isShopDisplayPath(location.pathname);
   const [activeTab, setActiveTab] = useState(() => resolveJobModalTab(initialTab));
   const [job, setJob] = useState(null);
@@ -324,6 +350,25 @@ function JobDetailModal({
     }
   }, [jobId]);
 
+  // Callers usually pass an inline onClose, so keep it in a ref: putting it in the
+  // fetch dependencies re-created the callback every parent render, which re-ran the
+  // load effect (refetching everything and resetting the active tab) on each render.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  const fetchJobTasks = useCallback(async () => {
+    if (!jobId) return;
+    try {
+      const tasksResponse = await axios.get(`${API_URL}/tasks/job/${jobId}`);
+      setJobTasks(Array.isArray(tasksResponse.data) ? tasksResponse.data : []);
+    } catch (taskError) {
+      console.error('Error fetching job tasks:', taskError);
+      setJobTasks([]);
+    }
+  }, [jobId]);
+
   const fetchJobDetails = useCallback(async () => {
     try {
       setLoading(true);
@@ -331,13 +376,7 @@ function JobDetailModal({
       setJob(response.data);
       setEditedJob(response.data);
       setIsEditing(false);
-      try {
-        const tasksResponse = await axios.get(`${API_URL}/tasks/job/${jobId}`);
-        setJobTasks(Array.isArray(tasksResponse.data) ? tasksResponse.data : []);
-      } catch (taskError) {
-        console.error('Error fetching job tasks:', taskError);
-        setJobTasks([]);
-      }
+      await fetchJobTasks();
       try {
         const estimatesResponse = await axios.get(`${API_URL}/estimates`, { params: { jobId } });
         const list = Array.isArray(estimatesResponse.data)
@@ -351,11 +390,53 @@ function JobDetailModal({
     } catch (error) {
       console.error('Error fetching job details:', error);
       toast.error('Failed to load job details');
-      onClose();
+      onCloseRef.current?.();
     } finally {
       setLoading(false);
     }
-  }, [jobId, onClose]);
+  }, [jobId, fetchJobTasks]);
+
+  /**
+   * Writes return the updated job, so render it straight away instead of racing a
+   * refetch against the parent's own background refresh.
+   */
+  const applySavedJob = useCallback(
+    (savedJob) => {
+      if (savedJob && typeof savedJob === 'object' && savedJob._id) {
+        setJob((prev) => mergeJobPreservingCustomer(prev, savedJob));
+        setEditedJob((prev) => mergeJobPreservingCustomer(prev, savedJob));
+        return;
+      }
+      fetchJobDetails();
+    },
+    [fetchJobDetails],
+  );
+
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const handleRealtimeJobPatch = useCallback(
+    (payload) => {
+      const incoming = payload?.patch || payload?.project;
+      const entityId = String(payload?.entityId || incoming?._id || '').trim();
+      if (!incoming || !entityId || entityId !== String(jobId || '')) return;
+      if (incoming.deleted) return;
+      // Merge into the displayed job only — in-progress edits live in editedJob.
+      setJob((prev) => (prev ? mergeJobPreservingCustomer(prev, incoming) : prev));
+    },
+    [jobId],
+  );
+  useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeJobPatch);
+
+  const handleRealtimeJobTaskChange = useCallback(
+    (payload) => {
+      const incoming = payload?.patch || payload?.task;
+      const taskJobId = incoming?.jobId?._id || incoming?.jobId;
+      if (!taskJobId || String(taskJobId) !== String(jobId || '')) return;
+      fetchJobTasks();
+    },
+    [jobId, fetchJobTasks],
+  );
+  useSocketSubscription(tenantRoom, 'task.created', handleRealtimeJobTaskChange);
+  useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeJobTaskChange);
 
   useEffect(() => {
     if (open && jobId) {
@@ -2035,8 +2116,8 @@ function JobDetailModal({
       <AddNoteModal
         open={addNoteOpen}
         onClose={() => setAddNoteOpen(false)}
-        onSuccess={() => {
-          fetchJobDetails();
+        onSuccess={(savedJob) => {
+          applySavedJob(savedJob);
           onJobDataChanged({ type: 'note', jobId });
         }}
         job={job}

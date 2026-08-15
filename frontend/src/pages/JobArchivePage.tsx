@@ -35,6 +35,7 @@ import JobCard from '../components/pipeline/JobCard';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
+import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -42,7 +43,8 @@ function JobArchivePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const theme = useTheme();
-  const { user } = useAuth();
+  const { user, tenantIdForBranding } = useAuth();
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
   const { hideSensitive } = useShopViewSensitive(user?.role);
   const [deadEstimates, setDeadEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +64,8 @@ function JobArchivePage() {
     initialize();
   }, []);
 
+  useTenantRealtimeRefresh(tenantRoom, () => fetchArchivedJobs({ background: true }));
+
   useEffect(() => {
     const jobIdFromUrl = searchParams.get('jobId');
     if (!jobIdFromUrl) return;
@@ -71,16 +75,16 @@ function JobArchivePage() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const fetchArchivedJobs = async () => {
+  const fetchArchivedJobs = async ({ background = false } = {}) => {
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
       const response = await axios.get(`${API_URL}/jobs/archive`);
       setDeadEstimates(response.data);
     } catch (error) {
       console.error('Error fetching archived jobs:', error);
-      toast.error('Failed to load archived jobs');
+      if (!background) toast.error('Failed to load archived jobs');
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   };
 

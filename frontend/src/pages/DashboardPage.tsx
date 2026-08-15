@@ -559,6 +559,7 @@ function DashboardPage() {
   useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeDashboardUpdate);
   useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeDashboardUpdate);
   useSocketSubscription(tenantRoom, 'project.created', handleRealtimeDashboardUpdate);
+  useSocketSubscription(tenantRoom, 'appointment.changed', handleRealtimeDashboardUpdate);
 
   const handleManualActivitySubmit = async (event) => {
     event.preventDefault();

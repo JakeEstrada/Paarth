@@ -3,7 +3,7 @@
  * Route: /commission-logs
  * Docs: ../../../docs/PAGES.md#commissionlogspagetsx
  */
-import { useCallback, useEffect, useMemo, useState, Fragment, type CSSProperties, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type CSSProperties, type MouseEvent } from 'react';
 import {
   alpha,
   Box,
@@ -65,6 +65,8 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { getCommissionPaymentSplits, getJobTotalWithChangeOrders, formatMoney, formatMoneyInput, roundMoney } from '../utils/paymentSchedule';
 import { isCommissionEligibleJob } from '../utils/commissionJobEligibility';
+import { useAuth } from '../context/AuthContext';
+import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -423,10 +425,12 @@ function buildCheckEntries(rows: CommissionTableRow[]): CommissionCheckEntry[] {
     for (const payment of row.payments) {
       const check = String(payment.check || '').trim();
       const date = String(payment.date || '').trim();
+      // Only fall back to the scheduled amount once the salesman is marked paid.
+      // Otherwise a tier with just a check number typed in inflates the group totals.
       const amount =
         payment.amount > 0
           ? payment.amount
-          : payment.potentialAmount > 0
+          : payment.salesmanPaid && payment.potentialAmount > 0
             ? payment.potentialAmount
             : 0;
 
@@ -2843,6 +2847,8 @@ function CommissionPaymentModal({
 }
 
 function CommissionLogsPage() {
+  const { tenantIdForBranding } = useAuth();
+  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
   const [loadingCommissionLogs, setLoadingCommissionLogs] = useState(false);
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
   const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());
@@ -2857,6 +2863,7 @@ function CommissionLogsPage() {
   const [commissionLogRows, setCommissionLogRows] = useState<Record<string, CommissionLogLocalRow>>(
     () => readCommissionLogRows(),
   );
+  const loadRequestIdRef = useRef(0);
 
   const updateCommissionRow = (jobId: string, patch: Partial<CommissionLogLocalRow>) => {
     setCommissionLogRows((prev) => {
@@ -3229,7 +3236,9 @@ function CommissionLogsPage() {
               label: String(saved.label || (kind === 'deduction' ? 'Deduction' : 'Adjustment')).trim() ||
                 (kind === 'deduction' ? 'Deduction' : 'Adjustment'),
               note: String(saved.note || ''),
-              amount: Math.abs(amount),
+              // Payment adjustments keep their sign so a negative entry works as a
+              // payback (the field help text documents this); deductions always reduce.
+              amount: kind === 'deduction' ? Math.abs(amount) : amount,
               displayAmount: saved.amount ?? '',
               check: String(saved.check || ''),
               date: String(saved.date || ''),
@@ -3376,14 +3385,22 @@ function CommissionLogsPage() {
     window.localStorage.setItem(COMMISSION_PAGE_TAB_KEY, pageTab);
   }, [pageTab]);
 
-  const loadCommissionJobs = useCallback(async (signal?: { cancelled: boolean }) => {
+  const loadCommissionJobs = useCallback(async (
+    signal?: { cancelled: boolean },
+    options?: { background?: boolean },
+  ) => {
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
+    // A slower earlier load must never overwrite the results of a newer one.
+    const isStale = () => Boolean(signal?.cancelled) || requestId !== loadRequestIdRef.current;
+
     try {
-      setLoadingCommissionLogs(true);
+      if (!options?.background) setLoadingCommissionLogs(true);
       const [jobs, estimatesData] = await Promise.all([
         fetchAllCommissionJobs(),
         axios.get<EstimateDoc[]>(`${API_URL}/estimates`),
       ]);
-      if (signal?.cancelled) return;
+      if (isStale()) return;
       const estimates = Array.isArray(estimatesData.data) ? estimatesData.data : [];
       const latestEstimateByJob = pickLatestPositiveEstimateByJob(estimates);
       const localCache = readCommissionLogRows();
@@ -3430,7 +3447,21 @@ function CommissionLogsPage() {
           };
         });
       setCommissionSourceJobs(rows);
-      setCommissionLogRows(mergedCommissionRows);
+      // Merge instead of replace. A reload only covers currently eligible jobs, so
+      // replacing wholesale dropped every other job's commission log from state — and
+      // the persist effect then wrote that truncated map over localStorage. Rows edited
+      // while this request was in flight are kept by comparing updatedAt.
+      setCommissionLogRows((prev) => {
+        const next = { ...prev };
+        for (const [jobId, incomingRow] of Object.entries(mergedCommissionRows)) {
+          const currentRow = next[jobId];
+          const currentAt = Date.parse(String(currentRow?.updatedAt || '')) || 0;
+          const incomingAt = Date.parse(String(incomingRow?.updatedAt || '')) || 0;
+          if (currentRow && currentAt > incomingAt) continue;
+          next[jobId] = incomingRow;
+        }
+        return next;
+      });
 
       if (migrations.length > 0) {
         void Promise.all(
@@ -3443,7 +3474,7 @@ function CommissionLogsPage() {
       }
     } catch (error) {
       console.error('Error loading commission logs:', error);
-      if (!signal?.cancelled) {
+      if (!isStale()) {
         setCommissionSourceJobs([]);
         const message =
           isAxiosError(error) &&
@@ -3455,7 +3486,7 @@ function CommissionLogsPage() {
         toast.error(message);
       }
     } finally {
-      if (!signal?.cancelled) setLoadingCommissionLogs(false);
+      if (!isStale()) setLoadingCommissionLogs(false);
     }
   }, []);
 
@@ -3468,12 +3499,22 @@ function CommissionLogsPage() {
   }, [loadCommissionJobs]);
 
   useEffect(() => {
+    const signal = { cancelled: false };
+    // Background refresh: no full-page spinner, and results are dropped if the page
+    // unmounts or a newer load starts first.
     const handleFocus = () => {
-      void loadCommissionJobs();
+      void loadCommissionJobs(signal, { background: true });
     };
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    return () => {
+      signal.cancelled = true;
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [loadCommissionJobs]);
+
+  useTenantRealtimeRefresh(tenantRoom, () => {
+    void loadCommissionJobs(undefined, { background: true });
+  });
 
   const handleJobDetailUpdate = async (jobId: string, updates: Record<string, unknown>) => {
     try {
