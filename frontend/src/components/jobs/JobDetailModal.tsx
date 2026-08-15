@@ -26,6 +26,7 @@ import {
   InputLabel,
   Link as MuiLink,
   Tooltip,
+  Chip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -535,6 +536,7 @@ function JobDetailModal({
   const handleEdit = () => {
     setIsEditing(true);
     setEditedJob({ ...job });
+    setActiveTab(JOB_MODAL_TAB.overview);
   };
 
   const handleCancel = () => {
@@ -927,7 +929,21 @@ function JobDetailModal({
         },
       }}
     >
-      <DialogTitle sx={{ px: 2.5, pt: 1.25, pb: 1.5 }}>
+      <DialogTitle
+        sx={{
+          px: 2.5,
+          pt: 1.25,
+          pb: 1.5,
+          ...(isEditing
+            ? {
+                bgcolor: (theme) =>
+                  theme.palette.mode === 'dark'
+                    ? 'rgba(25, 118, 210, 0.08)'
+                    : 'rgba(25, 118, 210, 0.04)',
+              }
+            : {}),
+        }}
+      >
         <Box
           sx={{
             display: 'flex',
@@ -980,48 +996,6 @@ function JobDetailModal({
               order: { xs: 3, md: 1 },
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-            {!isEditing ? (
-              <>
-                <IconButton onClick={handleEdit} size="small" color="primary" title="Edit">
-                  <EditIcon />
-                </IconButton>
-                {!job?.isArchived && !job?.isDeadEstimate && (
-                  <IconButton onClick={handleArchive} size="small" color="warning" title="Archive" disabled={saving}>
-                    <ArchiveIcon />
-                  </IconButton>
-                )}
-                {customerEntityId && (
-                  <IconButton
-                    component={RouterLink}
-                    to={
-                      isShopDisplay
-                        ? shopDisplayCustomerPath(customerEntityId)
-                        : `/customers?customerId=${customerEntityId}`
-                    }
-                    onClick={onClose}
-                    size="small"
-                    color="info"
-                    title={isShopDisplay ? 'Open customer in shop view' : 'Open customer card'}
-                  >
-                    <PersonIcon />
-                  </IconButton>
-                )}
-                <IconButton onClick={handleDeleteClick} size="small" color="error" title="Delete">
-                  <DeleteIcon />
-                </IconButton>
-              </>
-            ) : (
-              <>
-                <IconButton onClick={handleSave} size="small" color="primary" disabled={saving} title="Save">
-                  <SaveIcon />
-                </IconButton>
-                <IconButton onClick={handleCancel} size="small" disabled={saving} title="Cancel">
-                  <CancelIcon />
-                </IconButton>
-              </>
-            )}
-            </Box>
             {renderCustomerHeaderStrip(job)}
           </Box>
           <Box
@@ -1035,70 +1009,16 @@ function JobDetailModal({
             }}
           >
             {isEditing ? (
-              <Box sx={{ width: '100%', maxWidth: 420, textAlign: 'left' }}>
+              <Box sx={{ width: '100%', maxWidth: 420 }}>
                 <TextField
                   fullWidth
                   value={editedJob?.title || ''}
                   onChange={(e) => handleFieldChange('title', e.target.value)}
                   variant="outlined"
                   size="small"
-                  label="Job Name"
-                  sx={{ mb: 1 }}
+                  label="Job name"
+                  autoFocus
                 />
-                <TextField
-                  fullWidth
-                  value={editedJob?.description || ''}
-                  onChange={(e) => handleFieldChange('description', e.target.value)}
-                  variant="outlined"
-                  size="small"
-                  label="Description"
-                  multiline
-                  rows={2}
-                  placeholder="Add a short description to help identify this job..."
-                />
-                <Box sx={{ mt: 1.25 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-                    Job site address (can be different from customer card)
-                  </Typography>
-                  <Grid container spacing={1}>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        label="Street"
-                        value={editedJob?.jobAddress?.street || ''}
-                        onChange={(e) => handleJobAddressFieldChange('street', e.target.value)}
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={5}>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        label="City"
-                        value={editedJob?.jobAddress?.city || ''}
-                        onChange={(e) => handleJobAddressFieldChange('city', e.target.value)}
-                      />
-                    </Grid>
-                    <Grid item xs={6} sm={3}>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        label="State"
-                        value={editedJob?.jobAddress?.state || ''}
-                        onChange={(e) => handleJobAddressFieldChange('state', e.target.value)}
-                      />
-                    </Grid>
-                    <Grid item xs={6} sm={4}>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        label="ZIP"
-                        value={editedJob?.jobAddress?.zip || ''}
-                        onChange={(e) => handleJobAddressFieldChange('zip', e.target.value)}
-                      />
-                    </Grid>
-                  </Grid>
-                </Box>
               </Box>
             ) : (
               <Typography
@@ -1124,6 +1044,15 @@ function JobDetailModal({
                 {job.description}
               </Typography>
             )}
+            {isEditing ? (
+              <Chip
+                label="Editing job details"
+                size="small"
+                color="primary"
+                variant="outlined"
+                sx={{ mt: 1, fontWeight: 600 }}
+              />
+            ) : null}
           </Box>
           <Box
             sx={{
@@ -1254,15 +1183,16 @@ function JobDetailModal({
             display: 'flex',
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'flex-start',
+            justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: 0.5,
+            gap: 1,
             mt: 1.5,
             pt: 1,
             borderTop: '1px solid',
             borderColor: 'divider',
           }}
         >
+          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, minWidth: 0 }}>
           {!isShopDisplay ? (
             <>
               {jobEstimates.length > 0 ? (
@@ -1310,6 +1240,63 @@ function JobDetailModal({
           >
             Edit Payments
           </Button>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0, ml: 'auto' }}>
+            {isEditing ? (
+              <>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<CancelIcon />}
+                  onClick={handleCancel}
+                  disabled={saving}
+                  sx={{ textTransform: 'none' }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
+                  onClick={handleSave}
+                  disabled={saving}
+                  sx={{ textTransform: 'none' }}
+                >
+                  Save
+                </Button>
+              </>
+            ) : (
+              <>
+                <IconButton onClick={handleEdit} size="small" color="primary" title="Edit job">
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                {!job?.isArchived && !job?.isDeadEstimate && (
+                  <IconButton onClick={handleArchive} size="small" color="warning" title="Archive" disabled={saving}>
+                    <ArchiveIcon fontSize="small" />
+                  </IconButton>
+                )}
+                {customerEntityId && (
+                  <IconButton
+                    component={RouterLink}
+                    to={
+                      isShopDisplay
+                        ? shopDisplayCustomerPath(customerEntityId)
+                        : `/customers?customerId=${customerEntityId}`
+                    }
+                    onClick={onClose}
+                    size="small"
+                    color="info"
+                    title={isShopDisplay ? 'Open customer in shop view' : 'Open customer card'}
+                  >
+                    <PersonIcon fontSize="small" />
+                  </IconButton>
+                )}
+                <IconButton onClick={handleDeleteClick} size="small" color="error" title="Delete job">
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </>
+            )}
+          </Box>
         </Box>
       </DialogTitle>
 
@@ -1348,6 +1335,100 @@ function JobDetailModal({
       <DialogContent sx={{ px: 2.5, py: 2.5 }}>
         {activeTab === 0 && (
           <Grid container spacing={2} alignItems="stretch">
+            {isEditing && (
+              <Grid item xs={12}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    ...MODAL_CARD_SX,
+                    borderColor: 'primary.main',
+                    bgcolor: (theme) =>
+                      theme.palette.mode === 'dark'
+                        ? 'rgba(25, 118, 210, 0.08)'
+                        : 'rgba(25, 118, 210, 0.04)',
+                  }}
+                >
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
+                    Job details
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        value={editedJob?.description || ''}
+                        onChange={(e) => handleFieldChange('description', e.target.value)}
+                        variant="outlined"
+                        size="small"
+                        label="Description"
+                        multiline
+                        minRows={2}
+                        placeholder="Short note to help identify this job on the board"
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 600 }}>
+                        Job site address
+                      </Typography>
+                      <Grid container spacing={1.5}>
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Street"
+                            value={editedJob?.jobAddress?.street || ''}
+                            onChange={(e) => handleJobAddressFieldChange('street', e.target.value)}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={5}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="City"
+                            value={editedJob?.jobAddress?.city || ''}
+                            onChange={(e) => handleJobAddressFieldChange('city', e.target.value)}
+                          />
+                        </Grid>
+                        <Grid item xs={6} sm={3}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="State"
+                            value={editedJob?.jobAddress?.state || ''}
+                            onChange={(e) => handleJobAddressFieldChange('state', e.target.value)}
+                          />
+                        </Grid>
+                        <Grid item xs={6} sm={4}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="ZIP"
+                            value={editedJob?.jobAddress?.zip || ''}
+                            onChange={(e) => handleJobAddressFieldChange('zip', e.target.value)}
+                          />
+                        </Grid>
+                      </Grid>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Source</InputLabel>
+                        <Select
+                          value={editedJob?.source || 'other'}
+                          onChange={(e) => handleFieldChange('source', e.target.value)}
+                          label="Source"
+                        >
+                          {JOB_SOURCE_OPTIONS.map((option) => (
+                            <MenuItem key={option.value} value={option.value}>
+                              {option.label}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+            )}
+
             {/* Recent Activity - First thing users see */}
             <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
               <Paper elevation={0} sx={MODAL_CARD_SX}>
@@ -1504,27 +1585,6 @@ function JobDetailModal({
                 )}
               </Paper>
             </Grid>
-
-            {isEditing && (
-              <Grid item xs={12} sm={6} sx={{ display: 'flex' }}>
-                <Paper elevation={0} sx={MODAL_CARD_SX}>
-                  <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                    <InputLabel>Source</InputLabel>
-                    <Select
-                      value={editedJob?.source || 'other'}
-                      onChange={(e) => handleFieldChange('source', e.target.value)}
-                      label="Source"
-                    >
-                      {JOB_SOURCE_OPTIONS.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Paper>
-              </Grid>
-            )}
 
             {job.appointment?.dateTime && (
               <Grid item xs={12}>
