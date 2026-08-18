@@ -1,5 +1,11 @@
 const { fetchGlobalCustomerSearchResults } = require('./customerController');
 const { ROUTES_MARKDOWN, sanitizeNavigatePath } = require('../services/assistantSiteMap');
+const {
+  fetchRecentPayments,
+  fetchRecentDeposits,
+  searchJobNotes,
+  fetchJobDetails,
+} = require('../services/assistantDataService');
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const MAX_TOOL_ROUNDS = 8;
@@ -19,6 +25,68 @@ const TOOLS = [
           limit: { type: 'integer', description: 'Max hits (1–12)', default: 8 },
         },
         required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_recent_payments',
+      description:
+        'Get the most recent customer payments marked received in Paarth (amount, date, customer, job). Use for questions like "most recent payment" or "last payment received".',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', description: 'How many to return (1–15)', default: 5 },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_recent_deposits',
+      description:
+        'Get recent deposits: CRM deposit logs, bank deposits linked to jobs, and uncategorized bank register inflows. Use for "most recent deposit" or bank deposit questions.',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', description: 'How many to return (1–15)', default: 5 },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_job_notes',
+      description:
+        'Search text inside job modal notes and crew notes on active jobs. Use for materials to order, supplies, hardware, follow-ups, or anything written in job updates. Pass keywords like "order material supply hardware cabinet".',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description:
+              'Keywords to match in notes (e.g. "order material", "hardware", "cabinet"). Leave empty to list recent note excerpts.',
+          },
+          limit: { type: 'integer', description: 'Max note hits (1–30)', default: 12 },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_job_details',
+      description:
+        'Get full notes, payment schedule, and recent activity for one job. Use after global_search when the user asks about a specific job.',
+      parameters: {
+        type: 'object',
+        properties: {
+          jobId: { type: 'string', description: 'Mongo job id from search results' },
+        },
+        required: ['jobId'],
       },
     },
   },
@@ -58,6 +126,17 @@ function buildSystemPrompt() {
     'Never ask the user for passwords or API keys. Never fabricate customer or financial data.',
     'Use tools when the user needs live data from their organization or when they want to jump to a page.',
     'After navigate_user succeeds, briefly confirm where you sent them.',
+    '',
+    'Data tools — use these for operational questions:',
+    '- get_recent_payments: customer payments marked received (job payment schedule)',
+    '- get_recent_deposits: CRM deposits, linked bank deposits, and bank register inflows',
+    '- search_job_notes: job modal notes and crew notes (materials to order, supplies, reminders)',
+    '- get_job_details: one job\'s notes, payment schedule, and timeline (use jobId from search)',
+    '- global_search: find a customer or job by name before get_job_details',
+    '',
+    'For "materials to order" or similar, call search_job_notes with keywords like order, material, supply, hardware, cabinet, laminate.',
+    'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from the results only.',
+    'When deposit sources differ (CRM vs bank), say which is most recent by date.',
     '',
     'Site map:',
     ROUTES_MARKDOWN,
@@ -158,6 +237,30 @@ async function runAssistantChat(req, res) {
                   limit: args.limit,
                 });
                 toolContent = { results: results.slice(0, 12) };
+              }
+            } else if (fn.name === 'get_recent_payments') {
+              if (!tenantId) {
+                toolContent = { error: 'No organization context for this account.' };
+              } else {
+                toolContent = await fetchRecentPayments({ limit: args.limit });
+              }
+            } else if (fn.name === 'get_recent_deposits') {
+              if (!tenantId) {
+                toolContent = { error: 'No organization context for this account.' };
+              } else {
+                toolContent = await fetchRecentDeposits({ tenantId, limit: args.limit });
+              }
+            } else if (fn.name === 'search_job_notes') {
+              if (!tenantId) {
+                toolContent = { error: 'No organization context for this account.' };
+              } else {
+                toolContent = await searchJobNotes({ query: args.query, limit: args.limit });
+              }
+            } else if (fn.name === 'get_job_details') {
+              if (!tenantId) {
+                toolContent = { error: 'No organization context for this account.' };
+              } else {
+                toolContent = await fetchJobDetails({ jobId: args.jobId });
               }
             } else if (fn.name === 'get_current_user_context') {
               const role = req.user?.role || 'unknown';

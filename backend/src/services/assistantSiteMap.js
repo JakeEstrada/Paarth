@@ -47,7 +47,7 @@ Main app routes (path → purpose):
 - /developer — internal developer tasks
 - /payroll — payroll tools
 - /bills — bills
-- /finance — finance hub
+- /finance — finance hub (bank register, deposit linking, payment tracking)
 - /takeoff-sheet — takeoff sheet
 - /users — user management (admins only)
 - /account-settings — profile, password, org logo (super admin)
@@ -55,6 +55,7 @@ TV / kiosk-style views:
 - /pipeline-view, /calendar-view, /customers-view
 
 The top bar search uses the same tenant-scoped search as your \`global_search\` tool.
+Paarth Help can also query recent payments/deposits and search job notes via dedicated tools.
 `.trim();
 
 module.exports = {

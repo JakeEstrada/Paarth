@@ -104,15 +104,15 @@ export default function SiteAssistantChat() {
         <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', p: 0, overflow: 'hidden' }}>
           <Box sx={{ px: 2, py: 1, bgcolor: 'action.hover' }}>
             <Typography variant="body2" color="text.secondary">
-              Answers use your login: search and navigation match what you are allowed to access. Not legal or
-              financial advice.
+              Answers use your organization&apos;s live data: payments, deposits, job notes, search, and navigation.
+              Not legal or financial advice.
             </Typography>
           </Box>
           <Box sx={{ flex: 1, overflow: 'auto', px: 2, py: 2 }}>
             {messages.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Ask how to use a page, search for a customer or job, or say “take me to payroll” (I can open screens
-                you already have access to).
+                Try: &ldquo;What was the most recent payment?&rdquo;, &ldquo;What materials do I need to order?&rdquo;,
+                &ldquo;Search notes for hardware&rdquo;, or &ldquo;Take me to finance&rdquo;.
               </Typography>
             )}
             {messages.map((m, i) => (
@@ -153,7 +153,7 @@ export default function SiteAssistantChat() {
           <TextField
             fullWidth
             size="small"
-            placeholder="Ask a question…"
+            placeholder="Ask about payments, deposits, job notes…"
             autoFocus={open}
             value={input}
             disabled={sending}
