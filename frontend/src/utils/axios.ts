@@ -10,7 +10,9 @@ import {
 } from './authSession';
 import { getConnectedSocketId } from '../services/socket';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const API_URL = String(import.meta.env.VITE_API_URL || 'http://localhost:4000')
+  .trim()
+  .replace(/\/+$/, '');
 
 type RetryableConfig = InternalAxiosRequestConfig & { __authRetry?: boolean };
 

@@ -13,6 +13,7 @@ const {
   listSms,
   getSmsDetail,
   markSmsRead,
+  getTwilioConfigStatus,
 } = require('../controllers/twilioController');
 const { requireAuth } = require('../middleware/auth');
 
@@ -23,6 +24,7 @@ router.post('/sms', inboundSms);
 router.post('/sms-status', smsStatusCallback);
 router.post('/voice', inboundVoice);
 router.get('/media/:id', twilioMediaDownload);
+router.get('/config-status', requireAuth, getTwilioConfigStatus);
 router.post('/send-sms', requireAuth, sendSms);
 router.post('/schedule-sms', requireAuth, scheduleSms);
 router.post('/send-sms-adhoc', requireAuth, sendSmsAdhoc);

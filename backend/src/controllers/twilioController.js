@@ -113,11 +113,66 @@ async function inboundVoice(req, res) {
 }
 
 function getTwilioConfig() {
-  return {
-    accountSid: String(process.env.TWILIO_ACCOUNT_SID || '').trim(),
-    authToken: String(process.env.TWILIO_AUTH_TOKEN || '').trim(),
-    from: String(process.env.TWILIO_PHONE_NUMBER || '').trim(),
+  const strip = (value) => {
+    let s = String(value || '').trim();
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+      s = s.slice(1, -1).trim();
+    }
+    return s;
   };
+  return {
+    accountSid: strip(process.env.TWILIO_ACCOUNT_SID),
+    authToken: strip(process.env.TWILIO_AUTH_TOKEN),
+    from: strip(process.env.TWILIO_PHONE_NUMBER),
+  };
+}
+
+function formatTwilioApiError(data, httpStatus) {
+  const message = String(data?.message || '').trim();
+  const code = data?.code;
+
+  if (/authenticate/i.test(message) || code === 20003) {
+    return {
+      message:
+        'Twilio rejected the server credentials (invalid Account SID or Auth Token). Update TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Render, then redeploy.',
+      status: 502,
+    };
+  }
+  if (code === 21606 || /from.*invalid|not a valid.*from/i.test(message)) {
+    return {
+      message:
+        'TWILIO_PHONE_NUMBER is invalid or not on your Twilio account. Use your Twilio number in E.164 format, e.g. +15551234567.',
+      status: 400,
+    };
+  }
+  if (code === 21211 || /invalid.*to/i.test(message)) {
+    return { message: 'Recipient phone number is invalid for Twilio.', status: 400 };
+  }
+
+  return {
+    message: message || `Twilio API error (${httpStatus})`,
+    status: httpStatus >= 400 && httpStatus < 500 ? httpStatus : 502,
+  };
+}
+
+async function getTwilioConfigStatus(req, res) {
+  try {
+    if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    const { accountSid, authToken, from } = getTwilioConfig();
+    return res.json({
+      configured: Boolean(accountSid && authToken && from),
+      hasAccountSid: Boolean(accountSid),
+      hasAuthToken: Boolean(authToken),
+      hasFromNumber: Boolean(from),
+      accountSidLooksValid: /^AC[a-f0-9]{32}$/i.test(accountSid),
+      fromNumberLooksValid: /^\+1\d{10}$/.test(normalizeToE164(from)),
+    });
+  } catch (error) {
+    console.error('getTwilioConfigStatus error:', error);
+    return res.status(500).json({ error: error.message || 'Failed to read Twilio config' });
+  }
 }
 
 function getPublicApiBaseUrl(req) {
@@ -365,7 +420,10 @@ async function sendSmsViaTwilio({ to, message, mediaUrl, statusCallbackUrl }) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data?.message || `Twilio API error (${response.status})`);
+    const formatted = formatTwilioApiError(data, response.status);
+    const err = new Error(formatted.message);
+    err.status = formatted.status;
+    throw err;
   }
 
   return {
@@ -412,7 +470,9 @@ async function sendSmsAdhoc(req, res) {
     return res.status(200).json({ success: true, ...data });
   } catch (error) {
     console.error('Twilio sendSmsAdhoc error:', error?.message || error);
-    const status = /invalid|required|not configured/i.test(String(error?.message)) ? 400 : 500;
+    const status =
+      error?.status ||
+      (/invalid|required|not configured/i.test(String(error?.message)) ? 400 : 500);
     return res.status(status).json({ error: error?.message || 'Failed to send SMS' });
   }
 }
@@ -890,4 +950,5 @@ module.exports = {
   twilioMediaDownload,
   sendSmsAdhoc,
   scheduleSmsAdhoc,
+  getTwilioConfigStatus,
 };
