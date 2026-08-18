@@ -1339,6 +1339,165 @@ interface CommissionTableRow extends CommissionSourceJobRow {
   isRowSettled: boolean;
 }
 
+function cloneCommissionLogRow(row: CommissionLogLocalRow): CommissionLogLocalRow {
+  return JSON.parse(JSON.stringify(migrateLocalRow(row)));
+}
+
+function buildCommissionTableRow(
+  source: CommissionSourceJobRow,
+  localRaw: CommissionLogLocalRow,
+  defaultCommissionRate: number,
+): CommissionTableRow {
+  const local = migrateLocalRow(localRaw);
+  const rateOverridden = hasRateOverride(local);
+  const rateRaw = rateOverridden ? local.commissionRate : defaultCommissionRate;
+  const commissionRate = Number(rateRaw);
+  const safeRate = Number.isFinite(commissionRate) && commissionRate >= 0 ? commissionRate : 0;
+  const jobTotal = roundMoney(source.jobTotal);
+  const commissionDue = roundMoney(jobTotal * (safeRate / 100));
+
+  const splits = getCommissionPaymentSplits(
+    {
+      paymentSchedule: source.paymentSchedule,
+      contract: source.contract,
+      finalPayment: source.finalPayment,
+      valueContracted: jobTotal,
+      valueEstimated: jobTotal,
+    },
+    jobTotal,
+    commissionDue,
+  );
+
+  const savedPayments = local.payments || [];
+  const builtPayments: CommissionPaymentDisplay[] = splits.map((split, idx) => {
+    const saved = savedPayments[idx] || {};
+    const status = split.status || 'pending';
+    const potentialAmount = split.amount;
+    const autoDate = status === 'paid' ? toDateInputValue(split.paidAt) : '';
+
+    let amount = 0;
+    let displayAmount: string | number = '';
+    const amountManual = Boolean(saved.amountManual);
+
+    if (amountManual) {
+      displayAmount = saved.amount ?? '';
+      const rawAmount = saved.amount;
+      amount =
+        rawAmount === '' || rawAmount === undefined || rawAmount === null
+          ? 0
+          : roundMoney(Number(rawAmount) || 0);
+    } else if (status === 'paid') {
+      amount = potentialAmount;
+      displayAmount = potentialAmount > 0 ? formatMoneyInput(potentialAmount) : '';
+    }
+
+    const customerPaid = status === 'paid';
+    const salesmanPaid = safeRate <= 0 ? true : Boolean(saved.salesmanPaid);
+
+    return {
+      scheduleIndex: idx,
+      label: split.label,
+      scheduledAmount: split.scheduledAmount,
+      potentialAmount,
+      amount,
+      displayAmount,
+      check: String(saved.check || ''),
+      date: String(saved.date || autoDate),
+      status,
+      amountManual,
+      customerPaid,
+      salesmanPaid,
+    };
+  });
+
+  const payments = orderPaymentsForDisplay(builtPayments, local.paymentOrder, {
+    preserveOrder: true,
+  });
+
+  const builtAdjustments: CommissionAdjustmentDisplay[] = (local.adjustments || []).map((saved) => {
+    const rawAmount = saved.amount;
+    const amount =
+      rawAmount === '' || rawAmount === undefined || rawAmount === null
+        ? 0
+        : roundMoney(Number(rawAmount) || 0);
+    const kind = saved.kind === 'deduction' ? 'deduction' : 'payment';
+
+    return {
+      id: saved.id,
+      kind,
+      label:
+        String(saved.label || (kind === 'deduction' ? 'Deduction' : 'Adjustment')).trim() ||
+        (kind === 'deduction' ? 'Deduction' : 'Adjustment'),
+      note: String(saved.note || ''),
+      amount: kind === 'deduction' ? Math.abs(amount) : amount,
+      displayAmount: saved.amount ?? '',
+      check: String(saved.check || ''),
+      date: String(saved.date || ''),
+      salesmanPaid: kind === 'deduction' ? false : safeRate <= 0 ? true : Boolean(saved.salesmanPaid),
+    };
+  });
+
+  const schedulePaidTotal = roundMoney(
+    payments.reduce((sum, payment) => sum + (payment.salesmanPaid ? payment.amount : 0), 0),
+  );
+  const adjustmentPaidTotal = roundMoney(
+    builtAdjustments.reduce(
+      (sum, adjustment) =>
+        sum + (adjustment.kind === 'payment' && adjustment.salesmanPaid ? adjustment.amount : 0),
+      0,
+    ),
+  );
+  const paidToSalesman = roundMoney(schedulePaidTotal + adjustmentPaidTotal);
+  const deductionTotal = roundMoney(
+    builtAdjustments.reduce(
+      (sum, adjustment) => sum + (adjustment.kind === 'deduction' ? adjustment.amount : 0),
+      0,
+    ),
+  );
+  const balance = roundMoney(commissionDue - paidToSalesman - deductionTotal);
+  const hasManualPayments = payments.some((payment) => payment.amountManual);
+  const isRowSettled = safeRate <= 0 || (jobTotal > 0 && balance >= -0.01 && balance <= 0.01);
+
+  return {
+    ...source,
+    commissionRate: safeRate,
+    rateOverridden,
+    commissionDue,
+    payments,
+    adjustments: builtAdjustments,
+    paymentOrder:
+      Array.isArray(local.paymentOrder) && local.paymentOrder.length > 0 ? local.paymentOrder : undefined,
+    hasManualPayments,
+    paidToSalesman,
+    deductionTotal,
+    balance,
+    isRowSettled,
+  };
+}
+
+function patchCommissionPaymentLocal(
+  current: CommissionLogLocalRow,
+  scheduleIndex: number,
+  patch: Partial<CommissionPaymentLocal>,
+  options?: { manual?: boolean },
+): CommissionLogLocalRow {
+  const payments = [...(current.payments || [])];
+  while (payments.length <= scheduleIndex) payments.push({});
+  const nextPatch = { ...patch };
+  if (options?.manual === true) {
+    nextPatch.amountManual = true;
+  }
+  if (options?.manual === false) {
+    nextPatch.amountManual = false;
+  }
+  payments[scheduleIndex] = { ...payments[scheduleIndex], ...nextPatch };
+  return {
+    ...current,
+    payments,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function isCommissionOverpaid(row: CommissionTableRow): boolean {
   return row.balance < -0.01;
 }
@@ -2586,7 +2745,11 @@ function JobPaymentCards({
 interface CommissionPaymentModalProps {
   row: CommissionTableRow | null;
   open: boolean;
+  dirty: boolean;
+  saving: boolean;
   onClose: () => void;
+  onCancel: () => void;
+  onSave: () => void;
   onClearRateOverride: (jobId: string) => void;
   onUpdateRate: (jobId: string, value: string) => void;
   onReorder: (jobId: string, order: number[]) => void;
@@ -2614,7 +2777,11 @@ interface CommissionPaymentModalProps {
 function CommissionPaymentModal({
   row,
   open,
+  dirty,
+  saving,
   onClose,
+  onCancel,
+  onSave,
   onClearRateOverride,
   onUpdateRate,
   onReorder,
@@ -2828,8 +2995,20 @@ function CommissionPaymentModal({
           />
         </Box>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+      <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+        {dirty ? (
+          <Typography variant="caption" color="warning.main" sx={{ mr: 'auto' }}>
+            Unsaved changes
+          </Typography>
+        ) : (
+          <Box sx={{ mr: 'auto' }} />
+        )}
+        <Button onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button variant="contained" onClick={onSave} disabled={saving || !dirty}>
+          {saving ? 'Saving…' : 'Save'}
+        </Button>
       </DialogActions>
     </Dialog>
 
@@ -2856,6 +3035,9 @@ function CommissionLogsPage() {
   const [showZeroCommissionJobs, setShowZeroCommissionJobs] = useState(() => readShowZeroCommissionJobs());
   const [pageTab, setPageTab] = useState<CommissionPageTab>(() => readCommissionPageTab());
   const [paymentModalJobId, setPaymentModalJobId] = useState<string | null>(null);
+  const [paymentModalDraft, setPaymentModalDraft] = useState<CommissionLogLocalRow | null>(null);
+  const [paymentModalDirty, setPaymentModalDirty] = useState(false);
+  const [paymentModalSaving, setPaymentModalSaving] = useState(false);
   const [jobDetailModalJobId, setJobDetailModalJobId] = useState<string | null>(null);
   const [setPaidDialogGroup, setSetPaidDialogGroup] = useState<CommissionCheckGroup | null>(null);
   const [editCheckDialogGroup, setEditCheckDialogGroup] = useState<CommissionCheckGroup | null>(null);
@@ -2864,201 +3046,6 @@ function CommissionLogsPage() {
     () => readCommissionLogRows(),
   );
   const loadRequestIdRef = useRef(0);
-
-  const updateCommissionRow = (jobId: string, patch: Partial<CommissionLogLocalRow>) => {
-    setCommissionLogRows((prev) => {
-      const current = migrateLocalRow(prev[jobId] || {});
-      const nextRow: CommissionLogLocalRow = {
-        ...current,
-        ...patch,
-        updatedAt: new Date().toISOString(),
-      };
-      const next = {
-        ...prev,
-        [jobId]: nextRow,
-      };
-      void persistCommissionLog(jobId, nextRow).catch((error) => {
-        console.error('Failed to save commission log:', error);
-        toast.error('Failed to save commission log');
-      });
-      return next;
-    });
-  };
-
-  const clearRateOverride = (jobId: string) => {
-    setCommissionLogRows((prev) => {
-      const current = migrateLocalRow(prev[jobId] || {});
-      const next = { ...current };
-      delete next.commissionRate;
-      const nextRow: CommissionLogLocalRow = {
-        ...next,
-        updatedAt: new Date().toISOString(),
-      };
-      const result = {
-        ...prev,
-        [jobId]: nextRow,
-      };
-      void persistCommissionLog(jobId, nextRow).catch((error) => {
-        console.error('Failed to save commission log:', error);
-        toast.error('Failed to save commission log');
-      });
-      return result;
-    });
-  };
-
-  const updateCommissionPayment = (
-    jobId: string,
-    scheduleIndex: number,
-    patch: Partial<CommissionPaymentLocal>,
-    options?: { manual?: boolean },
-  ) => {
-    setCommissionLogRows((prev) => {
-      const current = migrateLocalRow(prev[jobId] || {});
-      const payments = [...(current.payments || [])];
-      while (payments.length <= scheduleIndex) payments.push({});
-      const nextPatch = { ...patch };
-      if (options?.manual === true) {
-        nextPatch.amountManual = true;
-      }
-      if (options?.manual === false) {
-        nextPatch.amountManual = false;
-      }
-      payments[scheduleIndex] = { ...payments[scheduleIndex], ...nextPatch };
-      const nextRow: CommissionLogLocalRow = {
-        ...current,
-        payments,
-        updatedAt: new Date().toISOString(),
-      };
-      const result = {
-        ...prev,
-        [jobId]: nextRow,
-      };
-      void persistCommissionLog(jobId, nextRow).catch((error) => {
-        console.error('Failed to save commission log:', error);
-        toast.error('Failed to save commission log');
-      });
-      return result;
-    });
-  };
-
-  const updateCommissionAdjustment = (
-    jobId: string,
-    adjustmentId: string,
-    patch: Partial<CommissionAdjustmentLocal>,
-  ) => {
-    setCommissionLogRows((prev) => {
-      const current = migrateLocalRow(prev[jobId] || {});
-      const adjustments = [...(current.adjustments || [])];
-      const index = adjustments.findIndex((row) => row.id === adjustmentId);
-      if (index < 0) return prev;
-
-      adjustments[index] = { ...adjustments[index], ...patch };
-      const nextRow: CommissionLogLocalRow = {
-        ...current,
-        adjustments,
-        updatedAt: new Date().toISOString(),
-      };
-      const result = {
-        ...prev,
-        [jobId]: nextRow,
-      };
-      void persistCommissionLog(jobId, nextRow).catch((error) => {
-        console.error('Failed to save commission log:', error);
-        toast.error('Failed to save commission log');
-      });
-      return result;
-    });
-  };
-
-  const addCommissionAdjustment = (jobId: string) => {
-    setCommissionLogRows((prev) => {
-      const current = migrateLocalRow(prev[jobId] || {});
-      const nextRow: CommissionLogLocalRow = {
-        ...current,
-        adjustments: [...(current.adjustments || []), newAdjustmentRow()],
-        updatedAt: new Date().toISOString(),
-      };
-      const result = {
-        ...prev,
-        [jobId]: nextRow,
-      };
-      void persistCommissionLog(jobId, nextRow).catch((error) => {
-        console.error('Failed to save commission log:', error);
-        toast.error('Failed to save commission log');
-      });
-      return result;
-    });
-  };
-
-  const addCommissionDeduction = (jobId: string) => {
-    setCommissionLogRows((prev) => {
-      const current = migrateLocalRow(prev[jobId] || {});
-      const nextRow: CommissionLogLocalRow = {
-        ...current,
-        adjustments: [...(current.adjustments || []), newDeductionRow()],
-        updatedAt: new Date().toISOString(),
-      };
-      const result = {
-        ...prev,
-        [jobId]: nextRow,
-      };
-      void persistCommissionLog(jobId, nextRow).catch((error) => {
-        console.error('Failed to save commission log:', error);
-        toast.error('Failed to save commission log');
-      });
-      return result;
-    });
-  };
-
-  const settleCommissionRemainder = (
-    jobId: string,
-    payload: { amount: string; label: string; note: string; date: string },
-  ) => {
-    setCommissionLogRows((prev) => {
-      const current = migrateLocalRow(prev[jobId] || {});
-      const deduction: CommissionAdjustmentLocal = {
-        ...newDeductionRow(payload.amount, payload.note),
-        label: payload.label.trim() || 'Deduction',
-        note: payload.note,
-        date: payload.date,
-      };
-      const nextRow: CommissionLogLocalRow = {
-        ...current,
-        adjustments: [...(current.adjustments || []), deduction],
-        updatedAt: new Date().toISOString(),
-      };
-      const result = {
-        ...prev,
-        [jobId]: nextRow,
-      };
-      void persistCommissionLog(jobId, nextRow).catch((error) => {
-        console.error('Failed to save commission log:', error);
-        toast.error('Failed to save commission log');
-      });
-      return result;
-    });
-    toast.success('Commission remainder settled');
-  };
-
-  const removeCommissionAdjustment = (jobId: string, adjustmentId: string) => {
-    setCommissionLogRows((prev) => {
-      const current = migrateLocalRow(prev[jobId] || {});
-      const nextRow: CommissionLogLocalRow = {
-        ...current,
-        adjustments: (current.adjustments || []).filter((row) => row.id !== adjustmentId),
-        updatedAt: new Date().toISOString(),
-      };
-      const result = {
-        ...prev,
-        [jobId]: nextRow,
-      };
-      void persistCommissionLog(jobId, nextRow).catch((error) => {
-        console.error('Failed to save commission log:', error);
-        toast.error('Failed to save commission log');
-      });
-      return result;
-    });
-  };
 
   const applyCheckGroupChanges = useCallback(
     (
@@ -3135,161 +3122,171 @@ function CommissionLogsPage() {
     [applyCheckGroupChanges],
   );
 
-  const reorderPayments = (jobId: string, order: number[]) => {
-    updateCommissionRow(jobId, { paymentOrder: order });
+  const updatePaymentModalDraft = useCallback(
+    (updater: (draft: CommissionLogLocalRow) => CommissionLogLocalRow) => {
+      setPaymentModalDraft((prev) => {
+        if (!prev) return prev;
+        return updater(prev);
+      });
+      setPaymentModalDirty(true);
+    },
+    [],
+  );
+
+  const updateModalCommissionRow = (jobId: string, patch: Partial<CommissionLogLocalRow>) => {
+    if (jobId !== paymentModalJobId) return;
+    updatePaymentModalDraft((current) => ({
+      ...current,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    }));
   };
 
-  const handlePaymentAmountChange = (jobId: string, scheduleIndex: number, value: string) => {
-    updateCommissionPayment(jobId, scheduleIndex, { amount: value }, { manual: true });
+  const clearModalRateOverride = (jobId: string) => {
+    if (jobId !== paymentModalJobId) return;
+    updatePaymentModalDraft((current) => {
+      const next = { ...current };
+      delete next.commissionRate;
+      return { ...next, updatedAt: new Date().toISOString() };
+    });
   };
 
-  const handleSalesmanPaidChange = (jobId: string, scheduleIndex: number, paid: boolean) => {
-    updateCommissionPayment(jobId, scheduleIndex, { salesmanPaid: paid });
+  const updateModalCommissionPayment = (
+    jobId: string,
+    scheduleIndex: number,
+    patch: Partial<CommissionPaymentLocal>,
+    options?: { manual?: boolean },
+  ) => {
+    if (jobId !== paymentModalJobId) return;
+    updatePaymentModalDraft((current) =>
+      patchCommissionPaymentLocal(current, scheduleIndex, patch, options),
+    );
   };
 
-  const resetPaymentOverrides = (jobId: string) => {
-    updateCommissionRow(jobId, { payments: [], paymentOrder: [] });
+  const updateModalCommissionAdjustment = (
+    jobId: string,
+    adjustmentId: string,
+    patch: Partial<CommissionAdjustmentLocal>,
+  ) => {
+    if (jobId !== paymentModalJobId) return;
+    updatePaymentModalDraft((current) => {
+      const adjustments = [...(current.adjustments || [])];
+      const index = adjustments.findIndex((row) => row.id === adjustmentId);
+      if (index < 0) return current;
+      adjustments[index] = { ...adjustments[index], ...patch };
+      return {
+        ...current,
+        adjustments,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+  };
+
+  const addModalCommissionAdjustment = (jobId: string) => {
+    if (jobId !== paymentModalJobId) return;
+    updatePaymentModalDraft((current) => ({
+      ...current,
+      adjustments: [...(current.adjustments || []), newAdjustmentRow()],
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const addModalCommissionDeduction = (jobId: string) => {
+    if (jobId !== paymentModalJobId) return;
+    updatePaymentModalDraft((current) => ({
+      ...current,
+      adjustments: [...(current.adjustments || []), newDeductionRow()],
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const settleModalCommissionRemainder = (
+    jobId: string,
+    payload: { amount: string; label: string; note: string; date: string },
+  ) => {
+    if (jobId !== paymentModalJobId) return;
+    updatePaymentModalDraft((current) => {
+      const deduction: CommissionAdjustmentLocal = {
+        ...newDeductionRow(payload.amount, payload.note),
+        label: payload.label.trim() || 'Deduction',
+        note: payload.note,
+        date: payload.date,
+      };
+      return {
+        ...current,
+        adjustments: [...(current.adjustments || []), deduction],
+        updatedAt: new Date().toISOString(),
+      };
+    });
+  };
+
+  const removeModalCommissionAdjustment = (jobId: string, adjustmentId: string) => {
+    if (jobId !== paymentModalJobId) return;
+    updatePaymentModalDraft((current) => ({
+      ...current,
+      adjustments: (current.adjustments || []).filter((row) => row.id !== adjustmentId),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const reorderModalPayments = (jobId: string, order: number[]) => {
+    updateModalCommissionRow(jobId, { paymentOrder: order });
+  };
+
+  const handleModalPaymentAmountChange = (jobId: string, scheduleIndex: number, value: string) => {
+    updateModalCommissionPayment(jobId, scheduleIndex, { amount: value }, { manual: true });
+  };
+
+  const handleModalSalesmanPaidChange = (jobId: string, scheduleIndex: number, paid: boolean) => {
+    updateModalCommissionPayment(jobId, scheduleIndex, { salesmanPaid: paid });
+  };
+
+  const resetModalPaymentOverrides = (jobId: string) => {
+    updateModalCommissionRow(jobId, { payments: [], paymentOrder: [] });
+  };
+
+  const handleModalUpdateRate = (jobId: string, value: string) => {
+    if (value === '') {
+      clearModalRateOverride(jobId);
+    } else {
+      updateModalCommissionRow(jobId, { commissionRate: value });
+    }
+  };
+
+  const handleClosePaymentModal = () => {
+    if (paymentModalDirty) {
+      if (!window.confirm('Discard unsaved payment changes?')) return;
+    }
+    setPaymentModalJobId(null);
+  };
+
+  const handleSavePaymentModal = async () => {
+    if (!paymentModalJobId || !paymentModalDraft || !paymentModalDirty) return;
+    setPaymentModalSaving(true);
+    try {
+      const nextRow: CommissionLogLocalRow = {
+        ...paymentModalDraft,
+        updatedAt: new Date().toISOString(),
+      };
+      setCommissionLogRows((prev) => ({
+        ...prev,
+        [paymentModalJobId]: nextRow,
+      }));
+      await persistCommissionLog(paymentModalJobId, nextRow);
+      setPaymentModalDirty(false);
+      toast.success('Commission payments saved');
+    } catch (error) {
+      console.error('Failed to save commission log:', error);
+      toast.error('Failed to save commission log');
+    } finally {
+      setPaymentModalSaving(false);
+    }
   };
 
   const commissionTableRows = useMemo((): CommissionTableRow[] => {
-    return commissionSourceJobs
-      .map((row) => {
-        const local = migrateLocalRow(commissionLogRows[String(row.jobId)] || {});
-        const rateOverridden = hasRateOverride(local);
-        const rateRaw = rateOverridden ? local.commissionRate : defaultCommissionRate;
-        const commissionRate = Number(rateRaw);
-        const safeRate = Number.isFinite(commissionRate) && commissionRate >= 0 ? commissionRate : 0;
-        const jobTotal = roundMoney(row.jobTotal);
-        const commissionDue = roundMoney(jobTotal * (safeRate / 100));
-
-        const splits = getCommissionPaymentSplits(
-          {
-            paymentSchedule: row.paymentSchedule,
-            contract: row.contract,
-            finalPayment: row.finalPayment,
-            valueContracted: jobTotal,
-            valueEstimated: jobTotal,
-          },
-          jobTotal,
-          commissionDue,
-        );
-
-        const savedPayments = local.payments || [];
-        const builtPayments: CommissionPaymentDisplay[] = splits.map((split, idx) => {
-          const saved = savedPayments[idx] || {};
-          const status = split.status || 'pending';
-          const potentialAmount = split.amount;
-          const autoDate = status === 'paid' ? toDateInputValue(split.paidAt) : '';
-
-          let amount = 0;
-          let displayAmount: string | number = '';
-          const amountManual = Boolean(saved.amountManual);
-
-          if (amountManual) {
-            displayAmount = saved.amount ?? '';
-            const rawAmount = saved.amount;
-            amount =
-              rawAmount === '' || rawAmount === undefined || rawAmount === null
-                ? 0
-                : roundMoney(Number(rawAmount) || 0);
-          } else if (status === 'paid') {
-            amount = potentialAmount;
-            displayAmount = potentialAmount > 0 ? formatMoneyInput(potentialAmount) : '';
-          }
-
-          const customerPaid = status === 'paid';
-          const salesmanPaid = safeRate <= 0 ? true : Boolean(saved.salesmanPaid);
-
-          return {
-            scheduleIndex: idx,
-            label: split.label,
-            scheduledAmount: split.scheduledAmount,
-            potentialAmount,
-            amount,
-            displayAmount,
-            check: String(saved.check || ''),
-            date: String(saved.date || autoDate),
-            status,
-            amountManual,
-            customerPaid,
-            salesmanPaid,
-          };
-        });
-
-        // Keep tiers in job schedule order (or saved paymentOrder). Do not push salesman-paid tiers to the end.
-        const payments = orderPaymentsForDisplay(builtPayments, local.paymentOrder, {
-          preserveOrder: true,
-        });
-
-        const builtAdjustments: CommissionAdjustmentDisplay[] = (local.adjustments || []).map(
-          (saved) => {
-            const rawAmount = saved.amount;
-            const amount =
-              rawAmount === '' || rawAmount === undefined || rawAmount === null
-                ? 0
-                : roundMoney(Number(rawAmount) || 0);
-            const kind = saved.kind === 'deduction' ? 'deduction' : 'payment';
-
-            return {
-              id: saved.id,
-              kind,
-              label: String(saved.label || (kind === 'deduction' ? 'Deduction' : 'Adjustment')).trim() ||
-                (kind === 'deduction' ? 'Deduction' : 'Adjustment'),
-              note: String(saved.note || ''),
-              // Payment adjustments keep their sign so a negative entry works as a
-              // payback (the field help text documents this); deductions always reduce.
-              amount: kind === 'deduction' ? Math.abs(amount) : amount,
-              displayAmount: saved.amount ?? '',
-              check: String(saved.check || ''),
-              date: String(saved.date || ''),
-              salesmanPaid: kind === 'deduction' ? false : safeRate <= 0 ? true : Boolean(saved.salesmanPaid),
-            };
-          },
-        );
-
-        const schedulePaidTotal = roundMoney(
-          payments.reduce(
-            (sum, payment) => sum + (payment.salesmanPaid ? payment.amount : 0),
-            0,
-          ),
-        );
-        const adjustmentPaidTotal = roundMoney(
-          builtAdjustments.reduce(
-            (sum, adjustment) =>
-              sum + (adjustment.kind === 'payment' && adjustment.salesmanPaid ? adjustment.amount : 0),
-            0,
-          ),
-        );
-        const paidToSalesman = roundMoney(schedulePaidTotal + adjustmentPaidTotal);
-        const deductionTotal = roundMoney(
-          builtAdjustments.reduce(
-            (sum, adjustment) => sum + (adjustment.kind === 'deduction' ? adjustment.amount : 0),
-            0,
-          ),
-        );
-        const balance = roundMoney(commissionDue - paidToSalesman - deductionTotal);
-        const hasManualPayments = payments.some((payment) => payment.amountManual);
-        const isRowSettled =
-          safeRate <= 0 || (jobTotal > 0 && balance >= -0.01 && balance <= 0.01);
-
-        return {
-          ...row,
-          commissionRate: safeRate,
-          rateOverridden,
-          commissionDue,
-          payments,
-          adjustments: builtAdjustments,
-          paymentOrder:
-            Array.isArray(local.paymentOrder) && local.paymentOrder.length > 0
-              ? local.paymentOrder
-              : undefined,
-          hasManualPayments,
-          paidToSalesman,
-          deductionTotal,
-          balance,
-          isRowSettled,
-        };
-      });
+    return commissionSourceJobs.map((row) =>
+      buildCommissionTableRow(row, commissionLogRows[String(row.jobId)] || {}, defaultCommissionRate),
+    );
   }, [commissionSourceJobs, commissionLogRows, defaultCommissionRate]);
 
   const overviewTableRows = useMemo(
@@ -3347,18 +3344,25 @@ function CommissionLogsPage() {
     [filteredCheckGroups],
   );
 
-  const paymentModalRow = useMemo(
-    () => commissionTableRows.find((row) => row.jobId === paymentModalJobId) ?? null,
-    [commissionTableRows, paymentModalJobId],
-  );
+  const paymentModalRow = useMemo(() => {
+    if (!paymentModalJobId || !paymentModalDraft) return null;
+    const source = commissionSourceJobs.find((row) => row.jobId === paymentModalJobId);
+    if (!source) return null;
+    return buildCommissionTableRow(source, paymentModalDraft, defaultCommissionRate);
+  }, [paymentModalJobId, paymentModalDraft, commissionSourceJobs, defaultCommissionRate]);
 
-  const handleUpdateRate = (jobId: string, value: string) => {
-    if (value === '') {
-      clearRateOverride(jobId);
-    } else {
-      updateCommissionRow(jobId, { commissionRate: value });
+  useEffect(() => {
+    if (!paymentModalJobId) {
+      setPaymentModalDraft(null);
+      setPaymentModalDirty(false);
+      setPaymentModalSaving(false);
+      return;
     }
-  };
+    const current = commissionLogRows[paymentModalJobId] || {};
+    setPaymentModalDraft(cloneCommissionLogRow(current));
+    setPaymentModalDirty(false);
+    setPaymentModalSaving(false);
+  }, [paymentModalJobId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -3765,41 +3769,45 @@ function CommissionLogsPage() {
       <CommissionPaymentModal
         row={paymentModalRow}
         open={Boolean(paymentModalJobId && paymentModalRow)}
-        onClose={() => setPaymentModalJobId(null)}
-        onClearRateOverride={clearRateOverride}
-        onUpdateRate={handleUpdateRate}
-        onReorder={reorderPayments}
-        onUpdateAmount={handlePaymentAmountChange}
+        dirty={paymentModalDirty}
+        saving={paymentModalSaving}
+        onClose={handleClosePaymentModal}
+        onCancel={handleClosePaymentModal}
+        onSave={() => void handleSavePaymentModal()}
+        onClearRateOverride={clearModalRateOverride}
+        onUpdateRate={handleModalUpdateRate}
+        onReorder={reorderModalPayments}
+        onUpdateAmount={handleModalPaymentAmountChange}
         onUpdateDate={(jobId, scheduleIndex, value) =>
-          updateCommissionPayment(jobId, scheduleIndex, { date: value })
+          updateModalCommissionPayment(jobId, scheduleIndex, { date: value })
         }
         onUpdateCheck={(jobId, scheduleIndex, value) =>
-          updateCommissionPayment(jobId, scheduleIndex, { check: value })
+          updateModalCommissionPayment(jobId, scheduleIndex, { check: value })
         }
-        onUpdateSalesmanPaid={handleSalesmanPaidChange}
-        onResetOverrides={resetPaymentOverrides}
-        onAddAdjustment={addCommissionAdjustment}
-        onAddDeduction={addCommissionDeduction}
-        onSettleRemainder={settleCommissionRemainder}
+        onUpdateSalesmanPaid={handleModalSalesmanPaidChange}
+        onResetOverrides={resetModalPaymentOverrides}
+        onAddAdjustment={addModalCommissionAdjustment}
+        onAddDeduction={addModalCommissionDeduction}
+        onSettleRemainder={settleModalCommissionRemainder}
         onUpdateAdjustmentLabel={(jobId, adjustmentId, value) =>
-          updateCommissionAdjustment(jobId, adjustmentId, { label: value })
+          updateModalCommissionAdjustment(jobId, adjustmentId, { label: value })
         }
         onUpdateAdjustmentNote={(jobId, adjustmentId, value) =>
-          updateCommissionAdjustment(jobId, adjustmentId, { note: value })
+          updateModalCommissionAdjustment(jobId, adjustmentId, { note: value })
         }
         onUpdateAdjustmentAmount={(jobId, adjustmentId, value) =>
-          updateCommissionAdjustment(jobId, adjustmentId, { amount: value })
+          updateModalCommissionAdjustment(jobId, adjustmentId, { amount: value })
         }
         onUpdateAdjustmentDate={(jobId, adjustmentId, value) =>
-          updateCommissionAdjustment(jobId, adjustmentId, { date: value })
+          updateModalCommissionAdjustment(jobId, adjustmentId, { date: value })
         }
         onUpdateAdjustmentCheck={(jobId, adjustmentId, value) =>
-          updateCommissionAdjustment(jobId, adjustmentId, { check: value })
+          updateModalCommissionAdjustment(jobId, adjustmentId, { check: value })
         }
         onUpdateAdjustmentSalesmanPaid={(jobId, adjustmentId, paid) =>
-          updateCommissionAdjustment(jobId, adjustmentId, { salesmanPaid: paid })
+          updateModalCommissionAdjustment(jobId, adjustmentId, { salesmanPaid: paid })
         }
-        onRemoveAdjustment={removeCommissionAdjustment}
+        onRemoveAdjustment={removeModalCommissionAdjustment}
         onOpenJobDetail={setJobDetailModalJobId}
       />
 
