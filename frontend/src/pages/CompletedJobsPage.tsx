@@ -40,6 +40,7 @@ import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
+import { getTenantRoom } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -47,7 +48,7 @@ function CompletedJobsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const theme = useTheme();
   const { user, tenantIdForBranding } = useAuth();
-  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
   const { hideSensitive } = useShopViewSensitive(user?.role);
   const [completedJobs, setCompletedJobs] = useState([]);
   const [loading, setLoading] = useState(true);

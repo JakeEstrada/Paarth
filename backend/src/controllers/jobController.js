@@ -3,10 +3,10 @@ const Job = require('../models/Job');
 const Activity = require('../models/Activity');
 const Estimate = require('../models/Estimate');
 const {
-  publishProjectCreated,
-  publishProjectUpdated,
-  publishProjectDeleted,
-} = require('../services/eventBus');
+  emitJobCreated,
+  emitJobUpdated,
+  emitJobDeleted,
+} = require('../services/jobRealtime');
 const {
   roundMoney,
   getContractBase,
@@ -191,10 +191,7 @@ async function createJob(req, res) {
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
 
-    const io = req.app.get('io');
-    publishProjectCreated(io, job.toObject ? job.toObject() : job, {
-      sourceSocketId: req.headers['x-socket-id'] || null,
-    });
+    await emitJobCreated(req, job);
     
     res.status(201).json(job);
   } catch (error) {
@@ -577,10 +574,7 @@ async function updateJob(req, res) {
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
 
-    const io = req.app.get('io');
-    publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
-      sourceSocketId: req.headers['x-socket-id'] || null,
-    });
+    await emitJobUpdated(req, job);
 
     const responseJob = job.toObject();
     responseJob.paymentScheduleResolved = resolvePaymentSchedule(responseJob);
@@ -737,10 +731,7 @@ async function moveJobStage(req, res) {
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
 
-    const io = req.app.get('io');
-    publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
-      sourceSocketId: req.headers['x-socket-id'] || null,
-    });
+    await emitJobUpdated(req, job);
     
     res.json(job);
   } catch (error) {
@@ -768,10 +759,7 @@ async function deleteJob(req, res) {
     
     await Job.findByIdAndDelete(req.params.id);
 
-    const io = req.app.get('io');
-    publishProjectDeleted(io, { _id: job._id, tenantId: job.tenantId }, {
-      sourceSocketId: req.headers['x-socket-id'] || null,
-    });
+    await emitJobDeleted(req, job);
 
     res.json({ message: 'Job deleted successfully' });
   } catch (error) {
@@ -1008,6 +996,8 @@ async function moveToDeadEstimates(req, res) {
     
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
+
+    await emitJobUpdated(req, job);
     
     res.json(job);
   } catch (error) {
@@ -1104,6 +1094,7 @@ async function autoMoveDeadEstimates(req, res) {
         }
         
         movedToSent.push(job._id);
+        await emitJobUpdated(req, job);
       } catch (jobError) {
         console.error(`Error moving job ${job._id} to ESTIMATE_SENT:`, jobError.message);
         errors.push({ jobId: job._id, error: jobError.message });
@@ -1168,6 +1159,7 @@ async function autoMoveDeadEstimates(req, res) {
         }
         
         movedToArchive.push(job._id);
+        await emitJobUpdated(req, job);
       } catch (jobError) {
         console.error(`Error archiving job ${job._id}:`, jobError.message);
         errors.push({ jobId: job._id, error: jobError.message });
@@ -1361,10 +1353,7 @@ async function archiveJob(req, res) {
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
 
-    const io = req.app.get('io');
-    publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
-      sourceSocketId: req.headers['x-socket-id'] || null,
-    });
+    await emitJobUpdated(req, job);
 
     res.json(job);
   } catch (error) {
@@ -1454,10 +1443,7 @@ async function unarchiveJob(req, res) {
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
 
-    const io = req.app.get('io');
-    publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
-      sourceSocketId: req.headers['x-socket-id'] || null,
-    });
+    await emitJobUpdated(req, job);
     
     res.json(job);
   } catch (error) {
@@ -1529,6 +1515,7 @@ async function archiveCompletedJobs(req, res) {
 
       await job.save();
       archivedIds.push(job._id);
+      await emitJobUpdated(req, job);
 
       // Log activity
       if (createdBy) {
@@ -1637,6 +1624,8 @@ async function reopenFromCompleted(req, res) {
 
     await job.populate('customerId', 'name primaryPhone primaryEmail');
     await job.populate('assignedTo', 'name email');
+
+    await emitJobUpdated(req, job);
 
     res.json(job);
   } catch (error) {

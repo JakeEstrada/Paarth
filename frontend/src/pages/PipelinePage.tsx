@@ -45,7 +45,8 @@ import { fetchPipelineLayoutsList, createPipelineLayout } from '../utils/pipelin
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
-import { getConnectedSocketId } from '../services/socket';
+import { getConnectedSocketId, getTenantRoom } from '../services/socket';
+import { applyJobRealtimeToList, isActivePipelineJob } from '../utils/realtimeJobs';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -237,31 +238,12 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     }
   }, []);
 
-  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
   const handleRealtimeProjectUpdate = useCallback((payload) => {
     const sourceSocketId = payload?.sourceSocketId || null;
     const ownSocketId = getConnectedSocketId();
     if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
-    const incoming = payload?.patch || payload?.project;
-    const entityId = String(payload?.entityId || incoming?._id || '').trim();
-    if (!incoming || !entityId) return;
-    console.time('socket job patch');
-    setJobs((prev) => {
-      const idx = prev.findIndex((j) => String(j?._id) === entityId);
-      if (incoming.deleted) {
-        if (idx === -1) return prev;
-        const next = [...prev];
-        next.splice(idx, 1);
-        return next;
-      }
-      if (idx === -1) {
-        return [incoming, ...prev];
-      }
-      const next = [...prev];
-      next[idx] = { ...next[idx], ...incoming };
-      return next;
-    });
-    console.timeEnd('socket job patch');
+    setJobs((prev) => applyJobRealtimeToList(prev, payload, isActivePipelineJob));
   }, []);
   const handleRealtimeTaskUpdate = useCallback((payload) => {
     const sourceSocketId = payload?.sourceSocketId || null;

@@ -32,6 +32,7 @@ import api from '../utils/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
+import { getTenantRoom } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -63,7 +64,7 @@ const getWeekRange = (date) => {
 function CompletedTasksPage() {
   const theme = useTheme();
   const { tenantIdForBranding } = useAuth();
-  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
   const [allTasks, setAllTasks] = useState([]);
   const [allAppointments, setAllAppointments] = useState([]);
   const [allActivities, setAllActivities] = useState([]);

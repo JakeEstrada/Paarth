@@ -1,6 +1,11 @@
 import { io, type Socket } from 'socket.io-client';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+function socketServerUrl() {
+  return String(import.meta.env.VITE_API_URL || 'http://localhost:4000')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/api$/i, '');
+}
 
 let socketInstance: Socket | null = null;
 let currentToken = '';
@@ -15,16 +20,29 @@ function getAuthToken() {
   return localStorage.getItem('accessToken') || '';
 }
 
+export function getTenantRoom(raw: unknown): string | null {
+  const value =
+    typeof raw === 'object' && raw !== null && '_id' in raw
+      ? String((raw as { _id: unknown })._id)
+      : String(raw || '').trim();
+  if (!/^[a-fA-F0-9]{24}$/.test(value)) return null;
+  return `tenant:${value}`;
+}
+
 export function getSocket() {
   if (socketInstance) return socketInstance;
 
-  socketInstance = io(API_URL, {
+  socketInstance = io(socketServerUrl(), {
     autoConnect: false,
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 10000,
+  });
+
+  socketInstance.on('connect', () => {
+    resubscribeRooms();
   });
 
   return socketInstance;

@@ -15,6 +15,7 @@ export const TENANT_DATA_EVENTS = [
   'task.created',
   'task.updated',
   'appointment.changed',
+  'customer.changed',
 ];
 
 export function useSocketSubscription(

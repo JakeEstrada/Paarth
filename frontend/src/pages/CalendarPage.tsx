@@ -58,7 +58,8 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme as useAppTheme } from '../context/ThemeContext';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
-import { getConnectedSocketId } from '../services/socket';
+import { getConnectedSocketId, getTenantRoom } from '../services/socket';
+import { applyJobRealtimeToList, isActiveCalendarJob } from '../utils/realtimeJobs';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import EmployeeSmsRecipientField, {
@@ -1765,35 +1766,17 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     await fetchJobs();
   };
 
-  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
   const handleRealtimeProjectUpdate = useCallback((payload) => {
     const sourceSocketId = payload?.sourceSocketId || null;
     const ownSocketId = getConnectedSocketId();
     if (sourceSocketId && ownSocketId && sourceSocketId === ownSocketId) return;
-    const incoming = payload?.patch || payload?.project;
-    const entityId = String(payload?.entityId || incoming?._id || '').trim();
-    if (!incoming || !entityId) return;
-    console.time('socket job patch');
-    const applyPatch = (list) => {
-      const idx = list.findIndex((j) => String(j?._id) === entityId);
-      if (incoming.deleted) {
-        if (idx === -1) return list;
-        const next = [...list];
-        next.splice(idx, 1);
-        return next;
-      }
-      if (idx === -1) return [incoming, ...list];
-      const next = [...list];
-      next[idx] = { ...next[idx], ...incoming };
-      return next;
-    };
-    const merged = applyPatch(allJobsRef.current);
+    const merged = applyJobRealtimeToList(allJobsRef.current, payload, isActiveCalendarJob);
     const deduped = Array.from(new Map(merged.map((j) => [String(j?._id), j])).values()).filter(Boolean);
     setAllJobs(deduped);
     const { bench, scheduled } = splitCalendarJobs(deduped);
     setBenchJobs(bench);
     setScheduledJobs(scheduled);
-    console.timeEnd('socket job patch');
   }, []);
   const handleRealtimeTaskUpdate = useCallback((payload) => {
     const sourceSocketId = payload?.sourceSocketId || null;

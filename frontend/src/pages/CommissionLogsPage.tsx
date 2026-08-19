@@ -67,6 +67,7 @@ import { getCommissionPaymentSplits, getJobTotalWithChangeOrders, formatMoney, f
 import { isCommissionEligibleJob } from '../utils/commissionJobEligibility';
 import { useAuth } from '../context/AuthContext';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
+import { getTenantRoom } from '../services/socket';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -3027,7 +3028,7 @@ function CommissionPaymentModal({
 
 function CommissionLogsPage() {
   const { tenantIdForBranding } = useAuth();
-  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
   const [loadingCommissionLogs, setLoadingCommissionLogs] = useState(false);
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
   const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());

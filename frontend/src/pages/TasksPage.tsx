@@ -40,7 +40,7 @@ import ProjectModal from '../components/todos/ProjectModal';
 import { buildJobsById, formatTaskDisplayLabel, getTaskCardStyle } from '../utils/taskDisplay';
 import { useAuth } from '../context/AuthContext';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
-import { getConnectedSocketId } from '../services/socket';
+import { getConnectedSocketId, getTenantRoom } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -66,7 +66,7 @@ function TasksPage() {
     fetchTodos();
   }, [refreshTrigger]);
 
-  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
   const handleRealtimeTaskUpdate = useCallback((payload) => {
     const sourceSocketId = payload?.sourceSocketId || null;
     const ownSocketId = getConnectedSocketId();

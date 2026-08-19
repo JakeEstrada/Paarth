@@ -67,6 +67,7 @@ import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import { JOB_SOURCE_OPTIONS, formatJobSource } from '../utils/jobSources';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
+import { getTenantRoom } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function CustomersPage({ viewMode = false, externalViewControls = false }) {
@@ -74,7 +75,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, tenantIdForBranding } = useAuth();
-  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
   const { isShopViewRole, hideSensitive: shopHideSensitive } = useShopViewSensitive(user?.role);
   const financialPin = useFinancialPinLockContext();
   const hideSensitive = shopHideSensitive || financialPin.hideFinancials;

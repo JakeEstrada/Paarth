@@ -1,10 +1,7 @@
 const DepositAllocation = require('../models/DepositAllocation');
 const Job = require('../models/Job');
 const { buildDepositMatchSuggestions } = require('../services/depositMatching');
-const {
-  linkDepositToPayment,
-  runDepositAutoConnect,
-} = require('../services/depositLinkService');
+const { emitJobUpdated } = require('../services/jobRealtime');
 
 function allocationResponse(doc, job) {
   const row = doc.toObject ? doc.toObject() : doc;
@@ -74,6 +71,10 @@ async function createDepositAllocation(req, res) {
       applyMarkPaid: req.body?.applyMarkPaid !== false,
     });
 
+    if (result.job) {
+      await emitJobUpdated(req, result.job);
+    }
+
     return res.status(201).json({
       allocation: allocationResponse(result.allocation, result.job),
     });
@@ -101,6 +102,17 @@ async function autoConnectDepositAllocations(req, res) {
       days,
       dryRun,
     });
+
+    if (!dryRun && Array.isArray(result.linked)) {
+      const seen = new Set();
+      for (const row of result.linked) {
+        const jobId = String(row.jobId || '');
+        if (!jobId || seen.has(jobId)) continue;
+        seen.add(jobId);
+        const job = await Job.findById(jobId);
+        if (job) await emitJobUpdated(req, job);
+      }
+    }
 
     return res.json(result);
   } catch (error) {

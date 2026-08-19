@@ -70,6 +70,7 @@ import { formatPhoneForDisplay, telHref } from '../../utils/phoneFormat';
 import { useFinancialPinLockContext } from '../../context/FinancialPinLockContext';
 import { useAuth } from '../../context/AuthContext';
 import { useSocketSubscription } from '../../hooks/useSocketSubscription';
+import { getTenantRoom } from '../../services/socket';
 import {
   getJobFilesCache,
   invalidateJobFilesCache,
@@ -412,7 +413,7 @@ function JobDetailModal({
     [fetchJobDetails],
   );
 
-  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
   const handleRealtimeJobPatch = useCallback(
     (payload) => {
       const incoming = payload?.patch || payload?.project;

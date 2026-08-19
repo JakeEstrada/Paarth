@@ -29,6 +29,7 @@ import api from '../utils/axios';
 import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { useSocketConnectionStatus, useSocketSubscription } from '../hooks/useSocketSubscription';
+import { getTenantRoom } from '../services/socket';
 
 interface RfidTagRow {
   _id: string;
@@ -56,15 +57,6 @@ interface RfidScanRow {
 
 const SCAN_LIST_LIMIT = 200;
 
-function normalizeTenantRoomId(raw: unknown): string | null {
-  const value =
-    typeof raw === 'object' && raw !== null && '_id' in raw
-      ? String((raw as { _id: unknown })._id)
-      : String(raw || '').trim();
-  if (!/^[a-fA-F0-9]{24}$/.test(value)) return null;
-  return value;
-}
-
 function RfidPage() {
   const { tenantIdForBranding } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -80,8 +72,7 @@ function RfidPage() {
   const [recentScanIds, setRecentScanIds] = useState<Set<string>>(() => new Set());
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  const tenantId = normalizeTenantRoomId(tenantIdForBranding);
-  const tenantRoom = tenantId ? `tenant:${tenantId}` : null;
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
   const socketConnected = useSocketConnectionStatus();
 
   const load = useCallback(async () => {

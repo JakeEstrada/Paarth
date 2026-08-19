@@ -194,6 +194,20 @@ function publishRfidTimesheetUpdated(io, timesheet, opts = {}) {
   }
 }
 
+function publishCustomerChanged(io, customer, opts = {}) {
+  const tenantId = customer?.tenantId ? String(customer.tenantId) : null;
+  if (!tenantId) return;
+  const data = {
+    type: 'customer.changed',
+    tenantId,
+    entityId: customer?._id ? String(customer._id) : null,
+    action: opts.action || 'updated',
+    customer: customer && typeof customer === 'object' ? customer : null,
+    sourceSocketId: opts.sourceSocketId || null,
+  };
+  safeEmit(io, `tenant:${tenantId}`, 'customer.changed', data);
+}
+
 function publishRfidEmployeeProfileUpdated(io, profile, opts = {}) {
   if (!profile?.employeeKey) return;
   const tenantId = profile.tenantId ? String(profile.tenantId) : null;
@@ -214,6 +228,7 @@ module.exports = {
   publishProjectUpdated,
   publishProjectDeleted,
   publishAppointmentChanged,
+  publishCustomerChanged,
   publishTaskCreated,
   publishTaskUpdated,
   publishRfidScanCreated,

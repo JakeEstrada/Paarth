@@ -42,10 +42,16 @@ function canJoinRoom(socket, room) {
     return String(socket.data.userId) === String(requestedUserId);
   }
 
+  if (value.startsWith('tenant:')) {
+    const requestedTenantId = value.slice('tenant:'.length);
+    if (!socket.data?.tenantId) return false;
+    return String(socket.data.tenantId) === String(requestedTenantId);
+  }
+
   return true;
 }
 
-function socketAuthMiddleware(socket, next) {
+async function socketAuthMiddleware(socket, next) {
   try {
     const token =
       socket.handshake?.auth?.token ||
@@ -59,6 +65,21 @@ function socketAuthMiddleware(socket, next) {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     socket.data.userId = payload?.userId || payload?.id || null;
     socket.data.tenantId = payload?.tenantId || null;
+
+    if (socket.data.userId && !socket.data.tenantId) {
+      try {
+        const User = require('../models/User');
+        const user = await User.findById(socket.data.userId)
+          .select('tenantId isActive')
+          .setOptions({ bypassTenant: true })
+          .lean();
+        if (user?.isActive !== false && user?.tenantId) {
+          socket.data.tenantId = String(user.tenantId);
+        }
+      } catch (lookupError) {
+        console.warn('[socket] tenant lookup failed:', lookupError?.message || lookupError);
+      }
+    }
     return next();
   } catch (error) {
     // Keep socket usable for non-authenticated, non-sensitive subscriptions.

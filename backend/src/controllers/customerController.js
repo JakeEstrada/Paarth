@@ -3,9 +3,11 @@ const Activity = require('../models/Activity');
 const Job = require('../models/Job');
 const fs = require('fs');
 const path = require('path');
+const { emitJobCreated, sourceSocketIdFromReq } = require('../services/jobRealtime');
+const { publishCustomerChanged } = require('../services/eventBus');
 
 /** Default pipeline job so every API-created customer has at least one job. Skip when caller will create the job (e.g. Add Job modal). */
-async function createInitialJobForCustomer(customer, createdBy) {
+async function createInitialJobForCustomer(customer, createdBy, req) {
   const baseTitle = (customer.name || 'Customer').trim() || 'New customer';
   const title = `${baseTitle} — Job`.slice(0, 200);
   const job = new Job({
@@ -27,6 +29,11 @@ async function createInitialJobForCustomer(customer, createdBy) {
     });
   } catch (e) {
     console.error('Failed to log initial job activity:', e.message);
+  }
+  try {
+    await emitJobCreated(req, job);
+  } catch (e) {
+    console.error('Failed to emit initial job created:', e.message);
   }
   return job;
 }
@@ -118,7 +125,7 @@ async function createCustomer(req, res) {
     // Every customer should have at least one job (pipeline). Skip when the client creates a job in the same flow (e.g. Add Job modal).
     if (!skipInitialJob) {
       try {
-        await createInitialJobForCustomer(customer, createdBy);
+        await createInitialJobForCustomer(customer, createdBy, req);
       } catch (jobErr) {
         console.error('Failed to create initial job for customer:', jobErr.message);
         // Customer already exists; surface a clear error so ops can fix
@@ -129,6 +136,10 @@ async function createCustomer(req, res) {
       }
     }
     
+    publishCustomerChanged(req.app.get('io'), customer.toObject ? customer.toObject() : customer, {
+      action: 'created',
+      sourceSocketId: sourceSocketIdFromReq(req),
+    });
     res.status(201).json(customer);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -168,6 +179,10 @@ async function updateCustomer(req, res) {
       });
     }
     
+    publishCustomerChanged(req.app.get('io'), customer.toObject ? customer.toObject() : customer, {
+      action: 'updated',
+      sourceSocketId: sourceSocketIdFromReq(req),
+    });
     res.json(customer);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -183,6 +198,10 @@ async function deleteCustomer(req, res) {
       return res.status(404).json({ error: 'Customer not found' });
     }
     
+    publishCustomerChanged(req.app.get('io'), customer.toObject ? customer.toObject() : customer, {
+      action: 'deleted',
+      sourceSocketId: sourceSocketIdFromReq(req),
+    });
     res.json({ message: 'Customer deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });

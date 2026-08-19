@@ -43,6 +43,7 @@ import toast from 'react-hot-toast';
 import api from '../utils/axios';
 import { useAuth } from '../context/AuthContext';
 import { useSocketConnectionStatus, useSocketSubscription } from '../hooks/useSocketSubscription';
+import { getTenantRoom } from '../services/socket';
 import {
   buildTimesheetRowsFromScans,
   defaultShiftProfile,
@@ -367,15 +368,6 @@ function calculateWeightedHours(workHours: DayRow[], additionalHours: Additional
   return { regular: totalRegular, overtime: totalOvertime, weighted: totalWeighted, manualHours };
 }
 
-function normalizeTenantRoomId(raw: unknown): string | null {
-  const value =
-    typeof raw === 'object' && raw !== null && '_id' in raw
-      ? String((raw as { _id: unknown })._id)
-      : String(raw || '').trim();
-  if (!/^[a-fA-F0-9]{24}$/.test(value)) return null;
-  return value;
-}
-
 function RfidTimesheetPage() {
   const theme = useTheme();
   const { tenantIdForBranding } = useAuth();
@@ -409,8 +401,7 @@ function RfidTimesheetPage() {
   scansRef.current = scans;
   isEditModeRef.current = isEditMode;
 
-  const tenantId = normalizeTenantRoomId(tenantIdForBranding);
-  const tenantRoom = tenantId ? `tenant:${tenantId}` : null;
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
   const socketConnected = useSocketConnectionStatus();
 
   const isCurrentWeek = isCurrentPayPeriod(payPeriod);

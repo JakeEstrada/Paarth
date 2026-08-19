@@ -1,7 +1,7 @@
 const Appointment = require('../models/Appointment');
 const Activity = require('../models/Activity');
 const ScheduledSms = require('../models/ScheduledSms');
-const { publishProjectUpdated, publishAppointmentChanged } = require('../services/eventBus');
+const { emitJobUpdated } = require('../services/jobRealtime');
 const { getTenantContext } = require('../middleware/tenantContext');
 
 /**
@@ -251,11 +251,7 @@ async function createAppointment(req, res) {
         });
         
         await job.save();
-
-        const io = req.app.get('io');
-        publishProjectUpdated(io, job.toObject ? job.toObject() : job, {
-          sourceSocketId: req.headers['x-socket-id'] || null,
-        });
+        await emitJobUpdated(req, job);
       }
     }
     

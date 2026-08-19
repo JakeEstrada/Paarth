@@ -59,7 +59,8 @@ import { sendUnsentPaymentNotifications, sendManualPaymentNotification } from '.
 import { APP_LOGO_LIGHT } from '../utils/tenantBranding';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { renderSummaryBlocks } from '../utils/summaryMarkdown';
-import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
+import { getTenantRoom } from '../services/socket';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function parsePaymentReceivedLabel(activity) {
@@ -551,15 +552,10 @@ function DashboardPage() {
     }
   };
 
-  const tenantRoom = tenantIdForBranding ? `tenant:${tenantIdForBranding}` : null;
-  const handleRealtimeDashboardUpdate = useCallback(() => {
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
+  useTenantRealtimeRefresh(tenantRoom, () => {
     fetchDashboardData();
-  }, []);
-  useSocketSubscription(tenantRoom, 'task.created', handleRealtimeDashboardUpdate);
-  useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeDashboardUpdate);
-  useSocketSubscription(tenantRoom, 'project.updated', handleRealtimeDashboardUpdate);
-  useSocketSubscription(tenantRoom, 'project.created', handleRealtimeDashboardUpdate);
-  useSocketSubscription(tenantRoom, 'appointment.changed', handleRealtimeDashboardUpdate);
+  }, { ignoreOwnWrites: false, debounceMs: 400 });
 
   const handleManualActivitySubmit = async (event) => {
     event.preventDefault();
