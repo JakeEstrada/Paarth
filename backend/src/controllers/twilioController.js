@@ -241,6 +241,88 @@ async function syncDocDeliveryFromTwilio(doc, Model) {
   return { ...doc, ...patch };
 }
 
+const PENDING_DELIVERY_STATUSES = new Set(['queued', 'sending', 'accepted']);
+const STALE_PENDING_MS = 20 * 1000;
+const ABANDONED_PENDING_MS = 10 * 60 * 1000;
+const PENDING_DISPLAY_MS = 2 * 60 * 1000;
+const MAX_STATUS_SYNC_PER_REQUEST = 40;
+
+function isPendingDeliveryStatus(status) {
+  const normalized = normalizeDeliveryStatus(status);
+  return !normalized || PENDING_DELIVERY_STATUSES.has(normalized);
+}
+
+function outboundListStatus(doc) {
+  const delivery = normalizeDeliveryStatus(doc.deliveryStatus);
+  if (delivery === 'delivered' || delivery === 'read') return 'delivered';
+  if (delivery === 'failed' || delivery === 'undelivered') return 'failed';
+  if (delivery === 'sent') return 'sent';
+  if (isPendingDeliveryStatus(delivery)) {
+    const age = Date.now() - new Date(doc.createdAt || doc.sentAt || 0).getTime();
+    if (Number.isFinite(age) && age < PENDING_DISPLAY_MS) return delivery || 'queued';
+    return 'sent';
+  }
+  return delivery || 'sent';
+}
+
+function isStalePendingDelivery(doc, now = Date.now()) {
+  if (!doc?.twilioSid) return false;
+  if (!isPendingDeliveryStatus(doc.deliveryStatus)) return false;
+  const t = new Date(doc.statusUpdatedAt || doc.createdAt || 0).getTime();
+  return Number.isFinite(t) && now - t >= STALE_PENDING_MS;
+}
+
+async function runWithConcurrency(items, concurrency, fn) {
+  const executing = new Set();
+  for (const item of items) {
+    const p = Promise.resolve()
+      .then(() => fn(item))
+      .finally(() => executing.delete(p));
+    executing.add(p);
+    if (executing.size >= concurrency) {
+      await Promise.race(executing);
+    }
+  }
+  await Promise.all(executing);
+}
+
+/**
+ * Twilio starts messages as "queued". If status callbacks never arrived, the Messages
+ * page stays stuck on Queued. Pull live status (or clear abandoned queued rows to sent).
+ */
+async function refreshStaleDeliveryStatuses(docs, Model, { limit = MAX_STATUS_SYNC_PER_REQUEST } = {}) {
+  if (!Array.isArray(docs) || docs.length === 0) return docs;
+  const stale = docs.filter((doc) => isStalePendingDelivery(doc)).slice(0, limit);
+  if (stale.length === 0) return docs;
+
+  const byId = new Map(docs.map((doc) => [String(doc._id), doc]));
+  await runWithConcurrency(stale, 6, async (doc) => {
+    try {
+      const remote = await fetchTwilioMessageBySid(doc.twilioSid);
+      let patch = null;
+      if (remote?.status) {
+        patch = deliveryPatchFromTwilioStatus(remote.status, remote.error_code, remote.error_message);
+      } else {
+        const age = Date.now() - new Date(doc.createdAt || 0).getTime();
+        if (age >= ABANDONED_PENDING_MS) {
+          patch = { deliveryStatus: 'sent', statusUpdatedAt: new Date() };
+        }
+      }
+      if (!patch) return;
+      await Model.findByIdAndUpdate(doc._id, { $set: patch });
+      byId.set(String(doc._id), { ...doc, ...patch });
+    } catch (error) {
+      console.warn(
+        '[SMS status refresh] failed',
+        String(doc._id),
+        error?.message || error,
+      );
+    }
+  });
+
+  return docs.map((doc) => byId.get(String(doc._id)) || doc);
+}
+
 function normalizeMediaUrls(input) {
   if (!input) return [];
   const list = Array.isArray(input) ? input : [input];
@@ -646,7 +728,7 @@ function mapScheduledRow(doc) {
       ? 'scheduled'
       : doc.status === 'failed'
         ? 'failed'
-        : doc.deliveryStatus || doc.status || 'sent';
+        : outboundListStatus({ ...doc, createdAt: doc.sentAt || doc.createdAt });
   return {
     id: String(doc._id),
     recordType: 'scheduled',
@@ -665,13 +747,7 @@ function mapScheduledRow(doc) {
 }
 
 function mapOutboundRow(doc) {
-  const delivery = normalizeDeliveryStatus(doc.deliveryStatus);
-  const listStatus =
-    delivery === 'delivered'
-      ? 'delivered'
-      : delivery === 'failed' || delivery === 'undelivered'
-        ? 'failed'
-        : delivery || 'sent';
+  const listStatus = outboundListStatus(doc);
   return {
     id: String(doc._id),
     recordType: 'message',
@@ -835,8 +911,8 @@ async function markSmsRead(req, res) {
 
 async function listSms(req, res) {
   try {
-    const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 100, 1), 200);
-    const fetchCap = Math.min(Math.max(limit * 3, 150), 500);
+    const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 500, 1), 2000);
+    const fetchCap = Math.min(Math.max(limit * 2, limit), 4000);
     const userId = req.user?._id;
     const tenantId = req.user?.tenantId;
 
@@ -875,7 +951,12 @@ async function listSms(req, res) {
       }
     }
 
-    const sent = mergeSentRows(outboundCombined, sentScheduledRows, limit);
+    const [refreshedOutbound, refreshedScheduledSent] = await Promise.all([
+      refreshStaleDeliveryStatuses(outboundCombined, SmsMessage),
+      refreshStaleDeliveryStatuses(sentScheduledRows, ScheduledSms),
+    ]);
+
+    const sent = mergeSentRows(refreshedOutbound, refreshedScheduledSent, limit);
 
     return res.status(200).json({
       scheduled: scheduledRows.map(mapScheduledRow),
@@ -927,6 +1008,22 @@ function startSmsScheduler() {
           console.error('[SMS scheduler] failed', sms._id?.toString(), sms.lastError);
         }
       }
+
+      const staleOutbound = await SmsMessage.find({
+        direction: 'outbound',
+        twilioSid: { $exists: true, $ne: '' },
+        $or: [
+          { deliveryStatus: { $in: [...PENDING_DELIVERY_STATUSES] } },
+          { deliveryStatus: { $exists: false } },
+          { deliveryStatus: null },
+          { deliveryStatus: '' },
+        ],
+        createdAt: { $lte: new Date(Date.now() - STALE_PENDING_MS) },
+      })
+        .sort({ createdAt: -1 })
+        .limit(25)
+        .lean();
+      await refreshStaleDeliveryStatuses(staleOutbound, SmsMessage, { limit: 25 });
     } catch (error) {
       console.error('[SMS scheduler] tick error:', error?.message || error);
     }

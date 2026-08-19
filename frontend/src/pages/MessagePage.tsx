@@ -47,7 +47,8 @@ import {
   type SmsRow,
 } from '../utils/twilioApi';
 
-const EMPTY_LISTS: SmsLists = { scheduled: [], sent: [], received: [] };
+const LIST_PAGE_SIZE = 500;
+const LIST_MAX = 2000;
 
 function toDatetimeLocalValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -310,15 +311,16 @@ function MessagePage() {
   const [scheduling, setScheduling] = useState(false);
   const [tab, setTab] = useState(0);
   const [lists, setLists] = useState<SmsLists>(EMPTY_LISTS);
+  const [listLimit, setListLimit] = useState(LIST_PAGE_SIZE);
   const [loadingLists, setLoadingLists] = useState(true);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<SmsDetail | null>(null);
 
-  const fetchMessages = useCallback(async () => {
+  const fetchMessages = useCallback(async (limit = listLimit) => {
     setLoadingLists(true);
     try {
-      setLists(await fetchSmsLists());
+      setLists(await fetchSmsLists(limit));
     } catch (error) {
       console.error(error);
       let msg = isAxiosError(error)
@@ -334,7 +336,7 @@ function MessagePage() {
     } finally {
       setLoadingLists(false);
     }
-  }, []);
+  }, [listLimit]);
 
   useEffect(() => {
     void fetchMessages();
@@ -495,6 +497,8 @@ function MessagePage() {
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Send or schedule SMS from your Twilio number. Tap a message to open it and view delivery status.
+        Older messages that were stuck on Queued are refreshed from Twilio and shown as Sent unless
+        delivery failed.
       </Typography>
 
       <Card variant="outlined" sx={{ mb: 3 }}>
@@ -577,6 +581,23 @@ function MessagePage() {
         loading={loadingLists}
         onOpenRow={(row) => void handleOpenMessage(row, activeKey)}
       />
+      {activeKey !== 'scheduled' && activeRows.length >= listLimit && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+          {listLimit >= LIST_MAX ? (
+            <Typography variant="body2" color="text.secondary">
+              Showing the {LIST_MAX.toLocaleString()} most recent messages.
+            </Typography>
+          ) : (
+            <Button
+              variant="outlined"
+              disabled={loadingLists}
+              onClick={() => setListLimit((prev) => Math.min(prev + LIST_PAGE_SIZE, LIST_MAX))}
+            >
+              Load more
+            </Button>
+          )}
+        </Box>
+      )}
 
       <MessageDetailDialog
         open={detailOpen}

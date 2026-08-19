@@ -73,8 +73,12 @@ export type SmsLists = {
   received: SmsRow[];
 };
 
-export async function fetchSmsLists(): Promise<SmsLists> {
-  const data = await withTwilioPathFallback<SmsLists>('/messages', (url) => api.get(url));
+export async function fetchSmsLists(limit = 500): Promise<SmsLists> {
+  const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000);
+  const data = await withTwilioPathFallback<SmsLists>(
+    `/messages?limit=${safeLimit}`,
+    (url) => api.get(url)
+  );
   return {
     scheduled: data.scheduled || [],
     sent: data.sent || [],
