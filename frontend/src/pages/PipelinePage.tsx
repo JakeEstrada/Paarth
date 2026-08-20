@@ -439,7 +439,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
                     : 'Pipeline view'
                   : isShopViewRole
                     ? 'Shop View'
-                    : 'Sales Pipeline'}
+                    : 'Operations Pipeline'}
               </Typography>
               <Typography variant="body1" color="text.secondary">
                 {tvMode
