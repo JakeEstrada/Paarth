@@ -361,7 +361,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
 
   const pipelineOptions = useMemo(
     () => [
-      { id: 'default', label: 'Woodworking (default)' },
+      { id: 'default', label: 'Default' },
       ...pipelineLayouts.map((l) => ({
         id: String(l._id),
         label: l.title || 'Untitled pipeline',
