@@ -3275,7 +3275,6 @@ function CommissionLogsPage() {
       }));
       await persistCommissionLog(paymentModalJobId, nextRow);
       setPaymentModalDirty(false);
-      toast.success('Commission payments saved');
     } catch (error) {
       console.error('Failed to save commission log:', error);
       toast.error('Failed to save commission log');

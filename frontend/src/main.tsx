@@ -10,6 +10,9 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import App from './App';
 
+/** Success toasts are silenced app-wide — keep errors/warnings. */
+toast.success = ((..._args: unknown[]) => '') as typeof toast.success;
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
