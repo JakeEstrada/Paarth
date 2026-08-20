@@ -5,7 +5,7 @@ import { ThemeProvider as MUIThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster, ToastBar } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import App from './App';
@@ -27,7 +27,7 @@ function AppWithTheme(): JSX.Element {
       <CssBaseline />
       <AuthProvider>
         <App />
-        <Toaster 
+        <Toaster
           position="top-right"
           toastOptions={{
             style: {
@@ -35,7 +35,15 @@ function AppWithTheme(): JSX.Element {
               color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#263238',
             },
           }}
-        />
+        >
+          {(t) => {
+            if (t.type === 'success') {
+              toast.dismiss(t.id);
+              return null;
+            }
+            return <ToastBar toast={t} />;
+          }}
+        </Toaster>
       </AuthProvider>
     </MUIThemeProvider>
   );
