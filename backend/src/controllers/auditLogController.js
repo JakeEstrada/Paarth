@@ -5,10 +5,6 @@ const ALLOWED_TYPES = new Set(['login', 'logout', 'page_view', 'click']);
 const MAX_BATCH = 40;
 const MAX_LIST = 200;
 
-function isAdminRole(role) {
-  return role === 'super_admin' || role === 'admin';
-}
-
 function clip(value, max) {
   return String(value || '')
     .replace(/\s+/g, ' ')
@@ -79,8 +75,8 @@ async function ingestAuditLogs(req, res) {
 
 async function listAuditLogs(req, res) {
   try {
-    if (!isAdminRole(req.user?.role)) {
-      return res.status(403).json({ error: 'Admin access required' });
+    if (req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Super admin access required' });
     }
 
     const { userId, type, from, to, before, limit } = req.query;

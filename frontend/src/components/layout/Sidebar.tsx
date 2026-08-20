@@ -62,7 +62,7 @@ const financeItems = [
 const operationsItems = [
   { text: 'Take Off Sheet', icon: <TakeoffIcon />, path: '/takeoff-sheet' },
   { text: 'Vendors', icon: <StoreIcon />, path: '/vendors' },
-  { text: 'Users', icon: <UsersIcon />, path: '/users', adminOnly: true },
+  { text: 'Users', icon: <UsersIcon />, path: '/users', superAdminOnly: true },
 ];
 
 const archiveItems = [

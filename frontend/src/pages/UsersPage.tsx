@@ -1,6 +1,6 @@
 /**
- * UsersPage — Admin user management (roles, access).
- * Route: /users (admin only)
+ * UsersPage — Super-admin user management (roles, access, activity).
+ * Route: /users (super admin only)
  * APIs: GET/POST/PATCH /users
  * Docs: ../../../docs/PAGES.md#userspagetsx
  */
@@ -66,7 +66,7 @@ function textToPreviousPhones(text) {
 
 function UsersPage() {
   const theme = useTheme();
-  const { user: currentUser, isAdmin, isSuperAdmin } = useAuth();
+  const { user: currentUser, isSuperAdmin } = useAuth();
   const [users, setUsers] = useState([]);
   const [pendingUsers, setPendingUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -99,11 +99,11 @@ function UsersPage() {
   const [activityUserId, setActivityUserId] = useState('');
 
   useEffect(() => {
-    if (isAdmin()) {
+    if (isSuperAdmin()) {
       fetchUsers();
       fetchDirectoryContacts();
     }
-  }, [isAdmin]);
+  }, [isSuperAdmin]);
 
   const fetchDirectoryContacts = async () => {
     try {
@@ -438,14 +438,14 @@ function UsersPage() {
     );
   };
 
-  if (!isAdmin()) {
+  if (!isSuperAdmin()) {
     return (
       <Box sx={{ p: 4, textAlign: 'center' }}>
         <Typography variant="h5" color="error">
           Access Denied
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>
-          You need admin privileges to access this page.
+          You need super admin privileges to access this page.
         </Typography>
       </Box>
     );

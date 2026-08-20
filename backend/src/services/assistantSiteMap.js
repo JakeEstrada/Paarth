@@ -21,7 +21,7 @@ const ALLOWED_PATHNAMES = new Set([
   '/customers-view',
 ]);
 
-const SUPER_ADMIN_ONLY_PATHS = new Set(['/developer', '/finance']);
+const SUPER_ADMIN_ONLY_PATHS = new Set(['/developer', '/finance', '/users']);
 
 /**
  * @param {string} raw
@@ -53,7 +53,7 @@ Main app routes (path → purpose):
 - /bills — bills
 - /finance — finance hub (super admin only; bank register, deposit linking, payment tracking)
 - /takeoff-sheet — takeoff sheet
-- /users — user management (admins only)
+- /users — user management and activity log (super admin only)
 - /account-settings — profile, password, org logo (super admin)
 TV / kiosk-style views:
 - /pipeline-view, /calendar-view, /customers-view

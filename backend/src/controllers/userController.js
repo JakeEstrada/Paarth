@@ -69,13 +69,18 @@ async function getEmployeesForSms(req, res) {
   }
 }
 
-// Get all users (admin only)
+function requireSuperAdminUser(req, res) {
+  if (req.user.role !== 'super_admin') {
+    res.status(403).json({ error: 'Unauthorized. Super admin access required.' });
+    return false;
+  }
+  return true;
+}
+
+// Get all users (super admin only)
 async function getUsers(req, res) {
   try {
-    // Check if user is admin or super_admin
-    if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
-    }
+    if (!requireSuperAdminUser(req, res)) return;
 
     const users = await User.find({}).select('-password').sort({ createdAt: -1 });
     const pendingUsers = users.filter(u => u.isPending);
@@ -90,13 +95,10 @@ async function getUsers(req, res) {
   }
 }
 
-// Create new user (admin only)
+// Create new user (super admin only)
 async function createUser(req, res) {
   try {
-    // Check if user is admin or super_admin
-    if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
-    }
+    if (!requireSuperAdminUser(req, res)) return;
 
     const { name, email, password, role, mobile, previousPhoneNumbers } = req.body;
 
@@ -145,13 +147,10 @@ async function createUser(req, res) {
   }
 }
 
-// Update user (admin only)
+// Update user (super admin only)
 async function updateUser(req, res) {
   try {
-    // Check if user is admin or super_admin
-    if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
-    }
+    if (!requireSuperAdminUser(req, res)) return;
 
     const { userId } = req.params;
     const { name, email, role, isActive, password, approve, isPending, mobile, previousPhoneNumbers } = req.body;
@@ -205,13 +204,10 @@ async function updateUser(req, res) {
   }
 }
 
-// Delete user (admin only)
+// Delete user (super admin only)
 async function deleteUser(req, res) {
   try {
-    // Check if user is admin or super_admin
-    if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Unauthorized. Admin access required.' });
-    }
+    if (!requireSuperAdminUser(req, res)) return;
 
     const { userId } = req.params;
 

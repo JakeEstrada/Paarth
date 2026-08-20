@@ -156,7 +156,7 @@ function App(): JSX.Element | null {
                   <Route path="/finance" element={<ProtectedRoute requireSuperAdmin><FinanceHubPage /></ProtectedRoute>} />
                   <Route path="/takeoff-sheet" element={<TakeoffSheetPage />} />
                   <Route path="/vendors" element={<VendorsPage />} />
-                  <Route path="/users" element={<ProtectedRoute requireAdmin><UsersPage /></ProtectedRoute>} />
+                  <Route path="/users" element={<ProtectedRoute requireSuperAdmin><UsersPage /></ProtectedRoute>} />
                   <Route path="/account-settings" element={<AccountSettingsPage />} />
                 </Routes>
               </MainLayout>

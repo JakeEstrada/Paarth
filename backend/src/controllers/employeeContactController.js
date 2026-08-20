@@ -14,9 +14,9 @@ function normalizePreviousPhoneNumbers(input) {
   return [];
 }
 
-function requireAdmin(req, res) {
-  if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
-    res.status(403).json({ error: 'Unauthorized. Admin access required.' });
+function requireSuperAdmin(req, res) {
+  if (req.user.role !== 'super_admin') {
+    res.status(403).json({ error: 'Unauthorized. Super admin access required.' });
     return false;
   }
   return true;
@@ -24,7 +24,7 @@ function requireAdmin(req, res) {
 
 async function listContacts(req, res) {
   try {
-    if (!requireAdmin(req, res)) return;
+    if (!requireSuperAdmin(req, res)) return;
     const contacts = await EmployeeContact.find({}).sort({ name: 1 });
     res.json({ contacts });
   } catch (error) {
@@ -34,7 +34,7 @@ async function listContacts(req, res) {
 
 async function createContact(req, res) {
   try {
-    if (!requireAdmin(req, res)) return;
+    if (!requireSuperAdmin(req, res)) return;
     const { name, email, mobile, previousPhoneNumbers } = req.body;
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Name is required' });
@@ -53,7 +53,7 @@ async function createContact(req, res) {
 
 async function updateContact(req, res) {
   try {
-    if (!requireAdmin(req, res)) return;
+    if (!requireSuperAdmin(req, res)) return;
     const { contactId } = req.params;
     const { name, email, mobile, previousPhoneNumbers } = req.body;
 
@@ -78,7 +78,7 @@ async function updateContact(req, res) {
 
 async function deleteContact(req, res) {
   try {
-    if (!requireAdmin(req, res)) return;
+    if (!requireSuperAdmin(req, res)) return;
     const { contactId } = req.params;
     const contact = await EmployeeContact.findByIdAndDelete(contactId);
     if (!contact) {
