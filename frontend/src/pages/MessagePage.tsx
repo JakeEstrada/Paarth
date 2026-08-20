@@ -49,6 +49,7 @@ import {
 
 const LIST_PAGE_SIZE = 500;
 const LIST_MAX = 2000;
+const EMPTY_LISTS: SmsLists = { scheduled: [], sent: [], received: [] };
 
 function toDatetimeLocalValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
