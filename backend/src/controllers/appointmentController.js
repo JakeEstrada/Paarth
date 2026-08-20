@@ -2,6 +2,7 @@ const Appointment = require('../models/Appointment');
 const Activity = require('../models/Activity');
 const ScheduledSms = require('../models/ScheduledSms');
 const { emitJobUpdated } = require('../services/jobRealtime');
+const { publishAppointmentChanged } = require('../services/eventBus');
 const { getTenantContext } = require('../middleware/tenantContext');
 
 /**
@@ -10,15 +11,19 @@ const { getTenantContext } = require('../middleware/tenantContext');
  * request's tenant context rather than dropping the event.
  */
 function emitAppointmentChanged(req, appointment, action) {
-  if (!appointment) return;
-  const plain = appointment.toObject ? appointment.toObject() : appointment;
-  const tenantId = plain.tenantId || getTenantContext().tenantId || null;
-  if (!tenantId) return;
+  try {
+    if (!appointment) return;
+    const plain = appointment.toObject ? appointment.toObject() : appointment;
+    const tenantId = plain.tenantId || getTenantContext().tenantId || req.user?.tenantId || null;
+    if (!tenantId) return;
 
-  publishAppointmentChanged(req.app.get('io'), { ...plain, tenantId }, {
-    action,
-    sourceSocketId: req.headers['x-socket-id'] || null,
-  });
+    publishAppointmentChanged(req.app.get('io'), { ...plain, tenantId }, {
+      action,
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+  } catch (error) {
+    console.error('emitAppointmentChanged failed:', error?.message || error);
+  }
 }
 
 function normalizeToE164(value) {
@@ -43,15 +48,23 @@ function parseReminderPhones(value) {
 async function cancelAppointmentReminderSms(appointment, reason = 'Reminder removed or invalid') {
   if (!appointment?._id) return;
 
-  await ScheduledSms.updateMany(
-    { appointmentId: appointment._id, status: 'scheduled' },
-    { $set: { status: 'cancelled', lastError: reason } },
-  );
+  try {
+    await ScheduledSms.updateMany(
+      { appointmentId: appointment._id, status: 'scheduled' },
+      { $set: { status: 'cancelled', lastError: reason } },
+    );
+  } catch (error) {
+    console.error('cancelAppointmentReminderSms updateMany failed:', error?.message || error);
+  }
 
   if (appointment.reminderSmsId) {
-    await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
-      $set: { status: 'cancelled', lastError: reason },
-    });
+    try {
+      await ScheduledSms.findByIdAndUpdate(appointment.reminderSmsId, {
+        $set: { status: 'cancelled', lastError: reason },
+      });
+    } catch (error) {
+      console.error('cancelAppointmentReminderSms reminderSmsId failed:', error?.message || error);
+    }
     appointment.reminderSmsId = null;
   }
 }
@@ -251,7 +264,11 @@ async function createAppointment(req, res) {
         });
         
         await job.save();
-        await emitJobUpdated(req, job);
+        try {
+          await emitJobUpdated(req, job);
+        } catch (realtimeError) {
+          console.error('Failed to emit job update after appointment create:', realtimeError?.message || realtimeError);
+        }
       }
     }
     
@@ -352,7 +369,12 @@ async function completeAppointment(req, res) {
     appointment.status = 'completed';
     appointment.completedAt = new Date();
     await appointment.save();
-    await cancelAppointmentReminderSms(appointment, 'Appointment completed before reminder send');
+    try {
+      await cancelAppointmentReminderSms(appointment, 'Appointment completed before reminder send');
+      if (appointment.isModified()) await appointment.save();
+    } catch (reminderError) {
+      console.error('Failed to cancel reminder after completing appointment:', reminderError?.message || reminderError);
+    }
     
     // Log activity for appointment completion
     let customerId = appointment.customerId;
@@ -426,7 +448,12 @@ async function cancelAppointment(req, res) {
     appointment.status = 'cancelled';
     appointment.cancelledAt = new Date();
     await appointment.save();
-    await cancelAppointmentReminderSms(appointment, 'Appointment cancelled before reminder send');
+    try {
+      await cancelAppointmentReminderSms(appointment, 'Appointment cancelled before reminder send');
+      if (appointment.isModified()) await appointment.save();
+    } catch (reminderError) {
+      console.error('Failed to cancel reminder after cancelling appointment:', reminderError?.message || reminderError);
+    }
 
     emitAppointmentChanged(req, appointment, 'cancelled');
 
@@ -496,7 +523,11 @@ async function deleteAppointment(req, res) {
     const createdBy = req.user?._id || appointment.createdBy;
     
     // Delete the appointment
-    await cancelAppointmentReminderSms(appointment, 'Appointment deleted before reminder send');
+    try {
+      await cancelAppointmentReminderSms(appointment, 'Appointment deleted before reminder send');
+    } catch (reminderError) {
+      console.error('Failed to cancel reminder before deleting appointment:', reminderError?.message || reminderError);
+    }
     const deletedSnapshot = appointment.toObject();
     await Appointment.findByIdAndDelete(req.params.id);
 

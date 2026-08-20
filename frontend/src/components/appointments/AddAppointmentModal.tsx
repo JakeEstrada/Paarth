@@ -486,9 +486,15 @@ function AddAppointmentModal({
       onSuccess?.();
       onClose();
     } catch (error: unknown) {
-      console.error('Error creating appointment:', error);
-      const err = error as { response?: { data?: { error?: string } } };
-      toast.error(err.response?.data?.error || 'Failed to create appointment');
+      console.error(isEditMode ? 'Error updating appointment:' : 'Error creating appointment:', error);
+      const err = error as { response?: { status?: number; data?: { error?: string } } };
+      const status = err.response?.status;
+      const serverMsg = err.response?.data?.error;
+      if (status === 404 && isEditMode) {
+        toast.error('That appointment is gone. It may already have been deleted. Close and add a new one.');
+      } else {
+        toast.error(serverMsg || (isEditMode ? 'Failed to update appointment' : 'Failed to create appointment'));
+      }
     } finally {
       setLoading(false);
     }

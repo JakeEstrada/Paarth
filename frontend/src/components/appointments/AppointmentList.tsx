@@ -71,7 +71,9 @@ function AppointmentList({ onAppointmentClick, onAppointmentComplete, onAddClick
       }
     } catch (error) {
       console.error('Error completing appointment:', error);
-      toast.error('Failed to complete appointment');
+      const msg = error?.response?.data?.error || 'Failed to complete appointment';
+      toast.error(msg);
+      fetchAppointments();
     }
   };
 
@@ -86,7 +88,14 @@ function AppointmentList({ onAppointmentClick, onAppointmentComplete, onAddClick
       fetchAppointments();
     } catch (error) {
       console.error('Error deleting appointment:', error);
-      toast.error('Failed to delete appointment');
+      const status = error?.response?.status;
+      const msg = error?.response?.data?.error;
+      if (status === 404) {
+        toast.success('Appointment already removed');
+      } else {
+        toast.error(msg || 'Failed to delete appointment');
+      }
+      fetchAppointments();
     }
   };
 
