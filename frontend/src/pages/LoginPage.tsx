@@ -4,7 +4,7 @@
  * API: POST /auth/login
  * Docs: ../../../docs/PAGES.md#loginpagetsx
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -27,7 +27,6 @@ import {
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import BrandLogo from '../components/common/BrandLogo';
-import { beginAuditLocation } from '../utils/auditLocation';
 import { enableKioskDisplayMode } from '../utils/authSession';
 
 function LoginPage() {
@@ -41,10 +40,6 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!kioskLogin) beginAuditLocation();
-  }, [kioskLogin]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

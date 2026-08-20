@@ -96,7 +96,7 @@ async function recordUserAudit({
     locationCountry: clip(locationCountry, 80),
     locationLabel: clip(locationLabel, 200),
     locationIsp: clip(locationIsp, 120),
-    locationSource: locationSource === 'gps' ? 'gps' : 'ip',
+    locationSource: 'ip',
   };
   if (tenantId) doc.tenantId = tenantId;
   const created = await UserAuditLog.create(doc);
@@ -111,7 +111,7 @@ async function ingestAuditLogs(req, res) {
       return res.json({ accepted: 0 });
     }
 
-    const network = await resolveClientNetwork(req, req.body);
+    const network = await resolveClientNetwork(req);
 
     const events = rawEvents.slice(0, MAX_BATCH).flatMap((event) => {
       const type = String(event?.type || '').trim();

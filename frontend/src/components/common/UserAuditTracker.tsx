@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { beginAuditLocation } from '../../utils/auditLocation';
 import { flushUserAuditLogs, trackClick, trackPageView } from '../../utils/userAuditTracker';
 
 const CLICKABLE =
@@ -25,7 +24,6 @@ export default function UserAuditTracker() {
 
   useEffect(() => {
     if (!user) return;
-    beginAuditLocation();
     trackPageView(location.pathname, location.search);
   }, [user, location.pathname, location.search]);
 

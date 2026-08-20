@@ -45,7 +45,6 @@ type AuditEvent = {
   ip?: string;
   location?: string;
   isp?: string;
-  locationSource?: 'ip' | 'gps' | '';
   user: AuditUser | null;
 };
 
@@ -78,7 +77,6 @@ function typeChipLabel(type: AuditEvent['type']): string {
 }
 
 function locationCaption(event: AuditEvent): string {
-  if (event.locationSource === 'gps') return 'Device location';
   if (event.isp) return `Approx. from IP · ${event.isp}`;
   if (event.location) return 'Approx. from IP';
   return '';

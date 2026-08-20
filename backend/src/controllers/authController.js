@@ -137,7 +137,7 @@ async function login(req, res) {
     }
 
     try {
-      const network = await resolveClientNetwork(req, req.body);
+      const network = await resolveClientNetwork(req);
       await recordUserAudit({
         userId: user._id,
         tenantId: user.tenantId,
@@ -180,7 +180,7 @@ async function me(req, res) {
 // Logout (client-side handles token removal)
 async function logout(req, res) {
   try {
-    const network = await resolveClientNetwork(req, req.body);
+    const network = await resolveClientNetwork(req);
     await recordUserAudit({
       userId: req.user._id,
       tenantId: req.user.tenantId,

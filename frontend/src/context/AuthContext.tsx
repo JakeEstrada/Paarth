@@ -8,7 +8,6 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import { enableKioskDisplayMode, isKioskDisplayMode, isAccessTokenExpiredOrMissing, refreshAccessToken } from '../utils/authSession';
-import { auditCoordsPayload, waitForAuditCoords } from '../utils/auditLocation';
 import { flushUserAuditLogs } from '../utils/userAuditTracker';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -147,12 +146,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string, options: { kiosk?: boolean } = {}) => {
     try {
       const kiosk = Boolean(options.kiosk || isKioskDisplayMode());
-      const coords = kiosk ? null : await waitForAuditCoords(4000);
       const response = await axios.post(`${API_URL}/auth/login`, {
         email,
         password,
         kiosk,
-        ...auditCoordsPayload(coords),
       });
 
       const { user, accessToken, refreshToken } = response.data as {
@@ -191,7 +188,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (token) {
         await axios.post(`${API_URL}/auth/logout`, {
           path: typeof window !== 'undefined' ? window.location.pathname : '',
-          ...auditCoordsPayload(await waitForAuditCoords(1500)),
         }, {
           headers: {
             Authorization: `Bearer ${token}`
