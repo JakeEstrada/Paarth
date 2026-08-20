@@ -9,6 +9,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { FinancialPinLockProvider } from './context/FinancialPinLockContext';
 import FinancialPinUnlockDialogHost from './components/common/FinancialPinUnlockDialogHost';
+import UserAuditTracker from './components/common/UserAuditTracker';
 import MainLayout from './components/layout/MainLayout';
 import ViewModeFrame from './components/layout/ViewModeFrame';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -165,6 +166,7 @@ function App(): JSX.Element | null {
       </Routes>
     </Box>
     <FinancialPinUnlockDialogHost />
+    <UserAuditTracker />
     </FinancialPinLockProvider>
   );
 }

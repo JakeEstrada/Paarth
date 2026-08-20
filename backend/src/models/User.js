@@ -42,6 +42,10 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true // New registrations are pending approval
   },
+  lastLoginAt: {
+    type: Date,
+    default: null,
+  },
   address: {
     type: String,
     trim: true,

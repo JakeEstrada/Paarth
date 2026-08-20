@@ -8,6 +8,7 @@ const {
 } = require('../utils/generateToken');
 const { sendPasswordResetEmail } = require('../services/emailService');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
+const { recordUserAudit } = require('./auditLogController');
 
 function getFrontendUrl() {
   return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -127,6 +128,25 @@ async function login(req, res) {
     const accessToken = generateAccessToken(user._id, { kiosk: kioskMode });
     const refreshToken = generateRefreshToken(user._id, { kiosk: kioskMode });
 
+    try {
+      user.lastLoginAt = new Date();
+      await user.save({ validateBeforeSave: false });
+    } catch (error) {
+      console.error('Failed to update last login time:', error);
+    }
+
+    try {
+      await recordUserAudit({
+        userId: user._id,
+        tenantId: user.tenantId,
+        type: 'login',
+        label: kioskMode ? 'Signed in (kiosk / shop display)' : 'Signed in',
+        path: '/login',
+      });
+    } catch (error) {
+      console.error('Failed to write sign-in activity:', error);
+    }
+
     res.json({
       user: userWithTenant,
       accessToken,
@@ -147,6 +167,17 @@ async function me(req, res) {
 
 // Logout (client-side handles token removal)
 async function logout(req, res) {
+  try {
+    await recordUserAudit({
+      userId: req.user._id,
+      tenantId: req.user.tenantId,
+      type: 'logout',
+      label: 'Signed out',
+      path: typeof req.body?.path === 'string' ? req.body.path : '',
+    });
+  } catch (error) {
+    console.error('Failed to write sign-out activity:', error);
+  }
   res.json({ message: 'Logged out successfully' });
 }
 

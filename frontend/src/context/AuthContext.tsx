@@ -8,6 +8,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import { enableKioskDisplayMode, isKioskDisplayMode, isAccessTokenExpiredOrMissing, refreshAccessToken } from '../utils/authSession';
+import { flushUserAuditLogs } from '../utils/userAuditTracker';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const TENANT_HEADER = 'x-tenant-id';
@@ -182,9 +183,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
+      await flushUserAuditLogs();
       const token = localStorage.getItem('accessToken');
       if (token) {
-        await axios.post(`${API_URL}/auth/logout`, {}, {
+        await axios.post(`${API_URL}/auth/logout`, {
+          path: typeof window !== 'undefined' ? window.location.pathname : '',
+        }, {
           headers: {
             Authorization: `Bearer ${token}`
           }

@@ -51,7 +51,7 @@ export default function FinancialPinUnlockDialog({
         },
       }}
     >
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} data-audit-ignore="true">
         <DialogTitle>Unlock financial amounts</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>

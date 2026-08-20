@@ -31,6 +31,8 @@ import {
   FormControlLabel,
   useTheme,
   Tooltip,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -38,12 +40,14 @@ import {
   Delete as DeleteIcon,
   Person as PersonIcon,
   CheckCircle as CheckCircleIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import PhoneTextField from '../components/common/PhoneTextField';
 import { formatNanpTyping, formatPhoneForDisplay } from '../utils/phoneFormat';
+import UserActivityLogPanel from '../components/users/UserActivityLogPanel';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -91,6 +95,8 @@ function UsersPage() {
     mobile: '',
     previousPhonesText: '',
   });
+  const [pageTab, setPageTab] = useState<'team' | 'activity'>('team');
+  const [activityUserId, setActivityUserId] = useState('');
 
   useEffect(() => {
     if (isAdmin()) {
@@ -392,7 +398,23 @@ function UsersPage() {
           size="small"
         />
       </TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+        {user.lastLoginAt
+          ? new Date(user.lastLoginAt).toLocaleString()
+          : '—'}
+      </TableCell>
       <TableCell align="right">
+        <IconButton
+          size="small"
+          onClick={() => {
+            setActivityUserId(user._id);
+            setPageTab('activity');
+          }}
+          color="primary"
+          title="View activity"
+        >
+          <HistoryIcon />
+        </IconButton>
         <IconButton
           size="small"
           onClick={() => handleOpenDialog(user)}
@@ -438,17 +460,35 @@ function UsersPage() {
             User Management
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-          sx={{ textTransform: 'none' }}
-        >
-          Create User
-        </Button>
+        {pageTab === 'team' ? (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+            sx={{ textTransform: 'none' }}
+          >
+            Create User
+          </Button>
+        ) : null}
       </Box>
 
-      {/* Pending Users Section */}
+      <Tabs
+        value={pageTab}
+        onChange={(_, value: 'team' | 'activity') => setPageTab(value)}
+        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab value="team" label="Team" />
+        <Tab value="activity" label="Activity" />
+      </Tabs>
+
+      {pageTab === 'activity' ? (
+        <UserActivityLogPanel
+          users={users}
+          selectedUserId={activityUserId}
+          onSelectedUserIdChange={setActivityUserId}
+        />
+      ) : (
+      <>
       {pendingUsers.length > 0 && (
         <Box sx={{ mb: 4 }}>
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: 'warning.main' }}>
@@ -529,19 +569,20 @@ function UsersPage() {
               <TableCell sx={{ fontWeight: 700 }}>Previous numbers</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Role</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Last sign in</TableCell>
               <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} align="center">
+                <TableCell colSpan={8} align="center">
                   <Typography>Loading...</Typography>
                 </TableCell>
               </TableRow>
             ) : users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center">
+                <TableCell colSpan={8} align="center">
                   <Typography color="text.secondary">No active accounts</Typography>
                 </TableCell>
               </TableRow>
@@ -652,6 +693,8 @@ function UsersPage() {
           </TableBody>
         </Table>
       </TableContainer>
+      </>
+      )}
 
       {/* Create/Edit User Dialog */}
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
