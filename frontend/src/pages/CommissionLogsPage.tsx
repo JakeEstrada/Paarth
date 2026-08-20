@@ -73,10 +73,11 @@ import JobDetailModal from '../components/jobs/JobDetailModal';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const COMMISSION_LOGS_STORAGE_KEY = 'financeHubCommissionLogsRows';
 const DEFAULT_COMMISSION_RATE_KEY = 'financeHubCommissionDefaultRate';
+const COMMISSION_INHERITED_RATES_KEY = 'financeHubCommissionInheritedRates';
 const COMMISSION_OVERVIEW_JOB_ORDER_KEY = 'financeHubCommissionOverviewJobOrder';
 const COMMISSION_SHOW_ZERO_RATE_KEY = 'financeHubCommissionShowZeroRate';
 const COMMISSION_PAGE_TAB_KEY = 'financeHubCommissionPageTab';
-const DEFAULT_COMMISSION_RATE = 5;
+const DEFAULT_COMMISSION_RATE = 13;
 
 type CommissionPageTab = 'jobs' | 'recent' | 'checks';
 
@@ -187,14 +188,42 @@ function toDateInputValue(value: unknown): string {
   }
 }
 
+function parsePositiveCommissionRate(value: unknown): number | null {
+  const n = Number(String(value ?? '').trim());
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function formatCommissionRateLabel(rate: number): string {
+  if (!Number.isFinite(rate)) return '—';
+  const rounded = Math.round(rate * 100) / 100;
+  const text = Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  return `${text}%`;
+}
+
 function readDefaultCommissionRate(): number {
   if (typeof window === 'undefined') return DEFAULT_COMMISSION_RATE;
   try {
-    const raw = window.localStorage.getItem(DEFAULT_COMMISSION_RATE_KEY);
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 0 ? n : DEFAULT_COMMISSION_RATE;
+    const parsed = parsePositiveCommissionRate(window.localStorage.getItem(DEFAULT_COMMISSION_RATE_KEY));
+    return parsed ?? DEFAULT_COMMISSION_RATE;
   } catch {
     return DEFAULT_COMMISSION_RATE;
+  }
+}
+
+function readInheritedCommissionRates(): Record<string, number> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(COMMISSION_INHERITED_RATES_KEY) || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const next: Record<string, number> = {};
+    for (const [jobId, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const rate = parsePositiveCommissionRate(value);
+      if (rate != null) next[jobId] = rate;
+    }
+    return next;
+  } catch {
+    return {};
   }
 }
 
@@ -1513,7 +1542,7 @@ function isCommissionOverpaid(row: CommissionTableRow): boolean {
 }
 
 function isZeroCommissionJob(row: CommissionTableRow): boolean {
-  return row.commissionRate <= 0;
+  return row.rateOverridden && row.commissionRate <= 0;
 }
 
 function allSalesmanPaid(row: CommissionTableRow): boolean {
@@ -1850,6 +1879,9 @@ function SortableOverviewRow({ row, onOpenPayments, onOpenJobDetail }: SortableO
       <TableCell align="right" sx={{ fontWeight: 600 }}>
         {formatMoney(row.jobTotal)}
       </TableCell>
+      <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+        {formatCommissionRateLabel(row.commissionRate)}
+      </TableCell>
       <TableCell sx={{ py: 1 }}>
         <CommissionOverviewTiers payments={row.payments} />
       </TableCell>
@@ -1911,6 +1943,12 @@ function CommissionOverviewTable({ rows, onReorder, onOpenPayments, onOpenJobDet
               align="right"
             >
               Job Total
+            </TableCell>
+            <TableCell
+              sx={{ fontWeight: 700, minWidth: 72, bgcolor: 'background.paper' }}
+              align="right"
+            >
+              Rate
             </TableCell>
             <TableCell sx={{ fontWeight: 700, minWidth: 280, bgcolor: 'background.paper' }}>
               Payment tiers
@@ -3041,6 +3079,10 @@ function CommissionLogsPage() {
   const [loadingCommissionLogs, setLoadingCommissionLogs] = useState(false);
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
   const [defaultCommissionRate, setDefaultCommissionRate] = useState(() => readDefaultCommissionRate());
+  const [defaultRateInput, setDefaultRateInput] = useState(() => String(readDefaultCommissionRate()));
+  const [inheritedRates, setInheritedRates] = useState<Record<string, number>>(
+    () => readInheritedCommissionRates(),
+  );
   const [overviewJobOrder, setOverviewJobOrder] = useState<string[]>(() => readOverviewJobOrder());
   const [showZeroCommissionJobs, setShowZeroCommissionJobs] = useState(() => readShowZeroCommissionJobs());
   const [pageTab, setPageTab] = useState<CommissionPageTab>(() => readCommissionPageTab());
@@ -3154,6 +3196,7 @@ function CommissionLogsPage() {
 
   const clearModalRateOverride = (jobId: string) => {
     if (jobId !== paymentModalJobId) return;
+    setInheritedRates((prev) => ({ ...prev, [jobId]: defaultCommissionRate }));
     updatePaymentModalDraft((current) => {
       const next = { ...current };
       delete next.commissionRate;
@@ -3294,9 +3337,13 @@ function CommissionLogsPage() {
 
   const commissionTableRows = useMemo((): CommissionTableRow[] => {
     return commissionSourceJobs.map((row) =>
-      buildCommissionTableRow(row, commissionLogRows[String(row.jobId)] || {}, defaultCommissionRate),
+      buildCommissionTableRow(
+        row,
+        commissionLogRows[String(row.jobId)] || {},
+        inheritedRates[String(row.jobId)] ?? defaultCommissionRate,
+      ),
     );
-  }, [commissionSourceJobs, commissionLogRows, defaultCommissionRate]);
+  }, [commissionSourceJobs, commissionLogRows, inheritedRates, defaultCommissionRate]);
 
   const overviewTableRows = useMemo(
     () => applyOverviewJobOrder(commissionTableRows, overviewJobOrder),
@@ -3357,8 +3404,12 @@ function CommissionLogsPage() {
     if (!paymentModalJobId || !paymentModalDraft) return null;
     const source = commissionSourceJobs.find((row) => row.jobId === paymentModalJobId);
     if (!source) return null;
-    return buildCommissionTableRow(source, paymentModalDraft, defaultCommissionRate);
-  }, [paymentModalJobId, paymentModalDraft, commissionSourceJobs, defaultCommissionRate]);
+    return buildCommissionTableRow(
+      source,
+      paymentModalDraft,
+      inheritedRates[paymentModalJobId] ?? defaultCommissionRate,
+    );
+  }, [paymentModalJobId, paymentModalDraft, commissionSourceJobs, inheritedRates, defaultCommissionRate]);
 
   useEffect(() => {
     if (!paymentModalJobId) {
@@ -3382,6 +3433,28 @@ function CommissionLogsPage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(DEFAULT_COMMISSION_RATE_KEY, String(defaultCommissionRate));
   }, [defaultCommissionRate]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(COMMISSION_INHERITED_RATES_KEY, JSON.stringify(inheritedRates));
+  }, [inheritedRates]);
+
+  useEffect(() => {
+    if (commissionSourceJobs.length === 0 || defaultCommissionRate <= 0) return;
+    setInheritedRates((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const job of commissionSourceJobs) {
+        const jobId = String(job.jobId);
+        if (hasRateOverride(commissionLogRows[jobId] || {})) continue;
+        if (next[jobId] == null) {
+          next[jobId] = defaultCommissionRate;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [commissionSourceJobs, commissionLogRows, defaultCommissionRate]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -3590,20 +3663,25 @@ function CommissionLogsPage() {
                   </Typography>
                 }
               />
-              <TextField
+              <Tooltip title="Fallback for jobs that don't have their own rate yet. 13% and 15% jobs stay as they are — this does not filter the list.">
+                <TextField
               size="small"
               label="Default rate"
-              value={defaultCommissionRate}
+              value={defaultRateInput}
               onChange={(e) => {
-                const n = Number(e.target.value);
-                setDefaultCommissionRate(Number.isFinite(n) && n >= 0 ? n : 0);
+                const raw = e.target.value;
+                setDefaultRateInput(raw);
+                const parsed = parsePositiveCommissionRate(raw);
+                if (parsed != null) setDefaultCommissionRate(parsed);
               }}
+              onBlur={() => setDefaultRateInput(String(defaultCommissionRate))}
               InputProps={{
                 endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                inputProps: { inputMode: 'decimal', min: 0, step: 0.1 },
+                inputProps: { inputMode: 'decimal', min: 0.1, step: 0.1 },
               }}
               sx={{ width: 130 }}
             />
+              </Tooltip>
             </Box>
           </Box>
 
