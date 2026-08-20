@@ -252,6 +252,7 @@ interface CommissionCheckEntry {
   amount: number;
   check: string;
   date: string;
+  customerPaidDate: string;
   salesmanPaid: boolean;
   entryKind: 'payment' | 'adjustment';
   scheduleIndex?: number;
@@ -445,6 +446,7 @@ function buildCheckEntries(rows: CommissionTableRow[]): CommissionCheckEntry[] {
         amount: roundMoney(amount),
         check,
         date,
+        customerPaidDate: String(payment.customerPaidDate || '').trim(),
         salesmanPaid: payment.salesmanPaid,
         entryKind: 'payment',
         scheduleIndex: payment.scheduleIndex,
@@ -468,6 +470,7 @@ function buildCheckEntries(rows: CommissionTableRow[]): CommissionCheckEntry[] {
         amount: roundMoney(amount),
         check,
         date,
+        customerPaidDate: '',
         salesmanPaid: adjustment.salesmanPaid,
         entryKind: 'adjustment',
         adjustmentId: adjustment.id,
@@ -497,6 +500,8 @@ function matchesCheckSearch(entry: CommissionCheckEntry, rawQuery: string): bool
     entry.check,
     entry.date,
     formatCheckDisplayDate(entry.date),
+    entry.customerPaidDate,
+    formatCheckDisplayDate(entry.customerPaidDate),
     ...moneySearchTokens(entry.amount),
     entry.salesmanPaid ? 'salesman paid' : 'unpaid',
   ];
@@ -771,6 +776,7 @@ function CommissionChecksTable({
                         <TableHead>
                           <TableRow>
                             <TableCell sx={{ fontWeight: 600 }}>Paid date</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Customer paid date</TableCell>
                             <TableCell sx={{ fontWeight: 600 }}>Customer</TableCell>
                             <TableCell sx={{ fontWeight: 600 }}>Job</TableCell>
                             <TableCell sx={{ fontWeight: 600 }}>Payment</TableCell>
@@ -789,6 +795,7 @@ function CommissionChecksTable({
                               sx={{ cursor: 'pointer' }}
                             >
                               <TableCell>{formatCheckDisplayDate(entry.date)}</TableCell>
+                              <TableCell>{formatCheckDisplayDate(entry.customerPaidDate)}</TableCell>
                               <TableCell sx={{ fontWeight: 600 }}>{entry.customerName}</TableCell>
                               <TableCell>{entry.jobLabel || 'Untitled'}</TableCell>
                               <TableCell>{entry.paymentLabel}</TableCell>
@@ -1308,6 +1315,7 @@ interface CommissionPaymentDisplay {
   displayAmount: string | number;
   check: string;
   date: string;
+  customerPaidDate: string;
   status: string;
   amountManual: boolean;
   customerPaid: boolean;
@@ -1404,6 +1412,7 @@ function buildCommissionTableRow(
       displayAmount,
       check: String(saved.check || ''),
       date: String(saved.date || autoDate),
+      customerPaidDate: customerPaid ? autoDate : '',
       status,
       amountManual,
       customerPaid,
