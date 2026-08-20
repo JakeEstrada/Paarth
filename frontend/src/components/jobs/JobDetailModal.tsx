@@ -50,6 +50,7 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   ContentCopy as ContentCopyIcon,
   Lock as LockIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import axios from 'axios';
@@ -1841,12 +1842,19 @@ function JobDetailModal({
                       enterDelay={400}
                     >
                       <Paper
-                        onClick={() => handleFileCardClick(file)}
+                        component={isImage ? 'a' : 'div'}
+                        href={isImage ? `/picture/${file._id}` : undefined}
+                        target={isImage ? '_blank' : undefined}
+                        rel={isImage ? 'noopener noreferrer' : undefined}
+                        onClick={isImage ? undefined : () => handleFileCardClick(file)}
                         sx={{
                           position: 'relative',
                           aspectRatio: '1',
                           overflow: 'hidden',
                           cursor: 'pointer',
+                          display: 'block',
+                          color: 'inherit',
+                          textDecoration: 'none',
                           border: '1px solid',
                           borderColor: 'divider',
                           bgcolor: 'action.hover',
@@ -1854,6 +1862,7 @@ function JobDetailModal({
                             boxShadow: 4,
                             borderColor: 'primary.main',
                             '& .file-tile-delete': { opacity: 1 },
+                            '& .file-tile-open': { opacity: 1 },
                           },
                         }}
                       >
@@ -1913,12 +1922,33 @@ function JobDetailModal({
                             {file.originalName}
                           </Typography>
                         </Box>
+                        {isImage ? (
+                          <IconButton
+                            className="file-tile-open"
+                            size="small"
+                            aria-label="Open picture in new tab"
+                            title="Open in new tab"
+                            sx={{
+                              position: 'absolute',
+                              top: 4,
+                              left: 4,
+                              opacity: 0,
+                              bgcolor: 'background.paper',
+                              boxShadow: 1,
+                              pointerEvents: 'none',
+                              '&:hover': { bgcolor: 'background.paper' },
+                            }}
+                          >
+                            <OpenInNewIcon fontSize="small" />
+                          </IconButton>
+                        ) : null}
                         <IconButton
                           className="file-tile-delete"
                           size="small"
                           color="error"
                           aria-label="Delete file"
                           onClick={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
                             handleFileDelete(file._id);
                           }}

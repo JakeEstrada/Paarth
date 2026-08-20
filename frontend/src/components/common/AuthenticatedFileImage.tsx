@@ -1,3 +1,4 @@
+import type { MouseEvent } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useAuthenticatedFileUrl } from '../../hooks/useAuthenticatedFileUrl';
 
@@ -32,14 +33,18 @@ export default function AuthenticatedFileImage({
         bgcolor: 'action.hover',
       };
 
+  const handleClick = onClick
+    ? (e: MouseEvent) => {
+        e.stopPropagation();
+        onClick();
+      }
+    : undefined;
+
   if (error || (!loading && !url)) {
     return (
       <Box
         sx={{ ...boxSx, cursor: onClick ? 'pointer' : 'default' }}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClick?.();
-        }}
+        onClick={handleClick}
       >
         <Typography variant="caption" color="text.secondary">
           Preview unavailable
@@ -63,10 +68,7 @@ export default function AuthenticatedFileImage({
       component="img"
       src={url}
       alt={alt}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick?.();
-      }}
+      onClick={handleClick}
       sx={{
         width: '100%',
         height: fill ? '100%' : 'auto',
