@@ -7,10 +7,10 @@ const {
   updateBill,
   deleteBill
 } = require('../controllers/billController');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireSuperAdmin } = require('../middleware/auth');
 
-// All routes require authentication
-router.use(requireAuth);
+// Super admin only
+router.use(requireAuth, requireSuperAdmin);
 
 router.get('/', getBills);
 router.get('/:id', getBill);

@@ -1,6 +1,6 @@
 /**
  * BillsPage — Vendor bills tracking.
- * Route: /bills
+ * Route: /bills (super admin only)
  * APIs: /bills
  * Docs: ../../../docs/PAGES.md#billspagetsx
  */

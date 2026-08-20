@@ -53,7 +53,7 @@ const workspaceItems = [
 
 const financeItems = [
   { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance', superAdminOnly: true },
-  { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
+  { text: 'Bills', icon: <ReceiptIcon />, path: '/bills', superAdminOnly: true },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
   { text: 'RFID Timesheets', icon: <RfidTimesheetIcon />, path: '/rfid-timesheets' },
   { text: 'Commission Logs', icon: <TableChartIcon />, path: '/commission-logs' },

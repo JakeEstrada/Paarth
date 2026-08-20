@@ -152,7 +152,7 @@ function App(): JSX.Element | null {
                   <Route path="/payroll" element={<PayrollPage />} />
                   <Route path="/rfid-timesheets" element={<RfidTimesheetPage />} />
                   <Route path="/commission-logs" element={<CommissionLogsPage />} />
-                  <Route path="/bills" element={<BillsPage />} />
+                  <Route path="/bills" element={<ProtectedRoute requireSuperAdmin><BillsPage /></ProtectedRoute>} />
                   <Route path="/finance" element={<ProtectedRoute requireSuperAdmin><FinanceHubPage /></ProtectedRoute>} />
                   <Route path="/takeoff-sheet" element={<TakeoffSheetPage />} />
                   <Route path="/vendors" element={<VendorsPage />} />
