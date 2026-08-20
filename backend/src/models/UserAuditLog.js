@@ -39,6 +39,36 @@ const userAuditLogSchema = new mongoose.Schema(
       default: Date.now,
       index: true,
     },
+    ip: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 64,
+    },
+    locationCity: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 80,
+    },
+    locationRegion: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 80,
+    },
+    locationCountry: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 80,
+    },
+    locationLabel: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 200,
+    },
   },
   { timestamps: true },
 );

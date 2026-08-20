@@ -23,6 +23,7 @@ function isLikelyObjectId(value) {
 }
 
 const app = express();
+app.set('trust proxy', 1);
 const httpServer = http.createServer(app);
 
 const LOCAL_DEV_ORIGINS = [

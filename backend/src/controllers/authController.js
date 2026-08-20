@@ -9,6 +9,7 @@ const {
 const { sendPasswordResetEmail } = require('../services/emailService');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
 const { recordUserAudit } = require('./auditLogController');
+const { resolveClientNetwork } = require('../services/clientNetwork');
 
 function getFrontendUrl() {
   return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -136,12 +137,21 @@ async function login(req, res) {
     }
 
     try {
+      const network = await resolveClientNetwork(req);
       await recordUserAudit({
         userId: user._id,
         tenantId: user.tenantId,
         type: 'login',
         label: kioskMode ? 'Signed in (kiosk / shop display)' : 'Signed in',
         path: '/login',
+        ip: network.ip,
+        locationCity: network.locationCity,
+        locationRegion: network.locationRegion,
+        locationCountry: network.locationCountry,
+        locationLabel: network.locationLabel,
+        io: req.app.get('io'),
+        user,
+        req,
       });
     } catch (error) {
       console.error('Failed to write sign-in activity:', error);
@@ -168,12 +178,21 @@ async function me(req, res) {
 // Logout (client-side handles token removal)
 async function logout(req, res) {
   try {
+    const network = await resolveClientNetwork(req);
     await recordUserAudit({
       userId: req.user._id,
       tenantId: req.user.tenantId,
       type: 'logout',
       label: 'Signed out',
       path: typeof req.body?.path === 'string' ? req.body.path : '',
+      ip: network.ip,
+      locationCity: network.locationCity,
+      locationRegion: network.locationRegion,
+      locationCountry: network.locationCountry,
+      locationLabel: network.locationLabel,
+      io: req.app.get('io'),
+      user: req.user,
+      req,
     });
   } catch (error) {
     console.error('Failed to write sign-out activity:', error);

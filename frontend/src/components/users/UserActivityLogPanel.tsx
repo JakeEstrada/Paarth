@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -22,6 +22,9 @@ import {
 import axios from 'axios';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
+import { useSocketConnectionStatus, useSocketSubscription } from '../../hooks/useSocketSubscription';
+import { getTenantRoom } from '../../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -39,6 +42,8 @@ type AuditEvent = {
   path: string;
   detail?: string;
   occurredAt: string;
+  ip?: string;
+  location?: string;
   user: AuditUser | null;
 };
 
@@ -76,6 +81,21 @@ function formatStamp(value: string): string {
   return format(date, 'MMM d, yyyy h:mm:ss a');
 }
 
+function eventMatchesFilters(
+  event: AuditEvent,
+  selectedUserId: string,
+  typeFilter: string,
+  fromDate: string,
+): boolean {
+  if (selectedUserId && event.user?.id !== selectedUserId) return false;
+  if (typeFilter && event.type !== typeFilter) return false;
+  if (fromDate) {
+    const start = new Date(`${fromDate}T00:00:00`).getTime();
+    if (Number.isFinite(start) && new Date(event.occurredAt).getTime() < start) return false;
+  }
+  return true;
+}
+
 export default function UserActivityLogPanel({
   users,
   selectedUserId,
@@ -86,6 +106,9 @@ export default function UserActivityLogPanel({
   onSelectedUserIdChange: (userId: string) => void;
 }) {
   const theme = useTheme();
+  const { tenantIdForBranding } = useAuth();
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
+  const live = useSocketConnectionStatus();
   const [typeFilter, setTypeFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [events, setEvents] = useState<AuditEvent[]>([]);
@@ -118,6 +141,29 @@ export default function UserActivityLogPanel({
     [fromDate, selectedUserId, typeFilter],
   );
 
+  const filtersRef = useRef({ selectedUserId, typeFilter, fromDate });
+  useEffect(() => {
+    filtersRef.current = { selectedUserId, typeFilter, fromDate };
+  }, [fromDate, selectedUserId, typeFilter]);
+
+  const handleRealtime = useCallback((payload: unknown) => {
+    const incoming = (payload as { events?: AuditEvent[] } | null)?.events;
+    if (!Array.isArray(incoming) || incoming.length === 0) return;
+    const filters = filtersRef.current;
+    const matched = incoming.filter((event) =>
+      eventMatchesFilters(event, filters.selectedUserId, filters.typeFilter, filters.fromDate),
+    );
+    if (!matched.length) return;
+    setEvents((prev) => {
+      const seen = new Set(prev.map((row) => row.id));
+      const fresh = matched.filter((row) => row?.id && !seen.has(row.id));
+      if (!fresh.length) return prev;
+      return [...fresh, ...prev];
+    });
+  }, []);
+
+  useSocketSubscription(tenantRoom, 'user.audit.created', handleRealtime);
+
   useEffect(() => {
     void loadEvents(false);
   }, [loadEvents]);
@@ -131,8 +177,8 @@ export default function UserActivityLogPanel({
   return (
     <Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Everything this organization&apos;s users did after signing in — sign-in time, pages they opened,
-        and what they clicked, each with a timestamp.
+        Live log of sign-ins, pages opened, and clicks. New activity appears as it happens, with IP
+        address and location.
       </Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 2, alignItems: 'center' }}>
         <FormControl size="small" sx={{ minWidth: 220 }}>
@@ -176,6 +222,12 @@ export default function UserActivityLogPanel({
         <Button size="small" onClick={() => void loadEvents(false)} sx={{ textTransform: 'none' }}>
           Refresh
         </Button>
+        <Chip
+          size="small"
+          label={live ? 'Live' : 'Connecting…'}
+          color={live ? 'success' : 'default'}
+          variant={live ? 'filled' : 'outlined'}
+        />
       </Box>
 
       <TableContainer component={Paper} sx={{ maxHeight: 'calc(100vh - 320px)' }}>
@@ -188,19 +240,20 @@ export default function UserActivityLogPanel({
               <TableCell sx={{ fontWeight: 700, minWidth: 140 }}>User</TableCell>
               <TableCell sx={{ fontWeight: 700, width: 110 }}>Type</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>What they did</TableCell>
+              <TableCell sx={{ fontWeight: 700, minWidth: 180 }}>IP / location</TableCell>
               <TableCell sx={{ fontWeight: 700, minWidth: 160 }}>Page</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
                   <CircularProgress size={28} />
                 </TableCell>
               </TableRow>
             ) : events.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
                   <Typography color="text.secondary">
                     No activity yet. Entries appear after someone signs in and uses the app.
                   </Typography>
@@ -226,6 +279,14 @@ export default function UserActivityLogPanel({
                     <Chip size="small" label={typeChipLabel(event.type)} color={typeChipColor(event.type)} />
                   </TableCell>
                   <TableCell>{event.label}</TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                      {event.ip || '—'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {event.location || '—'}
+                    </Typography>
+                  </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
                       {event.path || '—'}

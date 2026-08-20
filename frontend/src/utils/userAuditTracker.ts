@@ -77,7 +77,7 @@ function enqueue(event: QueuedAuditEvent) {
     flushTimer = setTimeout(() => {
       flushTimer = null;
       void flushUserAuditLogs();
-    }, 4000);
+    }, 800);
   }
 }
 
@@ -138,7 +138,7 @@ export async function flushUserAuditLogs(): Promise<void> {
       flushTimer = setTimeout(() => {
         flushTimer = null;
         void flushUserAuditLogs();
-      }, 4000);
+      }, 800);
     }
   }
 }

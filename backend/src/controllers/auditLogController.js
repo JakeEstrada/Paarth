@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const UserAuditLog = require('../models/UserAuditLog');
+const { resolveClientNetwork } = require('../services/clientNetwork');
+const { publishUserAuditCreated } = require('../services/eventBus');
 
 const ALLOWED_TYPES = new Set(['login', 'logout', 'page_view', 'click']);
 const MAX_BATCH = 40;
@@ -24,7 +26,58 @@ function parseOccurredAt(raw) {
   return date;
 }
 
-async function recordUserAudit({ userId, tenantId, type, label, path, detail, occurredAt }) {
+function serializeUser(user) {
+  if (!user) return null;
+  const id = user._id || user.id;
+  return {
+    id: id ? String(id) : '',
+    name: user.name || 'Unknown',
+    email: user.email || '',
+    role: user.role || '',
+  };
+}
+
+function serializeAuditEvent(row, userFallback = null) {
+  const populated = row.userId && typeof row.userId === 'object' && (row.userId.name || row.userId.email)
+    ? row.userId
+    : userFallback;
+  return {
+    id: String(row._id),
+    type: row.type,
+    label: row.label,
+    path: row.path,
+    detail: row.detail,
+    occurredAt: row.occurredAt || row.createdAt,
+    ip: row.ip || '',
+    location: row.locationLabel || '',
+    user: serializeUser(populated),
+  };
+}
+
+function emitAuditEvents(io, tenantId, events, req) {
+  if (!io || !tenantId || !events?.length) return;
+  publishUserAuditCreated(io, tenantId, events, {
+    sourceSocketId: req?.headers?.['x-socket-id'] || null,
+  });
+}
+
+async function recordUserAudit({
+  userId,
+  tenantId,
+  type,
+  label,
+  path,
+  detail,
+  occurredAt,
+  ip,
+  locationCity,
+  locationRegion,
+  locationCountry,
+  locationLabel,
+  io,
+  user,
+  req,
+}) {
   if (!userId || !ALLOWED_TYPES.has(type)) return null;
   const doc = {
     userId,
@@ -33,9 +86,16 @@ async function recordUserAudit({ userId, tenantId, type, label, path, detail, oc
     path: clip(path, 300),
     detail: clip(detail, 300),
     occurredAt: occurredAt instanceof Date ? occurredAt : parseOccurredAt(occurredAt),
+    ip: clip(ip, 64),
+    locationCity: clip(locationCity, 80),
+    locationRegion: clip(locationRegion, 80),
+    locationCountry: clip(locationCountry, 80),
+    locationLabel: clip(locationLabel, 200),
   };
   if (tenantId) doc.tenantId = tenantId;
-  return UserAuditLog.create(doc);
+  const created = await UserAuditLog.create(doc);
+  emitAuditEvents(io || req?.app?.get('io'), tenantId, [serializeAuditEvent(created, user)], req);
+  return created;
 }
 
 async function ingestAuditLogs(req, res) {
@@ -44,6 +104,8 @@ async function ingestAuditLogs(req, res) {
     if (!rawEvents.length) {
       return res.json({ accepted: 0 });
     }
+
+    const network = await resolveClientNetwork(req);
 
     const events = rawEvents.slice(0, MAX_BATCH).flatMap((event) => {
       const type = String(event?.type || '').trim();
@@ -57,6 +119,11 @@ async function ingestAuditLogs(req, res) {
           path: clip(event.path, 300),
           detail: clip(event.detail, 300),
           occurredAt: parseOccurredAt(event.occurredAt),
+          ip: network.ip,
+          locationCity: network.locationCity,
+          locationRegion: network.locationRegion,
+          locationCountry: network.locationCountry,
+          locationLabel: network.locationLabel,
         },
       ];
     });
@@ -65,8 +132,14 @@ async function ingestAuditLogs(req, res) {
       return res.json({ accepted: 0 });
     }
 
-    await UserAuditLog.insertMany(events, { ordered: false });
-    res.json({ accepted: events.length });
+    const created = await UserAuditLog.insertMany(events, { ordered: false });
+    emitAuditEvents(
+      req.app.get('io'),
+      req.user.tenantId,
+      created.map((row) => serializeAuditEvent(row, req.user)),
+      req,
+    );
+    res.json({ accepted: created.length });
   } catch (error) {
     console.error('Failed to ingest audit logs:', error);
     res.status(500).json({ error: 'Failed to save activity' });
@@ -119,22 +192,7 @@ async function listAuditLogs(req, res) {
     const page = hasMore ? events.slice(0, take) : events;
 
     res.json({
-      events: page.map((row) => ({
-        id: String(row._id),
-        type: row.type,
-        label: row.label,
-        path: row.path,
-        detail: row.detail,
-        occurredAt: row.occurredAt || row.createdAt,
-        user: row.userId
-          ? {
-              id: String(row.userId._id || row.userId),
-              name: row.userId.name || 'Unknown',
-              email: row.userId.email || '',
-              role: row.userId.role || '',
-            }
-          : null,
-      })),
+      events: page.map((row) => serializeAuditEvent(row)),
       hasMore,
     });
   } catch (error) {

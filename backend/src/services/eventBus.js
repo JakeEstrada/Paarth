@@ -223,6 +223,17 @@ function publishRfidEmployeeProfileUpdated(io, profile, opts = {}) {
   }
 }
 
+function publishUserAuditCreated(io, tenantId, events, opts = {}) {
+  const roomId = tenantId ? String(tenantId) : '';
+  if (!roomId || !Array.isArray(events) || events.length === 0) return;
+  safeEmit(io, `tenant:${roomId}`, 'user.audit.created', {
+    type: 'user.audit.created',
+    tenantId: roomId,
+    events,
+    sourceSocketId: opts.sourceSocketId || null,
+  });
+}
+
 module.exports = {
   publishProjectCreated,
   publishProjectUpdated,
@@ -238,4 +249,5 @@ module.exports = {
   publishRfidPinDeleted,
   publishRfidTimesheetUpdated,
   publishRfidEmployeeProfileUpdated,
+  publishUserAuditCreated,
 };
