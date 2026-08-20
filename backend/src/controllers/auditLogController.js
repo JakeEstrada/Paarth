@@ -50,6 +50,8 @@ function serializeAuditEvent(row, userFallback = null) {
     occurredAt: row.occurredAt || row.createdAt,
     ip: row.ip || '',
     location: row.locationLabel || '',
+    isp: row.locationIsp || '',
+    locationSource: row.locationSource || 'ip',
     user: serializeUser(populated),
   };
 }
@@ -74,6 +76,8 @@ async function recordUserAudit({
   locationRegion,
   locationCountry,
   locationLabel,
+  locationIsp,
+  locationSource,
   io,
   user,
   req,
@@ -91,6 +95,8 @@ async function recordUserAudit({
     locationRegion: clip(locationRegion, 80),
     locationCountry: clip(locationCountry, 80),
     locationLabel: clip(locationLabel, 200),
+    locationIsp: clip(locationIsp, 120),
+    locationSource: locationSource === 'gps' ? 'gps' : 'ip',
   };
   if (tenantId) doc.tenantId = tenantId;
   const created = await UserAuditLog.create(doc);
@@ -105,7 +111,7 @@ async function ingestAuditLogs(req, res) {
       return res.json({ accepted: 0 });
     }
 
-    const network = await resolveClientNetwork(req);
+    const network = await resolveClientNetwork(req, req.body);
 
     const events = rawEvents.slice(0, MAX_BATCH).flatMap((event) => {
       const type = String(event?.type || '').trim();
@@ -124,6 +130,8 @@ async function ingestAuditLogs(req, res) {
           locationRegion: network.locationRegion,
           locationCountry: network.locationCountry,
           locationLabel: network.locationLabel,
+          locationIsp: network.locationIsp,
+          locationSource: network.locationSource,
         },
       ];
     });

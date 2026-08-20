@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { auditCoordsPayload, getCachedAuditCoords } from './auditLocation';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -126,7 +127,10 @@ export async function flushUserAuditLogs(): Promise<void> {
   flushing = true;
   const events = queue.splice(0, MAX_QUEUE);
   try {
-    await axios.post(`${API_URL}/audit-logs`, { events });
+    await axios.post(`${API_URL}/audit-logs`, {
+      events,
+      ...auditCoordsPayload(getCachedAuditCoords()),
+    });
   } catch {
     // Put them back if the session is still valid; drop them on 401.
     if (localStorage.getItem('accessToken') && queue.length < MAX_QUEUE) {

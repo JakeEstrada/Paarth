@@ -69,6 +69,17 @@ const userAuditLogSchema = new mongoose.Schema(
       trim: true,
       maxlength: 200,
     },
+    locationIsp: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 120,
+    },
+    locationSource: {
+      type: String,
+      enum: ['ip', 'gps', ''],
+      default: '',
+    },
   },
   { timestamps: true },
 );

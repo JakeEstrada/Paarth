@@ -44,6 +44,8 @@ type AuditEvent = {
   occurredAt: string;
   ip?: string;
   location?: string;
+  isp?: string;
+  locationSource?: 'ip' | 'gps' | '';
   user: AuditUser | null;
 };
 
@@ -73,6 +75,13 @@ function typeChipLabel(type: AuditEvent['type']): string {
   if (type === 'logout') return 'Sign out';
   if (type === 'page_view') return 'Page';
   return 'Click';
+}
+
+function locationCaption(event: AuditEvent): string {
+  if (event.locationSource === 'gps') return 'Device location';
+  if (event.isp) return `Approx. from IP · ${event.isp}`;
+  if (event.location) return 'Approx. from IP';
+  return '';
 }
 
 function formatStamp(value: string): string {
@@ -283,9 +292,14 @@ export default function UserActivityLogPanel({
                     <Typography variant="body2" sx={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                       {event.ip || '—'}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="text.secondary" display="block">
                       {event.location || '—'}
                     </Typography>
+                    {locationCaption(event) ? (
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        {locationCaption(event)}
+                      </Typography>
+                    ) : null}
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
