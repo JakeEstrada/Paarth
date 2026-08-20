@@ -394,6 +394,7 @@ function DashboardPage() {
   const { user, tenantIdForBranding } = useAuth();
   const { hideSensitive } = useShopViewSensitive(user?.role);
   const canEditPaymentAlerts = ['super_admin', 'admin'].includes(user?.role);
+  const canOpenFinanceHub = user?.role === 'super_admin';
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalJobs: 0,
@@ -1605,8 +1606,8 @@ function DashboardPage() {
         <DashboardPanelHeader
           title="Deposits & payments marked paid"
           subtitle="Marked paid = when you clicked Paid · Paid date = date entered on the payment schedule"
-          actionLabel="Finance Hub"
-          onAction={() => navigate('/finance?tab=deposits')}
+          actionLabel={canOpenFinanceHub ? 'Finance Hub' : undefined}
+          onAction={canOpenFinanceHub ? () => navigate('/finance?tab=deposits') : undefined}
           headerActions={<PaymentNotificationSettings canEdit={canEditPaymentAlerts} dialogTrigger />}
         />
         {recentMarkedPaidPayments.length === 0 ? (

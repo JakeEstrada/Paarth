@@ -21,15 +21,19 @@ const ALLOWED_PATHNAMES = new Set([
   '/customers-view',
 ]);
 
+const SUPER_ADMIN_ONLY_PATHS = new Set(['/developer', '/finance']);
+
 /**
  * @param {string} raw
+ * @param {string} [role]
  * @returns {string|null} safe in-app path or null
  */
-function sanitizeNavigatePath(raw) {
+function sanitizeNavigatePath(raw, role) {
   const s = String(raw || '').trim();
   if (!s.startsWith('/') || s.startsWith('//')) return null;
   const pathname = s.split('?')[0];
   if (!ALLOWED_PATHNAMES.has(pathname)) return null;
+  if (SUPER_ADMIN_ONLY_PATHS.has(pathname) && role !== 'super_admin') return null;
   const q = s.includes('?') ? `?${s.split('?').slice(1).join('?')}` : '';
   return pathname + q;
 }
@@ -44,10 +48,10 @@ Main app routes (path → purpose):
 - /archive — job archive (also /dead-estimates)
 - /completed-tasks — completed tasks and appointments
 - /completed-jobs — finished closed-out jobs
-- /developer — internal developer tasks
+- /developer — internal developer tasks (super admin only)
 - /payroll — payroll tools
 - /bills — bills
-- /finance — finance hub (bank register, deposit linking, payment tracking)
+- /finance — finance hub (super admin only; bank register, deposit linking, payment tracking)
 - /takeoff-sheet — takeoff sheet
 - /users — user management (admins only)
 - /account-settings — profile, password, org logo (super admin)

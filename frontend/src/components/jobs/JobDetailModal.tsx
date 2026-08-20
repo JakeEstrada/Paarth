@@ -299,7 +299,7 @@ function JobDetailModal({
 }) {
   const location = useLocation();
   const financialPin = useFinancialPinLockContext();
-  const { tenantIdForBranding } = useAuth();
+  const { tenantIdForBranding, isSuperAdmin } = useAuth();
   const isShopDisplay = shopDisplayMode || isShopDisplayPath(location.pathname);
   const [activeTab, setActiveTab] = useState(() => resolveJobModalTab(initialTab));
   const [job, setJob] = useState(null);
@@ -1279,17 +1279,23 @@ function JobDetailModal({
           {!isShopDisplay ? (
             <>
               {jobEstimates.length > 0 ? (
-                <Button
-                  size="small"
-                  variant="text"
-                  component={RouterLink}
-                  to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${jobEstimates[0]._id}`}
-                  onClick={onClose}
-                  sx={HEADER_LINK_SX}
-                >
-                  {jobEstimates[0].estimateNumber || 'Estimate'}
-                </Button>
-              ) : (
+                isSuperAdmin() ? (
+                  <Button
+                    size="small"
+                    variant="text"
+                    component={RouterLink}
+                    to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${jobEstimates[0]._id}`}
+                    onClick={onClose}
+                    sx={HEADER_LINK_SX}
+                  >
+                    {jobEstimates[0].estimateNumber || 'Estimate'}
+                  </Button>
+                ) : (
+                  <Typography component="span" sx={{ ...HEADER_LINK_SX, display: 'inline-flex', alignItems: 'center' }}>
+                    {jobEstimates[0].estimateNumber || 'Estimate'}
+                  </Typography>
+                )
+              ) : isSuperAdmin() ? (
                 <Button
                   size="small"
                   variant="text"
@@ -1300,8 +1306,10 @@ function JobDetailModal({
                 >
                   Estimate
                 </Button>
-              )}
-              <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+              ) : null}
+              {isSuperAdmin() || jobEstimates.length > 0 ? (
+                <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+              ) : null}
               <Button
                 size="small"
                 variant="text"

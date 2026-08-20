@@ -4,8 +4,16 @@ import { useAuth } from '../context/AuthContext';
 import { Box, CircularProgress } from '@mui/material';
 import { isKioskViewPath } from '../utils/authSession';
 
-function ProtectedRoute({ children, requireAdmin = false }: { children: ReactNode; requireAdmin?: boolean }) {
-  const { user, loading, isAdmin } = useAuth();
+function ProtectedRoute({
+  children,
+  requireAdmin = false,
+  requireSuperAdmin = false,
+}: {
+  children: ReactNode;
+  requireAdmin?: boolean;
+  requireSuperAdmin?: boolean;
+}) {
+  const { user, loading, isAdmin, isSuperAdmin } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -29,6 +37,10 @@ function ProtectedRoute({ children, requireAdmin = false }: { children: ReactNod
       return <Navigate to={`/login?kiosk=1&redirect=${redirect}`} replace />;
     }
     return <Navigate to="/login" replace />;
+  }
+
+  if (requireSuperAdmin && !isSuperAdmin()) {
+    return <Navigate to="/pipeline" replace />;
   }
 
   if (requireAdmin && !isAdmin()) {

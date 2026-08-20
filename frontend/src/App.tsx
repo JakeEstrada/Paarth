@@ -147,12 +147,12 @@ function App(): JSX.Element | null {
                   <Route path="/completed-appointments" element={<Navigate to="/completed-tasks" replace />} />
                   <Route path="/completed-jobs" element={<CompletedJobsPage />} />
                   <Route path="/completed-tasks" element={<CompletedTasksPage />} />
-                  <Route path="/developer" element={<DeveloperTasksPage />} />
+                  <Route path="/developer" element={<ProtectedRoute requireSuperAdmin><DeveloperTasksPage /></ProtectedRoute>} />
                   <Route path="/payroll" element={<PayrollPage />} />
                   <Route path="/rfid-timesheets" element={<RfidTimesheetPage />} />
                   <Route path="/commission-logs" element={<CommissionLogsPage />} />
                   <Route path="/bills" element={<BillsPage />} />
-                  <Route path="/finance" element={<FinanceHubPage />} />
+                  <Route path="/finance" element={<ProtectedRoute requireSuperAdmin><FinanceHubPage /></ProtectedRoute>} />
                   <Route path="/takeoff-sheet" element={<TakeoffSheetPage />} />
                   <Route path="/vendors" element={<VendorsPage />} />
                   <Route path="/users" element={<ProtectedRoute requireAdmin><UsersPage /></ProtectedRoute>} />

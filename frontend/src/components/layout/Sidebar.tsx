@@ -1,6 +1,6 @@
 /**
  * Sidebar — Primary navigation groups (workspace, finance, operations, archive).
- * Admin-only items filtered via useAuth().isAdmin().
+ * Admin-only items filtered via useAuth().isAdmin(); super-admin items via isSuperAdmin().
  */
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -52,7 +52,7 @@ const workspaceItems = [
 ];
 
 const financeItems = [
-  { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance' },
+  { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance', superAdminOnly: true },
   { text: 'Bills', icon: <ReceiptIcon />, path: '/bills' },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
   { text: 'RFID Timesheets', icon: <RfidTimesheetIcon />, path: '/rfid-timesheets' },
@@ -75,7 +75,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, isSuperAdmin, user } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const isActive = (path) => {
@@ -118,7 +118,11 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const renderNavList = (items) => (
     <List>
       {items
-        .filter((item) => !item.adminOnly || isAdmin())
+        .filter((item) => {
+          if (item.superAdminOnly) return isSuperAdmin();
+          if (item.adminOnly) return isAdmin();
+          return true;
+        })
         .map((item) => (
           <ListItem key={item.path} disablePadding>
             <ListItemButton
@@ -338,6 +342,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             />
           </ListItemButton>
         </ListItem>
+        {isSuperAdmin() ? (
         <ListItem disablePadding>
           <ListItemButton
             onClick={() => handleNavigation('/developer')}
@@ -384,6 +389,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             />
           </ListItemButton>
         </ListItem>
+        ) : null}
       </List>
     </>
   );

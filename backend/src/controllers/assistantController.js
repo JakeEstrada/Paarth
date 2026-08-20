@@ -271,7 +271,7 @@ async function runAssistantChat(req, res) {
                 isSuperAdmin: role === 'super_admin',
               };
             } else if (fn.name === 'navigate_user') {
-              const safe = sanitizeNavigatePath(args.path);
+              const safe = sanitizeNavigatePath(args.path, req.user?.role);
               if (safe) {
                 clientActions.push({ type: 'navigate', path: safe });
                 toolContent = { ok: true, path: safe };

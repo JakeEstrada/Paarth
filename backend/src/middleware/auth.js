@@ -47,4 +47,11 @@ async function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth };
+function requireSuperAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only super admins can access this resource' });
+  }
+  next();
+}
+
+module.exports = { requireAuth, requireSuperAdmin };
