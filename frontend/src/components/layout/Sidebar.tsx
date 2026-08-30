@@ -68,7 +68,7 @@ const operationsItems = [
 const archiveItems = [
   { text: 'Job Archive', icon: <ArchiveIcon />, path: '/archive' },
   { text: 'Completed Jobs', icon: <CompletedJobsIcon />, path: '/completed-jobs' },
-  { text: 'Completed Tasks & Appointments', icon: <TasksIcon />, path: '/completed-tasks' },
+  { text: 'Weekly Activity Log', icon: <TasksIcon />, path: '/completed-tasks' },
 ];
 
 function Sidebar({ mobileOpen, onMobileClose }) {
