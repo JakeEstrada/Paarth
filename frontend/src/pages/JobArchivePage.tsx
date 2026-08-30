@@ -360,13 +360,14 @@ function JobArchivePage() {
                     </Box>
                   </Box>
                 </AccordionSummary>
-                <AccordionDetails sx={{ px: 3, pb: 3 }}>
+                <AccordionDetails sx={{ px: 3, pb: 2.5 }}>
                   <Box
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                      gap: 2,
-                      mt: 2,
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(188px, 204px))',
+                      justifyContent: 'start',
+                      gap: 1.25,
+                      mt: 1,
                     }}
                   >
                     {group.jobs.map((job) => {
@@ -378,53 +379,54 @@ function JobArchivePage() {
                           onClick={() => setSelectedJobId(job._id)}
                           onContextMenu={(e) => handleContextMenu(e, job)}
                           sx={{
-                            borderLeft: '4px solid #D32F2F',
+                            borderLeft: '3px solid #D32F2F',
                             cursor: 'pointer',
                             transition: 'all 0.2s ease',
                             '&:hover': {
                               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                              transform: 'translateY(-2px)',
+                              transform: 'translateY(-1px)',
                             },
                           }}
                         >
-                          <CardContent sx={{ p: 2 }}>
+                          <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
                             <Typography
-                              variant="subtitle1"
+                              variant="body2"
                               sx={{
                                 fontWeight: 600,
-                                mb: 1,
+                                mb: 0.25,
+                                lineHeight: 1.3,
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
+                                whiteSpace: 'nowrap',
                               }}
                             >
                               {job.title}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
                               {job.customerId?.name || 'Unknown Customer'}
                             </Typography>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5 }}>
-                              <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 500 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.75 }}>
+                              <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
                                 {hideSensitive ? 'Locked' : formatCurrency(job.valueEstimated)}
                               </Typography>
                               {daysSince !== null && (
                                 <Chip
-                                  label={`${daysSince} day${daysSince !== 1 ? 's' : ''} old`}
+                                  label={`${daysSince}d`}
                                   size="small"
                                   sx={{
+                                    height: 18,
                                     backgroundColor: theme.palette.mode === 'dark' ? 'rgba(211, 47, 47, 0.3)' : '#D32F2F15',
                                     color: 'error.main',
-                                    fontSize: '0.7rem',
+                                    fontSize: '0.65rem',
                                     fontWeight: 600,
+                                    '& .MuiChip-label': { px: 0.75 },
                                   }}
                                 />
                               )}
                             </Box>
                             {sentAt && (
-                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                                Sent: {new Date(sentAt).toLocaleDateString()}
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                Sent {new Date(sentAt).toLocaleDateString()}
                               </Typography>
                             )}
                           </CardContent>

@@ -276,13 +276,14 @@ function CompletedJobsPage() {
                     </Box>
                   </Box>
                 </AccordionSummary>
-                <AccordionDetails sx={{ px: 3, pb: 3 }}>
+                <AccordionDetails sx={{ px: 3, pb: 2.5 }}>
                   <Box
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                      gap: 2,
-                      mt: 2,
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(188px, 204px))',
+                      justifyContent: 'start',
+                      gap: 1.25,
+                      mt: 1,
                     }}
                   >
                     {group.jobs.map((job) => (
@@ -291,47 +292,46 @@ function CompletedJobsPage() {
                         onClick={() => setSelectedJobId(job._id)}
                         onContextMenu={(e) => handleContextMenu(e, job)}
                         sx={{
-                          borderLeft: '4px solid #43A047',
+                          borderLeft: '3px solid #43A047',
                           cursor: 'pointer',
                           transition: 'all 0.2s ease',
                           '&:hover': {
                             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                            transform: 'translateY(-2px)',
+                            transform: 'translateY(-1px)',
                           },
                         }}
                       >
-                        <Box sx={{ p: 2 }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: 600,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                flex: 1,
-                              }}
-                            >
-                              {job.title}
-                            </Typography>
-                          </Box>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                        <Box sx={{ p: 1.25 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 600,
+                              mb: 0.25,
+                              lineHeight: 1.3,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {job.title}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
                             {job.customerId?.name || 'Unknown Customer'}
                           </Typography>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5 }}>
-                            <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 500 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.75 }}>
+                            <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
                               {hideSensitive ? 'Locked' : formatCurrency(job.valueContracted || job.valueEstimated)}
                             </Typography>
                             <Chip
-                              label="Completed"
+                              label="Done"
                               size="small"
                               sx={{
+                                height: 18,
                                 backgroundColor: theme.palette.mode === 'dark' ? 'rgba(67, 160, 71, 0.3)' : '#43A04715',
                                 color: 'success.main',
-                                fontSize: '0.7rem',
+                                fontSize: '0.65rem',
                                 fontWeight: 600,
+                                '& .MuiChip-label': { px: 0.75 },
                               }}
                             />
                           </Box>
