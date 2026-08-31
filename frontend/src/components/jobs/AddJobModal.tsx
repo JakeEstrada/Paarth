@@ -22,7 +22,8 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import PhoneTextField from '../common/PhoneTextField';
 import { formatNanpTyping, formatPhoneForDisplay } from '../../utils/phoneFormat';
-import { JOB_SOURCE_OPTIONS, sanitizeMoneyTypingInput } from '../../utils/jobSources';
+import { JOB_SOURCE_OPTIONS, sanitizeMoneyTypingInput, clipReferralCompany } from '../../utils/jobSources';
+import ReferralCompanyField, { rememberReferralCompany } from '../common/ReferralCompanyField';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -51,6 +52,7 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
     },
     valueEstimated: '',
     source: 'other',
+    referralCompany: '',
   });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
@@ -76,6 +78,7 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
         },
         valueEstimated: '',
         source: 'other',
+        referralCompany: '',
       });
       setErrors({});
       setCustomerInputValue('');
@@ -267,6 +270,8 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
               address: (formData.customerAddress.street || formData.customerAddress.city) 
                 ? formData.customerAddress 
                 : undefined,
+              source: formData.source,
+              referralCompany: formData.source === 'referral' ? clipReferralCompany(formData.referralCompany) : '',
               // Pipeline flow creates the real job next; avoid duplicate "Name — Job" from API
               skipInitialJob: true,
             });
@@ -290,6 +295,7 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
         customerId: customerId,
         stage: (initialStage && String(initialStage).trim()) || 'ESTIMATE_IN_PROGRESS',
         source: formData.source,
+        referralCompany: formData.source === 'referral' ? clipReferralCompany(formData.referralCompany) : '',
       };
       if (pipelineLayoutId) {
         jobData.pipelineLayoutId = pipelineLayoutId;
@@ -320,6 +326,9 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
       }
 
       const response = await axios.post(`${API_URL}/jobs`, jobData);
+      if (jobData.source === 'referral' && jobData.referralCompany) {
+        rememberReferralCompany(jobData.referralCompany);
+      }
       toast.success('Job created successfully');
       
       if (onJobCreated) {
@@ -520,7 +529,14 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
             <InputLabel>Source</InputLabel>
             <Select
               value={formData.source}
-              onChange={(e) => handleChange('source', e.target.value)}
+              onChange={(e) => {
+                const source = e.target.value;
+                setFormData((prev) => ({
+                  ...prev,
+                  source,
+                  referralCompany: source === 'referral' ? prev.referralCompany : '',
+                }));
+              }}
               label="Source"
             >
               {SOURCE_OPTIONS.map((option) => (
@@ -530,6 +546,12 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
               ))}
             </Select>
           </FormControl>
+          {formData.source === 'referral' ? (
+            <ReferralCompanyField
+              value={formData.referralCompany}
+              onChange={(referralCompany) => handleChange('referralCompany', referralCompany)}
+            />
+          ) : null}
 
           <Box sx={{ mt: 1, p: 1.5, bgcolor: 'info.light', borderRadius: 1 }}>
             <Box sx={{ fontSize: '0.875rem', color: 'info.dark' }}>

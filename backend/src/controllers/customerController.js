@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { emitJobCreated, sourceSocketIdFromReq } = require('../services/jobRealtime');
 const { publishCustomerChanged } = require('../services/eventBus');
+const { applyReferralFields } = require('../utils/referralCompany');
 
 /** Default pipeline job so every API-created customer has at least one job. Skip when caller will create the job (e.g. Add Job modal). */
 async function createInitialJobForCustomer(customer, createdBy, req) {
@@ -16,6 +17,7 @@ async function createInitialJobForCustomer(customer, createdBy, req) {
     description: '',
     stage: 'ESTIMATE_IN_PROGRESS',
     source: customer.source || 'other',
+    referralCompany: customer.source === 'referral' ? customer.referralCompany || '' : '',
     createdBy,
   });
   await job.save();
@@ -107,6 +109,7 @@ async function createCustomer(req, res) {
     }
     
     const { skipInitialJob, ...customerBody } = req.body;
+    applyReferralFields(customerBody);
     const customer = new Customer({
       ...customerBody,
       createdBy: createdBy
@@ -156,7 +159,7 @@ async function updateCustomer(req, res) {
     }
     
     const oldData = customer.toObject();
-    
+    applyReferralFields(req.body);
     Object.assign(customer, req.body);
     await customer.save();
     

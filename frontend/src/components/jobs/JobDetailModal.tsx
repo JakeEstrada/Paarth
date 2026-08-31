@@ -89,7 +89,8 @@ import {
   shopDisplayCalendarPath,
   shopDisplayCustomerPath,
 } from '../../utils/shopDisplay';
-import { JOB_SOURCE_OPTIONS, formatJobSource, sanitizeMoneyTypingInput } from '../../utils/jobSources';
+import { JOB_SOURCE_OPTIONS, formatJobSourceWithCompany, sanitizeMoneyTypingInput, clipReferralCompany } from '../../utils/jobSources';
+import ReferralCompanyField, { rememberReferralCompany } from '../common/ReferralCompanyField';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -683,10 +684,15 @@ function JobDetailModal({
             : parseFloat(String(editedJob.valueEstimated)) || 0,
         valueContracted: editedJob.valueContracted,
         source: editedJob.source,
+        referralCompany:
+          editedJob.source === 'referral' ? clipReferralCompany(editedJob.referralCompany) : '',
         jobAddress,
       };
 
       await onJobUpdate(jobId, updates);
+      if (updates.source === 'referral' && updates.referralCompany) {
+        rememberReferralCompany(updates.referralCompany);
+      }
       setIsEditing(false);
       await fetchJobDetails(); // Refresh job data
       toast.success('Job updated successfully');
@@ -702,6 +708,7 @@ function JobDetailModal({
     setEditedJob((prev) => ({
       ...prev,
       [field]: value,
+      ...(field === 'source' && value !== 'referral' ? { referralCompany: '' } : {}),
     }));
   };
 
@@ -1514,6 +1521,15 @@ function JobDetailModal({
                           ))}
                         </Select>
                       </FormControl>
+                      {editedJob?.source === 'referral' ? (
+                        <Box sx={{ mt: 1.5 }}>
+                          <ReferralCompanyField
+                            size="small"
+                            value={editedJob?.referralCompany || ''}
+                            onChange={(referralCompany) => handleFieldChange('referralCompany', referralCompany)}
+                          />
+                        </Box>
+                      ) : null}
                     </Grid>
                   </Grid>
                 </Paper>
@@ -1717,7 +1733,7 @@ function JobDetailModal({
                       Source
                     </Typography>
                     <Typography variant="body2">
-                      {formatJobSource(job.source)}
+                      {formatJobSourceWithCompany(job.source, job.referralCompany)}
                     </Typography>
                   </Grid>
                   <Grid item xs={6} sm={4}>

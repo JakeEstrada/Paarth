@@ -78,6 +78,12 @@ const customerSchema = new mongoose.Schema({
     enum: ['referral', 'vehicle_advertisement', 'yelp', 'instagram', 'facebook', 'website', 'repeat', 'other'],
     default: 'other'
   },
+  referralCompany: {
+    type: String,
+    default: '',
+    trim: true,
+    maxlength: 120,
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

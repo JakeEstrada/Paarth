@@ -16,6 +16,23 @@ export function formatJobSource(source: string | null | undefined) {
   return hit?.label || value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+export function clipReferralCompany(value: string | null | undefined) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+}
+
+export function formatJobSourceWithCompany(
+  source: string | null | undefined,
+  company: string | null | undefined,
+) {
+  const base = formatJobSource(source);
+  const name = clipReferralCompany(company);
+  if (String(source || '') === 'referral' && name) return `${base} · ${name}`;
+  return base;
+}
+
 /** Allow typing dollars freely — digits and one decimal point only. */
 export function sanitizeMoneyTypingInput(raw: string) {
   let value = String(raw ?? '').replace(/[^\d.]/g, '');

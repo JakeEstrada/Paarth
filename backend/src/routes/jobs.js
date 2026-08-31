@@ -19,7 +19,8 @@ const {
   archiveCompletedJobs,
   reopenFromCompleted,
   resetAllEstimates,
-  addJobInvoice
+  addJobInvoice,
+  getReferralCompanies,
 } = require('../controllers/jobController');
 const { generateJobSummary } = require('../controllers/activityController');
 
@@ -31,6 +32,7 @@ router.get('/pipeline/summary', getPipelineSummary);
 router.get('/dead-estimates', getDeadEstimates); // Backward compatibility
 router.get('/archive', getArchivedJobs);
 router.get('/completed', getCompletedJobs);
+router.get('/referral-companies', getReferralCompanies);
 router.get('/dead-estimates/debug', require('../controllers/jobController').debugDeadEstimates);
 router.post('/dead-estimates/auto-move', autoMoveDeadEstimates);
 router.post('/archive-completed', archiveCompletedJobs);

@@ -17,6 +17,7 @@ const {
 } = require('../utils/paymentSchedule');
 const { notifyPaymentMarkedPaid } = require('../services/paymentNotificationService');
 const { upsertPaymentReceivedActivity, voidPaymentReceivedActivity, reconcilePaymentReceivedActivities } = require('../services/paymentActivitySync');
+const { applyReferralFields } = require('../utils/referralCompany');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
@@ -170,11 +171,11 @@ async function createJob(req, res) {
     }
     
     // Ensure stage is set to ESTIMATE_IN_PROGRESS if not provided
-    const jobData = {
+    const jobData = applyReferralFields({
       ...req.body,
       stage: req.body.stage || 'ESTIMATE_IN_PROGRESS',
       createdBy: createdBy
-    };
+    });
     
     const job = new Job(jobData);
     await job.save();
@@ -348,6 +349,7 @@ async function updateJob(req, res) {
     }
     delete jobUpdateData.estimateHistory;
     delete jobUpdateData.estimate;
+    applyReferralFields(jobUpdateData);
     Object.assign(job, jobUpdateData);
     if (jobUpdateData.takeoff !== undefined) {
       job.markModified('takeoff');
@@ -1666,6 +1668,45 @@ async function resetAllEstimates(req, res) {
   }
 }
 
+async function getReferralCompanies(req, res) {
+  try {
+    const Customer = require('../models/Customer');
+    const pipeline = [
+      { $match: { referralCompany: { $gt: '' } } },
+      {
+        $group: {
+          _id: { $toLower: '$referralCompany' },
+          name: { $first: '$referralCompany' },
+          count: { $sum: 1 },
+        },
+      },
+    ];
+    const [jobRows, customerRows] = await Promise.all([
+      Job.aggregate(pipeline),
+      Customer.aggregate(pipeline),
+    ]);
+    const merged = new Map();
+    for (const row of [...jobRows, ...customerRows]) {
+      const key = String(row._id || '').trim();
+      if (!key) continue;
+      const existing = merged.get(key);
+      if (existing) {
+        existing.count += Number(row.count) || 0;
+      } else {
+        merged.set(key, { name: String(row.name || '').trim(), count: Number(row.count) || 0 });
+      }
+    }
+    const companies = [...merged.values()]
+      .filter((row) => row.name)
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+      .map((row) => row.name)
+      .slice(0, 80);
+    res.json({ companies });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to load referring companies' });
+  }
+}
+
 module.exports = {
   getJobs,
   getJob,
@@ -1685,5 +1726,6 @@ module.exports = {
   reopenFromCompleted,
   resetAllEstimates,
   addJobInvoice,
-  debugDeadEstimates
+  debugDeadEstimates,
+  getReferralCompanies,
 };

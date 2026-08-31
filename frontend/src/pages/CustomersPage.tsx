@@ -65,7 +65,8 @@ import { formatMoney } from '../utils/paymentSchedule';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
-import { JOB_SOURCE_OPTIONS, formatJobSource } from '../utils/jobSources';
+import { JOB_SOURCE_OPTIONS, formatJobSourceWithCompany, clipReferralCompany } from '../utils/jobSources';
+import ReferralCompanyField, { rememberReferralCompany } from '../components/common/ReferralCompanyField';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
 import { getTenantRoom } from '../services/socket';
 
@@ -395,6 +396,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
       addresses: selectedCustomer.addresses ? [...selectedCustomer.addresses] : [],
       notes: selectedCustomer.notes || '',
       source: selectedCustomer.source || 'other',
+      referralCompany: selectedCustomer.referralCompany || '',
       tags: selectedCustomer.tags ? [...selectedCustomer.tags] : [],
     });
   };
@@ -430,10 +432,17 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
         addresses: editCustomerForm.addresses || [],
         notes: editCustomerForm.notes || undefined,
         source: editCustomerForm.source || 'other',
+        referralCompany:
+          editCustomerForm.source === 'referral'
+            ? clipReferralCompany(editCustomerForm.referralCompany)
+            : '',
         tags: editCustomerForm.tags || [],
       };
 
       await axios.patch(`${API_URL}/customers/${selectedCustomer._id}`, updateData);
+      if (updateData.source === 'referral' && updateData.referralCompany) {
+        rememberReferralCompany(updateData.referralCompany);
+      }
       toast.success('Customer updated successfully');
       
       // Refresh customer data
@@ -932,7 +941,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={formatJobSource(customer.source)}
+                        label={formatJobSourceWithCompany(customer.source, customer.referralCompany)}
                         size="small"
                         sx={{ textTransform: 'capitalize' }}
                       />
@@ -1203,7 +1212,13 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     <InputLabel>Source</InputLabel>
                     <Select
                       value={editCustomerForm.source || 'other'}
-                      onChange={(e) => setEditCustomerForm({ ...editCustomerForm, source: e.target.value })}
+                      onChange={(e) =>
+                        setEditCustomerForm({
+                          ...editCustomerForm,
+                          source: e.target.value,
+                          referralCompany: e.target.value === 'referral' ? editCustomerForm.referralCompany : '',
+                        })
+                      }
                       label="Source"
                     >
                       {JOB_SOURCE_OPTIONS.map((option) => (
@@ -1213,6 +1228,14 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                       ))}
                     </Select>
                   </FormControl>
+                  {editCustomerForm.source === 'referral' ? (
+                    <ReferralCompanyField
+                      value={editCustomerForm.referralCompany || ''}
+                      onChange={(referralCompany) =>
+                        setEditCustomerForm({ ...editCustomerForm, referralCompany })
+                      }
+                    />
+                  ) : null}
 
                   {/* Notes */}
                   <TextField
@@ -1400,9 +1423,12 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                         Source:
                       </Typography>
                       <Chip
-                        label={selectedCustomer.source}
+                        label={formatJobSourceWithCompany(
+                          selectedCustomer.source,
+                          selectedCustomer.referralCompany,
+                        )}
                         size="small"
-                        sx={{ textTransform: 'capitalize', ml: 2 }}
+                        sx={{ ml: 2 }}
                       />
                     </Box>
                   )}
