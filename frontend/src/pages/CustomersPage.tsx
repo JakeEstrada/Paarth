@@ -193,6 +193,11 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
         bVal = `${b.address?.street || ''} ${b.address?.city || ''}`.trim();
       }
 
+      if (sortField === 'source') {
+        aVal = formatJobSourceWithCompany(a.source, a.referralCompany);
+        bVal = formatJobSourceWithCompany(b.source, b.referralCompany);
+      }
+
       // Handle null/undefined
       if (!aVal && !bVal) return 0;
       if (!aVal) return 1;
@@ -905,7 +910,15 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     Address
                   </TableSortLabel>
                 </TableCell>
-                <TableCell>Source</TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortField === 'source'}
+                    direction={sortField === 'source' ? sortOrder : 'asc'}
+                    onClick={() => handleSort('source')}
+                  >
+                    Source
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell>Notes</TableCell>
               </TableRow>
             </TableHead>

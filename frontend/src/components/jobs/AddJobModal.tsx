@@ -1,5 +1,5 @@
 // @ts-nocheck — large modal; tighten types incrementally
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -16,8 +16,9 @@ import {
   Autocomplete,
   Chip,
   Typography,
+  IconButton,
 } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, Close as CloseIcon, InsertDriveFile as FileIcon } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import PhoneTextField from '../common/PhoneTextField';
@@ -35,6 +36,20 @@ function parseCreateNewOptionName(option) {
 }
 
 const SOURCE_OPTIONS = JOB_SOURCE_OPTIONS;
+const CREATE_JOB_FILE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+const MAX_CREATE_JOB_FILES = 20;
+
+function validateCreateJobFile(file) {
+  if (!CREATE_JOB_FILE_TYPES.includes(file.type)) return 'Only images and PDFs are allowed';
+  if (file.size > 10 * 1024 * 1024) return 'File must be less than 10MB';
+  return null;
+}
+
+function revokePendingPreviews(items) {
+  (items || []).forEach((item) => {
+    if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
+  });
+}
 
 function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, initialStage = null }) {
   const [formData, setFormData] = useState({
@@ -59,31 +74,42 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [customerInputValue, setCustomerInputValue] = useState('');
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (open) {
-      // Reset form when modal opens
-      setFormData({
-        title: '',
-        description: '',
-        customerId: null,
-        customerName: '',
-        customerPhone: '',
-        customerEmail: '',
-        customerAddress: {
-          street: '',
-          city: '',
-          state: '',
-          zip: '',
-        },
-        valueEstimated: '',
-        source: 'other',
-        referralCompany: '',
+    if (!open) {
+      setPendingFiles((prev) => {
+        revokePendingPreviews(prev);
+        return [];
       });
-      setErrors({});
-      setCustomerInputValue('');
-      fetchCustomers();
+      return;
     }
+    // Reset form when modal opens
+    setFormData({
+      title: '',
+      description: '',
+      customerId: null,
+      customerName: '',
+      customerPhone: '',
+      customerEmail: '',
+      customerAddress: {
+        street: '',
+        city: '',
+        state: '',
+        zip: '',
+      },
+      valueEstimated: '',
+      source: 'other',
+      referralCompany: '',
+    });
+    setErrors({});
+    setCustomerInputValue('');
+    setPendingFiles((prev) => {
+      revokePendingPreviews(prev);
+      return [];
+    });
+    fetchCustomers();
   }, [open]);
 
   const fetchCustomers = async () => {
@@ -224,6 +250,80 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
     return Object.keys(newErrors).length === 0;
   };
 
+  const addPendingFiles = (fileList) => {
+    const incoming = [...(fileList || [])].filter(Boolean);
+    if (!incoming.length) return;
+
+    const skipped = [];
+    const valid = [];
+    for (const file of incoming) {
+      const reason = validateCreateJobFile(file);
+      if (reason) skipped.push({ name: file.name, reason });
+      else valid.push(file);
+    }
+    if (skipped.length) {
+      const first = skipped[0];
+      const more = skipped.length > 1 ? ` (+${skipped.length - 1} more skipped)` : '';
+      toast.error(`${first.name}: ${first.reason}${more}`);
+    }
+    if (!valid.length) return;
+
+    setPendingFiles((prev) => {
+      const remaining = Math.max(0, MAX_CREATE_JOB_FILES - prev.length);
+      if (remaining === 0) {
+        toast.error(`You can attach up to ${MAX_CREATE_JOB_FILES} files`);
+        return prev;
+      }
+      const existing = new Set(prev.map((item) => `${item.file.name}:${item.file.size}:${item.file.lastModified}`));
+      const nextItems = [];
+      for (const file of valid) {
+        if (nextItems.length >= remaining) break;
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (existing.has(key)) continue;
+        existing.add(key);
+        nextItems.push({
+          file,
+          previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+        });
+      }
+      if (valid.length > remaining) {
+        toast.error(`You can attach up to ${MAX_CREATE_JOB_FILES} files`);
+      }
+      return nextItems.length ? [...prev, ...nextItems] : prev;
+    });
+  };
+
+  const removePendingFile = (index) => {
+    setPendingFiles((prev) => {
+      const item = prev[index];
+      if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const uploadPendingFiles = async (jobId) => {
+    const filesToUpload = pendingFiles;
+    if (!filesToUpload.length) return { succeeded: 0, failed: 0 };
+    let succeeded = 0;
+    let failed = 0;
+    for (const item of filesToUpload) {
+      try {
+        const uploadData = new FormData();
+        uploadData.append('file', item.file);
+        uploadData.append('jobId', jobId);
+        uploadData.append('fileType', item.file.type.startsWith('image/') ? 'photo' : 'other');
+        await axios.post(`${API_URL}/files/upload`, uploadData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        succeeded += 1;
+      } catch (error) {
+        failed += 1;
+        console.error('Error uploading file:', item.file.name, error);
+      }
+    }
+    return { succeeded, failed };
+  };
+
   const handleSubmit = async () => {
     if (!validate()) {
       return;
@@ -329,7 +429,26 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
       if (jobData.source === 'referral' && jobData.referralCompany) {
         rememberReferralCompany(jobData.referralCompany);
       }
-      toast.success('Job created successfully');
+
+      const jobId = response.data?._id;
+      let uploadResult = { succeeded: 0, failed: 0 };
+      if (jobId && pendingFiles.length) {
+        uploadResult = await uploadPendingFiles(jobId);
+      }
+
+      if (uploadResult.failed && uploadResult.succeeded) {
+        toast.error(`Job created, but ${uploadResult.failed} file${uploadResult.failed === 1 ? '' : 's'} failed to upload`);
+      } else if (uploadResult.failed) {
+        toast.error('Job created, but files failed to upload. Add them from the Files tab.');
+      } else if (uploadResult.succeeded) {
+        toast.success(
+          uploadResult.succeeded === 1
+            ? 'Job created with 1 file'
+            : `Job created with ${uploadResult.succeeded} files`,
+        );
+      } else {
+        toast.success('Job created successfully');
+      }
       
       if (onJobCreated) {
         onJobCreated(response.data);
@@ -349,7 +468,7 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create New Job</DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
@@ -553,6 +672,112 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
             />
           ) : null}
 
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 0.75, fontWeight: 600 }}>
+              Photos & files
+            </Typography>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+              multiple
+              hidden
+              onChange={(e) => {
+                addPendingFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            <Box
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (saving) return;
+                addPendingFiles(e.dataTransfer.files);
+              }}
+              sx={{
+                border: '1px dashed',
+                borderColor: 'divider',
+                borderRadius: 1,
+                px: 1.5,
+                py: 1.25,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                flexWrap: 'wrap',
+              }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                Browse or drop photos here
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={saving}
+                sx={{ textTransform: 'none' }}
+              >
+                Browse
+              </Button>
+            </Box>
+            {pendingFiles.length > 0 ? (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                {pendingFiles.map((item, index) => (
+                  <Box
+                    key={`${item.file.name}-${item.file.lastModified}-${index}`}
+                    sx={{
+                      position: 'relative',
+                      width: 72,
+                      height: 72,
+                      borderRadius: 1,
+                      overflow: 'hidden',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'action.hover',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {item.previewUrl ? (
+                      <Box
+                        component="img"
+                        src={item.previewUrl}
+                        alt={item.file.name}
+                        sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <FileIcon fontSize="small" color="action" />
+                    )}
+                    <IconButton
+                      size="small"
+                      aria-label={`Remove ${item.file.name}`}
+                      onClick={() => removePendingFile(index)}
+                      disabled={saving}
+                      sx={{
+                        position: 'absolute',
+                        top: 2,
+                        right: 2,
+                        width: 20,
+                        height: 20,
+                        bgcolor: 'rgba(0,0,0,0.55)',
+                        color: '#fff',
+                        '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' },
+                      }}
+                    >
+                      <CloseIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Box>
+            ) : null}
+          </Box>
+
           <Box sx={{ mt: 1, p: 1.5, bgcolor: 'info.light', borderRadius: 1 }}>
             <Box sx={{ fontSize: '0.875rem', color: 'info.dark' }}>
               <strong>Note:</strong> New jobs will be created in the <strong>Estimate Current, first 5 days</strong> stage.
@@ -570,7 +795,7 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
           disabled={saving}
         >
           {saving ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
-          Create Job
+          {saving && pendingFiles.length ? 'Uploading…' : saving ? 'Creating…' : 'Create Job'}
         </Button>
       </DialogActions>
     </Dialog>
