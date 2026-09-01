@@ -20,6 +20,7 @@ const PATH_LABELS: Record<string, string> = {
   '/archive': 'Job Archive',
   '/completed-jobs': 'Completed Jobs',
   '/completed-tasks': 'Weekly Activity Log',
+  '/website': 'Website',
   '/developer': 'Developer Tasks',
   '/account-settings': 'Account Settings',
   '/rfid': 'RFID scans',

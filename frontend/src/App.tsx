@@ -28,6 +28,7 @@ import CompletedTasksPage from './pages/CompletedTasksPage';
 import CalendarPage from './pages/CalendarPage';
 import TasksPage from './pages/TasksPage';
 import DeveloperTasksPage from './pages/DeveloperTasksPage';
+import WebsitePage from './pages/WebsitePage';
 import CustomersPage from './pages/CustomersPage';
 import PayrollPage from './pages/PayrollPage';
 import RfidTimesheetPage from './pages/RfidTimesheetPage';
@@ -148,6 +149,7 @@ function App(): JSX.Element | null {
                   <Route path="/completed-appointments" element={<Navigate to="/completed-tasks" replace />} />
                   <Route path="/completed-jobs" element={<CompletedJobsPage />} />
                   <Route path="/completed-tasks" element={<CompletedTasksPage />} />
+                  <Route path="/website" element={<ProtectedRoute requireSuperAdmin><WebsitePage /></ProtectedRoute>} />
                   <Route path="/developer" element={<ProtectedRoute requireSuperAdmin><DeveloperTasksPage /></ProtectedRoute>} />
                   <Route path="/payroll" element={<PayrollPage />} />
                   <Route path="/rfid-timesheets" element={<RfidTimesheetPage />} />

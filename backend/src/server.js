@@ -91,7 +91,9 @@ app.use(async (req, res, next) => {
     req.path.startsWith('/auth') ||
     req.path.startsWith('/twilio') ||
     req.path.startsWith('/tenants/branding') ||
-    req.path.startsWith('/api/tenants/branding');
+    req.path.startsWith('/api/tenants/branding') ||
+    req.path.startsWith('/website/public') ||
+    req.path.startsWith('/api/website/public');
 
   if (skipTenantDb) {
     return runWithTenantContext({ tenantId: null, bypassTenant: true }, () => next());
@@ -157,7 +159,9 @@ app.use((req, res, next) => {
     req.path.startsWith('/auth') ||
     req.path.startsWith('/twilio') ||
     req.path.startsWith('/tenants/branding') ||
-    req.path.startsWith('/api/tenants/branding')
+    req.path.startsWith('/api/tenants/branding') ||
+    req.path.startsWith('/website/public') ||
+    req.path.startsWith('/api/website/public')
   ) {
     return next();
   }
@@ -196,6 +200,7 @@ const rfidRoutes = require('./routes/rfid');
 const depositAllocationRoutes = require('./routes/depositAllocations');
 const vendorRoutes = require('./routes/vendors');
 const auditLogRoutes = require('./routes/auditLogs');
+const websiteRoutes = require('./routes/website');
 
 // Use routes
 app.use('/auth', authRoutes);
@@ -222,6 +227,7 @@ app.use('/rfid', rfidRoutes);
 app.use('/deposit-allocations', depositAllocationRoutes);
 app.use('/vendors', vendorRoutes);
 app.use('/audit-logs', auditLogRoutes);
+app.use('/website', websiteRoutes);
 // Some deployments expose the API under `/api` without stripping the prefix from the path.
 app.use('/api/auth', authRoutes);
 app.use('/api/tenants', tenantRoutes);
@@ -247,6 +253,7 @@ app.use('/api/rfid', rfidRoutes);
 app.use('/api/deposit-allocations', depositAllocationRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
+app.use('/api/website', websiteRoutes);
 
 // Test route
 app.get('/', (req, res) => {

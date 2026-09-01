@@ -35,6 +35,7 @@ import {
   TableRows as TakeoffIcon,
   Sms as SmsIcon,
   Store as StoreIcon,
+  Language as WebsiteIcon,
   Nfc as NfcIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
@@ -343,6 +344,30 @@ function Sidebar({ mobileOpen, onMobileClose }) {
           </ListItemButton>
         </ListItem>
         {isSuperAdmin() ? (
+        <>
+        <ListItem disablePadding>
+          <ListItemButton
+            onClick={() => handleNavigation('/website')}
+            selected={isActive('/website')}
+            sx={navButtonSx}
+          >
+            <ListItemIcon
+              sx={{
+                minWidth: 40,
+                color: isActive('/website') ? theme.palette.primary.main : 'inherit',
+              }}
+            >
+              <WebsiteIcon />
+            </ListItemIcon>
+            <ListItemText
+              primary="Website"
+              primaryTypographyProps={{
+                fontSize: '0.9375rem',
+                fontWeight: isActive('/website') ? 600 : 400,
+              }}
+            />
+          </ListItemButton>
+        </ListItem>
         <ListItem disablePadding>
           <ListItemButton
             onClick={() => handleNavigation('/developer')}
@@ -389,6 +414,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             />
           </ListItemButton>
         </ListItem>
+        </>
         ) : null}
       </List>
     </>

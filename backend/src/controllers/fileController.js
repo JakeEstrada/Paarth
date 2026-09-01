@@ -51,6 +51,7 @@ function candidateS3Keys(file) {
   if (file.filename) {
     add(`uploads/${file.filename}`);
     add(`tenant-logos/${file.filename}`);
+    add(`website/${file.filename}`);
     add(file.filename);
   }
   return keys;
@@ -62,7 +63,7 @@ function isS3File(file) {
   if (!storedPath) return false;
   if (/^https?:\/\//i.test(storedPath)) return true;
   if (path.isAbsolute(storedPath)) return false;
-  return storedPath.startsWith('uploads/') || storedPath.startsWith('tenant-logos/');
+  return storedPath.startsWith('uploads/') || storedPath.startsWith('tenant-logos/') || storedPath.startsWith('website/');
 }
 
 async function s3BodyToNodeStream(body) {

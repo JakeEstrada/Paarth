@@ -9,6 +9,7 @@ const ALLOWED_PATHNAMES = new Set([
   '/dead-estimates',
   '/completed-tasks',
   '/completed-jobs',
+  '/website',
   '/developer',
   '/payroll',
   '/bills',
@@ -21,7 +22,7 @@ const ALLOWED_PATHNAMES = new Set([
   '/customers-view',
 ]);
 
-const SUPER_ADMIN_ONLY_PATHS = new Set(['/developer', '/finance', '/users', '/bills']);
+const SUPER_ADMIN_ONLY_PATHS = new Set(['/website', '/developer', '/finance', '/users', '/bills']);
 
 /**
  * @param {string} raw
@@ -48,6 +49,7 @@ Main app routes (path → purpose):
 - /archive — job archive (also /dead-estimates)
 - /completed-tasks — completed tasks and appointments
 - /completed-jobs — finished closed-out jobs
+- /website — customer website homepage CMS (super admin only)
 - /developer — internal developer tasks (super admin only)
 - /payroll — payroll tools
 - /bills — bills (super admin only)

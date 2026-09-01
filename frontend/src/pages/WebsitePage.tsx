@@ -1,0 +1,776 @@
+/**
+ * WebsitePage — Super-admin CMS for the customer-facing homepage.
+ * Route: /website
+ * APIs: GET/PUT /website, photo and project uploads
+ */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CircularProgress,
+  Container,
+  IconButton,
+  Paper,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
+  useTheme,
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  ArrowDownward as ArrowDownIcon,
+  ArrowUpward as ArrowUpIcon,
+  Delete as DeleteIcon,
+  PhotoCamera as PhotoIcon,
+} from '@mui/icons-material';
+import axios from 'axios';
+import toast from 'react-hot-toast';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+type WebsitePhoto = {
+  id: string;
+  alt?: string;
+  originalName?: string;
+  url: string;
+};
+
+type WebsiteProject = {
+  id: string;
+  title: string;
+  description: string;
+  photo: WebsitePhoto | null;
+};
+
+type WebsiteContent = {
+  heroHeadline: string;
+  heroSubheadline: string;
+  heroCtaLabel: string;
+  heroCtaUrl: string;
+  aboutTitle: string;
+  aboutBody: string;
+  storyTitle: string;
+  storyBody: string;
+  quoteHeadline: string;
+  heroPhotos: WebsitePhoto[];
+  gallery: WebsitePhoto[];
+  projects: WebsiteProject[];
+};
+
+const EMPTY: WebsiteContent = {
+  heroHeadline: '',
+  heroSubheadline: '',
+  heroCtaLabel: '',
+  heroCtaUrl: '',
+  aboutTitle: '',
+  aboutBody: '',
+  storyTitle: '',
+  storyBody: '',
+  quoteHeadline: '',
+  heroPhotos: [],
+  gallery: [],
+  projects: [],
+};
+
+function mediaSrc(url?: string) {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_URL}${url}`;
+}
+
+function PhotoTile({
+  photo,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  disableUp,
+  disableDown,
+}: {
+  photo: WebsitePhoto;
+  onDelete: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  disableUp?: boolean;
+  disableDown?: boolean;
+}) {
+  return (
+    <Box
+      sx={{
+        position: 'relative',
+        width: 140,
+        height: 140,
+        borderRadius: 1,
+        overflow: 'hidden',
+        border: '1px solid',
+        borderColor: 'divider',
+        bgcolor: 'action.hover',
+      }}
+    >
+      <Box
+        component="img"
+        src={mediaSrc(photo.url)}
+        alt={photo.alt || photo.originalName || 'Photo'}
+        sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+      />
+      <Box sx={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 0.25 }}>
+        {onMoveUp ? (
+          <IconButton size="small" onClick={onMoveUp} disabled={disableUp} sx={tileBtnSx} aria-label="Move up">
+            <ArrowUpIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        ) : null}
+        {onMoveDown ? (
+          <IconButton size="small" onClick={onMoveDown} disabled={disableDown} sx={tileBtnSx} aria-label="Move down">
+            <ArrowDownIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        ) : null}
+        <IconButton size="small" onClick={onDelete} sx={tileBtnSx} aria-label="Remove photo">
+          <DeleteIcon sx={{ fontSize: 16 }} />
+        </IconButton>
+      </Box>
+    </Box>
+  );
+}
+
+const tileBtnSx = {
+  width: 24,
+  height: 24,
+  bgcolor: 'rgba(0,0,0,0.55)',
+  color: '#fff',
+  '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' },
+  '&.Mui-disabled': { color: 'rgba(255,255,255,0.4)', bgcolor: 'rgba(0,0,0,0.35)' },
+};
+
+function WebsitePage() {
+  const theme = useTheme();
+  const [tab, setTab] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [content, setContent] = useState<WebsiteContent>(EMPTY);
+  const heroInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const projectPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const [projectPhotoTarget, setProjectPhotoTarget] = useState<string | null>(null);
+
+  const applyContent = useCallback((data: Partial<WebsiteContent>) => {
+    setContent({
+      ...EMPTY,
+      ...data,
+      heroPhotos: Array.isArray(data.heroPhotos) ? data.heroPhotos : [],
+      gallery: Array.isArray(data.gallery) ? data.gallery : [],
+      projects: Array.isArray(data.projects) ? data.projects : [],
+    });
+  }, []);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data } = await axios.get(`${API_URL}/website`);
+      applyContent(data);
+    } catch (error) {
+      console.error('Error loading website content:', error);
+      toast.error('Failed to load website content');
+    } finally {
+      setLoading(false);
+    }
+  }, [applyContent]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const handleField = (field: keyof WebsiteContent, value: string) => {
+    setContent((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveCopy = async () => {
+    try {
+      setSaving(true);
+      const { data } = await axios.put(`${API_URL}/website`, {
+        heroHeadline: content.heroHeadline,
+        heroSubheadline: content.heroSubheadline,
+        heroCtaLabel: content.heroCtaLabel,
+        heroCtaUrl: content.heroCtaUrl,
+        aboutTitle: content.aboutTitle,
+        aboutBody: content.aboutBody,
+        storyTitle: content.storyTitle,
+        storyBody: content.storyBody,
+        quoteHeadline: content.quoteHeadline,
+      });
+      applyContent(data);
+      toast.success('Homepage copy saved');
+    } catch (error) {
+      console.error('Error saving website content:', error);
+      toast.error('Failed to save copy');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const uploadPhotos = async (endpoint: string, files: FileList | File[] | null) => {
+    const list = [...(files || [])].filter(Boolean);
+    if (!list.length) return;
+    setUploading(true);
+    try {
+      let latest = content;
+      for (const file of list) {
+        if (!file.type.startsWith('image/')) {
+          toast.error(`${file.name}: images only`);
+          continue;
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+        const { data } = await axios.post(`${API_URL}${endpoint}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        latest = data;
+        applyContent(data);
+      }
+      if (latest) toast.success(list.length === 1 ? 'Photo added' : 'Photos added');
+    } catch (error) {
+      console.error('Error uploading website photo:', error);
+      toast.error('Failed to upload photo');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const deletePhoto = async (endpoint: string) => {
+    try {
+      const { data } = await axios.delete(`${API_URL}${endpoint}`);
+      applyContent(data);
+    } catch (error) {
+      console.error('Error deleting website photo:', error);
+      toast.error('Failed to remove photo');
+    }
+  };
+
+  const moveItem = async (section: 'hero' | 'gallery' | 'projects', index: number, direction: -1 | 1) => {
+    const list =
+      section === 'hero' ? content.heroPhotos : section === 'gallery' ? content.gallery : content.projects;
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= list.length) return;
+    const ids = list.map((row) => row.id);
+    const [moved] = ids.splice(index, 1);
+    ids.splice(nextIndex, 0, moved);
+    try {
+      const { data } = await axios.patch(`${API_URL}/website/order`, { section, ids });
+      applyContent(data);
+    } catch (error) {
+      console.error('Error reordering website items:', error);
+      toast.error('Failed to reorder');
+    }
+  };
+
+  const addProject = async () => {
+    try {
+      const { data } = await axios.post(`${API_URL}/website/projects`, {
+        title: 'New project',
+        description: '',
+      });
+      applyContent(data);
+    } catch (error) {
+      console.error('Error adding project:', error);
+      toast.error('Failed to add project');
+    }
+  };
+
+  const saveProject = async (project: WebsiteProject) => {
+    try {
+      const { data } = await axios.patch(`${API_URL}/website/projects/${project.id}`, {
+        title: project.title,
+        description: project.description,
+      });
+      applyContent(data);
+      toast.success('Project saved');
+    } catch (error) {
+      console.error('Error saving project:', error);
+      toast.error('Failed to save project');
+    }
+  };
+
+  const removeProject = async (projectId: string) => {
+    try {
+      const { data } = await axios.delete(`${API_URL}/website/projects/${projectId}`);
+      applyContent(data);
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      toast.error('Failed to delete project');
+    }
+  };
+
+  const handleProjectPhoto = async (projectId: string, file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Images only');
+      return;
+    }
+    try {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      const { data } = await axios.post(`${API_URL}/website/projects/${projectId}/photo`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      applyContent(data);
+      toast.success('Project photo updated');
+    } catch (error) {
+      console.error('Error uploading project photo:', error);
+      toast.error('Failed to upload project photo');
+    } finally {
+      setUploading(false);
+      setProjectPhotoTarget(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
+        <Box>
+          <Typography variant="h1" sx={{ mb: 1 }}>
+            Website
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Controls the customer homepage — hero photos, wording, featured projects, and gallery.
+          </Typography>
+        </Box>
+        {tab === 0 ? (
+          <Button variant="contained" onClick={() => void handleSaveCopy()} disabled={saving} sx={{ textTransform: 'none' }}>
+            {saving ? 'Saving…' : 'Save copy'}
+          </Button>
+        ) : null}
+      </Box>
+
+      <Paper sx={{ mb: 3 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, next) => setTab(next)}
+          variant="scrollable"
+          allowScrollButtonsMobile
+        >
+          <Tab label="Hero & copy" />
+          <Tab label="Projects" />
+          <Tab label="Gallery" />
+          <Tab label="Preview" />
+        </Tabs>
+      </Paper>
+
+      {tab === 0 ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+              Hero
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                label="Headline"
+                value={content.heroHeadline}
+                onChange={(e) => handleField('heroHeadline', e.target.value)}
+                fullWidth
+              />
+              <TextField
+                label="Subheadline"
+                value={content.heroSubheadline}
+                onChange={(e) => handleField('heroSubheadline', e.target.value)}
+                fullWidth
+              />
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <TextField
+                  label="Button label"
+                  value={content.heroCtaLabel}
+                  onChange={(e) => handleField('heroCtaLabel', e.target.value)}
+                  sx={{ flex: 1, minWidth: 180 }}
+                />
+                <TextField
+                  label="Button link"
+                  value={content.heroCtaUrl}
+                  onChange={(e) => handleField('heroCtaUrl', e.target.value)}
+                  placeholder="mailto:office@sanclementewoodworking.com"
+                  sx={{ flex: 2, minWidth: 240 }}
+                />
+              </Box>
+            </Box>
+            <Typography variant="subtitle2" sx={{ mt: 3, mb: 1, fontWeight: 600 }}>
+              Hero photos
+            </Typography>
+            <input
+              ref={heroInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              multiple
+              hidden
+              onChange={(e) => {
+                void uploadPhotos('/website/hero', e.target.files);
+                e.target.value = '';
+              }}
+            />
+            <Button
+              variant="outlined"
+              startIcon={<PhotoIcon />}
+              onClick={() => heroInputRef.current?.click()}
+              disabled={uploading}
+              sx={{ textTransform: 'none', mb: 1.5 }}
+            >
+              {uploading ? 'Uploading…' : 'Add hero photos'}
+            </Button>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+              {content.heroPhotos.map((photo, index) => (
+                <PhotoTile
+                  key={photo.id}
+                  photo={photo}
+                  disableUp={index === 0}
+                  disableDown={index === content.heroPhotos.length - 1}
+                  onMoveUp={() => void moveItem('hero', index, -1)}
+                  onMoveDown={() => void moveItem('hero', index, 1)}
+                  onDelete={() => void deletePhoto(`/website/hero/${photo.id}`)}
+                />
+              ))}
+              {content.heroPhotos.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No hero photos yet. These appear at the top of the homepage.
+                </Typography>
+              ) : null}
+            </Box>
+          </Paper>
+
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+              About
+            </Typography>
+            <TextField
+              label="Section title"
+              value={content.aboutTitle}
+              onChange={(e) => handleField('aboutTitle', e.target.value)}
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="About wording"
+              value={content.aboutBody}
+              onChange={(e) => handleField('aboutBody', e.target.value)}
+              fullWidth
+              multiline
+              minRows={5}
+            />
+          </Paper>
+
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+              Our story
+            </Typography>
+            <TextField
+              label="Section title"
+              value={content.storyTitle}
+              onChange={(e) => handleField('storyTitle', e.target.value)}
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Story wording"
+              value={content.storyBody}
+              onChange={(e) => handleField('storyBody', e.target.value)}
+              fullWidth
+              multiline
+              minRows={6}
+            />
+          </Paper>
+
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+              Quote banner
+            </Typography>
+            <TextField
+              label="Banner text"
+              value={content.quoteHeadline}
+              onChange={(e) => handleField('quoteHeadline', e.target.value)}
+              fullWidth
+            />
+          </Paper>
+        </Box>
+      ) : null}
+
+      {tab === 1 ? (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => void addProject()} sx={{ textTransform: 'none' }}>
+              Add project
+            </Button>
+          </Box>
+          {content.projects.length === 0 ? (
+            <Paper sx={{ p: 4, textAlign: 'center' }}>
+              <Typography color="text.secondary">No featured projects yet. Add one to show it on the homepage.</Typography>
+            </Paper>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {content.projects.map((project, index) => (
+                <Card key={project.id} variant="outlined">
+                  <CardContent sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    <Box
+                      sx={{
+                        width: 180,
+                        height: 140,
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        bgcolor: 'action.hover',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {project.photo ? (
+                        <Box
+                          component="img"
+                          src={mediaSrc(project.photo.url)}
+                          alt={project.photo.alt || project.title}
+                          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          No photo
+                        </Typography>
+                      )}
+                    </Box>
+                    <Box sx={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                      <TextField
+                        label="Project name"
+                        size="small"
+                        value={project.title}
+                        onChange={(e) =>
+                          setContent((prev) => ({
+                            ...prev,
+                            projects: prev.projects.map((row) =>
+                              row.id === project.id ? { ...row, title: e.target.value } : row,
+                            ),
+                          }))
+                        }
+                      />
+                      <TextField
+                        label="Description"
+                        size="small"
+                        value={project.description}
+                        onChange={(e) =>
+                          setContent((prev) => ({
+                            ...prev,
+                            projects: prev.projects.map((row) =>
+                              row.id === project.id ? { ...row, description: e.target.value } : row,
+                            ),
+                          }))
+                        }
+                        multiline
+                        minRows={2}
+                      />
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<PhotoIcon />}
+                          disabled={uploading}
+                          onClick={() => {
+                            setProjectPhotoTarget(project.id);
+                            projectPhotoInputRef.current?.click();
+                          }}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          {project.photo ? 'Replace photo' : 'Add photo'}
+                        </Button>
+                        <Button size="small" onClick={() => void saveProject(project)} sx={{ textTransform: 'none' }}>
+                          Save
+                        </Button>
+                        <IconButton size="small" onClick={() => void moveItem('projects', index, -1)} disabled={index === 0} aria-label="Move up">
+                          <ArrowUpIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => void moveItem('projects', index, 1)}
+                          disabled={index === content.projects.length - 1}
+                          aria-label="Move down"
+                        >
+                          <ArrowDownIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" color="error" onClick={() => void removeProject(project.id)} aria-label="Delete project">
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
+          )}
+          <input
+            ref={projectPhotoInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (projectPhotoTarget) void handleProjectPhoto(projectPhotoTarget, file);
+            }}
+          />
+        </Box>
+      ) : null}
+
+      {tab === 2 ? (
+        <Paper sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2, flexWrap: 'wrap' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Gallery
+            </Typography>
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              multiple
+              hidden
+              onChange={(e) => {
+                void uploadPhotos('/website/gallery', e.target.files);
+                e.target.value = '';
+              }}
+            />
+            <Button
+              variant="contained"
+              startIcon={<PhotoIcon />}
+              onClick={() => galleryInputRef.current?.click()}
+              disabled={uploading}
+              sx={{ textTransform: 'none' }}
+            >
+              {uploading ? 'Uploading…' : 'Add photos'}
+            </Button>
+          </Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+            {content.gallery.map((photo, index) => (
+              <PhotoTile
+                key={photo.id}
+                photo={photo}
+                disableUp={index === 0}
+                disableDown={index === content.gallery.length - 1}
+                onMoveUp={() => void moveItem('gallery', index, -1)}
+                onMoveDown={() => void moveItem('gallery', index, 1)}
+                onDelete={() => void deletePhoto(`/website/gallery/${photo.id}`)}
+              />
+            ))}
+            {content.gallery.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No gallery photos yet.
+              </Typography>
+            ) : null}
+          </Box>
+        </Paper>
+      ) : null}
+
+      {tab === 3 ? (
+        <Paper
+          sx={{
+            overflow: 'hidden',
+            bgcolor: theme.palette.mode === 'dark' ? '#111' : '#f7f4ef',
+          }}
+        >
+          <Box
+            sx={{
+              minHeight: 280,
+              backgroundImage: content.heroPhotos[0] ? `url(${mediaSrc(content.heroPhotos[0].url)})` : 'none',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              display: 'flex',
+              alignItems: 'flex-end',
+              p: 4,
+              color: '#fff',
+              bgcolor: '#2c2c2c',
+            }}
+          >
+            <Box>
+              <Typography variant="h3" sx={{ fontWeight: 700, textShadow: '0 2px 12px rgba(0,0,0,0.45)' }}>
+                {content.heroHeadline || 'Headline'}
+              </Typography>
+              {content.heroSubheadline ? (
+                <Typography sx={{ mt: 1, textShadow: '0 1px 8px rgba(0,0,0,0.45)' }}>{content.heroSubheadline}</Typography>
+              ) : null}
+              {content.heroCtaLabel ? (
+                <Button variant="contained" sx={{ mt: 2, textTransform: 'none' }}>
+                  {content.heroCtaLabel}
+                </Button>
+              ) : null}
+            </Box>
+          </Box>
+          <Box sx={{ p: 4, maxWidth: 780 }}>
+            <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
+              {content.aboutTitle || 'About'}
+            </Typography>
+            <Typography sx={{ whiteSpace: 'pre-wrap', mb: 4 }}>{content.aboutBody}</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
+              {content.storyTitle || 'Our Story'}
+            </Typography>
+            <Typography sx={{ whiteSpace: 'pre-wrap' }}>{content.storyBody}</Typography>
+          </Box>
+          {content.projects.length ? (
+            <Box sx={{ px: 4, pb: 4 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+                Projects
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 2 }}>
+                {content.projects.map((project) => (
+                  <Box key={project.id}>
+                    {project.photo ? (
+                      <Box
+                        component="img"
+                        src={mediaSrc(project.photo.url)}
+                        alt={project.title}
+                        sx={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 1, mb: 1 }}
+                      />
+                    ) : null}
+                    <Typography sx={{ fontWeight: 600 }}>{project.title}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {project.description}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ) : null}
+          {content.gallery.length ? (
+            <Box sx={{ px: 4, pb: 4 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+                Gallery
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 1 }}>
+                {content.gallery.map((photo) => (
+                  <Box
+                    key={photo.id}
+                    component="img"
+                    src={mediaSrc(photo.url)}
+                    alt={photo.alt || ''}
+                    sx={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 1 }}
+                  />
+                ))}
+              </Box>
+            </Box>
+          ) : null}
+          {content.quoteHeadline ? (
+            <Box sx={{ px: 4, py: 5, textAlign: 'center', bgcolor: theme.palette.mode === 'dark' ? '#1a1a1a' : '#ece6dc' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                {content.quoteHeadline}
+              </Typography>
+            </Box>
+          ) : null}
+        </Paper>
+      ) : null}
+    </Container>
+  );
+}
+
+export default WebsitePage;
