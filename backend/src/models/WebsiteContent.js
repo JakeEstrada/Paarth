@@ -16,8 +16,11 @@ const assetSchema = new mongoose.Schema(
 
 const projectSchema = new mongoose.Schema(
   {
+    slug: { type: String, default: '', trim: true, maxlength: 160 },
     title: { type: String, default: '', trim: true, maxlength: 160 },
     description: { type: String, default: '', trim: true, maxlength: 2000 },
+    photos: { type: [assetSchema], default: [] },
+    /** @deprecated use photos[0] */
     photo: { type: assetSchema, default: undefined },
   },
   { _id: true },

@@ -40,9 +40,10 @@ type WebsitePhoto = {
 
 type WebsiteProject = {
   id: string;
+  slug?: string;
   title: string;
   description: string;
-  photo: WebsitePhoto | null;
+  photos: WebsitePhoto[];
 };
 
 type WebsiteContent = {
@@ -155,13 +156,25 @@ function WebsitePage() {
   const projectPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [projectPhotoTarget, setProjectPhotoTarget] = useState<string | null>(null);
 
-  const applyContent = useCallback((data: Partial<WebsiteContent>) => {
+  const applyContent = useCallback((data: Partial<WebsiteContent> & { projects?: Array<WebsiteProject & { photo?: WebsitePhoto | null }> }) => {
     setContent({
       ...EMPTY,
       ...data,
       heroPhotos: Array.isArray(data.heroPhotos) ? data.heroPhotos : [],
       gallery: Array.isArray(data.gallery) ? data.gallery : [],
-      projects: Array.isArray(data.projects) ? data.projects : [],
+      projects: Array.isArray(data.projects)
+        ? data.projects.map((project) => ({
+            id: project.id,
+            slug: project.slug || '',
+            title: project.title || '',
+            description: project.description || '',
+            photos: Array.isArray(project.photos)
+              ? project.photos
+              : project.photo
+                ? [project.photo]
+                : [],
+          }))
+        : [],
     });
   }, []);
 
@@ -302,27 +315,48 @@ function WebsitePage() {
     }
   };
 
-  const handleProjectPhoto = async (projectId: string, file?: File) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
+  const handleProjectPhotos = async (projectId: string, files: FileList | File[] | null) => {
+    const list = [...(files || [])].filter((file) => file && file.type.startsWith('image/'));
+    if (!list.length) {
       toast.error('Images only');
       return;
     }
     try {
       setUploading(true);
       const formData = new FormData();
-      formData.append('file', file);
-      const { data } = await axios.post(`${API_URL}/website/projects/${projectId}/photo`, formData, {
+      list.forEach((file) => formData.append('file', file));
+      const { data } = await axios.post(`${API_URL}/website/projects/${projectId}/photos`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       applyContent(data);
-      toast.success('Project photo updated');
+      toast.success(list.length === 1 ? 'Photo added' : `${list.length} photos added`);
     } catch (error) {
-      console.error('Error uploading project photo:', error);
-      toast.error('Failed to upload project photo');
+      console.error('Error uploading project photos:', error);
+      toast.error('Failed to upload project photos');
     } finally {
       setUploading(false);
       setProjectPhotoTarget(null);
+    }
+  };
+
+  const moveProjectPhoto = async (projectId: string, index: number, direction: -1 | 1) => {
+    const project = content.projects.find((row) => row.id === projectId);
+    if (!project) return;
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= project.photos.length) return;
+    const ids = project.photos.map((photo) => photo.id);
+    const [moved] = ids.splice(index, 1);
+    ids.splice(nextIndex, 0, moved);
+    try {
+      const { data } = await axios.patch(`${API_URL}/website/order`, {
+        section: 'projectPhotos',
+        projectId,
+        ids,
+      });
+      applyContent(data);
+    } catch (error) {
+      console.error('Error reordering project photos:', error);
+      toast.error('Failed to reorder photos');
     }
   };
 
@@ -502,109 +536,125 @@ function WebsitePage() {
 
       {tab === 1 ? (
         <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2, flexWrap: 'wrap' }}>
+            <Typography variant="body2" color="text.secondary">
+              Display number is list order (1, 2, 3…). First photo is the cover; the rest open as more views.
+            </Typography>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => void addProject()} sx={{ textTransform: 'none' }}>
               Add project
             </Button>
           </Box>
           {content.projects.length === 0 ? (
             <Paper sx={{ p: 4, textAlign: 'center' }}>
-              <Typography color="text.secondary">No featured projects yet. Add one to show it on the homepage.</Typography>
+              <Typography color="text.secondary">No projects yet. Seed the catalog or add one here.</Typography>
             </Paper>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {content.projects.map((project, index) => (
-                <Card key={project.id} variant="outlined">
-                  <CardContent sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    <Box
-                      sx={{
-                        width: 180,
-                        height: 140,
-                        borderRadius: 1,
-                        overflow: 'hidden',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        bgcolor: 'action.hover',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {project.photo ? (
-                        <Box
-                          component="img"
-                          src={mediaSrc(project.photo.url)}
-                          alt={project.photo.alt || project.title}
-                          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                <Card
+                  key={project.id}
+                  variant="outlined"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (saving || uploading) return;
+                    void handleProjectPhotos(project.id, e.dataTransfer.files);
+                  }}
+                >
+                  <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                      <Typography sx={{ fontWeight: 700, minWidth: 28, pt: 1 }}>{index + 1}.</Typography>
+                      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                        <TextField
+                          label="Project name"
+                          size="small"
+                          value={project.title}
+                          onChange={(e) =>
+                            setContent((prev) => ({
+                              ...prev,
+                              projects: prev.projects.map((row) =>
+                                row.id === project.id ? { ...row, title: e.target.value } : row,
+                              ),
+                            }))
+                          }
                         />
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          No photo
-                        </Typography>
-                      )}
-                    </Box>
-                    <Box sx={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                      <TextField
-                        label="Project name"
-                        size="small"
-                        value={project.title}
-                        onChange={(e) =>
-                          setContent((prev) => ({
-                            ...prev,
-                            projects: prev.projects.map((row) =>
-                              row.id === project.id ? { ...row, title: e.target.value } : row,
-                            ),
-                          }))
-                        }
-                      />
-                      <TextField
-                        label="Description"
-                        size="small"
-                        value={project.description}
-                        onChange={(e) =>
-                          setContent((prev) => ({
-                            ...prev,
-                            projects: prev.projects.map((row) =>
-                              row.id === project.id ? { ...row, description: e.target.value } : row,
-                            ),
-                          }))
-                        }
-                        multiline
-                        minRows={2}
-                      />
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                        <Button
+                        <TextField
+                          label="Description"
                           size="small"
-                          variant="outlined"
-                          startIcon={<PhotoIcon />}
-                          disabled={uploading}
-                          onClick={() => {
-                            setProjectPhotoTarget(project.id);
-                            projectPhotoInputRef.current?.click();
-                          }}
-                          sx={{ textTransform: 'none' }}
-                        >
-                          {project.photo ? 'Replace photo' : 'Add photo'}
-                        </Button>
-                        <Button size="small" onClick={() => void saveProject(project)} sx={{ textTransform: 'none' }}>
-                          Save
-                        </Button>
-                        <IconButton size="small" onClick={() => void moveItem('projects', index, -1)} disabled={index === 0} aria-label="Move up">
-                          <ArrowUpIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => void moveItem('projects', index, 1)}
-                          disabled={index === content.projects.length - 1}
-                          aria-label="Move down"
-                        >
-                          <ArrowDownIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton size="small" color="error" onClick={() => void removeProject(project.id)} aria-label="Delete project">
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                          value={project.description}
+                          onChange={(e) =>
+                            setContent((prev) => ({
+                              ...prev,
+                              projects: prev.projects.map((row) =>
+                                row.id === project.id ? { ...row, description: e.target.value } : row,
+                              ),
+                            }))
+                          }
+                          multiline
+                          minRows={2}
+                          helperText="Specs stay as written. The public page splits on ||"
+                        />
                       </Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, pl: { sm: 5 } }}>
+                      {project.photos.map((photo, photoIndex) => (
+                        <Box key={photo.id} sx={{ position: 'relative' }}>
+                          <PhotoTile
+                            photo={photo}
+                            disableUp={photoIndex === 0}
+                            disableDown={photoIndex === project.photos.length - 1}
+                            onMoveUp={() => void moveProjectPhoto(project.id, photoIndex, -1)}
+                            onMoveDown={() => void moveProjectPhoto(project.id, photoIndex, 1)}
+                            onDelete={() => void deletePhoto(`/website/projects/${project.id}/photos/${photo.id}`)}
+                          />
+                          {photoIndex === 0 ? (
+                            <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 0.5 }}>
+                              Cover
+                            </Typography>
+                          ) : null}
+                        </Box>
+                      ))}
+                      {project.photos.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                          Drop photos here or use Add photos.
+                        </Typography>
+                      ) : null}
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', pl: { sm: 5 } }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<PhotoIcon />}
+                        disabled={uploading}
+                        onClick={() => {
+                          setProjectPhotoTarget(project.id);
+                          projectPhotoInputRef.current?.click();
+                        }}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        Add photos
+                      </Button>
+                      <Button size="small" onClick={() => void saveProject(project)} sx={{ textTransform: 'none' }}>
+                        Save
+                      </Button>
+                      <IconButton size="small" onClick={() => void moveItem('projects', index, -1)} disabled={index === 0} aria-label="Move project up">
+                        <ArrowUpIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => void moveItem('projects', index, 1)}
+                        disabled={index === content.projects.length - 1}
+                        aria-label="Move project down"
+                      >
+                        <ArrowDownIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton size="small" color="error" onClick={() => void removeProject(project.id)} aria-label="Delete project">
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
                     </Box>
                   </CardContent>
                 </Card>
@@ -615,11 +665,12 @@ function WebsitePage() {
             ref={projectPhotoInputRef}
             type="file"
             accept="image/jpeg,image/png,image/gif,image/webp"
+            multiple
             hidden
             onChange={(e) => {
-              const file = e.target.files?.[0];
+              const files = e.target.files;
               e.target.value = '';
-              if (projectPhotoTarget) void handleProjectPhoto(projectPhotoTarget, file);
+              if (projectPhotoTarget) void handleProjectPhotos(projectPhotoTarget, files);
             }}
           />
         </Box>
@@ -725,10 +776,10 @@ function WebsitePage() {
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 2 }}>
                 {content.projects.map((project) => (
                   <Box key={project.id}>
-                    {project.photo ? (
+                    {project.photos[0] ? (
                       <Box
                         component="img"
-                        src={mediaSrc(project.photo.url)}
+                        src={mediaSrc(project.photos[0].url)}
                         alt={project.title}
                         sx={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 1, mb: 1 }}
                       />

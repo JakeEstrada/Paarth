@@ -44,6 +44,40 @@ function serializeAsset(asset, tenantId) {
   };
 }
 
+function projectPhotoList(project) {
+  const photos = Array.isArray(project?.photos) ? project.photos.filter(Boolean) : [];
+  if (photos.length) return photos;
+  if (project?.photo) return [project.photo];
+  return [];
+}
+
+function migrateProjectPhotos(doc) {
+  if (!doc?.projects) return false;
+  let changed = false;
+  for (const project of doc.projects) {
+    if (!Array.isArray(project.photos)) {
+      project.photos = [];
+      changed = true;
+    }
+    if (project.photo && project.photos.length === 0) {
+      project.photos.push(project.photo);
+      project.photo = undefined;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function serializeProject(project, tenantId) {
+  return {
+    id: String(project._id),
+    slug: project.slug || '',
+    title: project.title || '',
+    description: project.description || '',
+    photos: projectPhotoList(project).map((photo) => serializeAsset(photo, tenantId)).filter(Boolean),
+  };
+}
+
 function serializeWebsite(doc) {
   const tenantId = String(doc.tenantId);
   return {
@@ -59,12 +93,7 @@ function serializeWebsite(doc) {
     quoteHeadline: doc.quoteHeadline || '',
     heroPhotos: (doc.heroPhotos || []).map((photo) => serializeAsset(photo, tenantId)).filter(Boolean),
     gallery: (doc.gallery || []).map((photo) => serializeAsset(photo, tenantId)).filter(Boolean),
-    projects: (doc.projects || []).map((project) => ({
-      id: String(project._id),
-      title: project.title || '',
-      description: project.description || '',
-      photo: serializeAsset(project.photo, tenantId),
-    })),
+    projects: (doc.projects || []).map((project) => serializeProject(project, tenantId)),
     updatedAt: doc.updatedAt,
   };
 }
@@ -91,7 +120,8 @@ function findAsset(content, assetId) {
   const gallery = (content.gallery || []).find((row) => String(row._id) === id);
   if (gallery) return gallery;
   for (const project of content.projects || []) {
-    if (project.photo && String(project.photo._id) === id) return project.photo;
+    const hit = projectPhotoList(project).find((row) => String(row._id) === id);
+    if (hit) return hit;
   }
   return null;
 }
@@ -119,6 +149,7 @@ async function getWebsite(req, res) {
     const tenantId = tenantIdFromReq(req);
     if (!tenantId) return res.status(400).json({ error: 'Tenant is required' });
     const doc = await getOrCreateWebsite(tenantId);
+    if (migrateProjectPhotos(doc)) await doc.save();
     res.json(serializeWebsite(doc));
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to load website content' });
@@ -213,12 +244,14 @@ async function createProject(req, res) {
   try {
     const tenantId = tenantIdFromReq(req);
     const doc = await getOrCreateWebsite(tenantId);
-    if ((doc.projects || []).length >= 40) {
-      return res.status(400).json({ error: 'You can add up to 40 projects' });
+    if ((doc.projects || []).length >= 80) {
+      return res.status(400).json({ error: 'You can add up to 80 projects' });
     }
     doc.projects.push({
+      slug: clip(req.body?.slug, 160),
       title: clip(req.body?.title, 160) || 'New project',
       description: clip(req.body?.description, 2000),
+      photos: [],
     });
     await doc.save();
     res.status(201).json(serializeWebsite(doc));
@@ -235,7 +268,7 @@ async function updateProject(req, res) {
     if (!project) return res.status(404).json({ error: 'Project not found' });
     if (req.body?.title !== undefined) project.title = clip(req.body.title, 160);
     if (req.body?.description !== undefined) project.description = clip(req.body.description, 2000);
-    if (req.body?.alt !== undefined && project.photo) project.photo.alt = clip(req.body.alt, 160);
+    if (req.body?.slug !== undefined) project.slug = clip(req.body.slug, 160);
     await doc.save();
     res.json(serializeWebsite(doc));
   } catch (error) {
@@ -249,7 +282,16 @@ async function deleteProject(req, res) {
     const doc = await getOrCreateWebsite(tenantId);
     const project = (doc.projects || []).id(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'Project not found' });
-    if (project.photo) await deleteStoredFileBinary(project.photo);
+    const photos = projectPhotoList(project);
+    for (const photo of photos) {
+      await deleteStoredFileBinary(photo);
+    }
+    if (
+      project.photo &&
+      !photos.some((photo) => String(photo._id) === String(project.photo._id))
+    ) {
+      await deleteStoredFileBinary(project.photo);
+    }
     project.deleteOne();
     await doc.save();
     res.json(serializeWebsite(doc));
@@ -260,17 +302,42 @@ async function deleteProject(req, res) {
 
 async function uploadProjectPhoto(req, res) {
   try {
-    if (!req.file) return res.status(400).json({ error: 'Image file is required' });
+    const files = [...(req.files || []), req.file].filter(Boolean);
+    if (!files.length) return res.status(400).json({ error: 'Image file is required' });
     const tenantId = tenantIdFromReq(req);
     const doc = await getOrCreateWebsite(tenantId);
+    migrateProjectPhotos(doc);
     const project = (doc.projects || []).id(req.params.projectId);
     if (!project) return res.status(404).json({ error: 'Project not found' });
-    if (project.photo) await deleteStoredFileBinary(project.photo);
-    project.photo = assetFromUpload(req.file, req.body?.alt || project.title);
+    if (!Array.isArray(project.photos)) project.photos = [];
+    const room = Math.max(0, 24 - project.photos.length);
+    if (!room) return res.status(400).json({ error: 'You can add up to 24 photos per project' });
+    for (const file of files.slice(0, room)) {
+      project.photos.push(assetFromUpload(file, req.body?.alt || project.title));
+    }
+    await doc.save();
+    res.status(201).json(serializeWebsite(doc));
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to upload project photo' });
+  }
+}
+
+async function deleteProjectPhoto(req, res) {
+  try {
+    const tenantId = tenantIdFromReq(req);
+    const doc = await getOrCreateWebsite(tenantId);
+    migrateProjectPhotos(doc);
+    const project = (doc.projects || []).id(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const asset = projectPhotoList(project).find((row) => String(row._id) === String(req.params.assetId));
+    if (!asset) return res.status(404).json({ error: 'Photo not found' });
+    await deleteStoredFileBinary(asset);
+    project.photos = projectPhotoList(project).filter((row) => String(row._id) !== String(req.params.assetId));
+    project.photo = undefined;
     await doc.save();
     res.json(serializeWebsite(doc));
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to upload project photo' });
+    res.status(500).json({ error: error.message || 'Failed to delete project photo' });
   }
 }
 
@@ -301,7 +368,13 @@ async function reorderWebsite(req, res) {
     if (section === 'hero') doc.heroPhotos = reorderByIds(doc.heroPhotos, ids);
     else if (section === 'gallery') doc.gallery = reorderByIds(doc.gallery, ids);
     else if (section === 'projects') doc.projects = reorderByIds(doc.projects, ids);
-    else return res.status(400).json({ error: 'section must be hero, gallery, or projects' });
+    else if (section === 'projectPhotos') {
+      const project = (doc.projects || []).id(req.body?.projectId);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      migrateProjectPhotos(doc);
+      project.photos = reorderByIds(projectPhotoList(project), ids);
+      project.photo = undefined;
+    } else return res.status(400).json({ error: 'section must be hero, gallery, projects, or projectPhotos' });
     await doc.save();
     res.json(serializeWebsite(doc));
   } catch (error) {
@@ -323,6 +396,7 @@ async function getPublicWebsite(req, res) {
     }
     if (!tenant) return res.status(404).json({ error: 'Website not found' });
     const doc = await WebsiteContent.findOne({ tenantId: tenant._id }).setOptions({ bypassTenant: true });
+    if (doc) migrateProjectPhotos(doc);
     const payload = doc
       ? serializeWebsite(doc)
       : serializeWebsite({
@@ -333,6 +407,7 @@ async function getPublicWebsite(req, res) {
           gallery: [],
           projects: [],
         });
+    res.setHeader('Cache-Control', 'public, max-age=60');
     res.json({
       companyName: tenant.name || 'San Clemente Woodworking',
       ...payload,
@@ -379,6 +454,7 @@ module.exports = {
   updateProject,
   deleteProject,
   uploadProjectPhoto,
+  deleteProjectPhoto,
   reorderWebsite,
   getPublicWebsite,
   getPublicWebsiteMedia,

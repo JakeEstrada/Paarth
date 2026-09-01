@@ -13,6 +13,7 @@ const {
   updateProject,
   deleteProject,
   uploadProjectPhoto,
+  deleteProjectPhoto,
   reorderWebsite,
   getPublicWebsite,
   getPublicWebsiteMedia,
@@ -33,6 +34,8 @@ router.delete('/gallery/:assetId', deleteGalleryPhoto);
 router.post('/projects', createProject);
 router.patch('/projects/:projectId', updateProject);
 router.delete('/projects/:projectId', deleteProject);
+router.post('/projects/:projectId/photos', uploadWebsiteImage.array('file', 20), uploadProjectPhoto);
 router.post('/projects/:projectId/photo', uploadWebsiteImage.single('file'), uploadProjectPhoto);
+router.delete('/projects/:projectId/photos/:assetId', deleteProjectPhoto);
 
 module.exports = router;
