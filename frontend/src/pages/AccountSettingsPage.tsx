@@ -41,7 +41,7 @@ import { useShopViewSensitive, SHOP_VIEW_SENSITIVE_PIN } from '../hooks/useShopV
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function AccountSettingsPage() {
-  const { user: currentUser, fetchCurrentUser } = useAuth();
+  const { user: currentUser, fetchCurrentUser, isSuperAdmin } = useAuth();
   const theme = useTheme();
   const { isShopViewRole, sensitiveUnlocked, setSensitiveUnlocked } = useShopViewSensitive(currentUser?.role);
   const [loading, setLoading] = useState(true);
@@ -294,22 +294,24 @@ function AccountSettingsPage() {
               </Box>
             </Grid>
 
-            <Grid item xs={12}>
-              <Box sx={{ mb: 1 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Tenant ID
-                </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{ fontFamily: 'monospace', wordBreak: 'break-all', fontWeight: 500 }}
-                >
-                  {tenantIdValue || 'Unavailable'}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                  Organization identifier for this account
-                </Typography>
-              </Box>
-            </Grid>
+            {isSuperAdmin() ? (
+              <Grid item xs={12}>
+                <Box sx={{ mb: 1 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Tenant ID
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{ fontFamily: 'monospace', wordBreak: 'break-all', fontWeight: 500 }}
+                  >
+                    {tenantIdValue || 'Unavailable'}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    Organization identifier for this account
+                  </Typography>
+                </Box>
+              </Grid>
+            ) : null}
 
             <Grid item xs={12}>
               <TextField
