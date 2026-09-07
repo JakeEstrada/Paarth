@@ -172,19 +172,29 @@ function SpecPreview({ description }: { description: string }) {
 }
 
 function ProjectSpecFields({
+  projectId,
   description,
-  extra,
-  onKnown,
-  onExtra,
-  onAddExtra,
+  onDescriptionChange,
 }: {
+  projectId: string;
   description: string;
-  extra: SpecRow[];
-  onKnown: (key: string, value: string) => void;
-  onExtra: (index: number, patch: Partial<SpecRow>) => void;
-  onAddExtra: () => void;
+  onDescriptionChange: (description: string) => void;
 }) {
-  const { known } = parseDescriptionSpecs(description);
+  const [known, setKnown] = useState(() => parseDescriptionSpecs(description).known);
+  const [extra, setExtra] = useState(() => parseDescriptionSpecs(description).extra);
+
+  useEffect(() => {
+    const next = parseDescriptionSpecs(description);
+    setKnown(next.known);
+    setExtra(next.extra);
+    // Reset when switching projects only. Re-parsing on each keystroke ate spaces.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- description
+  }, [projectId]);
+
+  const emit = (nextKnown: Record<string, string>, nextExtra: SpecRow[]) => {
+    onDescriptionChange(specsToDescription(nextKnown, nextExtra));
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       {SPEC_FIELDS.map((field) => (
@@ -193,7 +203,11 @@ function ProjectSpecFields({
           label={field.label}
           size="small"
           value={known[field.key] || ''}
-          onChange={(e) => onKnown(field.key, e.target.value)}
+          onChange={(e) => {
+            const nextKnown = { ...known, [field.key]: e.target.value };
+            setKnown(nextKnown);
+            emit(nextKnown, extra);
+          }}
         />
       ))}
       {extra.map((row, extraIndex) => (
@@ -202,19 +216,31 @@ function ProjectSpecFields({
             label="Label"
             size="small"
             value={row.label}
-            onChange={(e) => onExtra(extraIndex, { label: e.target.value })}
+            onChange={(e) => {
+              const nextExtra = extra.map((item, i) => (i === extraIndex ? { ...item, label: e.target.value } : item));
+              setExtra(nextExtra);
+              emit(known, nextExtra);
+            }}
             sx={{ width: 140, flexShrink: 0 }}
           />
           <TextField
             label="Value"
             size="small"
             value={row.value}
-            onChange={(e) => onExtra(extraIndex, { value: e.target.value })}
+            onChange={(e) => {
+              const nextExtra = extra.map((item, i) => (i === extraIndex ? { ...item, value: e.target.value } : item));
+              setExtra(nextExtra);
+              emit(known, nextExtra);
+            }}
             fullWidth
           />
         </Box>
       ))}
-      <Button size="small" onClick={onAddExtra} sx={{ alignSelf: 'flex-start', textTransform: 'none', px: 0 }}>
+      <Button
+        size="small"
+        onClick={() => setExtra((prev) => [...prev, { label: '', value: '' }])}
+        sx={{ alignSelf: 'flex-start', textTransform: 'none', px: 0 }}
+      >
         Add spec
       </Button>
     </Box>
@@ -294,10 +320,8 @@ function WebsitePage() {
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const projectPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [projectPhotoTarget, setProjectPhotoTarget] = useState<string | null>(null);
-  const [pendingExtras, setPendingExtras] = useState<Record<string, SpecRow[]>>({});
 
   const applyContent = useCallback((data: Partial<WebsiteContent> & { projects?: Array<WebsiteProject & { photo?: WebsitePhoto | null }> }) => {
-    setPendingExtras({});
     setContent({
       ...EMPTY,
       ...data,
@@ -439,35 +463,12 @@ function WebsitePage() {
     }));
   };
 
-  const extrasFor = (project: WebsiteProject) =>
-    pendingExtras[project.id] ?? parseDescriptionSpecs(project.description).extra;
-
-  const updateKnownSpec = (project: WebsiteProject, key: string, value: string) => {
-    const { known } = parseDescriptionSpecs(project.description);
-    known[key] = value;
-    setProjectDescription(project.id, specsToDescription(known, extrasFor(project)));
-  };
-
-  const updateExtraSpec = (project: WebsiteProject, index: number, patch: Partial<SpecRow>) => {
-    const extra = extrasFor(project).map((row, i) => (i === index ? { ...row, ...patch } : row));
-    setPendingExtras((prev) => ({ ...prev, [project.id]: extra }));
-    const { known } = parseDescriptionSpecs(project.description);
-    setProjectDescription(project.id, specsToDescription(known, extra));
-  };
-
-  const addExtraSpec = (project: WebsiteProject) => {
-    setPendingExtras((prev) => ({
-      ...prev,
-      [project.id]: [...extrasFor(project), { label: '', value: '' }],
-    }));
-  };
-
   const saveProject = async (project: WebsiteProject) => {
     try {
-      const { known } = parseDescriptionSpecs(project.description);
+      const { known, extra } = parseDescriptionSpecs(project.description);
       const { data } = await axios.patch(`${API_URL}/website/projects/${project.id}`, {
         title: project.title,
-        description: specsToDescription(known, extrasFor(project)),
+        description: specsToDescription(known, extra),
       });
       applyContent(data);
       toast.success('Project saved');
@@ -755,11 +756,9 @@ function WebsitePage() {
                           }
                         />
                         <ProjectSpecFields
+                          projectId={project.id}
                           description={project.description}
-                          extra={extrasFor(project)}
-                          onKnown={(key, value) => updateKnownSpec(project, key, value)}
-                          onExtra={(index, patch) => updateExtraSpec(project, index, patch)}
-                          onAddExtra={() => addExtraSpec(project)}
+                          onDescriptionChange={(description) => setProjectDescription(project.id, description)}
                         />
                       </Box>
                     </Box>
