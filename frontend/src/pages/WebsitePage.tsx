@@ -82,6 +82,145 @@ function mediaSrc(url?: string) {
   return `${API_URL}${url}`;
 }
 
+type SpecRow = { label: string; value: string };
+
+const SPEC_FIELDS = [
+  { key: 'post type', label: 'Post type' },
+  { key: 'rail type', label: 'Rail type' },
+  { key: 'rail system', label: 'Rail system' },
+  { key: 'balustrade', label: 'Balustrade' },
+  { key: 'treads', label: 'Treads' },
+] as const;
+
+function parseSpecRows(description: string): SpecRow[] {
+  return (description || '')
+    .split(/\s*\|\|?\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const i = s.indexOf(':');
+      if (i > 0 && i < 32) {
+        return { label: s.slice(0, i).trim(), value: s.slice(i + 1).trim() };
+      }
+      const value = s;
+      const lower = value.toLowerCase();
+      let label = '';
+      if (/tread/.test(lower)) label = 'Treads';
+      else if (/riser/.test(lower)) label = 'Risers';
+      else if (/skirt/.test(lower)) label = 'Skirting';
+      return { label, value };
+    })
+    .filter((row) => row.value);
+}
+
+function parseDescriptionSpecs(description: string) {
+  const known: Record<string, string> = {
+    'post type': '',
+    'rail type': '',
+    'rail system': '',
+    balustrade: '',
+    treads: '',
+  };
+  const extra: SpecRow[] = [];
+  for (const row of parseSpecRows(description)) {
+    const key = row.label.trim().toLowerCase();
+    if (key && key in known && !known[key]) {
+      known[key] = row.value;
+    } else if (!row.label && /tread/i.test(row.value) && !known.treads) {
+      known.treads = row.value;
+    } else if (!row.label && !known['post type']) {
+      known['post type'] = row.value;
+    } else {
+      extra.push(row);
+    }
+  }
+  return { known, extra };
+}
+
+function specsToDescription(known: Record<string, string>, extra: SpecRow[]) {
+  const parts: string[] = [];
+  for (const field of SPEC_FIELDS) {
+    const value = String(known[field.key] || '').trim();
+    if (value) parts.push(`${field.label}: ${value}`);
+  }
+  for (const row of extra) {
+    const value = String(row.value || '').trim();
+    if (!value) continue;
+    const label = String(row.label || '').trim();
+    parts.push(label ? `${label}: ${value}` : value);
+  }
+  return parts.join(' || ');
+}
+
+function SpecPreview({ description }: { description: string }) {
+  const rows = parseSpecRows(description);
+  if (!rows.length) return null;
+  return (
+    <Box sx={{ display: 'grid', gap: 0.25, mt: 0.5 }}>
+      {rows.map((row, i) => (
+        <Box key={`${row.label}-${i}`} sx={{ display: 'grid', gridTemplateColumns: row.label ? 'auto 1fr' : '1fr', gap: 0.75, alignItems: 'baseline' }}>
+          {row.label ? (
+            <Typography variant="caption" sx={{ letterSpacing: '0.08em', textTransform: 'uppercase', color: 'text.secondary', whiteSpace: 'nowrap' }}>
+              {row.label}
+            </Typography>
+          ) : null}
+          <Typography variant="body2">{row.value}</Typography>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
+function ProjectSpecFields({
+  description,
+  extra,
+  onKnown,
+  onExtra,
+  onAddExtra,
+}: {
+  description: string;
+  extra: SpecRow[];
+  onKnown: (key: string, value: string) => void;
+  onExtra: (index: number, patch: Partial<SpecRow>) => void;
+  onAddExtra: () => void;
+}) {
+  const { known } = parseDescriptionSpecs(description);
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {SPEC_FIELDS.map((field) => (
+        <TextField
+          key={field.key}
+          label={field.label}
+          size="small"
+          value={known[field.key] || ''}
+          onChange={(e) => onKnown(field.key, e.target.value)}
+        />
+      ))}
+      {extra.map((row, extraIndex) => (
+        <Box key={`extra-${extraIndex}`} sx={{ display: 'flex', gap: 1 }}>
+          <TextField
+            label="Label"
+            size="small"
+            value={row.label}
+            onChange={(e) => onExtra(extraIndex, { label: e.target.value })}
+            sx={{ width: 140, flexShrink: 0 }}
+          />
+          <TextField
+            label="Value"
+            size="small"
+            value={row.value}
+            onChange={(e) => onExtra(extraIndex, { value: e.target.value })}
+            fullWidth
+          />
+        </Box>
+      ))}
+      <Button size="small" onClick={onAddExtra} sx={{ alignSelf: 'flex-start', textTransform: 'none', px: 0 }}>
+        Add spec
+      </Button>
+    </Box>
+  );
+}
+
 function PhotoTile({
   photo,
   onDelete,
@@ -155,8 +294,10 @@ function WebsitePage() {
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const projectPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [projectPhotoTarget, setProjectPhotoTarget] = useState<string | null>(null);
+  const [pendingExtras, setPendingExtras] = useState<Record<string, SpecRow[]>>({});
 
   const applyContent = useCallback((data: Partial<WebsiteContent> & { projects?: Array<WebsiteProject & { photo?: WebsitePhoto | null }> }) => {
+    setPendingExtras({});
     setContent({
       ...EMPTY,
       ...data,
@@ -291,11 +432,42 @@ function WebsitePage() {
     }
   };
 
+  const setProjectDescription = (projectId: string, description: string) => {
+    setContent((prev) => ({
+      ...prev,
+      projects: prev.projects.map((row) => (row.id === projectId ? { ...row, description } : row)),
+    }));
+  };
+
+  const extrasFor = (project: WebsiteProject) =>
+    pendingExtras[project.id] ?? parseDescriptionSpecs(project.description).extra;
+
+  const updateKnownSpec = (project: WebsiteProject, key: string, value: string) => {
+    const { known } = parseDescriptionSpecs(project.description);
+    known[key] = value;
+    setProjectDescription(project.id, specsToDescription(known, extrasFor(project)));
+  };
+
+  const updateExtraSpec = (project: WebsiteProject, index: number, patch: Partial<SpecRow>) => {
+    const extra = extrasFor(project).map((row, i) => (i === index ? { ...row, ...patch } : row));
+    setPendingExtras((prev) => ({ ...prev, [project.id]: extra }));
+    const { known } = parseDescriptionSpecs(project.description);
+    setProjectDescription(project.id, specsToDescription(known, extra));
+  };
+
+  const addExtraSpec = (project: WebsiteProject) => {
+    setPendingExtras((prev) => ({
+      ...prev,
+      [project.id]: [...extrasFor(project), { label: '', value: '' }],
+    }));
+  };
+
   const saveProject = async (project: WebsiteProject) => {
     try {
+      const { known } = parseDescriptionSpecs(project.description);
       const { data } = await axios.patch(`${API_URL}/website/projects/${project.id}`, {
         title: project.title,
-        description: project.description,
+        description: specsToDescription(known, extrasFor(project)),
       });
       applyContent(data);
       toast.success('Project saved');
@@ -538,7 +710,7 @@ function WebsitePage() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2, flexWrap: 'wrap' }}>
             <Typography variant="body2" color="text.secondary">
-              Display number is list order (1, 2, 3…). First photo is the cover; the rest open as more views.
+              Display number is list order (1, 2, 3…). Specs are labeled rows on /projects. First photo is the cover.
             </Typography>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => void addProject()} sx={{ textTransform: 'none' }}>
               Add project
@@ -582,21 +754,12 @@ function WebsitePage() {
                             }))
                           }
                         />
-                        <TextField
-                          label="Description"
-                          size="small"
-                          value={project.description}
-                          onChange={(e) =>
-                            setContent((prev) => ({
-                              ...prev,
-                              projects: prev.projects.map((row) =>
-                                row.id === project.id ? { ...row, description: e.target.value } : row,
-                              ),
-                            }))
-                          }
-                          multiline
-                          minRows={2}
-                          helperText="Specs stay as written. The public page splits on ||"
+                        <ProjectSpecFields
+                          description={project.description}
+                          extra={extrasFor(project)}
+                          onKnown={(key, value) => updateKnownSpec(project, key, value)}
+                          onExtra={(index, patch) => updateExtraSpec(project, index, patch)}
+                          onAddExtra={() => addExtraSpec(project)}
                         />
                       </Box>
                     </Box>
@@ -785,9 +948,7 @@ function WebsitePage() {
                       />
                     ) : null}
                     <Typography sx={{ fontWeight: 600 }}>{project.title}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {project.description}
-                    </Typography>
+                    <SpecPreview description={project.description} />
                   </Box>
                 ))}
               </Box>
