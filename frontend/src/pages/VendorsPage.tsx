@@ -3,7 +3,7 @@
  * Route: /vendors
  */
 // @ts-nocheck
-import { useState, useEffect, useMemo } from 'react';
+import { Fragment, useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -32,6 +32,8 @@ import {
   MenuItem,
   useTheme,
   DialogContentText,
+  Collapse,
+  Link,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -45,6 +47,9 @@ import {
   Add as AddCircleIcon,
   Delete as DeleteOutlineIcon,
   Share as ShareIcon,
+  KeyboardArrowDown as ExpandIcon,
+  KeyboardArrowUp as CollapseIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -155,6 +160,55 @@ function truncateNotes(notes, maxLength = 50) {
   return `${notes.substring(0, maxLength)}...`;
 }
 
+function getOrderItems(vendor) {
+  return Array.isArray(vendor?.orderItems) ? vendor.orderItems : [];
+}
+
+function emptyOrderItem() {
+  return { itemCode: '', description: '', productNumber: '', link: '' };
+}
+
+function VendorOrderItemsTable({ items }) {
+  if (!items?.length) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        No order items yet.
+      </Typography>
+    );
+  }
+  return (
+    <Table size="small">
+      <TableHead>
+        <TableRow>
+          <TableCell sx={{ fontWeight: 600 }}>Item #</TableCell>
+          <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+          <TableCell sx={{ fontWeight: 600 }}>Product #</TableCell>
+          <TableCell sx={{ fontWeight: 600 }}>Link</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {items.map((item, idx) => (
+          <TableRow key={`${item.productNumber || item.itemCode || item.description}-${idx}`}>
+            <TableCell sx={{ whiteSpace: 'nowrap' }}>{item.itemCode || '—'}</TableCell>
+            <TableCell>{item.description || '—'}</TableCell>
+            <TableCell sx={{ whiteSpace: 'nowrap' }}>{item.productNumber || '—'}</TableCell>
+            <TableCell>
+              {item.link ? (
+                <Link href={item.link} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+                  Open
+                  <OpenInNewIcon sx={{ fontSize: 14, ml: 0.5, verticalAlign: 'middle' }} />
+                </Link>
+              ) : (
+                '—'
+              )}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
 export default function VendorsPage() {
   const theme = useTheme();
   const [vendors, setVendors] = useState([]);
@@ -172,6 +226,7 @@ export default function VendorsPage() {
   const [shareSmsRecipient, setShareSmsRecipient] = useState('');
   const [shareMessage, setShareMessage] = useState('');
   const [sendingShare, setSendingShare] = useState(false);
+  const [expandedVendorId, setExpandedVendorId] = useState(null);
 
   const fetchVendors = async () => {
     try {
@@ -200,7 +255,12 @@ export default function VendorsPage() {
         vendor.contactPhones.some((cp) => phoneSearchMatch(cp?.value, searchTerm))) ||
       vendor.address?.street?.toLowerCase().includes(searchLower) ||
       vendor.address?.city?.toLowerCase().includes(searchLower) ||
-      formatCategoryLabel(vendor.category).toLowerCase().includes(searchLower)
+      formatCategoryLabel(vendor.category).toLowerCase().includes(searchLower) ||
+      getOrderItems(vendor).some((item) =>
+        [item.itemCode, item.description, item.productNumber]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(searchLower)),
+      )
     ));
 
     filtered.sort((a, b) => {
@@ -336,6 +396,12 @@ export default function VendorsPage() {
       notes: selectedVendor.notes || '',
       category: selectedVendor.category || 'other',
       tags: selectedVendor.tags ? [...selectedVendor.tags] : [],
+      orderItems: getOrderItems(selectedVendor).map((item) => ({
+        itemCode: item.itemCode || '',
+        description: item.description || '',
+        productNumber: item.productNumber || '',
+        link: item.link || '',
+      })),
     });
   };
 
@@ -359,6 +425,14 @@ export default function VendorsPage() {
         notes: editForm.notes || undefined,
         category: editForm.category || 'other',
         tags: editForm.tags || [],
+        orderItems: (editForm.orderItems || [])
+          .map((item) => ({
+            itemCode: item.itemCode?.trim() || '',
+            description: item.description?.trim() || '',
+            productNumber: item.productNumber?.trim() || '',
+            link: item.link?.trim() || '',
+          }))
+          .filter((item) => item.description || item.productNumber || item.itemCode),
       };
 
       await axios.patch(`${API_URL}/vendors/${selectedVendor._id}`, updateData);
@@ -423,6 +497,7 @@ export default function VendorsPage() {
         notes: '',
         category: newVendor.category || 'other',
         tags: [],
+        orderItems: [],
       });
       setContactModalOpen(true);
       toast.success('New vendor created');
@@ -464,7 +539,7 @@ export default function VendorsPage() {
 
       <TextField
         fullWidth
-        placeholder="Search vendors by name, email, phone, address, or category..."
+        placeholder="Search vendors by name, email, phone, address, category, or order item..."
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
         sx={{ mb: 3 }}
@@ -489,6 +564,7 @@ export default function VendorsPage() {
           <Table sx={{ minWidth: 650 }}>
             <TableHead>
               <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
+                <TableCell sx={{ width: 48 }} />
                 <TableCell>
                   <TableSortLabel active={sortField === 'name'} direction={sortField === 'name' ? sortOrder : 'asc'} onClick={() => handleSort('name')}>
                     Name
@@ -520,38 +596,74 @@ export default function VendorsPage() {
             <TableBody>
               {filteredAndSortedVendors.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       {searchTerm ? 'No vendors found matching your search' : 'No vendors yet — add your first vendor'}
                     </Typography>
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredAndSortedVendors.map((vendor) => (
-                  <TableRow
-                    key={vendor._id}
-                    hover
-                    onClick={() => handleOpenContactModal(vendor)}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    <TableCell>{vendor.name || '-'}</TableCell>
-                    <TableCell>{formatPhoneForDisplay(getDisplayPhone(vendor)) || '-'}</TableCell>
-                    <TableCell>{getDisplayEmail(vendor) || '-'}</TableCell>
-                    <TableCell>{formatAddress(vendor.address)}</TableCell>
-                    <TableCell>
-                      <Chip label={formatCategoryLabel(vendor.category)} size="small" />
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                filteredAndSortedVendors.map((vendor) => {
+                  const orderItems = getOrderItems(vendor);
+                  const isExpanded = String(expandedVendorId) === String(vendor._id);
+                  return (
+                    <Fragment key={vendor._id}>
+                      <TableRow
+                        hover
+                        onClick={() => handleOpenContactModal(vendor)}
+                        sx={{ cursor: 'pointer' }}
                       >
-                        {truncateNotes(vendor.notes)}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ))
+                        <TableCell sx={{ width: 48, py: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                          <IconButton
+                            size="small"
+                            disabled={!orderItems.length}
+                            onClick={() =>
+                              setExpandedVendorId(isExpanded ? null : vendor._id)
+                            }
+                            aria-label={isExpanded ? 'Hide order items' : 'Show order items'}
+                          >
+                            {isExpanded ? <CollapseIcon /> : <ExpandIcon />}
+                          </IconButton>
+                        </TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <span>{vendor.name || '-'}</span>
+                            {orderItems.length ? (
+                              <Chip label={`${orderItems.length} items`} size="small" variant="outlined" />
+                            ) : null}
+                          </Box>
+                        </TableCell>
+                        <TableCell>{formatPhoneForDisplay(getDisplayPhone(vendor)) || '-'}</TableCell>
+                        <TableCell>{getDisplayEmail(vendor) || '-'}</TableCell>
+                        <TableCell>{formatAddress(vendor.address)}</TableCell>
+                        <TableCell>
+                          <Chip label={formatCategoryLabel(vendor.category)} size="small" />
+                        </TableCell>
+                        <TableCell>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          >
+                            {truncateNotes(vendor.notes)}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={7} sx={{ py: 0, borderBottom: isExpanded ? undefined : 'none' }}>
+                          <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                            <Box sx={{ py: 1.5, px: 1 }} onClick={(e) => e.stopPropagation()}>
+                              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                                Order items
+                              </Typography>
+                              <VendorOrderItemsTable items={orderItems} />
+                            </Box>
+                          </Collapse>
+                        </TableCell>
+                      </TableRow>
+                    </Fragment>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -773,6 +885,76 @@ export default function VendorsPage() {
                   />
 
                   <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Order items</Typography>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => setEditForm((prev) => ({
+                          ...prev,
+                          orderItems: [...(prev.orderItems || []), emptyOrderItem()],
+                        }))}
+                      >
+                        <AddCircleIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                    {(editForm.orderItems || []).map((item, idx) => (
+                      <Box key={idx} sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                        <TextField
+                          size="small"
+                          label="Item #"
+                          value={item.itemCode || ''}
+                          onChange={(e) => setEditForm((prev) => ({
+                            ...prev,
+                            orderItems: prev.orderItems.map((row, i) => i === idx ? { ...row, itemCode: e.target.value } : row),
+                          }))}
+                          sx={{ width: 100 }}
+                        />
+                        <TextField
+                          size="small"
+                          label="Description"
+                          value={item.description || ''}
+                          onChange={(e) => setEditForm((prev) => ({
+                            ...prev,
+                            orderItems: prev.orderItems.map((row, i) => i === idx ? { ...row, description: e.target.value } : row),
+                          }))}
+                          sx={{ flex: 1, minWidth: 160 }}
+                        />
+                        <TextField
+                          size="small"
+                          label="Product #"
+                          value={item.productNumber || ''}
+                          onChange={(e) => setEditForm((prev) => ({
+                            ...prev,
+                            orderItems: prev.orderItems.map((row, i) => i === idx ? { ...row, productNumber: e.target.value } : row),
+                          }))}
+                          sx={{ width: 130 }}
+                        />
+                        <TextField
+                          size="small"
+                          label="Link"
+                          value={item.link || ''}
+                          onChange={(e) => setEditForm((prev) => ({
+                            ...prev,
+                            orderItems: prev.orderItems.map((row, i) => i === idx ? { ...row, link: e.target.value } : row),
+                          }))}
+                          sx={{ flex: 1, minWidth: 160 }}
+                        />
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => setEditForm((prev) => ({
+                            ...prev,
+                            orderItems: prev.orderItems.filter((_, i) => i !== idx),
+                          }))}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+
+                  <Box>
                     <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Tags</Typography>
                     <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
                       {(editForm.tags || []).map((tag, idx) => (
@@ -897,6 +1079,13 @@ export default function VendorsPage() {
                       </Box>
                     </Box>
                   )}
+
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                      Order items ({getOrderItems(selectedVendor).length})
+                    </Typography>
+                    <VendorOrderItemsTable items={getOrderItems(selectedVendor)} />
+                  </Box>
 
                   {getAllPhones(selectedVendor).length === 0 &&
                     getAllEmails(selectedVendor).length === 0 &&

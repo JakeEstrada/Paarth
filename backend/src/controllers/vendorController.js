@@ -78,7 +78,18 @@ async function updateVendor(req, res) {
       return res.status(404).json({ error: 'Vendor not found' });
     }
 
-    Object.assign(vendor, req.body);
+    const body = { ...req.body };
+    if (Array.isArray(body.orderItems)) {
+      body.orderItems = body.orderItems
+        .map((item) => ({
+          itemCode: String(item?.itemCode || '').trim().slice(0, 80),
+          description: String(item?.description || '').trim().slice(0, 400),
+          productNumber: String(item?.productNumber || '').trim().slice(0, 80),
+          link: String(item?.link || '').trim().slice(0, 800),
+        }))
+        .filter((item) => item.description || item.productNumber || item.itemCode);
+    }
+    Object.assign(vendor, body);
     await vendor.save();
     res.json(vendor);
   } catch (error) {

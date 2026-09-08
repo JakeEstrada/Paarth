@@ -76,6 +76,12 @@ const vendorSchema = new mongoose.Schema({
     enum: ['lumber', 'hardware', 'subcontractor', 'supplier', 'delivery', 'other'],
     default: 'other',
   },
+  orderItems: [{
+    itemCode: { type: String, default: '', trim: true, maxlength: 80 },
+    description: { type: String, default: '', trim: true, maxlength: 400 },
+    productNumber: { type: String, default: '', trim: true, maxlength: 80 },
+    link: { type: String, default: '', trim: true, maxlength: 800 },
+  }],
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

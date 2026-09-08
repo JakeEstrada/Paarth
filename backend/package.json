@@ -10,6 +10,7 @@
     "start": "node src/server.js",
     "clone-tenant": "node src/scripts/cloneTenant.js",
     "seed-website-projects": "node src/scripts/seedWebsiteProjects.js",
+    "seed-vendor-order-items": "node src/scripts/seedVendorOrderItems.js",
     "create-super-admin": "node createSuperAdmin.js",
     "test-task-activities": "node src/scripts/testTaskActivityLogging.js",
     "backfill-task-activities": "node src/scripts/testTaskActivityLogging.js --backfill",
