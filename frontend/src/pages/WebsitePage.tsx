@@ -478,6 +478,8 @@ function WebsitePage() {
       toast.error('Failed to update visibility');
     }
   };
+
+  const saveProject = async (project: WebsiteProject) => {
     try {
       const { known, extra } = parseDescriptionSpecs(project.description);
       const { data } = await axios.patch(`${API_URL}/website/projects/${project.id}`, {
