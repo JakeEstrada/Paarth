@@ -25,6 +25,8 @@ import {
   ArrowUpward as ArrowUpIcon,
   Delete as DeleteIcon,
   PhotoCamera as PhotoIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -43,6 +45,7 @@ type WebsiteProject = {
   slug?: string;
   title: string;
   description: string;
+  visible: boolean;
   photos: WebsitePhoto[];
 };
 
@@ -333,6 +336,7 @@ function WebsitePage() {
             slug: project.slug || '',
             title: project.title || '',
             description: project.description || '',
+            visible: project.visible !== false,
             photos: Array.isArray(project.photos)
               ? project.photos
               : project.photo
@@ -463,7 +467,17 @@ function WebsitePage() {
     }));
   };
 
-  const saveProject = async (project: WebsiteProject) => {
+  const toggleProjectVisible = async (project: WebsiteProject) => {
+    try {
+      const { data } = await axios.patch(`${API_URL}/website/projects/${project.id}`, {
+        visible: !project.visible,
+      });
+      applyContent(data);
+    } catch (error) {
+      console.error('Error toggling project visibility:', error);
+      toast.error('Failed to update visibility');
+    }
+  };
     try {
       const { known, extra } = parseDescriptionSpecs(project.description);
       const { data } = await axios.patch(`${API_URL}/website/projects/${project.id}`, {
@@ -711,7 +725,7 @@ function WebsitePage() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2, flexWrap: 'wrap' }}>
             <Typography variant="body2" color="text.secondary">
-              Display number is list order (1, 2, 3…). Specs are labeled rows on /projects. First photo is the cover.
+              Display number is list order (1, 2, 3…). The eye hides a job from the public site without deleting it.
             </Typography>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => void addProject()} sx={{ textTransform: 'none' }}>
               Add project
@@ -727,6 +741,7 @@ function WebsitePage() {
                 <Card
                   key={project.id}
                   variant="outlined"
+                  sx={project.visible ? undefined : { opacity: 0.55 }}
                   onDragOver={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -803,6 +818,14 @@ function WebsitePage() {
                       <Button size="small" onClick={() => void saveProject(project)} sx={{ textTransform: 'none' }}>
                         Save
                       </Button>
+                      <IconButton
+                        size="small"
+                        onClick={() => void toggleProjectVisible(project)}
+                        aria-label={project.visible ? 'Hide on public site' : 'Show on public site'}
+                        title={project.visible ? 'Visible on the public site' : 'Hidden from the public site'}
+                      >
+                        {project.visible ? <VisibilityIcon fontSize="small" /> : <VisibilityOffIcon fontSize="small" />}
+                      </IconButton>
                       <IconButton size="small" onClick={() => void moveItem('projects', index, -1)} disabled={index === 0} aria-label="Move project up">
                         <ArrowUpIcon fontSize="small" />
                       </IconButton>
@@ -930,13 +953,13 @@ function WebsitePage() {
             </Typography>
             <Typography sx={{ whiteSpace: 'pre-wrap' }}>{content.storyBody}</Typography>
           </Box>
-          {content.projects.length ? (
+          {content.projects.some((project) => project.visible) ? (
             <Box sx={{ px: 4, pb: 4 }}>
               <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
                 Projects
               </Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 2 }}>
-                {content.projects.map((project) => (
+                {content.projects.filter((project) => project.visible).map((project) => (
                   <Box key={project.id}>
                     {project.photos[0] ? (
                       <Box

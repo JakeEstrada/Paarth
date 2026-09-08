@@ -20,6 +20,7 @@ const projectSchema = new mongoose.Schema(
     title: { type: String, default: '', trim: true, maxlength: 160 },
     description: { type: String, default: '', trim: true, maxlength: 2000 },
     photos: { type: [assetSchema], default: [] },
+    visible: { type: Boolean, default: true },
     /** @deprecated use photos[0] */
     photo: { type: assetSchema, default: undefined },
   },

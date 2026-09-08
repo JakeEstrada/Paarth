@@ -68,18 +68,24 @@ function migrateProjectPhotos(doc) {
   return changed;
 }
 
+function projectIsVisible(project) {
+  return project?.visible !== false;
+}
+
 function serializeProject(project, tenantId) {
   return {
     id: String(project._id),
     slug: project.slug || '',
     title: project.title || '',
     description: project.description || '',
+    visible: projectIsVisible(project),
     photos: projectPhotoList(project).map((photo) => serializeAsset(photo, tenantId)).filter(Boolean),
   };
 }
 
-function serializeWebsite(doc) {
+function serializeWebsite(doc, { publicOnly } = {}) {
   const tenantId = String(doc.tenantId);
+  const projects = (doc.projects || []).filter((project) => !publicOnly || projectIsVisible(project));
   return {
     id: String(doc._id),
     heroHeadline: doc.heroHeadline || '',
@@ -93,7 +99,7 @@ function serializeWebsite(doc) {
     quoteHeadline: doc.quoteHeadline || '',
     heroPhotos: (doc.heroPhotos || []).map((photo) => serializeAsset(photo, tenantId)).filter(Boolean),
     gallery: (doc.gallery || []).map((photo) => serializeAsset(photo, tenantId)).filter(Boolean),
-    projects: (doc.projects || []).map((project) => serializeProject(project, tenantId)),
+    projects: projects.map((project) => serializeProject(project, tenantId)),
     updatedAt: doc.updatedAt,
   };
 }
@@ -252,6 +258,7 @@ async function createProject(req, res) {
       title: clip(req.body?.title, 160) || 'New project',
       description: clip(req.body?.description, 2000),
       photos: [],
+      visible: false,
     });
     await doc.save();
     res.status(201).json(serializeWebsite(doc));
@@ -269,6 +276,7 @@ async function updateProject(req, res) {
     if (req.body?.title !== undefined) project.title = clip(req.body.title, 160);
     if (req.body?.description !== undefined) project.description = clip(req.body.description, 2000);
     if (req.body?.slug !== undefined) project.slug = clip(req.body.slug, 160);
+    if (req.body?.visible !== undefined) project.visible = Boolean(req.body.visible);
     await doc.save();
     res.json(serializeWebsite(doc));
   } catch (error) {
@@ -398,15 +406,18 @@ async function getPublicWebsite(req, res) {
     const doc = await WebsiteContent.findOne({ tenantId: tenant._id }).setOptions({ bypassTenant: true });
     if (doc) migrateProjectPhotos(doc);
     const payload = doc
-      ? serializeWebsite(doc)
-      : serializeWebsite({
-          _id: 'default',
-          tenantId: tenant._id,
-          ...DEFAULTS,
-          heroPhotos: [],
-          gallery: [],
-          projects: [],
-        });
+      ? serializeWebsite(doc, { publicOnly: true })
+      : serializeWebsite(
+          {
+            _id: 'default',
+            tenantId: tenant._id,
+            ...DEFAULTS,
+            heroPhotos: [],
+            gallery: [],
+            projects: [],
+          },
+          { publicOnly: true },
+        );
     res.setHeader('Cache-Control', 'public, max-age=60');
     res.json({
       companyName: tenant.name || 'San Clemente Woodworking',
