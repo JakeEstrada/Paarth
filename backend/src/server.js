@@ -35,6 +35,11 @@ const LOCAL_DEV_ORIGINS = [
   'http://127.0.0.1:3000',
 ];
 
+const MARKETING_ORIGINS = [
+  'https://sanclementewoodworking.com',
+  'https://www.sanclementewoodworking.com',
+];
+
 function parseCorsOrigins() {
   const raw = process.env.CORS_ORIGINS;
   if (!raw || !String(raw).trim()) return true;
@@ -43,11 +48,9 @@ function parseCorsOrigins() {
     .map((s) => s.trim())
     .filter(Boolean);
   if (!list.length) return true;
-  // Non-production: merge Vite/preview dev origins so a production-only CORS_ORIGINS copy still allows local UI.
-  if (process.env.NODE_ENV !== 'production') {
-    return [...new Set([...list, ...LOCAL_DEV_ORIGINS])];
-  }
-  return list;
+  const extra = [...MARKETING_ORIGINS];
+  if (process.env.NODE_ENV !== 'production') extra.push(...LOCAL_DEV_ORIGINS);
+  return [...new Set([...list, ...extra])];
 }
 
 // Middleware — explicit headers so browser preflight (e.g. x-tenant-id) succeeds cross-origin.
