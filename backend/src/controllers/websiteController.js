@@ -1,7 +1,13 @@
+const mongoose = require('mongoose');
 const WebsiteContent = require('../models/WebsiteContent');
+const WebsiteAnalyticsEvent = require('../models/WebsiteAnalyticsEvent');
 const Tenant = require('../models/Tenant');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
 const { getTenantContext } = require('../middleware/tenantContext');
+
+const GOOGLE_TAG_ID = /^(G|GT|AW|DC)-[A-Z0-9]+$/i;
+const ADS_CUSTOMER_ID = /^\d{3}-\d{3}-\d{4}$/;
+const EVENT_RATE = new Map();
 
 const DEFAULTS = {
   heroHeadline: "Orange County's Skilled Staircase & Railing Experts",
@@ -29,6 +35,57 @@ function extractGoogleTagId(raw) {
   const match = text.match(/\b(?:G|GT|AW|DC)-[A-Z0-9]+\b/i);
   const id = match ? match[0] : text.replace(/\s+/g, '');
   return id.slice(0, 48);
+}
+
+function looksLikeAdsCustomerId(value) {
+  const compact = String(value || '').replace(/\s+/g, '');
+  if (!compact) return false;
+  return ADS_CUSTOMER_ID.test(compact) || /^\d{8,12}$/.test(compact);
+}
+
+function pacificDayLabels(days) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(new Date());
+  const year = Number(parts.find((part) => part.type === 'year')?.value);
+  const month = Number(parts.find((part) => part.type === 'month')?.value);
+  const day = Number(parts.find((part) => part.type === 'day')?.value);
+  const cursor = Date.UTC(year, month - 1, day);
+  const labels = [];
+  for (let i = days - 1; i >= 0; i -= 1) {
+    labels.push(new Date(cursor - i * 86400000).toISOString().slice(0, 10));
+  }
+  return labels;
+}
+
+function eventRateLimited(ip) {
+  const now = Date.now();
+  const recent = (EVENT_RATE.get(ip) || []).filter((stamp) => now - stamp < 60000);
+  recent.push(now);
+  EVENT_RATE.set(ip, recent);
+  if (EVENT_RATE.size > 4000) {
+    for (const [key, stamps] of EVENT_RATE) {
+      if (!stamps.some((stamp) => now - stamp < 60000)) EVENT_RATE.delete(key);
+    }
+  }
+  return recent.length > 80;
+}
+
+async function resolvePublicTenant(req) {
+  const slug = String(req.query.slug || req.body?.slug || req.headers['x-tenant-slug'] || '')
+    .trim()
+    .toLowerCase();
+  const tenantIdQuery = String(req.query.tenantId || req.body?.tenantId || '').trim();
+  if (tenantIdQuery && /^[a-fA-F0-9]{24}$/.test(tenantIdQuery)) {
+    return Tenant.findById(tenantIdQuery).setOptions({ bypassTenant: true });
+  }
+  if (slug) {
+    return Tenant.findOne({ slug, isActive: { $ne: false } }).setOptions({ bypassTenant: true });
+  }
+  return Tenant.findOne({ isActive: { $ne: false } }).sort({ createdAt: 1 }).setOptions({ bypassTenant: true });
 }
 
 function tenantIdFromReq(req) {
@@ -229,10 +286,20 @@ async function updateWebsiteAnalytics(req, res) {
     const doc = await getOrCreateWebsite(tenantId);
     const body = req.body || {};
     const conversions = Array.isArray(body.conversions) ? body.conversions : [];
+    if (looksLikeAdsCustomerId(body.measurementId) || looksLikeAdsCustomerId(body.adsId)) {
+      return res.status(400).json({
+        error: 'That looks like a Google Ads account number (123-456-7890). Use the AW- or G- tag from Tools → Data manager → Google tag.',
+      });
+    }
+    const measurementId = extractGoogleTagId(body.measurementId);
+    const adsId = extractGoogleTagId(body.adsId);
+    if (body.enabled && !GOOGLE_TAG_ID.test(measurementId)) {
+      return res.status(400).json({ error: 'Paste a Google tag ID starting with AW-, G-, or GT- before turning this on.' });
+    }
     doc.analytics = {
       enabled: Boolean(body.enabled),
-      measurementId: extractGoogleTagId(body.measurementId),
-      adsId: extractGoogleTagId(body.adsId),
+      measurementId,
+      adsId,
       conversions: conversions
         .map((row) => ({
           name: clip(row?.name, 120),
@@ -459,16 +526,7 @@ async function reorderWebsite(req, res) {
 
 async function getPublicWebsite(req, res) {
   try {
-    const slug = String(req.query.slug || req.headers['x-tenant-slug'] || '').trim().toLowerCase();
-    const tenantIdQuery = String(req.query.tenantId || '').trim();
-    let tenant = null;
-    if (tenantIdQuery && /^[a-fA-F0-9]{24}$/.test(tenantIdQuery)) {
-      tenant = await Tenant.findById(tenantIdQuery).setOptions({ bypassTenant: true });
-    } else if (slug) {
-      tenant = await Tenant.findOne({ slug, isActive: { $ne: false } }).setOptions({ bypassTenant: true });
-    } else {
-      tenant = await Tenant.findOne({ isActive: { $ne: false } }).sort({ createdAt: 1 }).setOptions({ bypassTenant: true });
-    }
+    const tenant = await resolvePublicTenant(req);
     if (!tenant) return res.status(404).json({ error: 'Website not found' });
     const doc = await WebsiteContent.findOne({ tenantId: tenant._id }).setOptions({ bypassTenant: true });
     if (doc) migrateProjectPhotos(doc);
@@ -521,10 +579,122 @@ async function getPublicWebsiteMedia(req, res) {
   }
 }
 
+async function recordPublicAnalyticsEvent(req, res) {
+  try {
+    const ip = String(req.ip || req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+    if (eventRateLimited(ip)) return res.status(204).end();
+    const ua = String(req.headers['user-agent'] || '');
+    if (/bot|crawl|spider|slurp|facebookexternalhit|preview|lighthouse|headless|httpclient/i.test(ua)) {
+      return res.status(204).end();
+    }
+    const type = String(req.body?.type || '').trim();
+    if (!WebsiteAnalyticsEvent.EVENT_TYPES.includes(type)) {
+      return res.status(400).json({ error: 'Invalid event' });
+    }
+    const tenant = await resolvePublicTenant(req);
+    if (!tenant) return res.status(404).json({ error: 'Website not found' });
+    let path = String(req.body?.path || '/').trim() || '/';
+    if (!path.startsWith('/')) path = `/${path}`;
+    path = path.slice(0, 200).split('?')[0].split('#')[0] || '/';
+    let referrer = '';
+    try {
+      const raw = String(req.body?.referrer || '').trim();
+      if (raw) referrer = new URL(raw).host.slice(0, 200);
+    } catch {
+      referrer = clip(req.body?.referrer, 200);
+    }
+    await WebsiteAnalyticsEvent.create(
+      [
+        {
+          tenantId: tenant._id,
+          type,
+          path,
+          sessionId: clip(req.body?.sessionId, 64).replace(/[^a-zA-Z0-9_-]/g, ''),
+          referrer,
+          occurredAt: new Date(),
+        },
+      ],
+    );
+    res.status(204).end();
+  } catch (error) {
+    if (!res.headersSent) res.status(204).end();
+    console.error('Website analytics event error:', error?.message || error);
+  }
+}
+
+async function getWebsiteAnalyticsReport(req, res) {
+  try {
+    const tenantId = tenantIdFromReq(req);
+    if (!tenantId) return res.status(400).json({ error: 'Tenant is required' });
+    const tenantObjectId = mongoose.Types.ObjectId.isValid(String(tenantId))
+      ? new mongoose.Types.ObjectId(String(tenantId))
+      : null;
+    if (!tenantObjectId) return res.status(400).json({ error: 'Tenant is required' });
+    const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+    const start = new Date(Date.now() - (days + 1) * 86400000);
+    const match = { tenantId: tenantObjectId, occurredAt: { $gte: start } };
+    const labels = pacificDayLabels(days);
+    const [pageViews, contactOpens, contactSubmits, visitorIds, byDay, pages] = await Promise.all([
+      WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'page_view' }),
+      WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'contact_open' }),
+      WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'contact_submit' }),
+      WebsiteAnalyticsEvent.distinct('sessionId', match),
+      WebsiteAnalyticsEvent.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: {
+              day: { $dateToString: { format: '%Y-%m-%d', date: '$occurredAt', timezone: 'America/Los_Angeles' } },
+              type: '$type',
+            },
+            count: { $sum: 1 },
+            sessions: { $addToSet: '$sessionId' },
+          },
+        },
+      ]),
+      WebsiteAnalyticsEvent.aggregate([
+        { $match: { ...match, type: 'page_view' } },
+        { $group: { _id: '$path', views: { $sum: 1 } } },
+        { $sort: { views: -1 } },
+        { $limit: 8 },
+      ]),
+    ]);
+    const bucket = new Map(
+      labels.map((date) => [date, { date, pageViews: 0, visitors: 0, contactOpens: 0, contactSubmits: 0 }]),
+    );
+    for (const row of byDay) {
+      const date = row?._id?.day;
+      const current = bucket.get(date);
+      if (!current) continue;
+      const count = Number(row.count) || 0;
+      if (row._id.type === 'page_view') {
+        current.pageViews += count;
+        current.visitors += Array.isArray(row.sessions) ? row.sessions.filter(Boolean).length : 0;
+      } else if (row._id.type === 'contact_open') current.contactOpens += count;
+      else if (row._id.type === 'contact_submit') current.contactSubmits += count;
+    }
+    res.json({
+      days,
+      totals: {
+        pageViews,
+        visitors: visitorIds.filter(Boolean).length,
+        contactOpens,
+        contactSubmits,
+      },
+      series: labels.map((date) => bucket.get(date)),
+      pages: pages.map((row) => ({ path: row._id || '/', views: row.views || 0 })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to load website analytics' });
+  }
+}
+
 module.exports = {
   getWebsite,
   updateWebsite,
   updateWebsiteAnalytics,
+  getWebsiteAnalyticsReport,
+  recordPublicAnalyticsEvent,
   uploadHeroPhoto,
   deleteHeroPhoto,
   uploadGalleryPhoto,

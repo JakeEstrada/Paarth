@@ -58,7 +58,7 @@ Main app routes (path → purpose):
 - /completed-tasks — completed tasks and appointments
 - /completed-jobs — finished closed-out jobs
 - /website — customer website homepage CMS (super admin only)
-- /developer/analytics — Google tag and conversion events for the public site (super admin only)
+- /developer/analytics — website traffic graphs and Google tag setup (super admin only)
 - /developer — internal developer tasks (super admin only)
 - /payroll — payroll tools
 - /bills — bills (super admin only)

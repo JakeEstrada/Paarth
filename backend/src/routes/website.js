@@ -6,6 +6,8 @@ const {
   getWebsite,
   updateWebsite,
   updateWebsiteAnalytics,
+  getWebsiteAnalyticsReport,
+  recordPublicAnalyticsEvent,
   uploadHeroPhoto,
   deleteHeroPhoto,
   uploadGalleryPhoto,
@@ -22,11 +24,13 @@ const {
 
 router.get('/public', getPublicWebsite);
 router.get('/public/media/:tenantId/:assetId', getPublicWebsiteMedia);
+router.post('/public/events', recordPublicAnalyticsEvent);
 
 router.use(requireAuth, requireSuperAdmin);
 
 router.get('/', getWebsite);
 router.put('/', updateWebsite);
+router.get('/analytics/report', getWebsiteAnalyticsReport);
 router.put('/analytics', updateWebsiteAnalytics);
 router.patch('/order', reorderWebsite);
 router.post('/hero', uploadWebsiteImage.single('file'), uploadHeroPhoto);
