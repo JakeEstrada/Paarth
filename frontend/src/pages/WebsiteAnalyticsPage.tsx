@@ -1,16 +1,15 @@
 /**
- * WebsiteAnalyticsPage — Super-admin traffic graphs + Google tag config.
+ * WebsiteAnalyticsPage — Google campaign tag + first-party traffic log.
  * Route: /developer/analytics
- * APIs: GET /website, GET /website/analytics/report, PUT /website/analytics
+ * Tabs: campaign | traffic  (?tab=)
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Box,
   Button,
   Chip,
+  CircularProgress,
   Container,
   FormControl,
   FormControlLabel,
@@ -20,11 +19,14 @@ import {
   Paper,
   Select,
   Switch,
+  Tab,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -35,18 +37,19 @@ import { alpha } from '@mui/material/styles';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
-  ExpandMore as ExpandMoreIcon,
   MailOutline as MailIcon,
+  Mouse as MouseIcon,
   PeopleOutline as PeopleIcon,
-  TouchApp as TouchIcon,
   Visibility as ViewsIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const GOOGLE_TAG_ID = /\b(?:G|GT|AW|DC)-[A-Z0-9]+\b/i;
 const ADS_CUSTOMER_ID = /^\d{3}-\d{3}-\d{4}$/;
+const DEFAULT_GA_ID = 'G-B5E89JDV2B';
 
 const TRIGGERS = [
   { value: 'contact_submit', label: 'Contact form sent' },
@@ -59,6 +62,14 @@ const EMPTY_CONVERSION = {
   trigger: 'contact_submit',
   label: 'Contact us',
 };
+
+const EVENT_FILTERS = [
+  { value: '', label: 'All' },
+  { value: 'page_view', label: 'Page views' },
+  { value: 'click', label: 'Clicks' },
+  { value: 'contact_open', label: 'Contact opened' },
+  { value: 'contact_submit', label: 'Messages sent' },
+];
 
 type Conversion = {
   id?: string;
@@ -74,10 +85,13 @@ type AnalyticsForm = {
   conversions: Conversion[];
 };
 
+type MineIp = { ip: string; label: string };
+
 type SeriesPoint = {
   date: string;
   pageViews: number;
   visitors: number;
+  clicks: number;
   contactOpens: number;
   contactSubmits: number;
 };
@@ -87,25 +101,45 @@ type Report = {
   totals: {
     pageViews: number;
     visitors: number;
+    clicks: number;
     contactOpens: number;
     contactSubmits: number;
   };
   series: SeriesPoint[];
   pages: Array<{ path: string; views: number }>;
+  mineIps: MineIp[];
+};
+
+type TrafficEvent = {
+  id: string;
+  type: string;
+  path: string;
+  label: string;
+  href: string;
+  query: string;
+  referrer: string;
+  sessionId: string;
+  ip: string;
+  userAgent: string;
+  locationLabel: string;
+  locationIsp: string;
+  mine: boolean;
+  occurredAt: string;
 };
 
 const EMPTY_FORM: AnalyticsForm = {
   enabled: false,
-  measurementId: '',
+  measurementId: DEFAULT_GA_ID,
   adsId: '',
   conversions: [{ ...EMPTY_CONVERSION }],
 };
 
 const EMPTY_REPORT: Report = {
   days: 30,
-  totals: { pageViews: 0, visitors: 0, contactOpens: 0, contactSubmits: 0 },
+  totals: { pageViews: 0, visitors: 0, clicks: 0, contactOpens: 0, contactSubmits: 0 },
   series: [],
   pages: [],
+  mineIps: [],
 };
 
 function looksLikeAdsCustomerId(value: string) {
@@ -118,23 +152,55 @@ function formatDay(date: string) {
   return `${Number(month)}/${Number(day)}`;
 }
 
+function eventLabel(type: string) {
+  if (type === 'page_view') return 'Page view';
+  if (type === 'click') return 'Click';
+  if (type === 'contact_open') return 'Contact opened';
+  if (type === 'contact_submit') return 'Message sent';
+  return type;
+}
+
+function eventColor(type: string): 'default' | 'primary' | 'info' | 'warning' | 'success' {
+  if (type === 'page_view') return 'primary';
+  if (type === 'click') return 'info';
+  if (type === 'contact_open') return 'warning';
+  if (type === 'contact_submit') return 'success';
+  return 'default';
+}
+
+function detailFor(event: TrafficEvent) {
+  if (event.type === 'click') {
+    return [event.label, event.href].filter(Boolean).join(' · ');
+  }
+  if (event.type === 'page_view') return event.query || 'Opened page';
+  if (event.type === 'contact_open') return 'Opened contact form';
+  if (event.type === 'contact_submit') return 'Sent contact form';
+  return event.label || '—';
+}
+
 function TrafficChart({ series, theme }: { series: SeriesPoint[]; theme: ReturnType<typeof useTheme> }) {
   const width = 720;
   const height = 240;
   const pad = { l: 36, r: 16, t: 16, b: 32 };
   const innerW = width - pad.l - pad.r;
   const innerH = height - pad.t - pad.b;
-  const max = Math.max(1, ...series.map((row) => Math.max(row.pageViews, row.contactSubmits)));
+  const max = Math.max(1, ...series.map((row) => Math.max(row.pageViews, row.clicks, row.contactSubmits)));
   const points = series.map((row, index) => {
     const x = series.length <= 1 ? pad.l + innerW / 2 : pad.l + (index / (series.length - 1)) * innerW;
-    const y = pad.t + innerH - (row.pageViews / max) * innerH;
-    const cy = pad.t + innerH - (row.contactSubmits / max) * innerH;
-    return { ...row, x, y, cy };
+    return {
+      ...row,
+      x,
+      y: pad.t + innerH - (row.pageViews / max) * innerH,
+      clickY: pad.t + innerH - (row.clicks / max) * innerH,
+      cy: pad.t + innerH - (row.contactSubmits / max) * innerH,
+    };
   });
   const line = points.map((point) => `${point.x},${point.y}`).join(' ');
   const area = `${pad.l},${pad.t + innerH} ${line} ${pad.l + innerW},${pad.t + innerH}`;
+  const clickLine = points.map((point) => `${point.x},${point.clickY}`).join(' ');
   const contactLine = points.map((point) => `${point.x},${point.cy}`).join(' ');
   const viewColor = theme.palette.primary.main;
+  const clickColor = theme.palette.info.main;
   const contactColor = theme.palette.success.main;
   const ticks = series.filter((_, index) => {
     if (series.length <= 8) return true;
@@ -162,19 +228,13 @@ function TrafficChart({ series, theme }: { series: SeriesPoint[]; theme: ReturnT
         ))}
         <polygon points={area} fill={alpha(viewColor, 0.18)} />
         <polyline points={line} fill="none" stroke={viewColor} strokeWidth="2.5" />
+        <polyline points={clickLine} fill="none" stroke={clickColor} strokeWidth="2.5" />
         <polyline points={contactLine} fill="none" stroke={contactColor} strokeWidth="2.5" />
         {ticks.map((row) => {
           const point = points.find((item) => item.date === row.date);
           if (!point) return null;
           return (
-            <text
-              key={row.date}
-              x={point.x}
-              y={height - 8}
-              textAnchor="middle"
-              fill={theme.palette.text.secondary}
-              fontSize="11"
-            >
+            <text key={row.date} x={point.x} y={height - 8} textAnchor="middle" fill={theme.palette.text.secondary} fontSize="11">
               {formatDay(row.date)}
             </text>
           );
@@ -183,13 +243,10 @@ function TrafficChart({ series, theme }: { series: SeriesPoint[]; theme: ReturnT
           {max}
         </text>
       </svg>
-      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', mt: -1 }}>
-        <Typography variant="caption" sx={{ color: viewColor }}>
-          Page views
-        </Typography>
-        <Typography variant="caption" sx={{ color: contactColor }}>
-          Contact form sent
-        </Typography>
+      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', mt: -1, flexWrap: 'wrap' }}>
+        <Typography variant="caption" sx={{ color: viewColor }}>Page views</Typography>
+        <Typography variant="caption" sx={{ color: clickColor }}>Clicks</Typography>
+        <Typography variant="caption" sx={{ color: contactColor }}>Messages sent</Typography>
       </Box>
     </Box>
   );
@@ -238,46 +295,100 @@ function StatCard({
 
 function WebsiteAnalyticsPage() {
   const theme = useTheme();
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'traffic' ? 1 : 0;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [days, setDays] = useState(30);
+  const [hideMine, setHideMine] = useState(false);
+  const [eventType, setEventType] = useState('');
+  const [query, setQuery] = useState('');
   const [form, setForm] = useState<AnalyticsForm>(EMPTY_FORM);
   const [report, setReport] = useState<Report>(EMPTY_REPORT);
+  const [events, setEvents] = useState<TrafficEvent[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [logLoading, setLogLoading] = useState(false);
+  const [mineIps, setMineIps] = useState<MineIp[]>([]);
 
-  const load = useCallback(async (rangeDays = days) => {
+  const setTab = (next: number) => {
+    setParams(next === 1 ? { tab: 'traffic' } : { tab: 'campaign' }, { replace: true });
+  };
+
+  const loadReport = useCallback(async (rangeDays = days, skipMine = hideMine) => {
+    const [{ data }, reportRes] = await Promise.all([
+      axios.get(`${API_URL}/website`),
+      axios.get(`${API_URL}/website/analytics/report`, {
+        params: { days: rangeDays, hideMine: skipMine ? '1' : '0' },
+      }),
+    ]);
+    const analytics = data?.analytics || {};
+    const conversions = Array.isArray(analytics.conversions) && analytics.conversions.length
+      ? analytics.conversions
+      : [{ ...EMPTY_CONVERSION }];
+    setForm({
+      enabled: Boolean(analytics.enabled),
+      measurementId: analytics.measurementId || DEFAULT_GA_ID,
+      adsId: analytics.adsId || '',
+      conversions,
+    });
+    setMineIps(Array.isArray(analytics.mineIps) ? analytics.mineIps : reportRes.data?.mineIps || []);
+    setReport({
+      days: reportRes.data?.days || rangeDays,
+      totals: { ...EMPTY_REPORT.totals, ...(reportRes.data?.totals || {}) },
+      series: Array.isArray(reportRes.data?.series) ? reportRes.data.series : [],
+      pages: Array.isArray(reportRes.data?.pages) ? reportRes.data.pages : [],
+      mineIps: Array.isArray(reportRes.data?.mineIps) ? reportRes.data.mineIps : [],
+    });
+  }, [days, hideMine]);
+
+  const loadEvents = useCallback(async (opts: { append?: boolean; before?: string } = {}) => {
+    setLogLoading(true);
     try {
-      setLoading(true);
-      const [{ data }, reportRes] = await Promise.all([
-        axios.get(`${API_URL}/website`),
-        axios.get(`${API_URL}/website/analytics/report`, { params: { days: rangeDays } }),
-      ]);
-      const analytics = data?.analytics || {};
-      const conversions = Array.isArray(analytics.conversions) && analytics.conversions.length
-        ? analytics.conversions
-        : [{ ...EMPTY_CONVERSION }];
-      setForm({
-        enabled: Boolean(analytics.enabled),
-        measurementId: analytics.measurementId || '',
-        adsId: analytics.adsId || '',
-        conversions,
+      const { data } = await axios.get(`${API_URL}/website/analytics/events`, {
+        params: {
+          hideMine: hideMine ? '1' : '0',
+          type: eventType || undefined,
+          q: query.trim() || undefined,
+          before: opts.append ? opts.before : undefined,
+          limit: 40,
+        },
       });
-      setReport({
-        days: reportRes.data?.days || rangeDays,
-        totals: reportRes.data?.totals || EMPTY_REPORT.totals,
-        series: Array.isArray(reportRes.data?.series) ? reportRes.data.series : [],
-        pages: Array.isArray(reportRes.data?.pages) ? reportRes.data.pages : [],
-      });
+      const next = Array.isArray(data?.events) ? data.events : [];
+      setEvents((prev) => (opts.append ? [...prev, ...next] : next));
+      setHasMore(Boolean(data?.hasMore));
+      if (Array.isArray(data?.mineIps)) setMineIps(data.mineIps);
     } catch (error) {
-      console.error('Error loading website analytics:', error);
-      toast.error('Failed to load website analytics');
+      console.error('Error loading traffic log:', error);
+      toast.error('Failed to load traffic log');
     } finally {
-      setLoading(false);
+      setLogLoading(false);
     }
-  }, [days]);
+  }, [eventType, hideMine, query]);
 
   useEffect(() => {
-    void load(days);
-  }, [load, days]);
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        await loadReport(days, hideMine);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Error loading website analytics:', error);
+          toast.error('Failed to load website analytics');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [days, hideMine, loadReport]);
+
+  useEffect(() => {
+    if (tab !== 1) return;
+    void loadEvents({ append: false });
+  }, [tab, hideMine, eventType, loadEvents]);
 
   const save = async () => {
     if (looksLikeAdsCustomerId(form.measurementId) || looksLikeAdsCustomerId(form.adsId)) {
@@ -294,7 +405,7 @@ function WebsiteAnalyticsPage() {
       const analytics = data?.analytics || form;
       setForm({
         enabled: Boolean(analytics.enabled),
-        measurementId: analytics.measurementId || '',
+        measurementId: analytics.measurementId || DEFAULT_GA_ID,
         adsId: analytics.adsId || '',
         conversions: analytics.conversions?.length ? analytics.conversions : [{ ...EMPTY_CONVERSION }],
       });
@@ -314,104 +425,54 @@ function WebsiteAnalyticsPage() {
     }));
   };
 
+  const setMine = async (ip: string, mine: boolean) => {
+    try {
+      const { data } = await axios.put(`${API_URL}/website/analytics/mine-ips`, { ip, mine, label: 'Me' });
+      setMineIps(Array.isArray(data?.mineIps) ? data.mineIps : []);
+      await loadReport(days, hideMine);
+      if (tab === 1) await loadEvents({ append: false });
+    } catch (error) {
+      console.error('Error updating mine IP:', error);
+      toast.error('Could not update that IP');
+    }
+  };
+
   const hasTraffic = useMemo(
-    () => report.totals.pageViews + report.totals.contactOpens + report.totals.contactSubmits > 0,
+    () => report.totals.pageViews + report.totals.clicks + report.totals.contactOpens + report.totals.contactSubmits > 0,
     [report.totals],
   );
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
-        <Box>
-          <Typography variant="h1" sx={{ mb: 1 }}>
-            Website Analytics
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Visits and contact-form activity on the customer site. Google Ads spend and clicks stay in Google Ads.
-          </Typography>
-        </Box>
-        <ToggleButtonGroup
-          exclusive
-          size="small"
-          value={days}
-          onChange={(_, next) => {
-            if (next) setDays(next);
-          }}
-        >
-          <ToggleButton value={7} sx={{ textTransform: 'none' }}>7 days</ToggleButton>
-          <ToggleButton value={30} sx={{ textTransform: 'none' }}>30 days</ToggleButton>
-          <ToggleButton value={90} sx={{ textTransform: 'none' }}>90 days</ToggleButton>
-        </ToggleButtonGroup>
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="h1" sx={{ mb: 1 }}>
+          Website Analytics
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          Google Campaign sends conversions to Google. Traffic Logging is your own ERP log of visits, clicks, and IPs.
+        </Typography>
       </Box>
 
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' },
-          gap: 2,
-          mb: 3,
-        }}
-      >
-        <StatCard label="Page views" value={report.totals.pageViews} icon={ViewsIcon} color={theme.palette.primary.main} />
-        <StatCard label="Visitors" value={report.totals.visitors} icon={PeopleIcon} color={theme.palette.info.main} />
-        <StatCard label="Contact opened" value={report.totals.contactOpens} icon={TouchIcon} color={theme.palette.warning.main} />
-        <StatCard label="Messages sent" value={report.totals.contactSubmits} icon={MailIcon} color={theme.palette.success.main} />
-      </Box>
-
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-          Traffic
-        </Typography>
-        {hasTraffic ? (
-          <TrafficChart series={report.series} theme={theme} />
-        ) : (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>
-            {loading ? 'Loading…' : 'No visits recorded yet. Graphs fill in after the public site is deployed and people use the site.'}
-          </Typography>
-        )}
+      <Paper sx={{ mb: 3 }}>
+        <Tabs value={tab} onChange={(_, next) => setTab(next)} variant="scrollable" allowScrollButtonsMobile>
+          <Tab label="Google Campaign" />
+          <Tab label="Traffic Logging" />
+        </Tabs>
       </Paper>
 
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-          Top pages
-        </Typography>
-        {report.pages.length ? (
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Page</TableCell>
-                <TableCell align="right">Views</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {report.pages.map((row) => (
-                <TableRow key={row.path}>
-                  <TableCell>{row.path === '/' ? 'Home' : row.path}</TableCell>
-                  <TableCell align="right">{row.views.toLocaleString()}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <Typography variant="body2" color="text.secondary">
-            Page totals appear here after the first visits.
-          </Typography>
-        )}
-      </Paper>
-
-      <Accordion defaultExpanded={!form.measurementId} disableGutters>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Box>
-            <Typography sx={{ fontWeight: 600 }}>Google Ads tag</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Optional. Sends the Contact Us conversion to Google. It does not create these graphs.
-            </Typography>
-          </Box>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+      {tab === 0 ? (
+        <Paper sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Google tag
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                GA4 measurement ID for the public site. Graphs and IP logs live on Traffic Logging — this only talks to Google.
+              </Typography>
+            </Box>
             <Button variant="contained" onClick={() => void save()} disabled={loading || saving} sx={{ textTransform: 'none' }}>
-              {saving ? 'Saving…' : 'Save tag'}
+              {saving ? 'Saving…' : 'Save campaign'}
             </Button>
           </Box>
           <FormControlLabel
@@ -422,24 +483,24 @@ function WebsiteAnalyticsPage() {
                 disabled={loading}
               />
             }
-            label="Send conversion events to Google"
+            label="Send events to Google"
           />
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
-            Paste the tag from Tools → Data manager → Google tag. It starts with AW- or G-. Do not paste the account number from the top-right of Google Ads.
+            Your Analytics ID is G-B5E89JDV2B. Turn the switch on and save. Contact Us still fires ads_conversion_Contact_Us_1 when a message sends.
           </Typography>
           <TextField
             label="Google tag ID"
             value={form.measurementId}
             onChange={(e) => setForm((prev) => ({ ...prev, measurementId: e.target.value }))}
-            placeholder="AW-XXXXXXXX"
+            placeholder={DEFAULT_GA_ID}
             fullWidth
             sx={{ mb: 2 }}
             disabled={loading}
             error={looksLikeAdsCustomerId(form.measurementId)}
             helperText={
               looksLikeAdsCustomerId(form.measurementId)
-                ? 'That is the Ads account number. Open Data manager and copy the AW- tag.'
-                : 'From Google’s install-tag snippet: gtag/js?id=…'
+                ? 'That is the Ads account number. Use G-B5E89JDV2B (or an AW- tag).'
+                : 'GA4 measurement ID. Optional AW- Ads tag below if you have a separate Ads ID.'
             }
           />
           <TextField
@@ -450,7 +511,7 @@ function WebsiteAnalyticsPage() {
             fullWidth
             disabled={loading}
             error={looksLikeAdsCustomerId(form.adsId)}
-            helperText="Only if Ads uses a separate AW- tag from your GA4 G- ID."
+            helperText="Only if Ads uses a separate AW- tag from this G- ID."
             sx={{ mb: 3 }}
           />
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2 }}>
@@ -522,10 +583,224 @@ function WebsiteAnalyticsPage() {
             ))}
           </Box>
           {form.enabled && GOOGLE_TAG_ID.test(form.measurementId) ? (
-            <Chip size="small" color="success" label="Google tag will load on the public site" sx={{ mt: 2 }} />
+            <Chip size="small" color="success" label="Google tag will load on the public site after save + deploy" sx={{ mt: 2 }} />
           ) : null}
-        </AccordionDetails>
-      </Accordion>
+        </Paper>
+      ) : (
+        <>
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+            <FormControlLabel
+              control={<Switch checked={hideMine} onChange={(e) => setHideMine(e.target.checked)} />}
+              label="Hide my IPs"
+            />
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={days}
+              onChange={(_, next) => {
+                if (next) setDays(next);
+              }}
+            >
+              <ToggleButton value={7} sx={{ textTransform: 'none' }}>7 days</ToggleButton>
+              <ToggleButton value={30} sx={{ textTransform: 'none' }}>30 days</ToggleButton>
+              <ToggleButton value={90} sx={{ textTransform: 'none' }}>90 days</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+
+          {mineIps.length ? (
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+              {mineIps.map((row) => (
+                <Chip
+                  key={row.ip}
+                  size="small"
+                  label={`${row.label}: ${row.ip}`}
+                  onDelete={() => void setMine(row.ip, false)}
+                />
+              ))}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Mark an IP as me in the log so you can hide your own clicks.
+            </Typography>
+          )}
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' },
+              gap: 2,
+              mb: 3,
+            }}
+          >
+            <StatCard label="Page views" value={report.totals.pageViews} icon={ViewsIcon} color={theme.palette.primary.main} />
+            <StatCard label="Visitors" value={report.totals.visitors} icon={PeopleIcon} color={theme.palette.info.main} />
+            <StatCard label="Clicks" value={report.totals.clicks || 0} icon={MouseIcon} color={theme.palette.secondary.main} />
+            <StatCard label="Messages sent" value={report.totals.contactSubmits} icon={MailIcon} color={theme.palette.success.main} />
+          </Box>
+
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+              Traffic
+            </Typography>
+            {hasTraffic ? (
+              <TrafficChart series={report.series} theme={theme} />
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>
+                {loading ? 'Loading…' : 'No visits yet. After the public site is deployed, open it and click around — this log stores in Paarth.'}
+              </Typography>
+            )}
+          </Paper>
+
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+              Top pages
+            </Typography>
+            {report.pages.length ? (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Page</TableCell>
+                    <TableCell align="right">Views</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {report.pages.map((row) => (
+                    <TableRow key={row.path}>
+                      <TableCell>{row.path === '/' ? 'Home' : row.path}</TableCell>
+                      <TableCell align="right">{row.views.toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Page totals appear here after the first visits.
+              </Typography>
+            )}
+          </Paper>
+
+          <Paper sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Hit log
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <TextField
+                  size="small"
+                  label="Search IP / click / page"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void loadEvents({ append: false });
+                  }}
+                  sx={{ minWidth: 220 }}
+                />
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel>Type</InputLabel>
+                  <Select label="Type" value={eventType} onChange={(e) => setEventType(String(e.target.value))}>
+                    {EVENT_FILTERS.map((option) => (
+                      <MenuItem key={option.value || 'all'} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button size="small" onClick={() => void loadEvents({ append: false })} sx={{ textTransform: 'none' }}>
+                  Refresh
+                </Button>
+              </Box>
+            </Box>
+            <TableContainer sx={{ maxHeight: 'calc(100vh - 280px)' }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700, minWidth: 160 }}>Time</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 120 }}>Type</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>What they did</TableCell>
+                    <TableCell sx={{ fontWeight: 700, minWidth: 180 }}>IP / location</TableCell>
+                    <TableCell sx={{ fontWeight: 700, minWidth: 120 }}>Page</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 110 }} />
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {logLoading && !events.length ? (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                        <CircularProgress size={28} />
+                      </TableCell>
+                    </TableRow>
+                  ) : events.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                        <Typography color="text.secondary">
+                          No hits yet. This is stored in Paarth when someone uses the public website.
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    events.map((event) => (
+                      <TableRow key={event.id} hover sx={{ opacity: event.mine ? 0.55 : 1 }}>
+                        <TableCell sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                          {event.occurredAt ? format(new Date(event.occurredAt), 'MMM d, h:mm a') : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <Chip size="small" label={eventLabel(event.type)} color={eventColor(event.type)} />
+                          {event.mine ? <Chip size="small" label="Me" sx={{ ml: 0.5 }} /> : null}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{detailFor(event) || '—'}</Typography>
+                          {event.referrer ? (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              from {event.referrer}
+                            </Typography>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                            {event.ip || '—'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {event.locationLabel || '—'}
+                          </Typography>
+                          {event.locationIsp ? (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              {event.locationIsp}
+                            </Typography>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">
+                            {event.path === '/' ? 'Home' : event.path}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          {event.ip ? (
+                            <Button size="small" onClick={() => void setMine(event.ip, !event.mine)} sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}>
+                              {event.mine ? 'Not me' : 'This is me'}
+                            </Button>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            {hasMore ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => void loadEvents({ append: true, before: events[events.length - 1]?.occurredAt })}
+                  disabled={logLoading}
+                  sx={{ textTransform: 'none' }}
+                >
+                  {logLoading ? 'Loading…' : 'Load more'}
+                </Button>
+              </Box>
+            ) : null}
+          </Paper>
+        </>
+      )}
     </Container>
   );
 }

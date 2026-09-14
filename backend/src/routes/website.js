@@ -7,6 +7,8 @@ const {
   updateWebsite,
   updateWebsiteAnalytics,
   getWebsiteAnalyticsReport,
+  getWebsiteAnalyticsEvents,
+  updateWebsiteMineIp,
   recordPublicAnalyticsEvent,
   uploadHeroPhoto,
   deleteHeroPhoto,
@@ -31,6 +33,8 @@ router.use(requireAuth, requireSuperAdmin);
 router.get('/', getWebsite);
 router.put('/', updateWebsite);
 router.get('/analytics/report', getWebsiteAnalyticsReport);
+router.get('/analytics/events', getWebsiteAnalyticsEvents);
+router.put('/analytics/mine-ips', updateWebsiteMineIp);
 router.put('/analytics', updateWebsiteAnalytics);
 router.patch('/order', reorderWebsite);
 router.post('/hero', uploadWebsiteImage.single('file'), uploadHeroPhoto);

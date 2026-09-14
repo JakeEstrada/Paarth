@@ -59,6 +59,15 @@ const websiteContentSchema = new mongoose.Schema(
         ],
         default: [],
       },
+      mineIps: {
+        type: [
+          {
+            ip: { type: String, default: '', trim: true, maxlength: 64 },
+            label: { type: String, default: 'Me', trim: true, maxlength: 80 },
+          },
+        ],
+        default: [],
+      },
     },
   },
   { timestamps: true },

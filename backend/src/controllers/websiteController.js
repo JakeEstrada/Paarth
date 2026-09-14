@@ -4,6 +4,7 @@ const WebsiteAnalyticsEvent = require('../models/WebsiteAnalyticsEvent');
 const Tenant = require('../models/Tenant');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
 const { getTenantContext } = require('../middleware/tenantContext');
+const { extractClientIp, resolveClientNetwork } = require('../services/clientNetwork');
 
 const GOOGLE_TAG_ID = /^(G|GT|AW|DC)-[A-Z0-9]+$/i;
 const ADS_CUSTOMER_ID = /^\d{3}-\d{3}-\d{4}$/;
@@ -71,7 +72,7 @@ function eventRateLimited(ip) {
       if (!stamps.some((stamp) => now - stamp < 60000)) EVENT_RATE.delete(key);
     }
   }
-  return recent.length > 80;
+  return recent.length > 180;
 }
 
 async function resolvePublicTenant(req) {
@@ -147,6 +148,16 @@ function serializeProject(project, tenantId) {
   };
 }
 
+function mineIpList(analytics) {
+  return (Array.isArray(analytics?.mineIps) ? analytics.mineIps : [])
+    .map((row) => ({
+      ip: String(row?.ip || row || '').trim(),
+      label: String(row?.label || 'Me').trim() || 'Me',
+    }))
+    .filter((row) => row.ip)
+    .slice(0, 40);
+}
+
 function serializeAnalytics(doc) {
   const analytics = doc?.analytics || {};
   const conversions = Array.isArray(analytics.conversions) ? analytics.conversions : [];
@@ -164,6 +175,7 @@ function serializeAnalytics(doc) {
         label: String(row.label || '').trim(),
       }))
       .filter((row) => row.name),
+    mineIps: mineIpList(analytics),
   };
 }
 
@@ -296,6 +308,7 @@ async function updateWebsiteAnalytics(req, res) {
     if (body.enabled && !GOOGLE_TAG_ID.test(measurementId)) {
       return res.status(400).json({ error: 'Paste a Google tag ID starting with AW-, G-, or GT- before turning this on.' });
     }
+    const previousMineIps = mineIpList(doc.analytics);
     doc.analytics = {
       enabled: Boolean(body.enabled),
       measurementId,
@@ -310,6 +323,7 @@ async function updateWebsiteAnalytics(req, res) {
         }))
         .filter((row) => row.name)
         .slice(0, 20),
+      mineIps: previousMineIps,
     };
     await doc.save();
     res.json(serializeWebsite(doc));
@@ -581,7 +595,7 @@ async function getPublicWebsiteMedia(req, res) {
 
 async function recordPublicAnalyticsEvent(req, res) {
   try {
-    const ip = String(req.ip || req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+    const ip = extractClientIp(req) || 'unknown';
     if (eventRateLimited(ip)) return res.status(204).end();
     const ua = String(req.headers['user-agent'] || '');
     if (/bot|crawl|spider|slurp|facebookexternalhit|preview|lighthouse|headless|httpclient/i.test(ua)) {
@@ -603,18 +617,32 @@ async function recordPublicAnalyticsEvent(req, res) {
     } catch {
       referrer = clip(req.body?.referrer, 200);
     }
-    await WebsiteAnalyticsEvent.create(
-      [
-        {
-          tenantId: tenant._id,
-          type,
-          path,
-          sessionId: clip(req.body?.sessionId, 64).replace(/[^a-zA-Z0-9_-]/g, ''),
-          referrer,
-          occurredAt: new Date(),
-        },
-      ],
-    );
+    let network = { locationCity: '', locationRegion: '', locationCountry: '', locationLabel: '', locationIsp: '' };
+    try {
+      network = await resolveClientNetwork(req);
+    } catch {
+      /* still store the hit */
+    }
+    await WebsiteAnalyticsEvent.create([
+      {
+        tenantId: tenant._id,
+        type,
+        path,
+        label: clip(req.body?.label, 160),
+        href: clip(req.body?.href, 400),
+        query: clip(req.body?.query, 300),
+        sessionId: clip(req.body?.sessionId, 64).replace(/[^a-zA-Z0-9_-]/g, ''),
+        referrer,
+        ip: clip(network.ip || ip, 64),
+        userAgent: clip(ua, 220),
+        locationCity: clip(network.locationCity, 80),
+        locationRegion: clip(network.locationRegion, 80),
+        locationCountry: clip(network.locationCountry, 80),
+        locationLabel: clip(network.locationLabel, 200),
+        locationIsp: clip(network.locationIsp, 120),
+        occurredAt: new Date(),
+      },
+    ]);
     res.status(204).end();
   } catch (error) {
     if (!res.headersSent) res.status(204).end();
@@ -622,20 +650,47 @@ async function recordPublicAnalyticsEvent(req, res) {
   }
 }
 
+function tenantObjectIdFromReq(req) {
+  const tenantId = tenantIdFromReq(req);
+  if (!tenantId || !mongoose.Types.ObjectId.isValid(String(tenantId))) return null;
+  return new mongoose.Types.ObjectId(String(tenantId));
+}
+
+function serializeTrafficEvent(row, mineSet) {
+  const ip = String(row.ip || '');
+  return {
+    id: String(row._id),
+    type: row.type,
+    path: row.path || '/',
+    label: row.label || '',
+    href: row.href || '',
+    query: row.query || '',
+    referrer: row.referrer || '',
+    sessionId: row.sessionId || '',
+    ip,
+    userAgent: row.userAgent || '',
+    locationLabel: row.locationLabel || '',
+    locationIsp: row.locationIsp || '',
+    mine: mineSet.has(ip),
+    occurredAt: row.occurredAt,
+  };
+}
+
 async function getWebsiteAnalyticsReport(req, res) {
   try {
-    const tenantId = tenantIdFromReq(req);
-    if (!tenantId) return res.status(400).json({ error: 'Tenant is required' });
-    const tenantObjectId = mongoose.Types.ObjectId.isValid(String(tenantId))
-      ? new mongoose.Types.ObjectId(String(tenantId))
-      : null;
+    const tenantObjectId = tenantObjectIdFromReq(req);
     if (!tenantObjectId) return res.status(400).json({ error: 'Tenant is required' });
     const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
     const start = new Date(Date.now() - (days + 1) * 86400000);
+    const site = await WebsiteContent.findOne({ tenantId: tenantObjectId }).setOptions({ bypassTenant: true });
+    const mineIps = mineIpList(site?.analytics).map((row) => row.ip);
+    const hideMine = String(req.query.hideMine || '') === '1' || String(req.query.hideMine || '') === 'true';
     const match = { tenantId: tenantObjectId, occurredAt: { $gte: start } };
+    if (hideMine && mineIps.length) match.ip = { $nin: mineIps };
     const labels = pacificDayLabels(days);
-    const [pageViews, contactOpens, contactSubmits, visitorIds, byDay, pages] = await Promise.all([
+    const [pageViews, clicks, contactOpens, contactSubmits, visitorIds, byDay, pages] = await Promise.all([
       WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'page_view' }),
+      WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'click' }),
       WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'contact_open' }),
       WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'contact_submit' }),
       WebsiteAnalyticsEvent.distinct('sessionId', match),
@@ -660,7 +715,7 @@ async function getWebsiteAnalyticsReport(req, res) {
       ]),
     ]);
     const bucket = new Map(
-      labels.map((date) => [date, { date, pageViews: 0, visitors: 0, contactOpens: 0, contactSubmits: 0 }]),
+      labels.map((date) => [date, { date, pageViews: 0, visitors: 0, clicks: 0, contactOpens: 0, contactSubmits: 0 }]),
     );
     for (const row of byDay) {
       const date = row?._id?.day;
@@ -670,14 +725,17 @@ async function getWebsiteAnalyticsReport(req, res) {
       if (row._id.type === 'page_view') {
         current.pageViews += count;
         current.visitors += Array.isArray(row.sessions) ? row.sessions.filter(Boolean).length : 0;
-      } else if (row._id.type === 'contact_open') current.contactOpens += count;
+      } else if (row._id.type === 'click') current.clicks += count;
+      else if (row._id.type === 'contact_open') current.contactOpens += count;
       else if (row._id.type === 'contact_submit') current.contactSubmits += count;
     }
     res.json({
       days,
+      mineIps: mineIpList(site?.analytics),
       totals: {
         pageViews,
         visitors: visitorIds.filter(Boolean).length,
+        clicks,
         contactOpens,
         contactSubmits,
       },
@@ -689,11 +747,70 @@ async function getWebsiteAnalyticsReport(req, res) {
   }
 }
 
+async function getWebsiteAnalyticsEvents(req, res) {
+  try {
+    const tenantObjectId = tenantObjectIdFromReq(req);
+    if (!tenantObjectId) return res.status(400).json({ error: 'Tenant is required' });
+    const site = await WebsiteContent.findOne({ tenantId: tenantObjectId }).setOptions({ bypassTenant: true });
+    const mineRows = mineIpList(site?.analytics);
+    const mineSet = new Set(mineRows.map((row) => row.ip));
+    const hideMine = String(req.query.hideMine || '') === '1' || String(req.query.hideMine || '') === 'true';
+    const type = String(req.query.type || '').trim();
+    const q = clip(req.query.q, 80);
+    const limit = Math.min(80, Math.max(10, Number(req.query.limit) || 40));
+    const match = { tenantId: tenantObjectId };
+    if (hideMine && mineSet.size) match.ip = { $nin: [...mineSet] };
+    if (WebsiteAnalyticsEvent.EVENT_TYPES.includes(type)) match.type = type;
+    if (req.query.before) {
+      const before = new Date(String(req.query.before));
+      if (!Number.isNaN(before.getTime())) match.occurredAt = { $lt: before };
+    }
+    if (q) {
+      match.$or = [
+        { ip: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { label: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { path: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { locationLabel: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+      ];
+    }
+    const rows = await WebsiteAnalyticsEvent.find(match).sort({ occurredAt: -1 }).limit(limit + 1);
+    const hasMore = rows.length > limit;
+    const events = rows.slice(0, limit).map((row) => serializeTrafficEvent(row, mineSet));
+    res.json({ events, hasMore, mineIps: mineRows });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to load traffic log' });
+  }
+}
+
+async function updateWebsiteMineIp(req, res) {
+  try {
+    const tenantId = tenantIdFromReq(req);
+    if (!tenantId) return res.status(400).json({ error: 'Tenant is required' });
+    const ip = clip(req.body?.ip, 64);
+    if (!ip) return res.status(400).json({ error: 'IP is required' });
+    const doc = await getOrCreateWebsite(tenantId);
+    const mine = mineIpList(doc.analytics);
+    const mineFlag = req.body?.mine !== false && req.body?.mine !== 'false';
+    const next = mineFlag
+      ? [{ ip, label: clip(req.body?.label, 80) || 'Me' }, ...mine.filter((row) => row.ip !== ip)].slice(0, 40)
+      : mine.filter((row) => row.ip !== ip);
+    if (!doc.analytics) doc.analytics = {};
+    doc.analytics.mineIps = next;
+    doc.markModified('analytics');
+    await doc.save();
+    res.json({ mineIps: mineIpList(doc.analytics) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to save IP' });
+  }
+}
+
 module.exports = {
   getWebsite,
   updateWebsite,
   updateWebsiteAnalytics,
   getWebsiteAnalyticsReport,
+  getWebsiteAnalyticsEvents,
+  updateWebsiteMineIp,
   recordPublicAnalyticsEvent,
   uploadHeroPhoto,
   deleteHeroPhoto,
