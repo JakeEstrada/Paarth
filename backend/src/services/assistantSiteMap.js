@@ -10,6 +10,7 @@ const ALLOWED_PATHNAMES = new Set([
   '/completed-tasks',
   '/completed-jobs',
   '/website',
+  '/developer/analytics',
   '/developer',
   '/payroll',
   '/bills',
@@ -22,7 +23,14 @@ const ALLOWED_PATHNAMES = new Set([
   '/customers-view',
 ]);
 
-const SUPER_ADMIN_ONLY_PATHS = new Set(['/website', '/developer', '/finance', '/users', '/bills']);
+const SUPER_ADMIN_ONLY_PATHS = new Set([
+  '/website',
+  '/developer/analytics',
+  '/developer',
+  '/finance',
+  '/users',
+  '/bills',
+]);
 
 /**
  * @param {string} raw
@@ -50,6 +58,7 @@ Main app routes (path → purpose):
 - /completed-tasks — completed tasks and appointments
 - /completed-jobs — finished closed-out jobs
 - /website — customer website homepage CMS (super admin only)
+- /developer/analytics — Google tag and conversion events for the public site (super admin only)
 - /developer — internal developer tasks (super admin only)
 - /payroll — payroll tools
 - /bills — bills (super admin only)

@@ -41,6 +41,25 @@ const websiteContentSchema = new mongoose.Schema(
     heroPhotos: { type: [assetSchema], default: [] },
     gallery: { type: [assetSchema], default: [] },
     projects: { type: [projectSchema], default: [] },
+    analytics: {
+      enabled: { type: Boolean, default: false },
+      measurementId: { type: String, default: '', trim: true, maxlength: 48 },
+      adsId: { type: String, default: '', trim: true, maxlength: 48 },
+      conversions: {
+        type: [
+          {
+            name: { type: String, default: '', trim: true, maxlength: 120 },
+            trigger: {
+              type: String,
+              enum: ['contact_submit', 'contact_open', 'page_view'],
+              default: 'contact_submit',
+            },
+            label: { type: String, default: '', trim: true, maxlength: 160 },
+          },
+        ],
+        default: [],
+      },
+    },
   },
   { timestamps: true },
 );

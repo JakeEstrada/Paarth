@@ -565,7 +565,7 @@ function WebsitePage() {
             Website
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Controls the customer homepage — hero photos, wording, featured projects, and gallery.
+            Controls the customer homepage — hero photos, wording, featured projects, and gallery. Google tag setup is under Website Analytics.
           </Typography>
         </Box>
         {tab === 0 ? (

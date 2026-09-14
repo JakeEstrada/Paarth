@@ -24,6 +24,13 @@ function clip(value, max) {
     .slice(0, max);
 }
 
+function extractGoogleTagId(raw) {
+  const text = String(raw || '');
+  const match = text.match(/\b(?:G|GT|AW|DC)-[A-Z0-9]+\b/i);
+  const id = match ? match[0] : text.replace(/\s+/g, '');
+  return id.slice(0, 48);
+}
+
 function tenantIdFromReq(req) {
   return req.user?.tenantId || getTenantContext()?.tenantId || null;
 }
@@ -83,9 +90,30 @@ function serializeProject(project, tenantId) {
   };
 }
 
+function serializeAnalytics(doc) {
+  const analytics = doc?.analytics || {};
+  const conversions = Array.isArray(analytics.conversions) ? analytics.conversions : [];
+  return {
+    enabled: Boolean(analytics.enabled),
+    measurementId: String(analytics.measurementId || '').trim(),
+    adsId: String(analytics.adsId || '').trim(),
+    conversions: conversions
+      .map((row) => ({
+        id: String(row._id || ''),
+        name: String(row.name || '').trim(),
+        trigger: ['contact_submit', 'contact_open', 'page_view'].includes(row.trigger)
+          ? row.trigger
+          : 'contact_submit',
+        label: String(row.label || '').trim(),
+      }))
+      .filter((row) => row.name),
+  };
+}
+
 function serializeWebsite(doc, { publicOnly } = {}) {
   const tenantId = String(doc.tenantId);
   const projects = (doc.projects || []).filter((project) => !publicOnly || projectIsVisible(project));
+  const analytics = serializeAnalytics(doc);
   return {
     id: String(doc._id),
     heroHeadline: doc.heroHeadline || '',
@@ -100,6 +128,16 @@ function serializeWebsite(doc, { publicOnly } = {}) {
     heroPhotos: (doc.heroPhotos || []).map((photo) => serializeAsset(photo, tenantId)).filter(Boolean),
     gallery: (doc.gallery || []).map((photo) => serializeAsset(photo, tenantId)).filter(Boolean),
     projects: projects.map((project) => serializeProject(project, tenantId)),
+    analytics: publicOnly
+      ? analytics.enabled
+        ? {
+            enabled: true,
+            measurementId: analytics.measurementId,
+            adsId: analytics.adsId,
+            conversions: analytics.conversions.map(({ name, trigger }) => ({ name, trigger })),
+          }
+        : { enabled: false, measurementId: '', adsId: '', conversions: [] }
+      : analytics,
     updatedAt: doc.updatedAt,
   };
 }
@@ -181,6 +219,35 @@ async function updateWebsite(req, res) {
     res.json(serializeWebsite(doc));
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to save website content' });
+  }
+}
+
+async function updateWebsiteAnalytics(req, res) {
+  try {
+    const tenantId = tenantIdFromReq(req);
+    if (!tenantId) return res.status(400).json({ error: 'Tenant is required' });
+    const doc = await getOrCreateWebsite(tenantId);
+    const body = req.body || {};
+    const conversions = Array.isArray(body.conversions) ? body.conversions : [];
+    doc.analytics = {
+      enabled: Boolean(body.enabled),
+      measurementId: extractGoogleTagId(body.measurementId),
+      adsId: extractGoogleTagId(body.adsId),
+      conversions: conversions
+        .map((row) => ({
+          name: clip(row?.name, 120),
+          trigger: ['contact_submit', 'contact_open', 'page_view'].includes(row?.trigger)
+            ? row.trigger
+            : 'contact_submit',
+          label: clip(row?.label, 160),
+        }))
+        .filter((row) => row.name)
+        .slice(0, 20),
+    };
+    await doc.save();
+    res.json(serializeWebsite(doc));
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to save website analytics' });
   }
 }
 
@@ -457,6 +524,7 @@ async function getPublicWebsiteMedia(req, res) {
 module.exports = {
   getWebsite,
   updateWebsite,
+  updateWebsiteAnalytics,
   uploadHeroPhoto,
   deleteHeroPhoto,
   uploadGalleryPhoto,

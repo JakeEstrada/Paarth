@@ -5,6 +5,7 @@ const uploadWebsiteImage = require('../middleware/uploadWebsiteImage');
 const {
   getWebsite,
   updateWebsite,
+  updateWebsiteAnalytics,
   uploadHeroPhoto,
   deleteHeroPhoto,
   uploadGalleryPhoto,
@@ -26,6 +27,7 @@ router.use(requireAuth, requireSuperAdmin);
 
 router.get('/', getWebsite);
 router.put('/', updateWebsite);
+router.put('/analytics', updateWebsiteAnalytics);
 router.patch('/order', reorderWebsite);
 router.post('/hero', uploadWebsiteImage.single('file'), uploadHeroPhoto);
 router.delete('/hero/:assetId', deleteHeroPhoto);

@@ -36,6 +36,7 @@ import {
   Sms as SmsIcon,
   Store as StoreIcon,
   Language as WebsiteIcon,
+  Insights as AnalyticsIcon,
   Nfc as NfcIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
@@ -79,11 +80,12 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const { isAdmin, isSuperAdmin, user } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-  const isActive = (path) => {
+  const isActive = (path, { exact } = {}) => {
     const [pathnameOnly, queryOnly] = String(path || '').split('?');
     if (queryOnly) {
       return location.pathname === pathnameOnly && location.search === `?${queryOnly}`;
     }
+    if (exact) return location.pathname === path;
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
@@ -370,8 +372,31 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         </ListItem>
         <ListItem disablePadding>
           <ListItemButton
+            onClick={() => handleNavigation('/developer/analytics')}
+            selected={isActive('/developer/analytics')}
+            sx={navButtonSx}
+          >
+            <ListItemIcon
+              sx={{
+                minWidth: 40,
+                color: isActive('/developer/analytics') ? theme.palette.primary.main : 'inherit',
+              }}
+            >
+              <AnalyticsIcon />
+            </ListItemIcon>
+            <ListItemText
+              primary="Website Analytics"
+              primaryTypographyProps={{
+                fontSize: '0.9375rem',
+                fontWeight: isActive('/developer/analytics') ? 600 : 400,
+              }}
+            />
+          </ListItemButton>
+        </ListItem>
+        <ListItem disablePadding>
+          <ListItemButton
             onClick={() => handleNavigation('/developer')}
-            selected={isActive('/developer')}
+            selected={isActive('/developer', { exact: true })}
             sx={{
               mx: 1,
               mb: 0.5,
@@ -400,7 +425,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             <ListItemIcon
               sx={{
                 minWidth: 40,
-                color: isActive('/developer') ? '#F57C00' : 'inherit',
+                color: isActive('/developer', { exact: true }) ? '#F57C00' : 'inherit',
               }}
             >
               <DeveloperIcon />
@@ -409,7 +434,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
               primary="Developer Tasks"
               primaryTypographyProps={{
                 fontSize: '0.9375rem',
-                fontWeight: isActive('/developer') ? 600 : 400,
+                fontWeight: isActive('/developer', { exact: true }) ? 600 : 400,
               }}
             />
           </ListItemButton>
