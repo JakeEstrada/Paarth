@@ -45,6 +45,7 @@ const websiteContentSchema = new mongoose.Schema(
       enabled: { type: Boolean, default: false },
       measurementId: { type: String, default: '', trim: true, maxlength: 48 },
       adsId: { type: String, default: '', trim: true, maxlength: 48 },
+      campaignName: { type: String, default: 'Staircase Leads', trim: true, maxlength: 120 },
       conversions: {
         type: [
           {

@@ -6,6 +6,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Chip,
@@ -37,6 +40,7 @@ import { alpha } from '@mui/material/styles';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
+  ExpandMore as ExpandMoreIcon,
   MailOutline as MailIcon,
   Mouse as MouseIcon,
   PeopleOutline as PeopleIcon,
@@ -85,6 +89,7 @@ type AnalyticsForm = {
   enabled: boolean;
   measurementId: string;
   adsId: string;
+  campaignName: string;
   conversions: Conversion[];
 };
 
@@ -109,6 +114,8 @@ type Report = {
     contactSubmits: number;
   };
   series: SeriesPoint[];
+  campaign: { adClicks: number; conversions: number };
+  campaignSeries: Array<{ date: string; adClicks: number; conversions: number }>;
   pages: Array<{ path: string; views: number }>;
   mineIps: MineIp[];
 };
@@ -132,6 +139,7 @@ const EMPTY_FORM: AnalyticsForm = {
   enabled: false,
   measurementId: DEFAULT_GA_ID,
   adsId: '',
+  campaignName: 'Staircase Leads',
   conversions: [{ ...EMPTY_CONVERSION }],
 };
 
@@ -139,6 +147,8 @@ const EMPTY_REPORT: Report = {
   days: 30,
   totals: { pageViews: 0, visitors: 0, clicks: 0, contactOpens: 0, contactSubmits: 0 },
   series: [],
+  campaign: { adClicks: 0, conversions: 0 },
+  campaignSeries: [],
   pages: [],
   mineIps: [],
 };
@@ -197,7 +207,19 @@ function detailFor(event: TrafficEvent) {
   return event.label || '—';
 }
 
-function TrafficChart({ series, theme }: { series: SeriesPoint[]; theme: ReturnType<typeof useTheme> }) {
+function TrafficChart({
+  series,
+  theme,
+  hideClicks = false,
+  viewLabel = 'Page views',
+  convertLabel = 'Messages sent',
+}: {
+  series: SeriesPoint[];
+  theme: ReturnType<typeof useTheme>;
+  hideClicks?: boolean;
+  viewLabel?: string;
+  convertLabel?: string;
+}) {
   const width = 720;
   const height = 240;
   const pad = { l: 36, r: 16, t: 16, b: 32 };
@@ -247,7 +269,7 @@ function TrafficChart({ series, theme }: { series: SeriesPoint[]; theme: ReturnT
         ))}
         <polygon points={area} fill={alpha(viewColor, 0.18)} />
         <polyline points={line} fill="none" stroke={viewColor} strokeWidth="2.5" />
-        <polyline points={clickLine} fill="none" stroke={clickColor} strokeWidth="2.5" />
+        {hideClicks ? null : <polyline points={clickLine} fill="none" stroke={clickColor} strokeWidth="2.5" />}
         <polyline points={contactLine} fill="none" stroke={contactColor} strokeWidth="2.5" />
         {ticks.map((row) => {
           const point = points.find((item) => item.date === row.date);
@@ -263,9 +285,9 @@ function TrafficChart({ series, theme }: { series: SeriesPoint[]; theme: ReturnT
         </text>
       </svg>
       <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', mt: -1, flexWrap: 'wrap' }}>
-        <Typography variant="caption" sx={{ color: viewColor }}>Page views</Typography>
-        <Typography variant="caption" sx={{ color: clickColor }}>Clicks</Typography>
-        <Typography variant="caption" sx={{ color: contactColor }}>Messages sent</Typography>
+        <Typography variant="caption" sx={{ color: viewColor }}>{viewLabel}</Typography>
+        {hideClicks ? null : <Typography variant="caption" sx={{ color: clickColor }}>Clicks</Typography>}
+        <Typography variant="caption" sx={{ color: contactColor }}>{convertLabel}</Typography>
       </Box>
     </Box>
   );
@@ -318,9 +340,10 @@ function WebsiteAnalyticsPage() {
   const tenantRoom = getTenantRoom(tenantIdForBranding);
   const live = useSocketConnectionStatus();
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'traffic' ? 1 : 0;
+  const tab = params.get('tab') === 'campaign' ? 1 : 0;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [days, setDays] = useState(30);
   const [hideMine, setHideMine] = useState(false);
   const [eventType, setEventType] = useState('');
@@ -338,7 +361,7 @@ function WebsiteAnalyticsPage() {
   }, [eventType, hideMine, mineIps, query]);
 
   const setTab = (next: number) => {
-    setParams(next === 1 ? { tab: 'traffic' } : { tab: 'campaign' }, { replace: true });
+    setParams(next === 1 ? { tab: 'campaign' } : { tab: 'traffic' }, { replace: true });
   };
 
   const loadReport = useCallback(async (rangeDays = days, skipMine = hideMine) => {
@@ -356,6 +379,7 @@ function WebsiteAnalyticsPage() {
       enabled: Boolean(analytics.enabled),
       measurementId: analytics.measurementId || DEFAULT_GA_ID,
       adsId: analytics.adsId || '',
+      campaignName: analytics.campaignName || 'Staircase Leads',
       conversions,
     });
     setMineIps(Array.isArray(analytics.mineIps) ? analytics.mineIps : reportRes.data?.mineIps || []);
@@ -363,6 +387,8 @@ function WebsiteAnalyticsPage() {
       days: reportRes.data?.days || rangeDays,
       totals: { ...EMPTY_REPORT.totals, ...(reportRes.data?.totals || {}) },
       series: Array.isArray(reportRes.data?.series) ? reportRes.data.series : [],
+      campaign: reportRes.data?.campaign || EMPTY_REPORT.campaign,
+      campaignSeries: Array.isArray(reportRes.data?.campaignSeries) ? reportRes.data.campaignSeries : [],
       pages: Array.isArray(reportRes.data?.pages) ? reportRes.data.pages : [],
       mineIps: Array.isArray(reportRes.data?.mineIps) ? reportRes.data.mineIps : [],
     });
@@ -420,7 +446,7 @@ function WebsiteAnalyticsPage() {
   }, [days, hideMine, loadReport]);
 
   useEffect(() => {
-    if (tab !== 1) return undefined;
+    if (tab !== 0) return undefined;
     void loadEvents({ append: false });
     return undefined;
   }, [tab, hideMine, eventType, loadEvents]);
@@ -473,7 +499,7 @@ function WebsiteAnalyticsPage() {
     });
   }, []);
 
-  useSocketSubscription(tab === 1 ? tenantRoom : null, 'website.analytics.created', handleRealtime);
+  useSocketSubscription(tab === 0 ? tenantRoom : null, 'website.analytics.created', handleRealtime);
 
   const save = async () => {
     if (looksLikeAdsCustomerId(form.measurementId) || looksLikeAdsCustomerId(form.adsId)) {
@@ -492,8 +518,11 @@ function WebsiteAnalyticsPage() {
         enabled: Boolean(analytics.enabled),
         measurementId: analytics.measurementId || DEFAULT_GA_ID,
         adsId: analytics.adsId || '',
+        campaignName: analytics.campaignName || form.campaignName || 'Staircase Leads',
         conversions: analytics.conversions?.length ? analytics.conversions : [{ ...EMPTY_CONVERSION }],
       });
+      setSavedFlash(true);
+      window.setTimeout(() => setSavedFlash(false), 2500);
     } catch (error) {
       console.error('Error saving website analytics:', error);
       const message = axios.isAxiosError(error) ? error.response?.data?.error : null;
@@ -515,7 +544,7 @@ function WebsiteAnalyticsPage() {
       const { data } = await axios.put(`${API_URL}/website/analytics/mine-ips`, { ip, mine, label: 'Me' });
       setMineIps(Array.isArray(data?.mineIps) ? data.mineIps : []);
       await loadReport(days, hideMine);
-      if (tab === 1) await loadEvents({ append: false });
+      if (tab === 0) await loadEvents({ append: false });
     } catch (error) {
       console.error('Error updating mine IP:', error);
       toast.error('Could not update that IP');
@@ -534,32 +563,99 @@ function WebsiteAnalyticsPage() {
           Website Analytics
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Google Campaign sends conversions to Google. Traffic Logging is your own ERP log of visits, clicks, and IPs.
+          Google Campaign is this one ads campaign. Traffic Logging is every visit and click on the site.
         </Typography>
       </Box>
 
       <Paper sx={{ mb: 3 }}>
         <Tabs value={tab} onChange={(_, next) => setTab(next)} variant="scrollable" allowScrollButtonsMobile>
-          <Tab label="Google Campaign" />
           <Tab label="Traffic Logging" />
+          <Tab label="Google Campaign" />
         </Tabs>
       </Paper>
 
-      {tab === 0 ? (
-        <Paper sx={{ p: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+      {tab === 1 ? (
+        <>
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Google tag
+                {form.campaignName || 'Staircase Leads'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                GA4 measurement ID for the public site. Graphs and IP logs live on Traffic Logging — this only talks to Google.
+                Ad clicks that land on the site, and contact-form conversions from those visits. Spend and impressions stay in Google Ads.
               </Typography>
             </Box>
+            <Chip
+              size="small"
+              color={form.enabled ? 'success' : 'default'}
+              label={form.enabled ? `Connected · ${form.measurementId || DEFAULT_GA_ID}` : 'Tag off'}
+            />
+          </Box>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' },
+              gap: 2,
+              mb: 3,
+            }}
+          >
+            <StatCard label="Ad landings" value={report.campaign.adClicks} icon={ViewsIcon} color={theme.palette.primary.main} />
+            <StatCard label="Conversions" value={report.campaign.conversions} icon={MailIcon} color={theme.palette.success.main} />
+            <StatCard
+              label="Conv. rate %"
+              value={report.campaign.adClicks ? Math.round((report.campaign.conversions / report.campaign.adClicks) * 100) : 0}
+              icon={PeopleIcon}
+              color={theme.palette.info.main}
+            />
+          </Box>
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+              Campaign
+            </Typography>
+            {report.campaign.adClicks + report.campaign.conversions > 0 ? (
+              <TrafficChart
+                series={report.campaignSeries.map((row) => ({
+                  date: row.date,
+                  pageViews: row.adClicks,
+                  visitors: 0,
+                  clicks: 0,
+                  contactOpens: 0,
+                  contactSubmits: row.conversions,
+                }))}
+                theme={theme}
+                hideClicks
+                viewLabel="Ad landings"
+                convertLabel="Conversions"
+              />
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>
+                No Google ad clicks recorded yet. After the public site is deployed, visits with gclid from this campaign show here.
+              </Typography>
+            )}
+          </Paper>
+          <Accordion disableGutters sx={{ mb: 0, border: `1px solid ${theme.palette.divider}`, borderRadius: 1, '&:before': { display: 'none' } }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box>
+                <Typography sx={{ fontWeight: 600 }}>Google tag</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Already connected. Change the ID or conversion event here if you need to.
+                </Typography>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
             <Button variant="contained" onClick={() => void save()} disabled={loading || saving} sx={{ textTransform: 'none' }}>
-              {saving ? 'Saving…' : 'Save campaign'}
+              {saving ? 'Saving…' : savedFlash ? 'Saved' : 'Save'}
             </Button>
           </Box>
+          <TextField
+            label="Campaign name"
+            value={form.campaignName}
+            onChange={(e) => setForm((prev) => ({ ...prev, campaignName: e.target.value }))}
+            fullWidth
+            sx={{ mb: 2 }}
+            disabled={loading}
+          />
           <FormControlLabel
             control={
               <Switch
@@ -570,22 +666,19 @@ function WebsiteAnalyticsPage() {
             }
             label="Send events to Google"
           />
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
-            Your Analytics ID is G-B5E89JDV2B. Turn the switch on and save. Contact Us still fires ads_conversion_Contact_Us_1 when a message sends.
-          </Typography>
           <TextField
             label="Google tag ID"
             value={form.measurementId}
             onChange={(e) => setForm((prev) => ({ ...prev, measurementId: e.target.value }))}
             placeholder={DEFAULT_GA_ID}
             fullWidth
-            sx={{ mb: 2 }}
+            sx={{ mt: 2, mb: 2 }}
             disabled={loading}
             error={looksLikeAdsCustomerId(form.measurementId)}
             helperText={
               looksLikeAdsCustomerId(form.measurementId)
                 ? 'That is the Ads account number. Use G-B5E89JDV2B (or an AW- tag).'
-                : 'GA4 measurement ID. Optional AW- Ads tag below if you have a separate Ads ID.'
+                : 'GA4 measurement ID'
             }
           />
           <TextField
@@ -667,10 +760,9 @@ function WebsiteAnalyticsPage() {
               </Box>
             ))}
           </Box>
-          {form.enabled && GOOGLE_TAG_ID.test(form.measurementId) ? (
-            <Chip size="small" color="success" label="Google tag will load on the public site after save + deploy" sx={{ mt: 2 }} />
-          ) : null}
-        </Paper>
+            </AccordionDetails>
+          </Accordion>
+        </>
       ) : (
         <>
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>

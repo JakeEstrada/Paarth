@@ -166,6 +166,7 @@ function serializeAnalytics(doc) {
     enabled: Boolean(analytics.enabled),
     measurementId: String(analytics.measurementId || '').trim(),
     adsId: String(analytics.adsId || '').trim(),
+    campaignName: String(analytics.campaignName || 'Staircase Leads').trim() || 'Staircase Leads',
     conversions: conversions
       .map((row) => ({
         id: String(row._id || ''),
@@ -314,6 +315,7 @@ async function updateWebsiteAnalytics(req, res) {
       enabled: Boolean(body.enabled),
       measurementId,
       adsId,
+      campaignName: clip(body.campaignName, 120) || 'Staircase Leads',
       conversions: conversions
         .map((row) => ({
           name: clip(row?.name, 120),
@@ -678,7 +680,8 @@ async function getWebsiteAnalyticsReport(req, res) {
     const match = { tenantId: tenantObjectId, occurredAt: { $gte: start } };
     if (hideMine && mineIps.length) match.ip = { $nin: mineIps };
     const labels = pacificDayLabels(days);
-    const [pageViews, clicks, contactOpens, contactSubmits, visitorIds, byDay, pages] = await Promise.all([
+    const adsQuery = { $regex: 'gclid=|gbraid=|wbraid=', $options: 'i' };
+    const [pageViews, clicks, contactOpens, contactSubmits, visitorIds, byDay, pages, adClicks, adSessionIds, campaignByDay] = await Promise.all([
       WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'page_view' }),
       WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'click' }),
       WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'contact_open' }),
@@ -703,7 +706,31 @@ async function getWebsiteAnalyticsReport(req, res) {
         { $sort: { views: -1 } },
         { $limit: 8 },
       ]),
+      WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'page_view', query: adsQuery }),
+      WebsiteAnalyticsEvent.distinct('sessionId', { ...match, query: adsQuery }),
+      WebsiteAnalyticsEvent.aggregate([
+        { $match: { ...match, $or: [{ query: adsQuery }, { type: 'contact_submit' }] } },
+        {
+          $group: {
+            _id: {
+              day: { $dateToString: { format: '%Y-%m-%d', date: '$occurredAt', timezone: 'America/Los_Angeles' } },
+              type: '$type',
+              hasAds: { $cond: [{ $regexMatch: { input: { $ifNull: ['$query', ''] }, regex: /gclid=|gbraid=|wbraid=/i } }, true, false] },
+            },
+            count: { $sum: 1 },
+            sessions: { $addToSet: '$sessionId' },
+          },
+        },
+      ]),
     ]);
+    const adSessions = adSessionIds.filter(Boolean);
+    const adConversions = adSessions.length
+      ? await WebsiteAnalyticsEvent.countDocuments({
+          ...match,
+          type: 'contact_submit',
+          sessionId: { $in: adSessions },
+        })
+      : 0;
     const bucket = new Map(
       labels.map((date) => [date, { date, pageViews: 0, visitors: 0, clicks: 0, contactOpens: 0, contactSubmits: 0 }]),
     );
@@ -719,6 +746,23 @@ async function getWebsiteAnalyticsReport(req, res) {
       else if (row._id.type === 'contact_open') current.contactOpens += count;
       else if (row._id.type === 'contact_submit') current.contactSubmits += count;
     }
+    const campaignBucket = new Map(
+      labels.map((date) => [date, { date, adClicks: 0, conversions: 0 }]),
+    );
+    const adSessionSet = new Set(adSessions);
+    for (const row of campaignByDay) {
+      const date = row?._id?.day;
+      const current = campaignBucket.get(date);
+      if (!current) continue;
+      const count = Number(row.count) || 0;
+      if (row._id.type === 'page_view' && row._id.hasAds) current.adClicks += count;
+      if (row._id.type === 'contact_submit') {
+        const attributed = Array.isArray(row.sessions)
+          ? row.sessions.filter((id) => id && adSessionSet.has(id)).length
+          : 0;
+        current.conversions += attributed;
+      }
+    }
     res.json({
       days,
       mineIps: mineIpList(site?.analytics),
@@ -729,7 +773,12 @@ async function getWebsiteAnalyticsReport(req, res) {
         contactOpens,
         contactSubmits,
       },
+      campaign: {
+        adClicks,
+        conversions: adConversions,
+      },
       series: labels.map((date) => bucket.get(date)),
+      campaignSeries: labels.map((date) => campaignBucket.get(date)),
       pages: pages.map((row) => ({ path: row._id || '/', views: row.views || 0 })),
     });
   } catch (error) {
@@ -751,6 +800,9 @@ async function getWebsiteAnalyticsEvents(req, res) {
     const match = { tenantId: tenantObjectId };
     if (hideMine && mineSet.size) match.ip = { $nin: [...mineSet] };
     if (WebsiteAnalyticsEvent.EVENT_TYPES.includes(type)) match.type = type;
+    if (String(req.query.campaign || '') === '1') {
+      match.query = { $regex: 'gclid=|gbraid=|wbraid=', $options: 'i' };
+    }
     if (req.query.before) {
       const before = new Date(String(req.query.before));
       if (!Number.isNaN(before.getTime())) match.occurredAt = { $lt: before };
