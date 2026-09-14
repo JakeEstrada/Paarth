@@ -3,7 +3,7 @@
  * Route: /developer/analytics
  * Tabs: campaign | traffic  (?tab=)
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -45,6 +45,9 @@ import {
 import axios from 'axios';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+import { useSocketConnectionStatus, useSocketSubscription } from '../hooks/useSocketSubscription';
+import { getTenantRoom } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const GOOGLE_TAG_ID = /\b(?:G|GT|AW|DC)-[A-Z0-9]+\b/i;
@@ -121,8 +124,6 @@ type TrafficEvent = {
   sessionId: string;
   ip: string;
   userAgent: string;
-  locationLabel: string;
-  locationIsp: string;
   mine: boolean;
   occurredAt: string;
 };
@@ -141,6 +142,24 @@ const EMPTY_REPORT: Report = {
   pages: [],
   mineIps: [],
 };
+
+function pacificToday() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function eventMatchesLog(event: TrafficEvent, eventType: string, query: string) {
+  if (eventType && event.type !== eventType) return false;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [event.ip, event.label, event.path, event.href, event.referrer].some((value) =>
+    String(value || '').toLowerCase().includes(q),
+  );
+}
 
 function looksLikeAdsCustomerId(value: string) {
   const compact = String(value || '').replace(/\s+/g, '');
@@ -295,6 +314,9 @@ function StatCard({
 
 function WebsiteAnalyticsPage() {
   const theme = useTheme();
+  const { tenantIdForBranding } = useAuth();
+  const tenantRoom = getTenantRoom(tenantIdForBranding);
+  const live = useSocketConnectionStatus();
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'traffic' ? 1 : 0;
   const [loading, setLoading] = useState(true);
@@ -309,6 +331,11 @@ function WebsiteAnalyticsPage() {
   const [hasMore, setHasMore] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
   const [mineIps, setMineIps] = useState<MineIp[]>([]);
+  const sessionsRef = useRef(new Set<string>());
+  const filtersRef = useRef({ hideMine, eventType, query, mineIps });
+  useEffect(() => {
+    filtersRef.current = { hideMine, eventType, query, mineIps };
+  }, [eventType, hideMine, mineIps, query]);
 
   const setTab = (next: number) => {
     setParams(next === 1 ? { tab: 'traffic' } : { tab: 'campaign' }, { replace: true });
@@ -341,8 +368,8 @@ function WebsiteAnalyticsPage() {
     });
   }, [days, hideMine]);
 
-  const loadEvents = useCallback(async (opts: { append?: boolean; before?: string } = {}) => {
-    setLogLoading(true);
+  const loadEvents = useCallback(async (opts: { append?: boolean; before?: string; silent?: boolean } = {}) => {
+    if (!opts.silent) setLogLoading(true);
     try {
       const { data } = await axios.get(`${API_URL}/website/analytics/events`, {
         params: {
@@ -354,14 +381,21 @@ function WebsiteAnalyticsPage() {
         },
       });
       const next = Array.isArray(data?.events) ? data.events : [];
+      if (opts.append) {
+        next.forEach((row) => {
+          if (row.sessionId) sessionsRef.current.add(row.sessionId);
+        });
+      } else {
+        sessionsRef.current = new Set(next.map((row) => row.sessionId).filter(Boolean));
+      }
       setEvents((prev) => (opts.append ? [...prev, ...next] : next));
       setHasMore(Boolean(data?.hasMore));
       if (Array.isArray(data?.mineIps)) setMineIps(data.mineIps);
     } catch (error) {
       console.error('Error loading traffic log:', error);
-      toast.error('Failed to load traffic log');
+      if (!opts.silent) toast.error('Failed to load traffic log');
     } finally {
-      setLogLoading(false);
+      if (!opts.silent) setLogLoading(false);
     }
   }, [eventType, hideMine, query]);
 
@@ -386,9 +420,60 @@ function WebsiteAnalyticsPage() {
   }, [days, hideMine, loadReport]);
 
   useEffect(() => {
-    if (tab !== 1) return;
+    if (tab !== 1) return undefined;
     void loadEvents({ append: false });
+    return undefined;
   }, [tab, hideMine, eventType, loadEvents]);
+
+  const handleRealtime = useCallback((payload: unknown) => {
+    const incoming = (payload as { event?: TrafficEvent } | null)?.event;
+    if (!incoming?.id) return;
+    const filters = filtersRef.current;
+    const mine = filters.mineIps.some((row) => row.ip === incoming.ip);
+    const event = { ...incoming, mine };
+    if (filters.hideMine && mine) return;
+
+    setReport((prev) => {
+      const today = pacificToday();
+      const totals = { ...prev.totals };
+      const newVisitor =
+        event.type === 'page_view' && Boolean(event.sessionId) && !sessionsRef.current.has(event.sessionId);
+      if (newVisitor && event.sessionId) sessionsRef.current.add(event.sessionId);
+      if (event.type === 'page_view') totals.pageViews += 1;
+      if (event.type === 'click') totals.clicks += 1;
+      if (event.type === 'contact_open') totals.contactOpens += 1;
+      if (event.type === 'contact_submit') totals.contactSubmits += 1;
+      if (newVisitor) totals.visitors += 1;
+      const series = prev.series.map((row) => {
+        if (row.date !== today) return row;
+        return {
+          ...row,
+          pageViews: row.pageViews + (event.type === 'page_view' ? 1 : 0),
+          clicks: row.clicks + (event.type === 'click' ? 1 : 0),
+          contactOpens: row.contactOpens + (event.type === 'contact_open' ? 1 : 0),
+          contactSubmits: row.contactSubmits + (event.type === 'contact_submit' ? 1 : 0),
+          visitors: row.visitors + (newVisitor ? 1 : 0),
+        };
+      });
+      let pages = prev.pages;
+      if (event.type === 'page_view') {
+        const hit = pages.find((row) => row.path === event.path);
+        pages = hit
+          ? pages.map((row) => (row.path === event.path ? { ...row, views: row.views + 1 } : row))
+          : [...pages, { path: event.path, views: 1 }];
+        pages = [...pages].sort((a, b) => b.views - a.views).slice(0, 8);
+      }
+      return { ...prev, totals, series, pages };
+    });
+
+    if (!eventMatchesLog(event, filters.eventType, filters.query)) return;
+    setEvents((prev) => {
+      if (prev.some((row) => row.id === event.id)) return prev;
+      return [event, ...prev];
+    });
+  }, []);
+
+  useSocketSubscription(tab === 1 ? tenantRoom : null, 'website.analytics.created', handleRealtime);
 
   const save = async () => {
     if (looksLikeAdsCustomerId(form.measurementId) || looksLikeAdsCustomerId(form.adsId)) {
@@ -589,10 +674,18 @@ function WebsiteAnalyticsPage() {
       ) : (
         <>
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-            <FormControlLabel
-              control={<Switch checked={hideMine} onChange={(e) => setHideMine(e.target.checked)} />}
-              label="Hide my IPs"
-            />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <FormControlLabel
+                control={<Switch checked={hideMine} onChange={(e) => setHideMine(e.target.checked)} />}
+                label="Hide my IPs"
+              />
+              <Chip
+                size="small"
+                label={live ? 'Live' : 'Connecting…'}
+                color={live ? 'success' : 'default'}
+                variant={live ? 'filled' : 'outlined'}
+              />
+            </Box>
             <ToggleButtonGroup
               exclusive
               size="small"
@@ -717,7 +810,7 @@ function WebsiteAnalyticsPage() {
                     <TableCell sx={{ fontWeight: 700, minWidth: 160 }}>Time</TableCell>
                     <TableCell sx={{ fontWeight: 700, width: 120 }}>Type</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>What they did</TableCell>
-                    <TableCell sx={{ fontWeight: 700, minWidth: 180 }}>IP / location</TableCell>
+                    <TableCell sx={{ fontWeight: 700, minWidth: 160 }}>IP</TableCell>
                     <TableCell sx={{ fontWeight: 700, minWidth: 120 }}>Page</TableCell>
                     <TableCell sx={{ fontWeight: 700, width: 110 }} />
                   </TableRow>
@@ -741,7 +834,7 @@ function WebsiteAnalyticsPage() {
                     events.map((event) => (
                       <TableRow key={event.id} hover sx={{ opacity: event.mine ? 0.55 : 1 }}>
                         <TableCell sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                          {event.occurredAt ? format(new Date(event.occurredAt), 'MMM d, h:mm a') : '—'}
+                          {event.occurredAt ? format(new Date(event.occurredAt), 'MMM d, h:mm:ss a') : '—'}
                         </TableCell>
                         <TableCell>
                           <Chip size="small" label={eventLabel(event.type)} color={eventColor(event.type)} />
@@ -759,14 +852,6 @@ function WebsiteAnalyticsPage() {
                           <Typography variant="body2" sx={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                             {event.ip || '—'}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            {event.locationLabel || '—'}
-                          </Typography>
-                          {event.locationIsp ? (
-                            <Typography variant="caption" color="text.secondary" display="block">
-                              {event.locationIsp}
-                            </Typography>
-                          ) : null}
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2" color="text.secondary">

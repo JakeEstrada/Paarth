@@ -234,6 +234,16 @@ function publishUserAuditCreated(io, tenantId, events, opts = {}) {
   });
 }
 
+function publishWebsiteAnalyticsCreated(io, tenantId, event) {
+  const roomId = tenantId ? String(tenantId) : '';
+  if (!roomId || !event?.id) return;
+  safeEmit(io, `tenant:${roomId}`, 'website.analytics.created', {
+    type: 'website.analytics.created',
+    tenantId: roomId,
+    event,
+  });
+}
+
 module.exports = {
   publishProjectCreated,
   publishProjectUpdated,
@@ -250,4 +260,5 @@ module.exports = {
   publishRfidTimesheetUpdated,
   publishRfidEmployeeProfileUpdated,
   publishUserAuditCreated,
+  publishWebsiteAnalyticsCreated,
 };

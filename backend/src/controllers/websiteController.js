@@ -4,7 +4,8 @@ const WebsiteAnalyticsEvent = require('../models/WebsiteAnalyticsEvent');
 const Tenant = require('../models/Tenant');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
 const { getTenantContext } = require('../middleware/tenantContext');
-const { extractClientIp, resolveClientNetwork } = require('../services/clientNetwork');
+const { extractClientIp } = require('../services/clientNetwork');
+const { publishWebsiteAnalyticsCreated } = require('../services/eventBus');
 
 const GOOGLE_TAG_ID = /^(G|GT|AW|DC)-[A-Z0-9]+$/i;
 const ADS_CUSTOMER_ID = /^\d{3}-\d{3}-\d{4}$/;
@@ -617,13 +618,7 @@ async function recordPublicAnalyticsEvent(req, res) {
     } catch {
       referrer = clip(req.body?.referrer, 200);
     }
-    let network = { locationCity: '', locationRegion: '', locationCountry: '', locationLabel: '', locationIsp: '' };
-    try {
-      network = await resolveClientNetwork(req);
-    } catch {
-      /* still store the hit */
-    }
-    await WebsiteAnalyticsEvent.create([
+    const created = await WebsiteAnalyticsEvent.create([
       {
         tenantId: tenant._id,
         type,
@@ -633,17 +628,14 @@ async function recordPublicAnalyticsEvent(req, res) {
         query: clip(req.body?.query, 300),
         sessionId: clip(req.body?.sessionId, 64).replace(/[^a-zA-Z0-9_-]/g, ''),
         referrer,
-        ip: clip(network.ip || ip, 64),
+        ip: clip(ip, 64),
         userAgent: clip(ua, 220),
-        locationCity: clip(network.locationCity, 80),
-        locationRegion: clip(network.locationRegion, 80),
-        locationCountry: clip(network.locationCountry, 80),
-        locationLabel: clip(network.locationLabel, 200),
-        locationIsp: clip(network.locationIsp, 120),
         occurredAt: new Date(),
       },
     ]);
     res.status(204).end();
+    publishWebsiteAnalyticsCreated(req.app.get('io'), tenant._id, serializeTrafficEvent(created[0], new Set()));
+    return;
   } catch (error) {
     if (!res.headersSent) res.status(204).end();
     console.error('Website analytics event error:', error?.message || error);
@@ -669,8 +661,6 @@ function serializeTrafficEvent(row, mineSet) {
     sessionId: row.sessionId || '',
     ip,
     userAgent: row.userAgent || '',
-    locationLabel: row.locationLabel || '',
-    locationIsp: row.locationIsp || '',
     mine: mineSet.has(ip),
     occurredAt: row.occurredAt,
   };
