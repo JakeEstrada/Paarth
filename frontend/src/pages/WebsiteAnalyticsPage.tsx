@@ -345,7 +345,13 @@ function WebsiteAnalyticsPage() {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [days, setDays] = useState(30);
-  const [hideMine, setHideMine] = useState(false);
+  const [hideMine, setHideMine] = useState(() => {
+    try {
+      return localStorage.getItem('websiteAnalyticsNotMe') !== '0';
+    } catch {
+      return true;
+    }
+  });
   const [eventType, setEventType] = useState('');
   const [query, setQuery] = useState('');
   const [form, setForm] = useState<AnalyticsForm>(EMPTY_FORM);
@@ -362,6 +368,15 @@ function WebsiteAnalyticsPage() {
 
   const setTab = (next: number) => {
     setParams(next === 1 ? { tab: 'campaign' } : { tab: 'traffic' }, { replace: true });
+  };
+
+  const setNotMe = (next: boolean) => {
+    setHideMine(next);
+    try {
+      localStorage.setItem('websiteAnalyticsNotMe', next ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
   };
 
   const loadReport = useCallback(async (rangeDays = days, skipMine = hideMine) => {
@@ -767,10 +782,22 @@ function WebsiteAnalyticsPage() {
         <>
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-              <FormControlLabel
-                control={<Switch checked={hideMine} onChange={(e) => setHideMine(e.target.checked)} />}
-                label="Hide my IPs"
-              />
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={hideMine ? 'not-me' : 'all'}
+                onChange={(_, next) => {
+                  if (next === 'not-me') setNotMe(true);
+                  if (next === 'all') setNotMe(false);
+                }}
+              >
+                <ToggleButton value="all" sx={{ textTransform: 'none' }}>
+                  All traffic
+                </ToggleButton>
+                <ToggleButton value="not-me" sx={{ textTransform: 'none' }}>
+                  Not me
+                </ToggleButton>
+              </ToggleButtonGroup>
               <Chip
                 size="small"
                 label={live ? 'Live' : 'Connecting…'}
@@ -805,7 +832,9 @@ function WebsiteAnalyticsPage() {
             </Box>
           ) : (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Mark an IP as me in the log so you can hide your own clicks.
+              {hideMine
+                ? 'Not me is on. Tap This is me on your own rows so shop visits stay and yours drop out of the counts and log.'
+                : 'Tap This is me on your rows, then switch to Not me to see everyone else.'}
             </Typography>
           )}
 
