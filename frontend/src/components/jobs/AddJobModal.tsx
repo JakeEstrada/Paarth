@@ -51,7 +51,16 @@ function revokePendingPreviews(items) {
   });
 }
 
-function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, initialStage = null }) {
+function AddJobModal({
+  open,
+  onClose,
+  onJobCreated,
+  pipelineLayoutId = null,
+  initialStage = null,
+  initialCustomerName = '',
+  initialTitle = '',
+  initialDescription = '',
+}) {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -85,12 +94,14 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
       });
       return;
     }
-    // Reset form when modal opens
+    const name = String(initialCustomerName || '').trim();
+    const title = String(initialTitle || '').trim();
+    const description = String(initialDescription || '').trim();
     setFormData({
-      title: '',
-      description: '',
+      title,
+      description,
       customerId: null,
-      customerName: '',
+      customerName: name,
       customerPhone: '',
       customerEmail: '',
       customerAddress: {
@@ -104,21 +115,44 @@ function AddJobModal({ open, onClose, onJobCreated, pipelineLayoutId = null, ini
       referralCompany: '',
     });
     setErrors({});
-    setCustomerInputValue('');
+    setCustomerInputValue(name);
     setPendingFiles((prev) => {
       revokePendingPreviews(prev);
       return [];
     });
-    fetchCustomers();
-  }, [open]);
+    fetchCustomers().then((list) => {
+      if (!name || !Array.isArray(list)) return;
+      const match = list.find(
+        (customer) => String(customer.name || '').trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (!match) return;
+      setFormData((prev) => ({
+        ...prev,
+        customerId: match._id,
+        customerName: match.name,
+        customerPhone: match.primaryPhone ? formatNanpTyping(match.primaryPhone) : '',
+        customerEmail: match.primaryEmail || '',
+        customerAddress: match.address || {
+          street: '',
+          city: '',
+          state: '',
+          zip: '',
+        },
+      }));
+      setCustomerInputValue(match.name);
+    });
+  }, [open, initialCustomerName, initialDescription, initialTitle]);
 
   const fetchCustomers = async () => {
     try {
       setLoadingCustomers(true);
       const response = await axios.get(`${API_URL}/customers?limit=1000`);
-      setCustomers(response.data.customers || response.data || []);
+      const list = response.data.customers || response.data || [];
+      setCustomers(list);
+      return list;
     } catch (error) {
       console.error('Error fetching customers:', error);
+      return [];
     } finally {
       setLoadingCustomers(false);
     }

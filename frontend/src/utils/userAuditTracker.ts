@@ -5,6 +5,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const PATH_LABELS: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/pipeline': 'Pipeline',
+  '/outlook': 'Team Inbox',
   '/customers': 'Customers',
   '/calendar': 'Calendar',
   '/tasks': 'Projects & Tasks',

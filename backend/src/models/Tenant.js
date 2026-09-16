@@ -60,6 +60,25 @@ const tenantSchema = new mongoose.Schema(
       website: { type: String, trim: true },
       email: { type: String, trim: true },
     },
+    /** Microsoft Graph mailbox used to pull team worksheets into Paarth. Tokens are not selected by default. */
+    outlookLink: {
+      mailbox: { type: String, trim: true },
+      mailboxName: { type: String, trim: true },
+      refreshToken: { type: String, select: false },
+      accessToken: { type: String, select: false },
+      accessTokenExpiresAt: { type: Date, select: false },
+      connectedAt: { type: Date },
+      connectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      lastSyncAt: { type: Date },
+      lastSyncError: { type: String, trim: true, default: '' },
+      teamSenders: [
+        {
+          email: { type: String, trim: true, lowercase: true },
+          name: { type: String, trim: true, default: '' },
+        },
+      ],
+      subjectHints: { type: [String], default: ['worksheet'] },
+    },
     /** Plaid Item for this org (Finance Hub / register). accessToken is not selected by default. */
     plaidLink: {
       itemId: { type: String },

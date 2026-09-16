@@ -63,6 +63,12 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
   - `useSocketSubscription` (~270) — live updates on `project.updated` / `task.*` without full page reload.
   - `tvMode` prop — simplified chrome for wall displays.
 
+### OutlookInboxPage.tsx
+- **Route:** `/outlook`
+- **Purpose:** Team Outlook inbox — worksheets from Joe/team flagged until a pipeline job is created.
+- **APIs:** `GET /outlook/status`, `GET /outlook/messages`, `POST /outlook/sync`, `PUT /outlook/settings`, `GET /outlook/auth-url`
+- **Important logic:** Super admin connects Microsoft Graph. Team sender list filters whose mail is pulled. Subject containing “worksheet” is flagged in Outlook and listed here.
+
 ### CustomersPage.tsx
 - **Routes:** `/customers` · 📺 `/customers-view`
 - **Purpose:** Customer directory, detail drawer, jobs list, CSV import, global search integration.
@@ -184,6 +190,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 |------|------|
 | `/dashboard` | DashboardPage |
 | `/pipeline` | PipelinePage |
+| `/outlook` | OutlookInboxPage |
 | `/customers` | CustomersPage |
 | `/calendar` | CalendarPage |
 | `/tasks` | TasksPage |

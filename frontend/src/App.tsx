@@ -30,6 +30,7 @@ import TasksPage from './pages/TasksPage';
 import DeveloperTasksPage from './pages/DeveloperTasksPage';
 import WebsitePage from './pages/WebsitePage';
 import WebsiteAnalyticsPage from './pages/WebsiteAnalyticsPage';
+import OutlookInboxPage from './pages/OutlookInboxPage';
 import CustomersPage from './pages/CustomersPage';
 import PayrollPage from './pages/PayrollPage';
 import RfidTimesheetPage from './pages/RfidTimesheetPage';
@@ -139,6 +140,7 @@ function App(): JSX.Element | null {
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/pipeline" element={<PipelinePage />} />
+                  <Route path="/outlook" element={<ProtectedRoute requireAdmin><OutlookInboxPage /></ProtectedRoute>} />
                   <Route path="/customers" element={<CustomersPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/tasks" element={<TasksPage />} />

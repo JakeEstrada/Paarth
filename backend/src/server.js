@@ -14,6 +14,7 @@ const Tenant = require('./models/Tenant');
 const { initializeSocketServer } = require('./services/socketServer');
 const { startDailyPlaidRefreshJob } = require('./controllers/plaidController');
 const { startSmsScheduler } = require('./controllers/twilioController');
+const { startOutlookInboxSyncJob } = require('./controllers/outlookController');
 
 function isLikelyObjectId(value) {
   if (!value || typeof value !== 'string') return false;
@@ -96,7 +97,9 @@ app.use(async (req, res, next) => {
     req.path.startsWith('/tenants/branding') ||
     req.path.startsWith('/api/tenants/branding') ||
     req.path.startsWith('/website/public') ||
-    req.path.startsWith('/api/website/public');
+    req.path.startsWith('/api/website/public') ||
+    req.path.startsWith('/outlook/auth') ||
+    req.path.startsWith('/api/outlook/auth');
 
   if (skipTenantDb) {
     return runWithTenantContext({ tenantId: null, bypassTenant: true }, () => next());
@@ -204,6 +207,7 @@ const depositAllocationRoutes = require('./routes/depositAllocations');
 const vendorRoutes = require('./routes/vendors');
 const auditLogRoutes = require('./routes/auditLogs');
 const websiteRoutes = require('./routes/website');
+const outlookRoutes = require('./routes/outlook');
 
 // Use routes
 app.use('/auth', authRoutes);
@@ -231,6 +235,7 @@ app.use('/deposit-allocations', depositAllocationRoutes);
 app.use('/vendors', vendorRoutes);
 app.use('/audit-logs', auditLogRoutes);
 app.use('/website', websiteRoutes);
+app.use('/outlook', outlookRoutes);
 // Some deployments expose the API under `/api` without stripping the prefix from the path.
 app.use('/api/auth', authRoutes);
 app.use('/api/tenants', tenantRoutes);
@@ -257,6 +262,7 @@ app.use('/api/deposit-allocations', depositAllocationRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/website', websiteRoutes);
+app.use('/api/outlook', outlookRoutes);
 
 // Test route
 app.get('/', (req, res) => {
@@ -287,6 +293,12 @@ app.get('/health', (req, res) => {
       host: mongoose.connection.host || 'not connected',
       name: mongoose.connection.name || 'not connected'
     },
+    outlook: {
+      configured: Boolean(
+        String(process.env.MICROSOFT_CLIENT_ID || '').trim() &&
+          String(process.env.MICROSOFT_CLIENT_SECRET || '').trim(),
+      ),
+    },
     s3: {
       configured: s3Configured,
       bucket: s3Configured ? process.env.AWS_S3_BUCKET_NAME : null,
@@ -316,6 +328,7 @@ mongoose.connect(process.env.MONGODB_URI, {
     console.log('Yaas! MongoDB connected');
     startDailyPlaidRefreshJob();
     startSmsScheduler();
+    startOutlookInboxSyncJob();
     ensureDefaultTenant()
       .then((tenant) => backfillTenantIds(tenant._id))
       .catch((error) => {

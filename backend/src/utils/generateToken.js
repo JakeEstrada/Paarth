@@ -57,6 +57,26 @@ function verifyPasswordResetToken(token) {
   }
 }
 
+function generateOutlookOAuthState({ tenantId, userId }) {
+  return jwt.sign(
+    { purpose: 'outlook-oauth', tenantId: String(tenantId), userId: String(userId) },
+    process.env.JWT_SECRET,
+    { expiresIn: '15m' },
+  );
+}
+
+function verifyOutlookOAuthState(token) {
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    if (payload.purpose !== 'outlook-oauth' || !payload.tenantId || !payload.userId) {
+      return null;
+    }
+    return payload;
+  } catch (error) {
+    return null;
+  }
+}
+
 module.exports = {
   generateAccessToken,
   generateRefreshToken,
@@ -64,4 +84,6 @@ module.exports = {
   verifyRefreshToken,
   generatePasswordResetToken,
   verifyPasswordResetToken,
+  generateOutlookOAuthState,
+  verifyOutlookOAuthState,
 };

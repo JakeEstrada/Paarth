@@ -93,6 +93,23 @@ Device API key auth for Raspberry Pi scans; human UI uses JWT routes for list/ta
 
 Saved column layouts per tenant for the kanban board.
 
+## Outlook (`/outlook`)
+
+Microsoft Graph mailbox for team worksheets. Callback `GET /outlook/auth/callback` is public (state JWT). Other routes require admin; connect/sync/settings require super admin.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/status` | Connected mailbox, team senders, open counts |
+| GET | `/auth-url` | Microsoft OAuth URL |
+| GET | `/auth/callback` | OAuth redirect (no JWT) |
+| POST | `/sync` | Pull recent team mail |
+| PUT | `/settings` | Team sender emails / subject hints |
+| GET | `/messages` | Flagged/new worksheets |
+| PATCH | `/messages/:id` | Mark job created or dismissed |
+| POST | `/disconnect` | Drop mailbox tokens |
+
+Env: `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI`, optional `MICROSOFT_TENANT` (default `common`).
+
 ## Middleware order (server.js)
 
 1. CORS + JSON parser  

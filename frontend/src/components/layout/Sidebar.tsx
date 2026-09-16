@@ -2,6 +2,7 @@
  * Sidebar — Primary navigation groups (workspace, finance, operations, archive).
  * Admin-only items filtered via useAuth().isAdmin(); super-admin items via isSuperAdmin().
  */
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Drawer,
@@ -13,6 +14,7 @@ import {
   Box,
   Typography,
   Divider,
+  Chip,
   useTheme,
   useMediaQuery,
 } from '@mui/material';
@@ -38,15 +40,18 @@ import {
   Language as WebsiteIcon,
   Insights as AnalyticsIcon,
   Nfc as NfcIcon,
+  MailOutline as MailIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
+import api from '../../utils/axios';
 
 const DRAWER_WIDTH = 260;
 
 const workspaceItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
   { text: 'Pipeline', icon: <PipelineIcon />, path: '/pipeline' },
+  { text: 'Team Inbox', icon: <MailIcon />, path: '/outlook', adminOnly: true },
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
   { text: 'Projects & Tasks', icon: <TasksIcon />, path: '/tasks' },
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
@@ -79,6 +84,21 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const theme = useTheme();
   const { isAdmin, isSuperAdmin, user } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [inboxCount, setInboxCount] = useState(0);
+
+  useEffect(() => {
+    if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) return undefined;
+    let cancelled = false;
+    api
+      .get('/outlook/status')
+      .then(({ data }) => {
+        if (!cancelled) setInboxCount(Number(data?.worksheetCount) || 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, user]);
 
   const isActive = (path, { exact } = {}) => {
     const [pathnameOnly, queryOnly] = String(path || '').split('?');
@@ -148,6 +168,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                   fontWeight: isActive(item.path) ? 600 : 400,
                 }}
               />
+              {item.path === '/outlook' && inboxCount > 0 ? (
+                <Chip size="small" color="warning" label={inboxCount} sx={{ ml: 1, height: 22 }} />
+              ) : null}
             </ListItemButton>
           </ListItem>
         ))}
