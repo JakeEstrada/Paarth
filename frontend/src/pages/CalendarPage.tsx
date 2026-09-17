@@ -583,6 +583,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
             },
             crewNotes: job?.schedule?.crewNotes,
             title: formData.title,
+            returnToBench: Boolean(job?.schedule?.returnToBench),
           },
           // Keep the existing job stage; do not auto-advance it when scheduling
           color: formData.color,
@@ -1028,6 +1029,7 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                     installer: '',
                     installers: [],
                     entries: [],
+                    returnToBench: false,
                   },
                   stage: 'READY_TO_SCHEDULE',
                   color: DEFAULT_BENCH_JOB_COLOR,
@@ -1379,15 +1381,23 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
 }
 
 // Bench Job Card Component
-function BenchJobCard({ job, onJobClick, onViewJob, onRemoveFromBench }) {
+function BenchJobCard({ job, onJobClick, onViewJob, onRemoveFromBench, draggable = false, onDragStart }) {
   const jobTotal = job.valueEstimated || job.valueTotal || 0;
   const defaultDuration = Math.max(1, Math.floor(jobTotal / 2000));
+  const keptOnBench = Boolean(job?.schedule?.returnToBench) && hasCalendarSchedule(job);
+  const accent = job.color || DEFAULT_BENCH_JOB_COLOR;
 
   return (
     <Card
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) return;
+        e.stopPropagation();
+        onDragStart?.(e, job);
+      }}
       sx={{
-        cursor: 'pointer',
-        borderLeft: `4px solid ${DEFAULT_BENCH_JOB_COLOR}`,
+        cursor: draggable ? 'grab' : 'pointer',
+        borderLeft: `4px solid ${accent}`,
         minWidth: 150,
         maxWidth: 180,
         position: 'relative',
@@ -1443,6 +1453,11 @@ function BenchJobCard({ job, onJobClick, onViewJob, onRemoveFromBench }) {
                 | {defaultDuration} days
               </Box>
             </Typography>
+            {keptOnBench ? (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.68rem' }}>
+                Dates kept
+              </Typography>
+            ) : null}
           </Box>
           {onViewJob && (
             <IconButton
@@ -1477,17 +1492,24 @@ function BenchJobCard({ job, onJobClick, onViewJob, onRemoveFromBench }) {
 }
 
 // Scheduled Job Card Component (with green checkmark)
-function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob }) {
+function ScheduledJobCard({ job, onJobClick, onJobDelete, onViewJob, draggable = false, onDragStart }) {
   const jobTotal = job.valueEstimated || job.valueTotal || 0;
   const defaultDuration = Math.max(1, Math.floor(jobTotal / 2000));
 
   return (
     <Card
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) return;
+        e.stopPropagation();
+        onDragStart?.(e, job);
+      }}
       sx={{
         borderLeft: `4px solid ${job.color || '#4caf50'}`,
         minWidth: 150,
         maxWidth: 180,
         position: 'relative',
+        cursor: draggable ? 'grab' : 'pointer',
         '&:hover': {
           boxShadow: 2,
           transform: 'translateY(-1px)',
@@ -1565,6 +1587,26 @@ function hasCalendarSchedule(job) {
   return !!job?.schedule?.startDate;
 }
 
+function isReturnedToBench(job) {
+  return Boolean(job?.schedule?.returnToBench);
+}
+
+function scheduleFieldsFromJob(job, extra = {}) {
+  const schedule = job?.schedule || {};
+  return {
+    startDate: schedule.startDate || null,
+    endDate: schedule.endDate || null,
+    installer: schedule.installer || '',
+    installers: Array.isArray(schedule.installers) ? schedule.installers : [],
+    entries: Array.isArray(schedule.entries) ? schedule.entries : [],
+    crewNotes: schedule.crewNotes || '',
+    recurrence: schedule.recurrence,
+    title: schedule.title,
+    returnToBench: Boolean(schedule.returnToBench),
+    ...extra,
+  };
+}
+
 /** Show on calendar month grid (includes closed-out jobs that still have install dates). */
 function jobEligibleForCalendarGrid(job) {
   if (!job || job.isArchived || job.isDeadEstimate) return false;
@@ -1574,15 +1616,14 @@ function jobEligibleForCalendarGrid(job) {
 /** Partition jobs into install bench vs month-grid scheduled (see docs/PAGES.md). */
 function splitCalendarJobs(allJobs = []) {
   const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
-  const bench = allJobs.filter(
-    (job) =>
-      readinessStages.includes(job.stage) &&
-      !job.isArchived &&
-      !job.isDeadEstimate &&
-      !hasCalendarSchedule(job)
-  );
+  const bench = allJobs.filter((job) => {
+    if (!job || job.isArchived || job.isDeadEstimate || isHistoricalClosedJob(job)) return false;
+    if (isReturnedToBench(job)) return true;
+    return readinessStages.includes(job.stage) && !hasCalendarSchedule(job);
+  });
   const scheduled = allJobs.filter((job) => {
     if (shouldExcludeJobFromCalendarSchedule(job)) return false;
+    if (isReturnedToBench(job)) return false;
     return hasCalendarSchedule(job) || job.stage === 'SCHEDULED';
   });
   return { bench, scheduled };
@@ -1611,6 +1652,8 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
   const [selectedJob, setSelectedJob] = useState(null);
   const [jobIdForDetailModal, setJobIdForDetailModal] = useState(null);
   const [benchHeight, setBenchHeight] = useState(250);
+  const [benchDropActive, setBenchDropActive] = useState(false);
+  const [scheduledDropActive, setScheduledDropActive] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isBenchMinimized, setIsBenchMinimized] = useState(false);
   const [installerBaseOrder, setInstallerBaseOrder] = useState(() => {
@@ -1961,6 +2004,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
             installer: '',
             installers: [],
             entries: [],
+            returnToBench: false,
           },
           stage: 'READY_TO_SCHEDULE',
           color: DEFAULT_BENCH_JOB_COLOR,
@@ -2009,6 +2053,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
               recurrence: job?.schedule?.recurrence,
               crewNotes: job?.schedule?.crewNotes,
               title: job?.schedule?.title,
+              returnToBench: Boolean(job?.schedule?.returnToBench),
             },
           });
 
@@ -2038,6 +2083,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
             recurrence: job?.schedule?.recurrence,
             crewNotes: job?.schedule?.crewNotes,
             title: job?.schedule?.title,
+            returnToBench: Boolean(job?.schedule?.returnToBench),
           },
         });
 
@@ -2062,6 +2108,79 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     } catch (error) {
       console.error('Error removing job from bench:', error);
       toast.error('Failed to remove job from bench');
+    }
+  };
+
+  const readCalendarJobDrag = (event) => {
+    try {
+      const raw = event.dataTransfer.getData('text/plain');
+      const parsed = JSON.parse(raw || '{}');
+      if (!parsed?.jobId) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleCalendarJobDragStart = (event, job, from) => {
+    event.dataTransfer.setData(
+      'text/plain',
+      JSON.stringify({ jobId: job._id, from }),
+    );
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDropOnBench = async (event) => {
+    event.preventDefault();
+    setBenchDropActive(false);
+    const payload = readCalendarJobDrag(event);
+    if (!payload?.jobId || payload.from !== 'scheduled') return;
+    if (!canModifyCalendarWithPin()) {
+      toast.error('You do not have permission to modify calendar events');
+      return;
+    }
+    const job =
+      scheduledJobsRef.current.find((row) => String(row._id) === String(payload.jobId)) ||
+      allJobsRef.current.find((row) => String(row._id) === String(payload.jobId));
+    if (!job) return;
+    try {
+      await axios.patch(`${API_URL}/jobs/${job._id}`, {
+        schedule: scheduleFieldsFromJob(job, { returnToBench: true }),
+      });
+      toast.success('Back on the bench — schedule and color kept');
+      await fetchJobs();
+    } catch (error) {
+      console.error('Error returning job to bench:', error);
+      toast.error('Failed to move job to bench');
+    }
+  };
+
+  const handleDropOnScheduled = async (event) => {
+    event.preventDefault();
+    setScheduledDropActive(false);
+    const payload = readCalendarJobDrag(event);
+    if (!payload?.jobId || payload.from !== 'bench') return;
+    if (!canModifyCalendarWithPin()) {
+      toast.error('You do not have permission to modify calendar events');
+      return;
+    }
+    const job =
+      benchJobsRef.current.find((row) => String(row._id) === String(payload.jobId)) ||
+      allJobsRef.current.find((row) => String(row._id) === String(payload.jobId));
+    if (!job) return;
+    if (!hasCalendarSchedule(job)) {
+      toast.error('Schedule dates first, or drop this card on a calendar day');
+      return;
+    }
+    try {
+      await axios.patch(`${API_URL}/jobs/${job._id}`, {
+        schedule: scheduleFieldsFromJob(job, { returnToBench: false }),
+      });
+      toast.success('Moved to scheduled — dates unchanged');
+      await fetchJobs();
+    } catch (error) {
+      console.error('Error moving job to scheduled:', error);
+      toast.error('Failed to move job to scheduled');
     }
   };
 
@@ -2380,12 +2499,29 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: placement === 'right' ? 'column' : { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 }, height: '100%', mt: 1, flexWrap: placement === 'right' ? 'nowrap' : undefined }}>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                borderRadius: 1,
+                outline: benchDropActive ? '2px dashed #1976D2' : '2px dashed transparent',
+                backgroundColor: benchDropActive ? 'rgba(25, 118, 210, 0.06)' : 'transparent',
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setBenchDropActive(true);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget)) setBenchDropActive(false);
+              }}
+              onDrop={handleDropOnBench}
+            >
               <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                 Bench ({benchJobs.length})
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                Jobs ready to schedule. Click to schedule on calendar.
+                Jobs ready to schedule. Drag a scheduled card here to park it on the bench without removing dates.
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
                 {benchJobs.length === 0 ? (
@@ -2395,6 +2531,8 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
                     <BenchJobCard
                       key={job._id}
                       job={job}
+                      draggable={!tvMode && canModifyCalendar()}
+                      onDragStart={(e, j) => handleCalendarJobDragStart(e, j, 'bench')}
                       onJobClick={(j) => {
                         if (!canModifyCalendarWithPin()) {
                           toast.error('You do not have permission to modify calendar events');
@@ -2406,7 +2544,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
                         setEventModalOpen(true);
                       }}
                       onViewJob={(id) => setJobIdForDetailModal(id)}
-                      onRemoveFromBench={handleRemoveFromBench}
+                      onRemoveFromBench={isReturnedToBench(job) ? undefined : handleRemoveFromBench}
                     />
                   ))
                 )}
@@ -2419,12 +2557,25 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
               borderTop: placement === 'right' ? '1px solid #e0e0e0' : { xs: '1px solid #e0e0e0', md: 'none' },
               pl: { xs: 0, md: placement === 'right' ? 0 : 3 },
               pt: { xs: 2, md: 0 },
-            }}>
+              borderRadius: 1,
+              outline: scheduledDropActive ? '2px dashed #4caf50' : '2px dashed transparent',
+              backgroundColor: scheduledDropActive ? 'rgba(76, 175, 80, 0.06)' : 'transparent',
+            }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setScheduledDropActive(true);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget)) setScheduledDropActive(false);
+              }}
+              onDrop={handleDropOnScheduled}
+            >
               <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                 Scheduled ({scheduledJobs.length})
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                Jobs with scheduled dates. Click to edit.
+                Jobs with scheduled dates. Drag to the bench to park a demo without losing the schedule.
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
                 {scheduledJobs.length === 0 ? (
@@ -2434,6 +2585,8 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
                     <ScheduledJobCard
                       key={job._id}
                       job={job}
+                      draggable={!tvMode && canModifyCalendar()}
+                      onDragStart={(e, j) => handleCalendarJobDragStart(e, j, 'scheduled')}
                       onJobClick={(j) => {
                         if (!canModifyCalendarWithPin()) {
                           toast.error('You do not have permission to modify calendar events');

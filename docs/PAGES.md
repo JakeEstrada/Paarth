@@ -83,7 +83,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 - **Purpose:** **Production calendar** — month grid, install bench, scheduled jobs, appointments, installer lanes.
 - **APIs:** `GET /jobs`, `GET/POST /appointments`, schedule entry endpoints via job updates
 - **Important logic:**
-  - `splitCalendarJobs` (~1517) — splits jobs into **bench** (stage flag + no schedule) vs **scheduled** (has `schedule.entries`).
+  - `splitCalendarJobs` — splits jobs into **bench** (readiness stage, no dates, or parked with `schedule.returnToBench`) vs **scheduled** (has dates and not parked on bench). Drag scheduled → bench parks the card without clearing dates or color.
   - `fetchJobs` (~1629) — loads jobs then derives bench/scheduled lists.
   - `BenchJobCard` (~1320) — draggable bench card; assign to installer lane + date.
   - `EventModal` (~162) — create/edit calendar events and job schedule blocks.

@@ -213,7 +213,12 @@ const jobSchema = new mongoose.Schema({
         type: Number,
         default: 10
       }
-    }
+    },
+    /** Show on the calendar bench without clearing install/demo dates. */
+    returnToBench: {
+      type: Boolean,
+      default: false,
+    },
   },
   
   // Job-specific address (for contractors with multiple job sites)
