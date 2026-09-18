@@ -345,17 +345,6 @@ function mergeRfidIntoWorkHours(rows, rfidByDay, manualByDay) {
   });
 }
 
-/** Match RFID Timesheets view mode: scans win over saved manual clocks. */
-function applyRfidPreferenceToManual(manual, rfidByDay) {
-  const result = { ...manual };
-  for (const day of Object.keys(result)) {
-    if ((rfidByDay[day]?.scanCount ?? 0) > 0) {
-      delete result[day];
-    }
-  }
-  return result;
-}
-
 function defaultWorkHours() {
   return PAY_PERIOD_DAYS.map((day) => ({
     day,
@@ -413,18 +402,12 @@ async function computeWeekTotalHours(displayName, options = {}) {
   );
   manualByDay = inferManualFromSavedRows(savedWorkHours, rfidByDay, manualByDay);
   manualByDay = sanitizeManualByDay(manualByDay, savedWorkHours);
-  // Current-week kiosk/timesheet view: RFID scans override saved manual clocks.
-  manualByDay = applyRfidPreferenceToManual(manualByDay, rfidByDay);
 
-  const liveDays = rfidLiveDayNames(period, now);
-  const ignoreManual = new Set(liveDays);
-  const effectiveManual = Object.fromEntries(
-    Object.entries(manualByDay).filter(([day]) => !ignoreManual.has(day)),
-  );
+  // Explicit timesheet edits win. RFID only fills fields that were not manually locked.
   const savedByDay = Object.fromEntries(savedWorkHours.map((row) => [row.day, row]));
-  let rows = mergeRfidIntoWorkHours(baseRows, rfidByDay, effectiveManual);
+  let rows = mergeRfidIntoWorkHours(baseRows, rfidByDay, manualByDay);
   rows = rows.map((row) => {
-    const flags = effectiveManual[row.day];
+    const flags = manualByDay[row.day];
     const saved = savedByDay[row.day];
     if (!flags || !saved) return row;
     return {
@@ -435,18 +418,6 @@ async function computeWeekTotalHours(displayName, options = {}) {
       note: flags.note ? String(saved.note ?? '') : row.note,
     };
   });
-
-  // Today always reflects live scans — ignore stale saved/manual clock times.
-  for (const day of liveDays) {
-    const rfid = rfidByDay[day];
-    const row = rows.find((entry) => entry.day === day);
-    if (!rfid || !row) continue;
-    row.in = rfid.in;
-    row.out = rfid.out;
-    row.breaks = rfid.breaks;
-    row.note = rfid.note;
-    row.scanCount = rfid.scanCount;
-  }
 
   const scheduleHours = rows.reduce(
     (sum, row) => sum + calculateHours(row.in, row.out, row.breaks),

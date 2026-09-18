@@ -83,13 +83,16 @@ export function isPastPayPeriod(period: PayPeriod, anchor: Date = new Date()): b
   return period.start.getTime() < current.start.getTime();
 }
 
-/** View mode for the current week — RFID scans win whenever they exist for a day. */
+/**
+ * Kept for call-site compatibility. Manual Edit locks always stick;
+ * RFID only fills fields that were not manually edited.
+ */
 export function shouldPreferRfidOverManual(
-  period: PayPeriod,
-  isEditMode: boolean,
-  anchor: Date = new Date(),
+  _period: PayPeriod,
+  _isEditMode: boolean,
+  _anchor: Date = new Date(),
 ): boolean {
-  return !isEditMode && isCurrentPayPeriod(period, anchor);
+  return false;
 }
 
 /** Recent pay periods for dropdowns (current week first). */

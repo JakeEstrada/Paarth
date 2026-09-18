@@ -320,14 +320,10 @@ function applyRfidPreferenceToManual(
   rfidByDay: Record<string, RfidDayClock>,
   preferRfidWhenScansExist: boolean,
 ): Record<string, RfidManualDayFlags> {
-  if (!preferRfidWhenScansExist) return manual;
-  const result = { ...manual };
-  for (const day of Object.keys(result)) {
-    if ((rfidByDay[day]?.scanCount ?? 0) > 0) {
-      delete result[day];
-    }
-  }
-  return result;
+  // Disabled: explicit Edit saves must stick. RFID only fills unlocked fields.
+  void rfidByDay;
+  void preferRfidWhenScansExist;
+  return manual;
 }
 
 /** RFID scans + optional manual overrides — never treat blank DB rows as overrides. */
