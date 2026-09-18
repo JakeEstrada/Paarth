@@ -345,6 +345,17 @@ function mergeRfidIntoWorkHours(rows, rfidByDay, manualByDay) {
   });
 }
 
+/** Match RFID Timesheets view mode: scans win over saved manual clocks. */
+function applyRfidPreferenceToManual(manual, rfidByDay) {
+  const result = { ...manual };
+  for (const day of Object.keys(result)) {
+    if ((rfidByDay[day]?.scanCount ?? 0) > 0) {
+      delete result[day];
+    }
+  }
+  return result;
+}
+
 function defaultWorkHours() {
   return PAY_PERIOD_DAYS.map((day) => ({
     day,
@@ -402,6 +413,8 @@ async function computeWeekTotalHours(displayName, options = {}) {
   );
   manualByDay = inferManualFromSavedRows(savedWorkHours, rfidByDay, manualByDay);
   manualByDay = sanitizeManualByDay(manualByDay, savedWorkHours);
+  // Current-week kiosk/timesheet view: RFID scans override saved manual clocks.
+  manualByDay = applyRfidPreferenceToManual(manualByDay, rfidByDay);
 
   const liveDays = rfidLiveDayNames(period, now);
   const ignoreManual = new Set(liveDays);
