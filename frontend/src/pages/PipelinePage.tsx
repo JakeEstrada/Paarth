@@ -40,8 +40,10 @@ import AddTodoModal from '../components/todos/AddTodoModal';
 import JobContextMenu from '../components/jobs/JobContextMenu';
 import AddJobTaskModal from '../components/jobs/AddJobTaskModal';
 import AddJobModal from '../components/jobs/AddJobModal';
+import PipelineStageSmsDialog from '../components/pipeline/PipelineStageSmsDialog';
 import { useAuth } from '../context/AuthContext';
 import { fetchPipelineLayoutsList, createPipelineLayout } from '../utils/pipelineLayoutsApi';
+import { fetchPipelineSmsTemplates, findTemplateForStage } from '../utils/pipelineSmsTemplates';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
@@ -96,6 +98,8 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const [pipelineLayouts, setPipelineLayouts] = useState([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState('default');
   const [pipelineHydrated, setPipelineHydrated] = useState(false);
+  const [pipelineSmsTemplates, setPipelineSmsTemplates] = useState([]);
+  const [stageSmsPrompt, setStageSmsPrompt] = useState(null);
   const { isShopViewRole, hideSensitive: shopHideSensitive } = useShopViewSensitive(user?.role);
   const financialPin = useFinancialPinLockContext();
   const hideSensitive = shopHideSensitive || financialPin.hideFinancials;
@@ -184,6 +188,22 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     const exists = pipelineLayouts.some((l) => String(l._id) === selectedPipelineId);
     if (!exists) setSelectedPipelineId('default');
   }, [pipelineLayouts, selectedPipelineId]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const templates = await fetchPipelineSmsTemplates();
+        if (!cancelled) setPipelineSmsTemplates(templates);
+      } catch {
+        if (!cancelled) setPipelineSmsTemplates([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   // Check for jobId in URL query params and open that job's modal
   useEffect(() => {
@@ -289,6 +309,27 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
         );
       }
       toast.success('Job moved to ' + toStage.replace(/_/g, ' '));
+      if (!tvMode) {
+        let templates = pipelineSmsTemplates;
+        try {
+          templates = await fetchPipelineSmsTemplates();
+          setPipelineSmsTemplates(templates);
+        } catch {
+          /* use cached templates */
+        }
+        const template = findTemplateForStage(templates, toStage);
+        if (template) {
+          const jobForSms =
+            updated?._id
+              ? updated
+              : previousJobs.find((job) => String(job?._id) === String(jobId)) || null;
+          setStageSmsPrompt({
+            job: jobForSms ? { ...jobForSms, stage: toStage } : null,
+            stage: toStage,
+            template,
+          });
+        }
+      }
     } catch (error) {
       setJobs(previousJobs);
       console.error('Error moving job:', error);
@@ -848,6 +889,20 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
           }}
           pipelineLayoutId={selectedPipelineId === 'default' ? null : selectedPipelineId}
           initialStage={selectedPipelineId === 'default' ? null : selectedCustomInitialStage}
+        />
+
+        <PipelineStageSmsDialog
+          open={Boolean(stageSmsPrompt)}
+          job={stageSmsPrompt?.job || null}
+          stage={stageSmsPrompt?.stage || ''}
+          template={stageSmsPrompt?.template || null}
+          senderName={user?.name || ''}
+          companyName={
+            user?.tenantId && typeof user.tenantId === 'object' && user.tenantId.name
+              ? String(user.tenantId.name)
+              : 'San Clemente Woodworking'
+          }
+          onClose={() => setStageSmsPrompt(null)}
         />
 
         {/* Close Out Completed Jobs Dialog */}

@@ -518,6 +518,98 @@ async function updateTenantPaymentNotificationSettings(req, res) {
   }
 }
 
+const PIPELINE_SMS_STAGES = new Set([
+  'APPOINTMENT_SCHEDULED',
+  'ESTIMATE_IN_PROGRESS',
+  'ESTIMATE_SENT',
+  'ENGAGED_DESIGN_REVIEW',
+  'CONTRACT_OUT',
+  'CONTRACT_SIGNED',
+  'DEPOSIT_PENDING',
+  'JOB_PREP',
+  'TAKEOFF_COMPLETE',
+  'READY_TO_SCHEDULE',
+  'SCHEDULED',
+  'IN_PRODUCTION',
+  'INSTALLED',
+  'FINAL_PAYMENT_CLOSED',
+]);
+
+function serializePipelineSmsTemplate(row) {
+  return {
+    id: String(row._id || row.id || ''),
+    stage: String(row.stage || ''),
+    name: String(row.name || '').trim(),
+    body: String(row.body || ''),
+    enabled: row.enabled !== false,
+  };
+}
+
+function sanitizePipelineSmsTemplates(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const seen = new Set();
+  const out = [];
+  for (const row of list) {
+    const stage = String(row?.stage || '').trim();
+    if (!PIPELINE_SMS_STAGES.has(stage) || seen.has(stage)) continue;
+    const body = String(row?.body || '').trim().slice(0, 1500);
+    if (!body) continue;
+    seen.add(stage);
+    out.push({
+      stage,
+      name: String(row?.name || '').trim().slice(0, 80),
+      body,
+      enabled: row?.enabled !== false,
+    });
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+async function getTenantPipelineSmsTemplates(req, res) {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    const tenant = await Tenant.findById(tenantId).select('pipelineSmsTemplates').lean();
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    res.json({
+      templates: (tenant.pipelineSmsTemplates || []).map(serializePipelineSmsTemplate),
+    });
+  } catch (error) {
+    console.error('getTenantPipelineSmsTemplates:', error);
+    res.status(500).json({ error: error.message || 'Failed to load flag messages' });
+  }
+}
+
+async function updateTenantPipelineSmsTemplates(req, res) {
+  try {
+    if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to update flag messages.' });
+    }
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    tenant.pipelineSmsTemplates = sanitizePipelineSmsTemplates(req.body?.templates);
+    tenant.markModified('pipelineSmsTemplates');
+    await tenant.save();
+    res.json({
+      templates: (tenant.pipelineSmsTemplates || []).map(serializePipelineSmsTemplate),
+    });
+  } catch (error) {
+    console.error('updateTenantPipelineSmsTemplates:', error);
+    res.status(500).json({ error: error.message || 'Failed to save flag messages' });
+  }
+}
+
 module.exports = {
   uploadTenantLogo,
   uploadTenantLogoLight,
@@ -531,4 +623,6 @@ module.exports = {
   getTenantEstimateDocumentLogo,
   getTenantPaymentNotificationSettings,
   updateTenantPaymentNotificationSettings,
+  getTenantPipelineSmsTemplates,
+  updateTenantPipelineSmsTemplates,
 };

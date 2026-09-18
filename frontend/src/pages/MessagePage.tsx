@@ -1,7 +1,7 @@
 /**
- * MessagePage — SMS sent, scheduled, and received (Twilio).
+ * MessagePage — SMS sent, scheduled, received (Twilio), and pipeline flag templates.
  * Route: /messages
- * APIs: /twilio/messages, /twilio/send-sms
+ * APIs: /twilio/messages, /twilio/send-sms, /tenants/pipeline-sms-templates
  * Docs: ../../../docs/PAGES.md#messagepagetsx
  */
 import { useCallback, useEffect, useState } from 'react';
@@ -30,11 +30,12 @@ import {
   Typography,
   Paper,
 } from '@mui/material';
-import { Refresh as RefreshIcon, Schedule as ScheduleIcon, Sms as SmsIcon } from '@mui/icons-material';
+import { Flag as FlagIcon, Refresh as RefreshIcon, Schedule as ScheduleIcon, Sms as SmsIcon } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import api from '../utils/axios';
+import FlagMessagesPanel from '../components/messages/FlagMessagesPanel';
 import { formatPhoneForDisplay } from '../utils/phoneFormat';
 import {
   fetchSmsDetail,
@@ -475,6 +476,7 @@ function MessagePage() {
   };
 
   const tabKeys: Array<'scheduled' | 'sent' | 'received'> = ['scheduled', 'sent', 'received'];
+  const isFlagTab = tab === 3;
   const activeKey = tabKeys[tab] || 'scheduled';
   const activeRows = lists[activeKey];
 
@@ -487,6 +489,7 @@ function MessagePage() {
             Messages
           </Typography>
         </Box>
+        {!isFlagTab ? (
         <Button
           size="small"
           startIcon={loadingLists ? <CircularProgress size={16} /> : <RefreshIcon />}
@@ -495,13 +498,15 @@ function MessagePage() {
         >
           Refresh
         </Button>
+        ) : null}
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Send or schedule SMS from your Twilio number. Tap a message to open it and view delivery status.
-        Older messages that were stuck on Queued are refreshed from Twilio and shown as Sent unless
-        delivery failed.
+        {isFlagTab
+          ? 'Save texts that appear when a job is dragged onto a pipeline column. Send still requires your approval, then an Are you sure confirm.'
+          : 'Send or schedule SMS from your Twilio number. Tap a message to open it and view delivery status. Older messages that were stuck on Queued are refreshed from Twilio and shown as Sent unless delivery failed.'}
       </Typography>
 
+      {!isFlagTab ? (
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <TextField
@@ -567,15 +572,21 @@ function MessagePage() {
           </Box>
         </CardContent>
       </Card>
+      ) : null}
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="fullWidth">
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" allowScrollButtonsMobile>
           <Tab label={`Scheduled (${lists.scheduled.length})`} />
           <Tab label={`Sent (${lists.sent.length})`} />
           <Tab label={`Received (${lists.received.length})`} />
+          <Tab icon={<FlagIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Flag messages" />
         </Tabs>
       </Box>
 
+      {isFlagTab ? (
+        <FlagMessagesPanel />
+      ) : (
+        <>
       <MessageTable
         rows={activeRows}
         tab={activeKey}
@@ -598,6 +609,8 @@ function MessagePage() {
             </Button>
           )}
         </Box>
+      )}
+        </>
       )}
 
       <MessageDetailDialog

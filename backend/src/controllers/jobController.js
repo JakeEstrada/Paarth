@@ -101,7 +101,7 @@ async function getJobs(req, res) {
     const jobs = await Job.find(query)
       .populate({
         path: 'customerId',
-        select: 'name primaryPhone primaryEmail address',
+        select: 'name primaryPhone primaryEmail address phones contactPhones',
         strictPopulate: false
       })
       .populate({
@@ -730,7 +730,7 @@ async function moveJobStage(req, res) {
     
     await job.save();
     
-    await job.populate('customerId', 'name primaryPhone primaryEmail');
+    await job.populate('customerId', 'name primaryPhone primaryEmail phones contactPhones');
     await job.populate('assignedTo', 'name email');
 
     await emitJobUpdated(req, job);

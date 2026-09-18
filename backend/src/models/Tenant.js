@@ -99,6 +99,15 @@ const tenantSchema = new mongoose.Schema(
       ],
       phoneNumbers: [{ type: String, trim: true }],
     },
+    /** Customer SMS drafts shown when a job is dragged onto a pipeline stage. */
+    pipelineSmsTemplates: [
+      {
+        stage: { type: String, required: true, trim: true },
+        name: { type: String, trim: true, default: '' },
+        body: { type: String, trim: true, maxlength: 1500, default: '' },
+        enabled: { type: Boolean, default: true },
+      },
+    ],
   },
   {
     timestamps: true,
