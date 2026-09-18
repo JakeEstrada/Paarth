@@ -292,24 +292,23 @@ function buildRfidDayClocks(scans, employee, period, shiftProfile, now = new Dat
   return result;
 }
 
-function inferManualFromSavedRows(rows, rfidByDay, existingManual = {}) {
-  const result = { ...existingManual };
+function timeTokenValue(token) {
+  const digits = String(token || '').replace(/\D/g, '');
+  if (!digits || digits === '0') return -1;
+  return Number.parseInt(digits.padStart(4, '0'), 10);
+}
 
-  for (const row of rows) {
-    const rfid = rfidByDay[row.day];
-    if (!rfid) continue;
-    const flags = { ...(result[row.day] || {}) };
-    if (!flags.in && row.in !== '0' && row.in !== rfid.in) flags.in = true;
-    if (!flags.out && row.out !== '0' && row.out !== rfid.out) flags.out = true;
-    if (!flags.breaks && row.breaks !== '0' && row.breaks !== rfid.breaks) flags.breaks = true;
-    const rowNote = row.note || '';
-    if (!flags.note && rowNote.length > 0 && rowNote !== (rfid.note || '')) flags.note = true;
-    if (flags.in || flags.out || flags.breaks || flags.note) {
-      result[row.day] = flags;
-    }
-  }
-
-  return result;
+/**
+ * Auto-inferring "manual" from saved vs live RFID incorrectly locks stale OUT
+ * times (e.g. 1017) after a later scan (e.g. 1123). Only explicit manualByDay
+ * from Edit should stick — and even then, a later RFID punch advances OUT.
+ */
+function shouldKeepManualOut(savedOut, rfid) {
+  if (!rfid || rfid.out === '0') return true;
+  const saved = timeTokenValue(savedOut);
+  const live = timeTokenValue(rfid.out);
+  if (live > saved) return false;
+  return true;
 }
 
 function sanitizeManualByDay(manual, workHours) {
@@ -396,12 +395,12 @@ async function computeWeekTotalHours(displayName, options = {}) {
   }));
 
   const rfidByDay = buildRfidDayClocks(scans, employee, period, shiftProfile, now);
+  // Only explicit Edit locks from the timesheet document — never invent locks
+  // by comparing stale saved clocks to live RFID (that froze OUT after re-scans).
   let manualByDay = sanitizeManualByDay(
     timesheet?.manualByDay && typeof timesheet.manualByDay === 'object' ? timesheet.manualByDay : {},
     savedWorkHours,
   );
-  manualByDay = inferManualFromSavedRows(savedWorkHours, rfidByDay, manualByDay);
-  manualByDay = sanitizeManualByDay(manualByDay, savedWorkHours);
 
   // Explicit timesheet edits win. RFID only fills fields that were not manually locked.
   const savedByDay = Object.fromEntries(savedWorkHours.map((row) => [row.day, row]));
@@ -409,11 +408,13 @@ async function computeWeekTotalHours(displayName, options = {}) {
   rows = rows.map((row) => {
     const flags = manualByDay[row.day];
     const saved = savedByDay[row.day];
+    const rfid = rfidByDay[row.day];
     if (!flags || !saved) return row;
+    const keepOut = Boolean(flags.out) && shouldKeepManualOut(saved.out, rfid);
     return {
       ...row,
       in: flags.in ? String(saved.in) : row.in,
-      out: flags.out ? String(saved.out) : row.out,
+      out: keepOut ? String(saved.out) : String(rfid?.out ?? row.out),
       breaks: flags.breaks ? String(saved.breaks) : row.breaks,
       note: flags.note ? String(saved.note ?? '') : row.note,
     };

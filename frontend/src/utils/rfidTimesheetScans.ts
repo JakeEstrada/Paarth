@@ -289,29 +289,30 @@ export function sanitizeManualByDay(
   return result;
 }
 
+function timeTokenValue(token: string | undefined): number {
+  const digits = String(token || '').replace(/\D/g, '');
+  if (!digits || digits === '0') return -1;
+  return Number.parseInt(digits.padStart(4, '0'), 10);
+}
+
+/** Later live RFID OUT always wins over a stale locked/saved OUT. */
+function shouldKeepManualOut(
+  savedOut: string | undefined,
+  rfid: RfidDayClock | undefined,
+): boolean {
+  if (!rfid || rfid.out === '0') return true;
+  return !(timeTokenValue(rfid.out) > timeTokenValue(savedOut));
+}
+
 export function inferManualFromSavedRows(
   rows: Array<{ day: string; in: string; out: string; breaks: string; note?: string }>,
   rfidByDay: Record<string, RfidDayClock>,
   existingManual: Record<string, RfidManualDayFlags> = {},
 ): Record<string, RfidManualDayFlags> {
-  const result: Record<string, RfidManualDayFlags> = { ...existingManual };
-
-  for (const row of rows) {
-    const rfid = rfidByDay[row.day];
-    if (!rfid) continue;
-    const flags: RfidManualDayFlags = { ...(result[row.day] || {}) };
-    // Zeros in DB are not manual overrides — only non-empty values count.
-    if (!flags.in && row.in !== '0' && row.in !== rfid.in) flags.in = true;
-    if (!flags.out && row.out !== '0' && row.out !== rfid.out) flags.out = true;
-    if (!flags.breaks && row.breaks !== '0' && row.breaks !== rfid.breaks) flags.breaks = true;
-    const rowNote = row.note || '';
-    if (!flags.note && rowNote.length > 0 && rowNote !== (rfid.note || '')) flags.note = true;
-    if (flags.in || flags.out || flags.breaks || flags.note) {
-      result[row.day] = flags;
-    }
-  }
-
-  return result;
+  // Do not invent locks from stale saved clocks vs live RFID.
+  void rows;
+  void rfidByDay;
+  return { ...existingManual };
 }
 
 /** Drop manual locks for days that have RFID scans — scans are the live source of truth. */
@@ -357,11 +358,13 @@ export function buildTimesheetRowsFromScans(
   merged = merged.map((row) => {
     const flags = manual[row.day];
     const saved = savedByDay[row.day];
+    const rfid = rfidByDay[row.day];
     if (!flags || !saved) return row;
+    const keepOut = Boolean(flags.out) && shouldKeepManualOut(saved.out, rfid);
     return {
       ...row,
       in: flags.in ? String(saved.in) : row.in,
-      out: flags.out ? String(saved.out) : row.out,
+      out: keepOut ? String(saved.out) : String(rfid?.out ?? row.out),
       breaks: flags.breaks ? String(saved.breaks) : row.breaks,
       note: flags.note ? String(saved.note ?? '') : row.note,
     };
