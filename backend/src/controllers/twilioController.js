@@ -1,9 +1,11 @@
 const ScheduledSms = require('../models/ScheduledSms');
 const SmsMessage = require('../models/SmsMessage');
+const Customer = require('../models/Customer');
+const Tenant = require('../models/Tenant');
 const File = require('../models/File');
 const crypto = require('crypto');
 const { getFileStream } = require('./fileController');
-const { ensureDefaultTenant } = require('../utils/tenantService');
+const { ensureDefaultTenant, ensureTenantBySlug } = require('../utils/tenantService');
 const { runWithTenantContext } = require('../middleware/tenantContext');
 
 /**
@@ -24,19 +26,149 @@ function normalizeToE164(value) {
   return hasPlus ? `+${digits}` : `+1${digits}`;
 }
 
-async function logInboundSms({ from, to, body, twilioSid }) {
+function phoneDigits(value) {
+  return String(value || '').replace(/[^\d]/g, '');
+}
+
+function phoneMatchVariants(value) {
+  const e164 = normalizeToE164(value);
+  const digits = phoneDigits(e164 || value);
+  const variants = new Set();
+  if (e164) variants.add(e164);
+  if (digits) {
+    variants.add(digits);
+    variants.add(`+${digits}`);
+    if (digits.length === 11 && digits.startsWith('1')) {
+      variants.add(digits.slice(1));
+      variants.add(`+${digits.slice(1)}`);
+    }
+    if (digits.length === 10) {
+      variants.add(`1${digits}`);
+      variants.add(`+1${digits}`);
+    }
+  }
+  return [...variants].filter(Boolean);
+}
+
+/**
+ * Inbound webhooks have no JWT, so pick the shop tenant carefully.
+ * Prefer explicit env, then customer/outbound match, then the sole real tenant.
+ */
+async function resolveInboundTenantId({ from, to, preferredTenantId } = {}) {
+  if (preferredTenantId) return String(preferredTenantId);
+
+  const slug = String(process.env.TWILIO_INBOUND_TENANT_SLUG || '').trim();
+  if (slug) {
+    const tenant = await ensureTenantBySlug(slug);
+    if (tenant?._id) return String(tenant._id);
+  }
+
+  const envId = String(process.env.TWILIO_INBOUND_TENANT_ID || '').trim();
+  if (/^[a-fA-F0-9]{24}$/.test(envId)) return envId;
+
+  const fromVariants = phoneMatchVariants(from);
+  if (fromVariants.length) {
+    const customer = await Customer.findOne({
+      $or: [
+        { primaryPhone: { $in: fromVariants } },
+        { phones: { $in: fromVariants } },
+        { 'contactPhones.value': { $in: fromVariants } },
+      ],
+    })
+      .setOptions({ bypassTenant: true })
+      .select('tenantId')
+      .lean();
+    if (customer?.tenantId) return String(customer.tenantId);
+
+    const prior = await SmsMessage.findOne({
+      direction: 'outbound',
+      to: { $in: fromVariants },
+      tenantId: { $exists: true, $ne: null },
+    })
+      .setOptions({ bypassTenant: true })
+      .sort({ createdAt: -1 })
+      .select('tenantId')
+      .lean();
+    if (prior?.tenantId) return String(prior.tenantId);
+  }
+
+  // Prefer matching our Twilio "To" against recent outbound from that number's tenant.
+  const toVariants = phoneMatchVariants(to);
+  if (toVariants.length) {
+    const priorFromUs = await SmsMessage.findOne({
+      direction: 'outbound',
+      from: { $in: toVariants },
+      tenantId: { $exists: true, $ne: null },
+    })
+      .setOptions({ bypassTenant: true })
+      .sort({ createdAt: -1 })
+      .select('tenantId')
+      .lean();
+    if (priorFromUs?.tenantId) return String(priorFromUs.tenantId);
+  }
+
+  const tenants = await Tenant.find({ slug: { $ne: 'default' } })
+    .select('_id slug')
+    .limit(5)
+    .lean();
+  if (tenants.length === 1) return String(tenants[0]._id);
+
   const defaultTenant = await ensureDefaultTenant();
-  await runWithTenantContext({ tenantId: String(defaultTenant._id), bypassTenant: false }, async () => {
-    await SmsMessage.create({
+  return String(defaultTenant._id);
+}
+
+async function upsertInboundSms({ from, to, body, twilioSid, preferredTenantId, createdAt }) {
+  const tenantId = await resolveInboundTenantId({ from, to, preferredTenantId });
+  const fromNorm = normalizeToE164(from) || String(from || '').trim();
+  const toNorm = normalizeToE164(to) || String(to || '').trim();
+  const bodyText = String(body || '').trim();
+  const sid = twilioSid ? String(twilioSid).trim() : '';
+
+  return runWithTenantContext({ tenantId, bypassTenant: false }, async () => {
+    if (sid) {
+      const existing = await SmsMessage.findOne({ twilioSid: sid })
+        .setOptions({ bypassTenant: true });
+      if (existing) {
+        let dirty = false;
+        if (String(existing.tenantId || '') !== String(tenantId)) {
+          existing.tenantId = tenantId;
+          dirty = true;
+        }
+        if (bodyText && existing.body !== bodyText) {
+          existing.body = bodyText;
+          dirty = true;
+        }
+        if (fromNorm && existing.from !== fromNorm) {
+          existing.from = fromNorm;
+          dirty = true;
+        }
+        if (toNorm && existing.to !== toNorm) {
+          existing.to = toNorm;
+          dirty = true;
+        }
+        if (dirty) await existing.save();
+        return { doc: existing, created: false };
+      }
+    }
+
+    const payload = {
       direction: 'inbound',
-      from: normalizeToE164(from) || String(from || '').trim(),
-      to: normalizeToE164(to) || String(to || '').trim(),
-      body: String(body || '').trim(),
-      twilioSid: twilioSid || undefined,
+      from: fromNorm,
+      to: toNorm,
+      body: bodyText,
+      twilioSid: sid || undefined,
       source: 'inbound',
-      tenantId: defaultTenant._id,
-    });
+      tenantId,
+    };
+    if (createdAt) payload.createdAt = new Date(createdAt);
+
+    const doc = await SmsMessage.create(payload);
+    return { doc, created: true };
   });
+}
+
+async function logInboundSms({ from, to, body, twilioSid }) {
+  await upsertInboundSms({ from, to, body, twilioSid });
 }
 
 async function logOutboundSms({ from, to, body, twilioSid, source, createdBy, tenantId, deliveryStatus }) {
@@ -71,13 +203,11 @@ async function inboundSms(req, res) {
       console.error('Failed to log inbound SMS:', logError?.message || logError);
     }
 
-    // Minimal TwiML response so Twilio marks webhook as successful.
+    // Empty TwiML acknowledges receipt without auto-replying.
     return xmlResponse(
       res,
       `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>Thanks! We received your message.</Message>
-</Response>`
+<Response></Response>`
     );
   } catch (error) {
     console.error('Twilio inboundSms error:', error);
@@ -161,6 +291,7 @@ async function getTwilioConfigStatus(req, res) {
       return res.status(403).json({ error: 'Admin only' });
     }
     const { accountSid, authToken, from } = getTwilioConfig();
+    const publicBase = getPublicApiBaseUrl(req);
     return res.json({
       configured: Boolean(accountSid && authToken && from),
       hasAccountSid: Boolean(accountSid),
@@ -168,10 +299,85 @@ async function getTwilioConfigStatus(req, res) {
       hasFromNumber: Boolean(from),
       accountSidLooksValid: /^AC[a-f0-9]{32}$/i.test(accountSid),
       fromNumberLooksValid: /^\+1\d{10}$/.test(normalizeToE164(from)),
+      inboundWebhookUrl: publicBase ? `${publicBase}/twilio/sms` : null,
+      statusCallbackUrl: publicBase ? `${publicBase}/twilio/sms-status` : null,
+      publicApiBaseUrlConfigured: Boolean(String(process.env.PUBLIC_API_BASE_URL || '').trim()),
     });
   } catch (error) {
     console.error('getTwilioConfigStatus error:', error);
     return res.status(500).json({ error: error.message || 'Failed to read Twilio config' });
+  }
+}
+
+/**
+ * Pull recent inbound messages from Twilio into Paarth (for replies that arrived
+ * before the webhook was pointed here, or while tenant assignment was wrong).
+ */
+async function syncInboundFromTwilio(req, res) {
+  try {
+    if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    const { accountSid, authToken, from: ourNumber } = getTwilioConfig();
+    if (!accountSid || !authToken) {
+      return res.status(400).json({ error: 'Twilio credentials are not configured' });
+    }
+
+    const pageSize = Math.min(Math.max(parseInt(req.body?.limit, 10) || 50, 1), 100);
+    const params = new URLSearchParams({
+      PageSize: String(pageSize),
+    });
+    if (ourNumber) params.set('To', normalizeToE164(ourNumber) || ourNumber);
+
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?${params.toString()}`;
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+      },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const msg = data?.message || data?.error || `Twilio list failed (${response.status})`;
+      return res.status(502).json({ error: String(msg) });
+    }
+
+    const messages = Array.isArray(data?.messages) ? data.messages : [];
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+    const preferredTenantId =
+      req.user?.tenantId && typeof req.user.tenantId === 'object'
+        ? req.user.tenantId._id || req.user.tenantId.id
+        : req.user?.tenantId;
+
+    for (const row of messages) {
+      const direction = String(row?.direction || '').toLowerCase();
+      // Twilio: inbound-api / inbound — anything starting with inbound
+      if (!direction.includes('inbound')) {
+        skipped += 1;
+        continue;
+      }
+      const result = await upsertInboundSms({
+        from: row.from,
+        to: row.to,
+        body: row.body,
+        twilioSid: row.sid,
+        preferredTenantId,
+        createdAt: row.date_created || row.date_sent,
+      });
+      if (result.created) imported += 1;
+      else updated += 1;
+    }
+
+    return res.json({
+      scanned: messages.length,
+      imported,
+      updated,
+      skipped,
+    });
+  } catch (error) {
+    console.error('syncInboundFromTwilio error:', error?.message || error);
+    return res.status(500).json({ error: error?.message || 'Failed to sync inbound messages' });
   }
 }
 
@@ -1048,4 +1254,5 @@ module.exports = {
   sendSmsAdhoc,
   scheduleSmsAdhoc,
   getTwilioConfigStatus,
+  syncInboundFromTwilio,
 };

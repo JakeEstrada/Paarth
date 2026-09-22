@@ -106,3 +106,12 @@ export async function scheduleSmsAdhoc(payload: ScheduleSmsPayload) {
     (url) => api.post(url, payload)
   );
 }
+
+export async function syncInboundFromTwilio(limit = 50) {
+  return withTwilioPathFallback<{
+    scanned: number;
+    imported: number;
+    updated: number;
+    skipped: number;
+  }>('/sync-inbound', (url) => api.post(url, { limit }));
+}

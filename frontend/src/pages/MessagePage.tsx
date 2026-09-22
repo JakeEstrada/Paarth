@@ -42,11 +42,13 @@ import {
   fetchSmsLists,
   markSmsRead,
   scheduleSmsAdhoc,
+  syncInboundFromTwilio,
   type SmsDetail,
   type SmsLists,
   type SmsRecordType,
   type SmsRow,
 } from '../utils/twilioApi';
+import { useAuth } from '../context/AuthContext';
 
 const LIST_PAGE_SIZE = 500;
 const LIST_MAX = 2000;
@@ -305,12 +307,14 @@ function MessageTable({
 }
 
 function MessagePage() {
+  const { isAdmin } = useAuth();
   const [toDisplay, setToDisplay] = useState('');
   const [body, setBody] = useState('');
   const [sendAtLocal, setSendAtLocal] = useState(defaultScheduleAtValue);
   const [scheduleMode, setScheduleMode] = useState(false);
   const [sending, setSending] = useState(false);
   const [scheduling, setScheduling] = useState(false);
+  const [syncingInbound, setSyncingInbound] = useState(false);
   const [tab, setTab] = useState(0);
   const [lists, setLists] = useState<SmsLists>(EMPTY_LISTS);
   const [listLimit, setListLimit] = useState(LIST_PAGE_SIZE);
@@ -475,6 +479,28 @@ function MessagePage() {
     setSendAtLocal(defaultScheduleAtValue());
   };
 
+  const handleSyncInbound = async () => {
+    setSyncingInbound(true);
+    try {
+      const result = await syncInboundFromTwilio(50);
+      toast.success(
+        `Pulled from Twilio: ${result.imported} new, ${result.updated} updated (${result.scanned} scanned)`,
+      );
+      setTab(2);
+      await fetchMessages();
+    } catch (error) {
+      console.error(error);
+      const msg = isAxiosError(error)
+        ? error.response?.data?.error || error.message || 'Failed to pull replies'
+        : error instanceof Error
+          ? error.message
+          : 'Failed to pull replies';
+      toast.error(String(msg));
+    } finally {
+      setSyncingInbound(false);
+    }
+  };
+
   const tabKeys: Array<'scheduled' | 'sent' | 'received'> = ['scheduled', 'sent', 'received'];
   const isFlagTab = tab === 3;
   const activeKey = tabKeys[tab] || 'scheduled';
@@ -490,14 +516,27 @@ function MessagePage() {
           </Typography>
         </Box>
         {!isFlagTab ? (
-        <Button
-          size="small"
-          startIcon={loadingLists ? <CircularProgress size={16} /> : <RefreshIcon />}
-          onClick={() => void fetchMessages()}
-          disabled={loadingLists}
-        >
-          Refresh
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {isAdmin() ? (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => void handleSyncInbound()}
+              disabled={loadingLists || syncingInbound}
+              startIcon={syncingInbound ? <CircularProgress size={16} /> : undefined}
+            >
+              Pull replies from Twilio
+            </Button>
+          ) : null}
+          <Button
+            size="small"
+            startIcon={loadingLists ? <CircularProgress size={16} /> : <RefreshIcon />}
+            onClick={() => void fetchMessages()}
+            disabled={loadingLists || syncingInbound}
+          >
+            Refresh
+          </Button>
+        </Box>
         ) : null}
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
