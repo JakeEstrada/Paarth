@@ -15,6 +15,7 @@ const {
   markSmsRead,
   getTwilioConfigStatus,
   syncInboundFromTwilio,
+  getUnreadSmsCount,
 } = require('../controllers/twilioController');
 const { requireAuth } = require('../middleware/auth');
 
@@ -31,6 +32,7 @@ router.post('/send-sms', requireAuth, sendSms);
 router.post('/schedule-sms', requireAuth, scheduleSms);
 router.post('/send-sms-adhoc', requireAuth, sendSmsAdhoc);
 router.post('/schedule-sms-adhoc', requireAuth, scheduleSmsAdhoc);
+router.get('/unread-count', requireAuth, getUnreadSmsCount);
 router.get('/messages', requireAuth, listSms);
 router.get('/messages/:recordType/:id', requireAuth, getSmsDetail);
 router.post('/messages/message/:id/read', requireAuth, markSmsRead);

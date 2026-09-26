@@ -45,6 +45,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
 import api from '../../utils/axios';
+import { fetchUnreadSmsCount } from '../../utils/twilioApi';
 
 const DRAWER_WIDTH = 260;
 
@@ -85,6 +86,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const { isAdmin, isSuperAdmin, user } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [inboxCount, setInboxCount] = useState(0);
+  const [unreadSmsCount, setUnreadSmsCount] = useState(0);
 
   useEffect(() => {
     if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) return undefined;
@@ -97,6 +99,32 @@ function Sidebar({ mobileOpen, onMobileClose }) {
       .catch(() => {});
     return () => {
       cancelled = true;
+    };
+  }, [location.pathname, user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    let cancelled = false;
+    const load = () => {
+      fetchUnreadSmsCount()
+        .then((count) => {
+          if (!cancelled) setUnreadSmsCount(count);
+        })
+        .catch(() => {
+          if (!cancelled) setUnreadSmsCount(0);
+        });
+    };
+    load();
+    const timer = window.setInterval(load, 45_000);
+    const onFocus = () => load();
+    const onUnreadChanged = () => load();
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('paarth:sms-unread-changed', onUnreadChanged);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('paarth:sms-unread-changed', onUnreadChanged);
     };
   }, [location.pathname, user]);
 
@@ -170,6 +198,14 @@ function Sidebar({ mobileOpen, onMobileClose }) {
               />
               {item.path === '/outlook' && inboxCount > 0 ? (
                 <Chip size="small" color="warning" label={inboxCount} sx={{ ml: 1, height: 22 }} />
+              ) : null}
+              {item.path === '/messages' && unreadSmsCount > 0 ? (
+                <Chip
+                  size="small"
+                  color="info"
+                  label={`+${unreadSmsCount}`}
+                  sx={{ ml: 1, height: 22, fontWeight: 600 }}
+                />
               ) : null}
             </ListItemButton>
           </ListItem>

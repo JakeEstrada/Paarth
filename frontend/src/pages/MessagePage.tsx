@@ -249,10 +249,10 @@ function MessageTable({
       tab === 'scheduled'
         ? 'No scheduled messages.'
         : tab === 'received'
-          ? 'No received messages yet.'
+          ? 'No received messages yet. If Twilio already has replies, click “Pull replies from Twilio” above. New replies only appear here after Twilio’s incoming webhook points at your API (/twilio/sms).'
           : 'No sent messages yet.';
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
+      <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center', px: 2 }}>
         {emptyCopy}
       </Typography>
     );
@@ -482,19 +482,31 @@ function MessagePage() {
   const handleSyncInbound = async () => {
     setSyncingInbound(true);
     try {
-      const result = await syncInboundFromTwilio(50);
-      toast.success(
-        `Pulled from Twilio: ${result.imported} new, ${result.updated} updated (${result.scanned} scanned)`,
-      );
+      const result = await syncInboundFromTwilio(100);
+      if (result.imported + result.updated === 0) {
+        toast.error(
+          result.scanned === 0
+            ? 'Twilio returned no messages. Check TWILIO credentials on the server.'
+            : `Scanned ${result.scanned} Twilio message(s) but none were inbound replies yet.`,
+        );
+      } else {
+        toast.success(
+          `Pulled from Twilio: ${result.imported} new, ${result.updated} updated`,
+        );
+      }
       setTab(2);
       await fetchMessages();
     } catch (error) {
       console.error(error);
-      const msg = isAxiosError(error)
+      let msg = isAxiosError(error)
         ? error.response?.data?.error || error.message || 'Failed to pull replies'
         : error instanceof Error
           ? error.message
           : 'Failed to pull replies';
+      if (isAxiosError(error) && error.response?.status === 404) {
+        msg =
+          'Pull is not on the live API yet. Redeploy/restart the backend, then try again.';
+      }
       toast.error(String(msg));
     } finally {
       setSyncingInbound(false);

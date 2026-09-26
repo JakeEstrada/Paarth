@@ -91,7 +91,13 @@ export async function fetchSmsDetail(recordType: SmsRecordType, id: string): Pro
 }
 
 export async function markSmsRead(id: string): Promise<SmsDetail> {
-  return withTwilioPathFallback<SmsDetail>(`/messages/message/${id}/read`, (url) => api.post(url));
+  const detail = await withTwilioPathFallback<SmsDetail>(`/messages/message/${id}/read`, (url) =>
+    api.post(url),
+  );
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('paarth:sms-unread-changed'));
+  }
+  return detail;
 }
 
 export type ScheduleSmsPayload = {
@@ -107,11 +113,20 @@ export async function scheduleSmsAdhoc(payload: ScheduleSmsPayload) {
   );
 }
 
-export async function syncInboundFromTwilio(limit = 50) {
-  return withTwilioPathFallback<{
+export async function syncInboundFromTwilio(limit = 100) {
+  const result = await withTwilioPathFallback<{
     scanned: number;
     imported: number;
     updated: number;
     skipped: number;
   }>('/sync-inbound', (url) => api.post(url, { limit }));
+  if (typeof window !== 'undefined' && (result.imported > 0 || result.updated > 0)) {
+    window.dispatchEvent(new CustomEvent('paarth:sms-unread-changed'));
+  }
+  return result;
+}
+
+export async function fetchUnreadSmsCount(): Promise<number> {
+  const data = await withTwilioPathFallback<{ unread?: number }>('/unread-count', (url) => api.get(url));
+  return Number(data?.unread) || 0;
 }

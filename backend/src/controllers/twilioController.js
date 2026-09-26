@@ -323,10 +323,11 @@ async function syncInboundFromTwilio(req, res) {
       return res.status(400).json({ error: 'Twilio credentials are not configured' });
     }
 
-    const pageSize = Math.min(Math.max(parseInt(req.body?.limit, 10) || 50, 1), 100);
+    const pageSize = Math.min(Math.max(parseInt(req.body?.limit, 10) || 100, 1), 200);
     const params = new URLSearchParams({
       PageSize: String(pageSize),
     });
+    // Prefer messages sent TO our Twilio number (customer → you).
     if (ourNumber) params.set('To', normalizeToE164(ourNumber) || ourNumber);
 
     const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?${params.toString()}`;
@@ -341,7 +342,20 @@ async function syncInboundFromTwilio(req, res) {
       return res.status(502).json({ error: String(msg) });
     }
 
-    const messages = Array.isArray(data?.messages) ? data.messages : [];
+    let messages = Array.isArray(data?.messages) ? data.messages : [];
+    // If the To= filter somehow returns nothing useful, fall back to a recent unfiltered page.
+    if (messages.length === 0 && ourNumber) {
+      const fallbackUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?PageSize=${pageSize}`;
+      const fallbackRes = await fetch(fallbackUrl, {
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        },
+      });
+      const fallbackData = await fallbackRes.json().catch(() => ({}));
+      if (fallbackRes.ok && Array.isArray(fallbackData?.messages)) {
+        messages = fallbackData.messages;
+      }
+    }
     let imported = 0;
     let updated = 0;
     let skipped = 0;
@@ -1115,6 +1129,19 @@ async function markSmsRead(req, res) {
   }
 }
 
+async function getUnreadSmsCount(req, res) {
+  try {
+    const unread = await SmsMessage.countDocuments({
+      direction: 'inbound',
+      $or: [{ readAt: null }, { readAt: { $exists: false } }],
+    });
+    return res.status(200).json({ unread: Number(unread) || 0 });
+  } catch (error) {
+    console.error('getUnreadSmsCount error:', error?.message || error);
+    return res.status(500).json({ error: error?.message || 'Failed to load unread count' });
+  }
+}
+
 async function listSms(req, res) {
   try {
     const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 500, 1), 2000);
@@ -1248,6 +1275,7 @@ module.exports = {
   listSms,
   getSmsDetail,
   markSmsRead,
+  getUnreadSmsCount,
   startSmsScheduler,
   sendSmsViaTwilio,
   twilioMediaDownload,
