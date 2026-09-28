@@ -68,11 +68,13 @@ import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import { JOB_SOURCE_OPTIONS, formatJobSourceWithCompany, clipReferralCompany } from '../utils/jobSources';
 import ReferralCompanyField, { rememberReferralCompany } from '../components/common/ReferralCompanyField';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { getTenantRoom } from '../services/socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 function CustomersPage({ viewMode = false, externalViewControls = false }) {
   const theme = useTheme();
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, tenantIdForBranding } = useAuth();
@@ -863,6 +865,16 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
           <CircularProgress />
         </Box>
       ) : (
+        <>
+        {isMobile && (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block', mb: 0.75, fontStyle: 'italic' }}
+          >
+            Tap a customer to see email, source and notes.
+          </Typography>
+        )}
         <TableContainer 
           component={Paper} 
           sx={{ 
@@ -871,7 +883,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
             maxWidth: '100%',
           }}
         >
-          <Table sx={{ minWidth: 650 }}>
+          <Table size={isMobile ? 'small' : 'medium'} sx={{ minWidth: isMobile ? 0 : 650 }}>
             <TableHead>
               <TableRow sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#2A2A2A' : '#f5f5f5' }}>
                 <TableCell>
@@ -892,6 +904,8 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     Phone
                   </TableSortLabel>
                 </TableCell>
+                {/* Phones show name, phone and address only — the rest is in the row's detail popup. */}
+                {!isMobile && (
                 <TableCell>
                   <TableSortLabel
                     active={sortField === 'primaryEmail'}
@@ -901,6 +915,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     Email
                   </TableSortLabel>
                 </TableCell>
+                )}
                 <TableCell>
                   <TableSortLabel
                     active={sortField === 'address'}
@@ -910,6 +925,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     Address
                   </TableSortLabel>
                 </TableCell>
+                {!isMobile && (
                 <TableCell>
                   <TableSortLabel
                     active={sortField === 'source'}
@@ -919,13 +935,14 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     Source
                   </TableSortLabel>
                 </TableCell>
-                <TableCell>Notes</TableCell>
+                )}
+                {!isMobile && <TableCell>Notes</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredAndSortedCustomers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={isMobile ? 3 : 6} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       {searchTerm ? 'No customers found matching your search' : 'No customers found'}
                     </Typography>
@@ -946,12 +963,15 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     }}
                     sx={{ cursor: isReadonlyView ? 'pointer' : 'pointer' }}
                   >
-                    <TableCell>{customer.name || '-'}</TableCell>
-                    <TableCell>{formatPhoneForDisplay(getDisplayPhone(customer)) || '-'}</TableCell>
-                    <TableCell>{getDisplayEmail(customer) || '-'}</TableCell>
+                    <TableCell sx={{ fontWeight: isMobile ? 600 : 400 }}>{customer.name || '-'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      {formatPhoneForDisplay(getDisplayPhone(customer)) || '-'}
+                    </TableCell>
+                    {!isMobile && <TableCell>{getDisplayEmail(customer) || '-'}</TableCell>}
                     <TableCell>
                       {formatAddress(customer.address)}
                     </TableCell>
+                    {!isMobile && (
                     <TableCell>
                       <Chip
                         label={formatJobSourceWithCompany(customer.source, customer.referralCompany)}
@@ -959,6 +979,8 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                         sx={{ textTransform: 'capitalize' }}
                       />
                     </TableCell>
+                    )}
+                    {!isMobile && (
                     <TableCell>
                       <Typography
                         variant="body2"
@@ -973,12 +995,14 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                         {truncateNotes(customer.notes)}
                       </Typography>
                     </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
         </TableContainer>
+        </>
       )}
 
       {/* Delete Confirmation Dialog */}

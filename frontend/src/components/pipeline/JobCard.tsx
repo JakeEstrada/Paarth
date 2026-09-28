@@ -10,6 +10,7 @@ function JobCard(props: Record<string, unknown>) {
     onContextMenu,
     canModify = true,
     minHeightPx = DEFAULT_JOB_CARD_MIN_HEIGHT_PX,
+    narrow = false,
   } = props as {
     job: Record<string, unknown> & {
       schedule?: { startDate?: string; entries?: Array<{ startDate?: string }> };
@@ -26,6 +27,8 @@ function JobCard(props: Record<string, unknown>) {
     onContextMenu?: (e: unknown, job: Record<string, unknown>) => void;
     canModify?: boolean;
     minHeightPx?: number;
+    /** Phone columns are ~80px wide: one truncated line, no description. */
+    narrow?: boolean;
     onUpdate?: unknown;
     onStageChange?: unknown;
   };
@@ -89,12 +92,13 @@ function JobCard(props: Record<string, unknown>) {
       'On bench: job is in a readiness stage and not yet scheduled on the calendar.';
   }
 
-  const compactCard = minHeightPx <= 56;
-  const ultraCompact = minHeightPx <= 48;
-  const contentPy = compactCard ? 0.75 : 1.5;
-  const titleFontRem = ultraCompact ? '0.75rem' : compactCard ? '0.8125rem' : '0.875rem';
+  const compactCard = narrow || minHeightPx <= 56;
+  const ultraCompact = narrow || minHeightPx <= 48;
+  const contentPy = narrow ? 0.5 : compactCard ? 0.75 : 1.5;
+  const titleFontRem = narrow ? '0.625rem' : ultraCompact ? '0.75rem' : compactCard ? '0.8125rem' : '0.875rem';
   const descFontRem = ultraCompact ? '0.6875rem' : '0.75rem';
-  const dotSize = ultraCompact ? 8 : 10;
+  const dotSize = narrow ? 6 : ultraCompact ? 8 : 10;
+  const cardMinHeight = narrow ? 30 : minHeightPx;
 
   return (
     <Card
@@ -105,8 +109,8 @@ function JobCard(props: Record<string, unknown>) {
       onClick={onClick}
       onContextMenu={handleContextMenu}
       sx={{
-        borderRadius: '8px',
-        minHeight: minHeightPx,
+        borderRadius: narrow ? '6px' : '8px',
+        minHeight: cardMinHeight,
         display: 'flex',
         flexDirection: 'column',
         boxShadow: theme.palette.mode === 'dark'
@@ -127,7 +131,7 @@ function JobCard(props: Record<string, unknown>) {
       <CardContent
         sx={{
           py: contentPy,
-          px: compactCard ? 1 : 1.5,
+          px: narrow ? 0.5 : compactCard ? 1 : 1.5,
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
@@ -144,13 +148,16 @@ function JobCard(props: Record<string, unknown>) {
               fontWeight: 500,
               color: theme.palette.text.primary,
               lineHeight: 1.35,
-              display: 'inline',
+              display: narrow ? 'block' : 'inline',
+              ...(narrow
+                ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+                : null),
             }}
             title={job.title}
           >
-            {truncateTitle(job.title, ultraCompact ? 36 : 50)}
+            {narrow ? job.title || 'Untitled Job' : truncateTitle(job.title, ultraCompact ? 36 : 50)}
           </Typography>
-          {job.description && (
+          {job.description && !narrow && (
             <>
               <Typography
                 component="span"
@@ -189,7 +196,7 @@ function JobCard(props: Record<string, unknown>) {
                 height: dotSize,
                 borderRadius: '50%',
                 backgroundColor: statusColor,
-                border: `2px solid ${theme.palette.background.paper}`,
+                border: `${narrow ? 1 : 2}px solid ${theme.palette.background.paper}`,
                 mt: ultraCompact ? 0.25 : 0.5,
               }}
             />

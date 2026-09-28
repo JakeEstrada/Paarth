@@ -1131,6 +1131,12 @@ function scheduledEventSummary(event) {
       : multiDay
         ? `${format(start, 'EEE MMM d')} \u2013 ${format(end, 'EEE MMM d')}`
         : format(start, 'EEE MMM d, yyyy'),
+    shortDateLabel: !start
+      ? ''
+      : multiDay
+        ? `${format(start, 'MMM d')} \u2013 ${format(end, 'MMM d')}`
+        : format(start, 'EEE MMM d'),
+    startDate: start,
     color: event?.color || DEFAULT_BENCH_JOB_COLOR,
     closedOut: isHistoricalClosedJob(job),
   };
@@ -2397,6 +2403,20 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
   // Slightly taller than square on phones so the day number and job bars both breathe.
   const dayCellAspectRatio = tvMode ? '1.6' : mobileViewOnly ? '0.9' : '1';
 
+  // Phone-only list under the grid: everything still to come, soonest first.
+  const mobileUpcomingJobs = useMemo(() => {
+    if (!mobileViewOnly) return [];
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    return calendarEvents
+      .filter((event) => {
+        const end = event.schedule?.endDate || event.schedule?.startDate;
+        return end && format(new Date(end), 'yyyy-MM-dd') >= todayStr;
+      })
+      .map(scheduledEventSummary)
+      .sort((a, b) => (a.startDate?.getTime() || 0) - (b.startDate?.getTime() || 0))
+      .slice(0, 15);
+  }, [calendarEvents, mobileViewOnly]);
+
   const toggleWeekdayHidden = (weekday) => {
     setHiddenWeekdays((prev) =>
       prev.includes(weekday) ? prev.filter((d) => d !== weekday) : [...prev, weekday].sort((a, b) => a - b)
@@ -2946,6 +2966,53 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
       {mobileViewOnly && (
         <Box sx={{ flex: 1, overflow: 'auto', p: 0.5, minHeight: 0 }}>
           {renderCalendarContent()}
+
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block', textAlign: 'center', mt: 0.75, fontStyle: 'italic' }}
+          >
+            Tap any day to see that week&apos;s breakdown.
+          </Typography>
+
+          <Box sx={{ mt: 2, pb: 2 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+              Upcoming jobs
+            </Typography>
+            {mobileUpcomingJobs.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Nothing is scheduled from today onward.
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {mobileUpcomingJobs.map((summary) => (
+                  <Paper
+                    key={summary.key}
+                    variant="outlined"
+                    onClick={() => summary.startDate && setMobileWeekDate(summary.startDate)}
+                    sx={{
+                      p: 1.25,
+                      borderLeft: `4px solid ${summary.color}`,
+                      cursor: 'pointer',
+                      opacity: summary.closedOut ? 0.75 : 1,
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 0 }}>
+                        {summary.customerName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                        {summary.shortDateLabel}
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      {[summary.installer || 'Unassigned', summary.location].filter(Boolean).join(' \u00b7 ')}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Box>
+            )}
+          </Box>
         </Box>
       )}
 

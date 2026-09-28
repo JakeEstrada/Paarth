@@ -33,8 +33,6 @@ import {
   Edit as EditIcon,
   Lock as LockIcon,
   InfoOutlined as InfoOutlinedIcon,
-  ZoomIn as ZoomInIcon,
-  ZoomOut as ZoomOutIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -47,21 +45,11 @@ import { updatePipelineLayout, deletePipelineLayout } from '../../utils/pipeline
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 /**
- * Phone board scale. The floor stays high enough that text renders cleanly —
- * below roughly 0.5 the browser rounds line boxes and glyphs collide.
+ * Phones render the board at real font sizes in very narrow columns rather than
+ * CSS-zooming it down — scaling text below ~8px makes glyphs collide. Columns share
+ * the width evenly and only scroll once a phase has more stages than this floor allows.
  */
-const MOBILE_ZOOM_KEY = 'pipelineMobileZoomV2';
-const MOBILE_ZOOM_MIN = 0.5;
-const MOBILE_ZOOM_MAX = 1;
-const MOBILE_ZOOM_STEP = 0.1;
-const MOBILE_ZOOM_DEFAULT = 0.8;
-const MOBILE_COLUMN_WIDTH = 220;
-
-function clampMobileZoom(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return MOBILE_ZOOM_DEFAULT;
-  return Math.min(MOBILE_ZOOM_MAX, Math.max(MOBILE_ZOOM_MIN, Math.round(n * 100) / 100));
-}
+const MOBILE_COLUMN_MIN_WIDTH = 72;
 
 const STAGE_LABELS = {
   APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
@@ -159,15 +147,6 @@ function PipelineBoard({
   const isMobile = useIsMobile();
   const { user, canModifyPipeline } = useAuth();
   const [draggedOverStage, setDraggedOverStage] = useState(null);
-  const [mobileZoom, setMobileZoom] = useState(() => {
-    try {
-      const stored = localStorage.getItem(MOBILE_ZOOM_KEY);
-      if (stored) return clampMobileZoom(stored);
-    } catch {
-      /* ignore */
-    }
-    return MOBILE_ZOOM_DEFAULT;
-  });
   const [layoutEditorOpen, setLayoutEditorOpen] = useState(false);
   const [layoutDraft, setLayoutDraft] = useState(null);
   const [savingLayout, setSavingLayout] = useState(false);
@@ -176,14 +155,6 @@ function PipelineBoard({
     () => getPipelineStageConfigStorageKey(user?.tenantId),
     [user?.tenantId]
   );
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(MOBILE_ZOOM_KEY, String(mobileZoom));
-    } catch {
-      /* ignore */
-    }
-  }, [mobileZoom]);
 
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [stageOverrides, setStageOverrides] = useState({});
@@ -411,7 +382,7 @@ function PipelineBoard({
         onDragLeave={canModifyPipeline() ? handleDragLeave : undefined}
         onDrop={canModifyPipeline() ? (e) => handleDrop(e, stageId) : undefined}
         sx={{
-          minWidth: isMobile ? MOBILE_COLUMN_WIDTH : 280,
+          minWidth: isMobile ? MOBILE_COLUMN_MIN_WIDTH : 280,
           flex: '1 1 0',
           maxWidth: '100%',
           // Border/padding stay constant so columns don't shift as a card is dragged across them.
@@ -422,7 +393,7 @@ function PipelineBoard({
           borderRadius: '8px',
           border: '2px dashed',
           borderColor: isDraggedOver ? theme.palette.primary.main : 'transparent',
-          p: 1,
+          p: isMobile ? 0.25 : 1,
         }}
       >
         {/* Column Header */}
@@ -431,21 +402,23 @@ function PipelineBoard({
             background: theme.palette.mode === 'dark'
               ? 'linear-gradient(135deg, #2A2A2A 0%, #1E1E1E 100%)'
               : 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
-            borderRadius: '12px',
-            mb: 1.5,
+            borderRadius: isMobile ? '6px' : '12px',
+            mb: isMobile ? 0.5 : 1.5,
             boxShadow: theme.palette.mode === 'dark'
               ? '0 1px 4px rgba(0, 0, 0, 0.3)'
               : '0 1px 4px rgba(0, 0, 0, 0.04)',
           }}
         >
-          <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+          <CardContent sx={{ p: isMobile ? 0.625 : 1.5, '&:last-child': { pb: isMobile ? 0.625 : 1.5 } }}>
             <Box
               sx={{
                 display: 'flex',
+                // Phone columns are ~80px wide, so the label and total stack instead of sharing a row.
+                flexDirection: isMobile ? 'column' : 'row',
                 justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                gap: 1,
-                mb: 0.75,
+                alignItems: isMobile ? 'stretch' : 'flex-start',
+                gap: isMobile ? 0.25 : 1,
+                mb: isMobile ? 0.25 : 0.75,
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1, minWidth: 0 }}>
@@ -457,26 +430,32 @@ function PipelineBoard({
                     fontWeight: 500,
                     textTransform: 'uppercase',
                     letterSpacing: isMobile ? 0 : '0.5px',
-                    fontSize: '0.75rem',
+                    fontSize: isMobile ? '0.5625rem' : '0.75rem',
+                    lineHeight: isMobile ? 1.2 : undefined,
                     minWidth: 0,
-                    // Narrow phone columns: one clean line instead of a four-line header.
+                    // Two lines max keeps every column header the same height.
                     ...(isMobile
-                      ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+                      ? {
+                          display: '-webkit-box',
+                          WebkitBoxOrient: 'vertical',
+                          WebkitLineClamp: 2,
+                          overflow: 'hidden',
+                        }
                       : null),
                   }}
                 >
                   {getStageLabel(stageId)}
                 </Typography>
-                {renderStageDescriptionIcon(stageId)}
+                {!isMobile && renderStageDescriptionIcon(stageId)}
               </Box>
               <Box
                 sx={{
                   flexShrink: 0,
                   display: 'flex',
-                  justifyContent: 'flex-end',
+                  justifyContent: isMobile ? 'flex-start' : 'flex-end',
                   alignItems: 'flex-start',
-                  minWidth: 40,
-                  minHeight: 18,
+                  minWidth: isMobile ? 0 : 40,
+                  minHeight: isMobile ? 0 : 18,
                 }}
               >
                 {hideSensitive ? (
@@ -503,11 +482,11 @@ function PipelineBoard({
                   <Typography
                     variant="body2"
                     sx={{
-                      fontSize: '0.875rem',
-                      fontWeight: 500,
+                      fontSize: isMobile ? '0.625rem' : '0.875rem',
+                      fontWeight: isMobile ? 700 : 500,
                       color: theme.palette.primary.main,
                       lineHeight: 1.1,
-                      textAlign: 'right',
+                      textAlign: isMobile ? 'left' : 'right',
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
@@ -519,22 +498,23 @@ function PipelineBoard({
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box
                 sx={{
-                  minWidth: 24,
+                  minWidth: isMobile ? 16 : 24,
                   textAlign: 'center',
                   bgcolor: 'background.paper',
                   border: '1px solid',
                   borderColor: 'divider',
-                  px: 1,
-                  py: 0.25,
+                  px: isMobile ? 0.5 : 1,
+                  py: isMobile ? 0 : 0.25,
                   borderRadius: '12px',
-                  fontSize: '0.75rem',
+                  fontSize: isMobile ? '0.5625rem' : '0.75rem',
                   fontWeight: 600,
                   color: count > 0 ? 'text.primary' : 'text.disabled',
                 }}
               >
                 {count}
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              {/* Stage shortcuts are desktop-only; phone columns have no room for them. */}
+              <Box sx={{ display: isMobile ? 'none' : 'flex', alignItems: 'center', gap: 1.5 }}>
                 {stageId === 'ESTIMATE_SENT' && (
                   <Tooltip title="View archived estimates">
                     <IconButton
@@ -582,7 +562,7 @@ function PipelineBoard({
         </Card>
 
         {/* Job Cards */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 0.5 : 1 }}>
           {stageJobs.length > 0 ? (
             stageJobs.map((job) => (
               <JobCard
@@ -593,19 +573,20 @@ function PipelineBoard({
                 onStageChange={(toStage, note) => onStageChange(job._id, toStage, note)}
                 onContextMenu={onJobContextMenu}
                 canModify={canModifyPipeline()}
+                narrow={isMobile}
               />
             ))
           ) : (
             <Box
               sx={{
-                py: 3,
-                px: 1,
+                py: isMobile ? 1 : 3,
+                px: isMobile ? 0.25 : 1,
                 textAlign: 'center',
                 borderRadius: '8px',
                 border: '1px dashed',
                 borderColor: isDraggedOver ? 'primary.main' : 'divider',
                 color: isDraggedOver ? 'primary.main' : 'text.disabled',
-                fontSize: '0.75rem',
+                fontSize: isMobile ? '0.5625rem' : '0.75rem',
                 fontWeight: isDraggedOver ? 600 : 400,
                 transition: 'color 0.2s ease, border-color 0.2s ease',
               }}
@@ -624,14 +605,14 @@ function PipelineBoard({
     if (visibleStages.length === 0) return null;
 
     return (
-      <Box sx={{ mb: 3 }}>
+      <Box sx={{ mb: isMobile ? 1.5 : 3 }}>
         <Typography
           variant="h6"
           sx={{
-            fontSize: '1rem',
+            fontSize: isMobile ? '0.75rem' : '1rem',
             fontWeight: 600,
             color: theme.palette.text.primary,
-            mb: 1.5,
+            mb: isMobile ? 0.5 : 1.5,
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
           }}
@@ -641,7 +622,7 @@ function PipelineBoard({
         <Box
           sx={{
             display: 'flex',
-            gap: 2,
+            gap: isMobile ? 0.25 : 2,
             overflowX: 'auto',
             pb: 1,
             width: '100%',
@@ -820,51 +801,6 @@ function PipelineBoard({
             flexWrap: 'wrap',
           }}
         >
-          {isMobile && (
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.25,
-                mr: 0.5,
-                border: `1px solid ${theme.palette.divider}`,
-                borderRadius: '8px',
-                px: 0.25,
-              }}
-            >
-              <IconButton
-                size="small"
-                aria-label="Zoom out pipeline"
-                disabled={mobileZoom <= MOBILE_ZOOM_MIN}
-                onClick={() => setMobileZoom(clampMobileZoom(mobileZoom - MOBILE_ZOOM_STEP))}
-              >
-                <ZoomOutIcon fontSize="small" />
-              </IconButton>
-              <Tooltip title="Reset zoom">
-                <Typography
-                  variant="caption"
-                  onClick={() => setMobileZoom(MOBILE_ZOOM_DEFAULT)}
-                  sx={{
-                    minWidth: 34,
-                    textAlign: 'center',
-                    fontVariantNumeric: 'tabular-nums',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                  }}
-                >
-                  {Math.round(mobileZoom * 100)}%
-                </Typography>
-              </Tooltip>
-              <IconButton
-                size="small"
-                aria-label="Zoom in pipeline"
-                disabled={mobileZoom >= MOBILE_ZOOM_MAX}
-                onClick={() => setMobileZoom(clampMobileZoom(mobileZoom + MOBILE_ZOOM_STEP))}
-              >
-                <ZoomInIcon fontSize="small" />
-              </IconButton>
-            </Box>
-          )}
           {onCreateEmptyPipeline && canModifyPipeline() && (
             <Tooltip title="New empty pipeline">
               <IconButton
@@ -915,8 +851,6 @@ function PipelineBoard({
 
       {/* Appointments Phase - Now handled separately, not shown here */}
 
-      {/* Phones scale the board down; each phase row still scrolls sideways. */}
-      <Box sx={isMobile && mobileZoom < 1 ? { zoom: mobileZoom } : undefined}>
       {pipelineMode === 'default' && (
         <>
           {renderPhase('Sales Phase', SALES_PHASE)}
@@ -945,7 +879,6 @@ function PipelineBoard({
               .map((lvl) => renderPhase(lvl.title || 'Phase', lvl.stageKeys || []))}
         </>
       )}
-      </Box>
       </Paper>
 
       <Dialog
