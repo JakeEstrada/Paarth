@@ -1149,63 +1149,108 @@ function ScheduleDetailRow({ label, value }) {
   );
 }
 
-/** Phone-only, read-only breakdown of everything scheduled on one day. */
-function MobileDayScheduleDialog({ open, date, events, onClose }) {
-  const summaries = (events || []).map(scheduledEventSummary);
+function ScheduleSummaryCard({ summary }) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{ p: 1.5, borderLeft: `4px solid ${summary.color}`, opacity: summary.closedOut ? 0.75 : 1 }}
+    >
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+        {summary.customerName}
+      </Typography>
+      {summary.jobTitle && summary.jobTitle !== summary.customerName && (
+        <Typography variant="body2" color="text.secondary">
+          {summary.jobTitle}
+        </Typography>
+      )}
+      <ScheduleDetailRow label="Installer" value={summary.installer || 'Unassigned'} />
+      <ScheduleDetailRow label="Location" value={summary.location || 'No address on file'} />
+      <ScheduleDetailRow label="Scheduled" value={summary.dateLabel || 'No dates'} />
+      {summary.phone && (
+        <Button
+          size="small"
+          variant="outlined"
+          href={`tel:${nanpDigitsOnly(summary.phone) || summary.phone}`}
+          sx={{ mt: 1.25 }}
+        >
+          Call {formatPhoneForDisplay(summary.phone)}
+        </Button>
+      )}
+    </Paper>
+  );
+}
+
+/**
+ * Phone-only, read-only schedule for the week around the tapped day.
+ * `hiddenWeekdays` mirrors the weekdays the user hid on the calendar grid.
+ */
+function MobileWeekScheduleDialog({ open, date, events, hiddenWeekdays = [], onClose }) {
+  const theme = useTheme();
+  const weekStart = date ? startOfWeek(date) : null;
+
+  const days = useMemo(() => {
+    if (!weekStart) return [];
+    return [0, 1, 2, 3, 4, 5, 6]
+      .map((offset) => addDays(weekStart, offset))
+      .filter((day) => !hiddenWeekdays.includes(day.getDay()))
+      .map((day) => ({
+        day,
+        summaries: eventsOnDate(events, day).map(scheduledEventSummary),
+      }));
+  }, [weekStart, events, hiddenWeekdays]);
+
+  const totalJobs = days.reduce((sum, entry) => sum + entry.summaries.length, 0);
+  const weekEnd = days.length > 0 ? days[days.length - 1].day : null;
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, pb: 1 }}>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-            {date ? format(date, 'EEEE, MMM d') : ''}
+            {weekStart && weekEnd ? `${format(weekStart, 'MMM d')} \u2013 ${format(weekEnd, 'MMM d')}` : ''}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            {summaries.length === 1 ? '1 job scheduled' : `${summaries.length} jobs scheduled`}
+            {totalJobs === 1 ? '1 job this week' : `${totalJobs} jobs this week`}
           </Typography>
         </Box>
-        <IconButton size="small" onClick={onClose} aria-label="Close schedule details">
+        <IconButton size="small" onClick={onClose} aria-label="Close week schedule">
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
       <DialogContent sx={{ px: 2, pb: 2 }}>
-        {summaries.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
-            Nothing is scheduled on this day.
-          </Typography>
-        ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {summaries.map((summary) => (
-              <Paper
-                key={summary.key}
-                variant="outlined"
-                sx={{ p: 1.5, borderLeft: `4px solid ${summary.color}`, opacity: summary.closedOut ? 0.75 : 1 }}
-              >
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
-                  {summary.customerName}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {days.map(({ day, summaries }) => {
+            const isTappedDay = date ? isSameDay(day, date) : false;
+            return (
+              <Box key={format(day, 'yyyy-MM-dd')}>
+                <Typography
+                  variant="subtitle2"
+                  sx={{
+                    fontWeight: 700,
+                    mb: 0.75,
+                    pb: 0.25,
+                    borderBottom: `2px solid ${isTappedDay ? theme.palette.primary.main : theme.palette.divider}`,
+                    color: isTappedDay ? 'primary.main' : 'text.primary',
+                  }}
+                >
+                  {format(day, 'EEEE, MMM d')}
+                  {isToday(day) ? ' \u00b7 Today' : ''}
                 </Typography>
-                {summary.jobTitle && summary.jobTitle !== summary.customerName && (
-                  <Typography variant="body2" color="text.secondary">
-                    {summary.jobTitle}
+                {summaries.length === 0 ? (
+                  <Typography variant="body2" color="text.disabled">
+                    Nothing scheduled
                   </Typography>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+                    {summaries.map((summary) => (
+                      <ScheduleSummaryCard key={summary.key} summary={summary} />
+                    ))}
+                  </Box>
                 )}
-                <ScheduleDetailRow label="Installer" value={summary.installer || 'Unassigned'} />
-                <ScheduleDetailRow label="Location" value={summary.location || 'No address on file'} />
-                <ScheduleDetailRow label="Scheduled" value={summary.dateLabel || 'No dates'} />
-                {summary.phone && (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    href={`tel:${nanpDigitsOnly(summary.phone) || summary.phone}`}
-                    sx={{ mt: 1.25 }}
-                  >
-                    Call {formatPhoneForDisplay(summary.phone)}
-                  </Button>
-                )}
-              </Paper>
-            ))}
-          </Box>
-        )}
+              </Box>
+            );
+          })}
+        </Box>
       </DialogContent>
     </Dialog>
   );
@@ -1809,9 +1854,9 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     return 'right';
   });
   const [benchWidth, setBenchWidth] = useState(tvMode ? 260 : 320);
-  // Phones get a read-only month view: no bench, no scheduling, tap a day for details.
+  // Phones get a read-only month view: no bench, no scheduling, tap a day for that week's schedule.
   const mobileViewOnly = isMobile && !tvMode;
-  const [mobileDayDetails, setMobileDayDetails] = useState(null);
+  const [mobileWeekDate, setMobileWeekDate] = useState(null);
   const canModifyCalendarWithPin = () => canModifyCalendar();
 
   useEffect(() => {
@@ -2071,7 +2116,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
 
   const handleDayClick = (date) => {
     if (mobileViewOnly) {
-      setMobileDayDetails(date);
+      setMobileWeekDate(date);
       return;
     }
     if (!canModifyCalendarWithPin()) {
@@ -2979,11 +3024,12 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
         </>
       )}
 
-      <MobileDayScheduleDialog
-        open={Boolean(mobileDayDetails)}
-        date={mobileDayDetails}
-        events={mobileDayDetails ? eventsOnDate(calendarEvents, mobileDayDetails) : []}
-        onClose={() => setMobileDayDetails(null)}
+      <MobileWeekScheduleDialog
+        open={Boolean(mobileWeekDate)}
+        date={mobileWeekDate}
+        events={calendarEvents}
+        hiddenWeekdays={effectiveHiddenWeekdays}
+        onClose={() => setMobileWeekDate(null)}
       />
 
       {/* Event Modal */}

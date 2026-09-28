@@ -248,13 +248,13 @@ function readShowZeroCommissionJobs(): boolean {
 }
 
 function readCommissionPageTab(): CommissionPageTab {
-  if (typeof window === 'undefined') return 'jobs';
+  if (typeof window === 'undefined') return 'checks';
   try {
     const stored = window.localStorage.getItem(COMMISSION_PAGE_TAB_KEY);
-    if (stored === 'checks' || stored === 'recent') return stored;
-    return 'jobs';
+    if (stored === 'jobs' || stored === 'recent') return stored;
+    return 'checks';
   } catch {
-    return 'jobs';
+    return 'checks';
   }
 }
 
@@ -3690,9 +3690,9 @@ function CommissionLogsPage() {
             onChange={(_, value: CommissionPageTab) => setPageTab(value)}
             sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
           >
+            <Tab value="checks" label="Checks / cash" />
             <Tab value="jobs" label="Jobs" />
             <Tab value="recent" label="Recent paid" />
-            <Tab value="checks" label="Checks / cash" />
           </Tabs>
 
           <TextField
