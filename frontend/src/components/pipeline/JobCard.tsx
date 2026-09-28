@@ -95,10 +95,10 @@ function JobCard(props: Record<string, unknown>) {
   const compactCard = narrow || minHeightPx <= 56;
   const ultraCompact = narrow || minHeightPx <= 48;
   const contentPy = narrow ? 0.5 : compactCard ? 0.75 : 1.5;
-  const titleFontRem = narrow ? '0.625rem' : ultraCompact ? '0.75rem' : compactCard ? '0.8125rem' : '0.875rem';
+  const titleFontRem = narrow ? '0.6875rem' : ultraCompact ? '0.75rem' : compactCard ? '0.8125rem' : '0.875rem';
   const descFontRem = ultraCompact ? '0.6875rem' : '0.75rem';
-  const dotSize = narrow ? 6 : ultraCompact ? 8 : 10;
-  const cardMinHeight = narrow ? 30 : minHeightPx;
+  const dotSize = ultraCompact ? 8 : 10;
+  const cardMinHeight = narrow ? 32 : minHeightPx;
 
   return (
     <Card
@@ -118,7 +118,7 @@ function JobCard(props: Record<string, unknown>) {
           : '0 1px 4px rgba(0, 0, 0, 0.06)',
         cursor: canModify ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
         transition: 'all 0.2s ease',
-        borderLeft: `3px solid ${statusColor}`,
+        borderLeft: `${narrow ? 4 : 3}px solid ${statusColor}`,
         opacity: isDragging ? 0.5 : 1,
         '&:hover': {
           boxShadow: theme.palette.mode === 'dark'
@@ -187,21 +187,24 @@ function JobCard(props: Record<string, unknown>) {
             </>
           )}
           </Box>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, flexShrink: 0 }}>
-          <Tooltip title={statusLabel}>
-            <Box
-              sx={{
-                flexShrink: 0,
-                width: dotSize,
-                height: dotSize,
-                borderRadius: '50%',
-                backgroundColor: statusColor,
-                border: `${narrow ? 1 : 2}px solid ${theme.palette.background.paper}`,
-                mt: ultraCompact ? 0.25 : 0.5,
-              }}
-            />
-          </Tooltip>
-        </Box>
+        {/* The dot repeats what the coloured left edge already says — drop it in narrow columns. */}
+        {!narrow && (
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, flexShrink: 0 }}>
+            <Tooltip title={statusLabel}>
+              <Box
+                sx={{
+                  flexShrink: 0,
+                  width: dotSize,
+                  height: dotSize,
+                  borderRadius: '50%',
+                  backgroundColor: statusColor,
+                  border: `2px solid ${theme.palette.background.paper}`,
+                  mt: ultraCompact ? 0.25 : 0.5,
+                }}
+              />
+            </Tooltip>
+          </Box>
+        )}
       </Box>
       </CardContent>
     </Card>

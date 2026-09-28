@@ -398,27 +398,33 @@ function PipelineBoard({
       >
         {/* Column Header */}
         <Card
+          elevation={isMobile ? 0 : undefined}
           sx={{
-            background: theme.palette.mode === 'dark'
-              ? 'linear-gradient(135deg, #2A2A2A 0%, #1E1E1E 100%)'
-              : 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
+            // Phones use a flat label bar; desktop keeps the gradient card.
+            background: isMobile
+              ? theme.palette.mode === 'dark'
+                ? '#262B33'
+                : '#E9EDF4'
+              : theme.palette.mode === 'dark'
+                ? 'linear-gradient(135deg, #2A2A2A 0%, #1E1E1E 100%)'
+                : 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
             borderRadius: isMobile ? '6px' : '12px',
-            mb: isMobile ? 0.5 : 1.5,
+            mb: isMobile ? 0.75 : 1.5,
             boxShadow: theme.palette.mode === 'dark'
               ? '0 1px 4px rgba(0, 0, 0, 0.3)'
               : '0 1px 4px rgba(0, 0, 0, 0.04)',
           }}
         >
-          <CardContent sx={{ p: isMobile ? 0.625 : 1.5, '&:last-child': { pb: isMobile ? 0.625 : 1.5 } }}>
+          <CardContent sx={{ p: isMobile ? 0.75 : 1.5, '&:last-child': { pb: isMobile ? 0.75 : 1.5 } }}>
             <Box
               sx={{
                 display: 'flex',
-                // Phone columns are ~80px wide, so the label and total stack instead of sharing a row.
-                flexDirection: isMobile ? 'column' : 'row',
                 justifyContent: 'space-between',
-                alignItems: isMobile ? 'stretch' : 'flex-start',
-                gap: isMobile ? 0.25 : 1,
+                alignItems: isMobile ? 'center' : 'flex-start',
+                gap: isMobile ? 0 : 1,
                 mb: isMobile ? 0 : 0.75,
+                // Fixed height on phones so every column's cards start on the same line.
+                minHeight: isMobile ? 33 : undefined,
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1, minWidth: 0 }}>
@@ -433,12 +439,12 @@ function PipelineBoard({
                     fontSize: isMobile ? '0.5625rem' : '0.75rem',
                     lineHeight: isMobile ? 1.2 : undefined,
                     minWidth: 0,
-                    // Two lines max keeps every column header the same height.
+                    // Three lines fits the longest stage name ("Estimate Current, first 5 days").
                     ...(isMobile
                       ? {
                           display: '-webkit-box',
                           WebkitBoxOrient: 'vertical',
-                          WebkitLineClamp: 2,
+                          WebkitLineClamp: 3,
                           overflow: 'hidden',
                         }
                       : null),
@@ -448,14 +454,16 @@ function PipelineBoard({
                 </Typography>
                 {!isMobile && renderStageDescriptionIcon(stageId)}
               </Box>
+              {/* Stage totals are desktop-only: phones keep the header to a plain label bar. */}
+              {!isMobile && (
               <Box
                 sx={{
                   flexShrink: 0,
                   display: 'flex',
-                  justifyContent: isMobile ? 'flex-start' : 'flex-end',
+                  justifyContent: 'flex-end',
                   alignItems: 'flex-start',
-                  minWidth: isMobile ? 0 : 40,
-                  minHeight: isMobile ? 0 : 18,
+                  minWidth: 40,
+                  minHeight: 18,
                 }}
               >
                 {hideSensitive ? (
@@ -482,11 +490,11 @@ function PipelineBoard({
                   <Typography
                     variant="body2"
                     sx={{
-                      fontSize: isMobile ? '0.625rem' : '0.875rem',
-                      fontWeight: isMobile ? 700 : 500,
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
                       color: theme.palette.primary.main,
                       lineHeight: 1.1,
-                      textAlign: isMobile ? 'left' : 'right',
+                      textAlign: 'right',
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
@@ -494,8 +502,9 @@ function PipelineBoard({
                   </Typography>
                 )}
               </Box>
+              )}
             </Box>
-            {/* Job count and stage shortcuts are desktop-only — phones keep the header to a label and total. */}
+            {/* Job count and stage shortcuts are desktop-only too. */}
             {!isMobile && (
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box
@@ -564,7 +573,7 @@ function PipelineBoard({
         </Card>
 
         {/* Job Cards */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 0.5 : 1 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 0.625 : 1 }}>
           {stageJobs.length > 0 ? (
             stageJobs.map((job) => (
               <JobCard
@@ -611,10 +620,10 @@ function PipelineBoard({
         <Typography
           variant="h6"
           sx={{
-            fontSize: isMobile ? '0.75rem' : '1rem',
-            fontWeight: 600,
+            fontSize: isMobile ? '0.8125rem' : '1rem',
+            fontWeight: isMobile ? 800 : 600,
             color: theme.palette.text.primary,
-            mb: isMobile ? 0.5 : 1.5,
+            mb: isMobile ? 0.75 : 1.5,
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
           }}
@@ -624,7 +633,7 @@ function PipelineBoard({
         <Box
           sx={{
             display: 'flex',
-            gap: isMobile ? 0.25 : 2,
+            gap: isMobile ? 0.5 : 2,
             overflowX: 'auto',
             pb: 1,
             width: '100%',

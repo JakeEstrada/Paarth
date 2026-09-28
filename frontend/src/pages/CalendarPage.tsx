@@ -2383,6 +2383,27 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     setCurrentDate(new Date());
   };
 
+  // Swipe the month grid sideways to page through months (phones only).
+  const swipeStartRef = useRef(null);
+
+  const handleCalendarTouchStart = (event) => {
+    const touch = event.touches?.[0];
+    swipeStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  };
+
+  const handleCalendarTouchEnd = (event) => {
+    const start = swipeStartRef.current;
+    const touch = event.changedTouches?.[0];
+    swipeStartRef.current = null;
+    if (!start || !touch) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    // Mostly-horizontal and far enough to be deliberate, so vertical scrolling still wins.
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx < 0) handleNextMonth();
+    else handlePrevMonth();
+  };
+
   const effectiveHiddenWeekdays = tvMode ? [] : hiddenWeekdays;
   const visibleWeekdays = useMemo(
     () => [0, 1, 2, 3, 4, 5, 6].filter((d) => !effectiveHiddenWeekdays.includes(d)),
@@ -2965,14 +2986,16 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
       {/* Phones: calendar only — the bench and scheduled lists are desktop tools. */}
       {mobileViewOnly && (
         <Box sx={{ flex: 1, overflow: 'auto', p: 0.5, minHeight: 0 }}>
-          {renderCalendarContent()}
+          <Box onTouchStart={handleCalendarTouchStart} onTouchEnd={handleCalendarTouchEnd}>
+            {renderCalendarContent()}
+          </Box>
 
           <Typography
             variant="caption"
             color="text.secondary"
             sx={{ display: 'block', textAlign: 'center', mt: 0.75, fontStyle: 'italic' }}
           >
-            Tap any day to see that week&apos;s breakdown.
+            Swipe the calendar for another month. Tap any day to see that week&apos;s breakdown.
           </Typography>
 
           <Box sx={{ mt: 2, pb: 2 }}>

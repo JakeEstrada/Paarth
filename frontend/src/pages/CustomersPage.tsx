@@ -806,7 +806,8 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                 Exit Customers view
               </Button>
             </>
-          ) : !isReadonlyView ? (
+          ) : !isReadonlyView && !isMobile ? (
+            /* Customer creation stays on desktop — phones are for looking things up. */
             <Button
               variant="contained"
               startIcon={<AddIcon />}

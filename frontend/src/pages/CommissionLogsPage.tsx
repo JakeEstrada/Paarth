@@ -265,10 +265,17 @@ function parseDateSortValue(value: string): number {
   return Number.isFinite(time) ? time : 0;
 }
 
+/** Matches the `md` breakpoint behind useIsMobile(), for helpers that run outside components. */
+function isMobileViewport(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(max-width: 899.95px)').matches;
+}
+
 function formatCheckDisplayDate(value: string): string {
   if (!value) return '—';
   try {
-    return format(new Date(`${value}T12:00:00`), 'MMM dd, yyyy');
+    // Phones get the numeric form so date columns don't force sideways scrolling.
+    return format(new Date(`${value}T12:00:00`), isMobileViewport() ? 'dd/MM/yyyy' : 'MMM dd, yyyy');
   } catch {
     return value;
   }
@@ -695,6 +702,7 @@ function CommissionChecksTable({
   onEditGroupCheck,
 }: CommissionChecksTableProps) {
   const theme = useTheme();
+  const isMobile = useIsMobile();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
   const [contextMenuGroup, setContextMenuGroup] = useState<CommissionCheckGroup | null>(null);
@@ -730,20 +738,23 @@ function CommissionChecksTable({
 
   return (
     <>
-    <Table stickyHeader size="small" sx={{ minWidth: 760 }}>
+    <Table stickyHeader size="small" sx={{ minWidth: isMobile ? 0 : 760 }}>
       <TableHead>
         <TableRow>
           <TableCell sx={{ width: 44, bgcolor: 'background.paper' }} />
-          <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
+          <TableCell sx={{ fontWeight: 700, minWidth: isMobile ? 0 : 120, bgcolor: 'background.paper' }}>
             Paid date
           </TableCell>
-          <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }}>
+          <TableCell sx={{ fontWeight: 700, minWidth: isMobile ? 0 : 120, bgcolor: 'background.paper' }}>
             Check / cash
           </TableCell>
-          <TableCell sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }}>
-            Payments
-          </TableCell>
-          <TableCell sx={{ fontWeight: 700, minWidth: 120, bgcolor: 'background.paper' }} align="right">
+          {/* The payment count is desktop-only — expanding the row already lists them. */}
+          {!isMobile && (
+            <TableCell sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }}>
+              Payments
+            </TableCell>
+          )}
+          <TableCell sx={{ fontWeight: 700, minWidth: isMobile ? 0 : 120, bgcolor: 'background.paper' }} align="right">
             Total
           </TableCell>
         </TableRow>
@@ -787,11 +798,13 @@ function CommissionChecksTable({
                     </Typography>
                   )}
                 </TableCell>
-                <TableCell>
-                  <Typography variant="body2" color="text.secondary">
-                    {group.entries.length} payment{group.entries.length === 1 ? '' : 's'}
-                  </Typography>
-                </TableCell>
+                {!isMobile && (
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      {group.entries.length} payment{group.entries.length === 1 ? '' : 's'}
+                    </Typography>
+                  </TableCell>
+                )}
                 <TableCell align="right">
                   <Typography variant="body1" sx={{ fontWeight: 700 }}>
                     {formatMoney(group.totalAmount)}
@@ -799,7 +812,7 @@ function CommissionChecksTable({
                 </TableCell>
               </TableRow>
               <TableRow key={`${group.id}-details`}>
-                <TableCell colSpan={5} sx={{ py: 0, borderBottom: isOpen ? undefined : 0 }}>
+                <TableCell colSpan={isMobile ? 4 : 5} sx={{ py: 0, borderBottom: isOpen ? undefined : 0 }}>
                   <Collapse in={isOpen} timeout="auto" unmountOnExit>
                     <Box sx={{ py: 1, pl: 1, pr: 1 }}>
                       <Table size="small">
