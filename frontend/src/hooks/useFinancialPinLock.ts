@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useIsMobile } from './useIsMobile';
 
 export const FINANCIAL_AMOUNTS_PIN = '7212';
 const FINANCIAL_AMOUNTS_UNLOCK_KEY = 'financialAmountsUnlockedV1';
@@ -25,6 +26,7 @@ function notifyFinancialUnlockChanged() {
 }
 
 export function useFinancialPinLock() {
+  const isMobile = useIsMobile();
   const [unlocked, setUnlocked] = useState(() => readFinancialUnlockFlag());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -82,16 +84,19 @@ export function useFinancialPinLock() {
     setPinError('');
   }, []);
 
+  // Phones skip the PIN gate entirely: amounts are always visible and the dialog never opens.
+  const effectiveUnlocked = isMobile || unlocked;
+
   return {
-    hideFinancials: !unlocked,
-    unlocked,
-    dialogOpen,
+    hideFinancials: !effectiveUnlocked,
+    unlocked: effectiveUnlocked,
+    dialogOpen: isMobile ? false : dialogOpen,
     pinInput,
     pinError,
     setPinInput,
-    openUnlockDialog,
+    openUnlockDialog: isMobile ? () => {} : openUnlockDialog,
     submitPin,
-    lockFinancials,
+    lockFinancials: isMobile ? () => {} : lockFinancials,
     closeDialog,
   };
 }

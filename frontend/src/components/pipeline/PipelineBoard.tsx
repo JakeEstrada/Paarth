@@ -418,7 +418,7 @@ function PipelineBoard({
                 justifyContent: 'space-between',
                 alignItems: isMobile ? 'stretch' : 'flex-start',
                 gap: isMobile ? 0.25 : 1,
-                mb: isMobile ? 0.25 : 0.75,
+                mb: isMobile ? 0 : 0.75,
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1, minWidth: 0 }}>
@@ -495,26 +495,27 @@ function PipelineBoard({
                 )}
               </Box>
             </Box>
+            {/* Job count and stage shortcuts are desktop-only — phones keep the header to a label and total. */}
+            {!isMobile && (
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box
                 sx={{
-                  minWidth: isMobile ? 16 : 24,
+                  minWidth: 24,
                   textAlign: 'center',
                   bgcolor: 'background.paper',
                   border: '1px solid',
                   borderColor: 'divider',
-                  px: isMobile ? 0.5 : 1,
-                  py: isMobile ? 0 : 0.25,
+                  px: 1,
+                  py: 0.25,
                   borderRadius: '12px',
-                  fontSize: isMobile ? '0.5625rem' : '0.75rem',
+                  fontSize: '0.75rem',
                   fontWeight: 600,
                   color: count > 0 ? 'text.primary' : 'text.disabled',
                 }}
               >
                 {count}
               </Box>
-              {/* Stage shortcuts are desktop-only; phone columns have no room for them. */}
-              <Box sx={{ display: isMobile ? 'none' : 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 {stageId === 'ESTIMATE_SENT' && (
                   <Tooltip title="View archived estimates">
                     <IconButton
@@ -558,6 +559,7 @@ function PipelineBoard({
                 )}
               </Box>
             </Box>
+            )}
           </CardContent>
         </Card>
 

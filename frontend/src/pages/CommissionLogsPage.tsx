@@ -67,6 +67,7 @@ import { getCommissionPaymentSplits, getJobTotalWithChangeOrders, formatMoney, f
 import { isCommissionEligibleJob } from '../utils/commissionJobEligibility';
 import { useAuth } from '../context/AuthContext';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { getTenantRoom } from '../services/socket';
 import JobDetailModal from '../components/jobs/JobDetailModal';
 
@@ -1756,10 +1757,11 @@ interface CommissionOverviewTiersProps {
 
 function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
   const theme = useTheme();
+  const isMobile = useIsMobile();
   // Preserve commissionLog paymentOrder — do not re-sort by scheduleIndex here.
 
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 0.5 : 0.75 }}>
       {payments.map((payment) => {
         const styles = tierChipStyles(theme, payment);
         const dueAmount = payment.amount > 0 ? payment.amount : payment.potentialAmount;
@@ -1775,11 +1777,11 @@ function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
           >
             <Box
               sx={{
-                px: 1.25,
-                py: 0.75,
+                px: isMobile ? 0.625 : 1.25,
+                py: isMobile ? 0.375 : 0.75,
                 borderRadius: 1,
                 border: 1,
-                minWidth: 88,
+                minWidth: isMobile ? 56 : 88,
                 ...styles,
               }}
             >
@@ -1805,6 +1807,7 @@ interface SortableOverviewRowProps {
 
 function SortableOverviewRow({ row, onOpenPayments, onOpenJobDetail }: SortableOverviewRowProps) {
   const theme = useTheme();
+  const isMobile = useIsMobile();
   const {
     attributes,
     listeners,
@@ -1845,6 +1848,8 @@ function SortableOverviewRow({ row, onOpenPayments, onOpenJobDetail }: SortableO
             : undefined),
       }}
     >
+      {/* Reorder handle, job column, rate and the view-job shortcut are desktop-only. */}
+      {!isMobile && (
       <TableCell sx={{ width: 40, px: 0.5, verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
         {isOverviewActiveRow(row) ? (
           <IconButton
@@ -1863,11 +1868,18 @@ function SortableOverviewRow({ row, onOpenPayments, onOpenJobDetail }: SortableO
           </IconButton>
         ) : null}
       </TableCell>
+      )}
       <TableCell>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {row.customerName}
         </Typography>
+        {isMobile && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            {row.jobLabel || 'Untitled'}
+          </Typography>
+        )}
       </TableCell>
+      {!isMobile && (
       <TableCell>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {row.jobLabel || 'Untitled'}
@@ -1876,15 +1888,19 @@ function SortableOverviewRow({ row, onOpenPayments, onOpenJobDetail }: SortableO
           {row.stageLabel || '-'}
         </Typography>
       </TableCell>
-      <TableCell align="right" sx={{ fontWeight: 600 }}>
+      )}
+      <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
         {formatMoney(row.jobTotal)}
       </TableCell>
+      {!isMobile && (
       <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
         {formatCommissionRateLabel(row.commissionRate)}
       </TableCell>
+      )}
       <TableCell sx={{ py: 1 }}>
         <CommissionOverviewTiers payments={row.payments} />
       </TableCell>
+      {!isMobile && (
       <TableCell sx={{ width: 44, px: 0.5 }} onClick={(e) => e.stopPropagation()}>
         <Tooltip title="View job">
           <IconButton
@@ -1896,6 +1912,7 @@ function SortableOverviewRow({ row, onOpenPayments, onOpenJobDetail }: SortableO
           </IconButton>
         </Tooltip>
       </TableCell>
+      )}
     </TableRow>
   );
 }
@@ -1908,6 +1925,7 @@ interface CommissionOverviewTableProps {
 }
 
 function CommissionOverviewTable({ rows, onReorder, onOpenPayments, onOpenJobDetail }: CommissionOverviewTableProps) {
+  const isMobile = useIsMobile();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
@@ -1928,32 +1946,36 @@ function CommissionOverviewTable({ rows, onReorder, onOpenPayments, onOpenJobDet
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <Table stickyHeader size="small" sx={{ minWidth: 680 }}>
+      <Table stickyHeader size="small" sx={{ minWidth: isMobile ? 0 : 680 }}>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ width: 40, bgcolor: 'background.paper' }} />
-            <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
+            {!isMobile && <TableCell sx={{ width: 40, bgcolor: 'background.paper' }} />}
+            <TableCell sx={{ fontWeight: 700, minWidth: isMobile ? 0 : 140, bgcolor: 'background.paper' }}>
               Customer
             </TableCell>
+            {!isMobile && (
             <TableCell sx={{ fontWeight: 700, minWidth: 140, bgcolor: 'background.paper' }}>
               Job
             </TableCell>
+            )}
             <TableCell
-              sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'background.paper' }}
+              sx={{ fontWeight: 700, minWidth: isMobile ? 0 : 100, bgcolor: 'background.paper' }}
               align="right"
             >
-              Job Total
+              {isMobile ? 'Total' : 'Job Total'}
             </TableCell>
+            {!isMobile && (
             <TableCell
               sx={{ fontWeight: 700, minWidth: 72, bgcolor: 'background.paper' }}
               align="right"
             >
               Rate
             </TableCell>
-            <TableCell sx={{ fontWeight: 700, minWidth: 280, bgcolor: 'background.paper' }}>
+            )}
+            <TableCell sx={{ fontWeight: 700, minWidth: isMobile ? 0 : 280, bgcolor: 'background.paper' }}>
               Payment tiers
             </TableCell>
-            <TableCell sx={{ width: 44, bgcolor: 'background.paper' }} />
+            {!isMobile && <TableCell sx={{ width: 44, bgcolor: 'background.paper' }} />}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -3075,6 +3097,7 @@ function CommissionPaymentModal({
 
 function CommissionLogsPage() {
   const { tenantIdForBranding } = useAuth();
+  const isMobile = useIsMobile();
   const tenantRoom = getTenantRoom(tenantIdForBranding);
   const [loadingCommissionLogs, setLoadingCommissionLogs] = useState(false);
   const [commissionSourceJobs, setCommissionSourceJobs] = useState<CommissionSourceJobRow[]>([]);
@@ -3648,6 +3671,8 @@ function CommissionLogsPage() {
                     : 'Active jobs on top. At the bottom: underpaid (all tiers paid), then overpaid (red), then settled (green). Click a row to edit.'}
               </Typography>
             </Box>
+            {/* Rate settings are desktop-only; phones just read the logs. */}
+            {!isMobile && (
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
               <FormControlLabel
                 control={
@@ -3683,6 +3708,7 @@ function CommissionLogsPage() {
             />
               </Tooltip>
             </Box>
+            )}
           </Box>
 
           <Tabs

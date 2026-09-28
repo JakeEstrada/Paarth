@@ -3,9 +3,11 @@ import { Box } from '@mui/material';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import SiteAssistantChat from '../assistant/SiteAssistantChat';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 function MainLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -39,7 +41,8 @@ function MainLayout({ children }) {
           {children}
         </Box>
       </Box>
-      <SiteAssistantChat />
+      {/* The assistant bubble is desktop-only. */}
+      {!isMobile && <SiteAssistantChat />}
     </Box>
   );
 }

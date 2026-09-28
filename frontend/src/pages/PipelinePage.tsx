@@ -485,13 +485,16 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
                     ? 'Shop View'
                     : 'Operations Pipeline'}
               </Typography>
-              <Typography variant="body1" color="text.secondary">
-                {tvMode
-                  ? 'Fullscreen board — use Exit to return to the app'
-                  : isShopViewRole
-                    ? 'Pipeline board — job stages and scheduling context for the shop floor'
-                    : 'Manage your projects from first contact to final payment'}
-              </Typography>
+              {/* Phones get the title only — the strapline eats a third of the screen. */}
+              {!isMobile && (
+                <Typography variant="body1" color="text.secondary">
+                  {tvMode
+                    ? 'Fullscreen board — use Exit to return to the app'
+                    : isShopViewRole
+                      ? 'Pipeline board — job stages and scheduling context for the shop floor'
+                      : 'Manage your projects from first contact to final payment'}
+                </Typography>
+              )}
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
               {!tvMode && (

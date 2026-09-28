@@ -196,25 +196,28 @@ function TopBar({ onMenuClick }) {
           )}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <IconButton
-            onClick={(e) => {
-              e.stopPropagation();
-              if (unlocked) {
-                lockFinancials();
-              } else {
-                openUnlockDialog();
-              }
-            }}
-            size="small"
-            title={unlocked ? 'Lock financial amounts' : 'Unlock financial amounts'}
-            sx={{
-              '&:hover': {
-                backgroundColor: 'action.hover',
-              },
-            }}
-          >
-            {unlocked ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}
-          </IconButton>
+          {/* Phones have no PIN gate, so there's nothing to lock. */}
+          {!isMobile && (
+            <IconButton
+              onClick={(e) => {
+                e.stopPropagation();
+                if (unlocked) {
+                  lockFinancials();
+                } else {
+                  openUnlockDialog();
+                }
+              }}
+              size="small"
+              title={unlocked ? 'Lock financial amounts' : 'Unlock financial amounts'}
+              sx={{
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                },
+              }}
+            >
+              {unlocked ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}
+            </IconButton>
+          )}
           <IconButton
             onClick={toggleColorMode}
             size="small"
