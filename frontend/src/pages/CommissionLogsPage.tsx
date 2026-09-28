@@ -275,7 +275,7 @@ function formatCheckDisplayDate(value: string): string {
   if (!value) return '—';
   try {
     // Phones get the numeric form so date columns don't force sideways scrolling.
-    return format(new Date(`${value}T12:00:00`), isMobileViewport() ? 'dd/MM/yyyy' : 'MMM dd, yyyy');
+    return format(new Date(`${value}T12:00:00`), isMobileViewport() ? 'MM/dd/yyyy' : 'MMM dd, yyyy');
   } catch {
     return value;
   }
@@ -1774,7 +1774,16 @@ function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
   // Preserve commissionLog paymentOrder — do not re-sort by scheduleIndex here.
 
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 0.5 : 0.75 }}>
+    <Box
+      sx={{
+        display: 'flex',
+        // Phones keep every tier on one line; wide labels truncate instead of stacking.
+        flexWrap: isMobile ? 'nowrap' : 'wrap',
+        gap: isMobile ? 0.375 : 0.75,
+        minWidth: 0,
+        overflow: isMobile ? 'hidden' : undefined,
+      }}
+    >
       {payments.map((payment) => {
         const styles = tierChipStyles(theme, payment);
         const dueAmount = payment.amount > 0 ? payment.amount : payment.potentialAmount;
@@ -1790,18 +1799,38 @@ function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
           >
             <Box
               sx={{
-                px: isMobile ? 0.625 : 1.25,
-                py: isMobile ? 0.375 : 0.75,
+                px: isMobile ? 0.5 : 1.25,
+                py: isMobile ? 0.25 : 0.75,
                 borderRadius: 1,
                 border: 1,
-                minWidth: isMobile ? 56 : 88,
+                minWidth: isMobile ? 0 : 88,
+                overflow: 'hidden',
                 ...styles,
               }}
             >
-              <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', lineHeight: 1.2 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 700,
+                  display: 'block',
+                  lineHeight: 1.2,
+                  fontSize: isMobile ? '0.5625rem' : undefined,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
                 {payment.label}
               </Typography>
-              <Typography variant="caption" sx={{ display: 'block', opacity: 0.9 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  opacity: 0.9,
+                  fontSize: isMobile ? '0.5625rem' : undefined,
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {formatMoney(dueAmount)}
               </Typography>
             </Box>
@@ -1910,7 +1939,7 @@ function SortableOverviewRow({ row, onOpenPayments, onOpenJobDetail }: SortableO
         {formatCommissionRateLabel(row.commissionRate)}
       </TableCell>
       )}
-      <TableCell sx={{ py: 1 }}>
+      <TableCell sx={{ py: 1, ...(isMobile ? { maxWidth: 0, width: '45%' } : null) }}>
         <CommissionOverviewTiers payments={row.payments} />
       </TableCell>
       {!isMobile && (

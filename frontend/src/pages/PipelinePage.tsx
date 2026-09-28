@@ -380,12 +380,16 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     }
   };
 
+  // Phones always show the default board — custom layouts stay a desktop tool. The saved
+  // selection is left untouched so desktop still opens whatever the user last picked.
+  const effectivePipelineId = isMobile ? 'default' : selectedPipelineId;
+
   const layoutFilteredJobs = useMemo(() => {
-    if (selectedPipelineId === 'default') {
+    if (effectivePipelineId === 'default') {
       return jobs.filter((j) => !j.pipelineLayoutId);
     }
-    return jobs.filter((j) => String(j.pipelineLayoutId || '') === selectedPipelineId);
-  }, [jobs, selectedPipelineId]);
+    return jobs.filter((j) => String(j.pipelineLayoutId || '') === effectivePipelineId);
+  }, [jobs, effectivePipelineId]);
 
   const filteredJobs = useMemo(() => {
     const term = pipelineSearch.trim().toLowerCase();
@@ -415,11 +419,11 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   );
 
   const activeCustomLayout = useMemo(() => {
-    if (selectedPipelineId === 'default') return null;
-    return pipelineLayouts.find((l) => String(l._id) === selectedPipelineId) || null;
-  }, [pipelineLayouts, selectedPipelineId]);
+    if (effectivePipelineId === 'default') return null;
+    return pipelineLayouts.find((l) => String(l._id) === effectivePipelineId) || null;
+  }, [pipelineLayouts, effectivePipelineId]);
 
-  const pipelineMode = selectedPipelineId === 'default' ? 'default' : 'custom';
+  const pipelineMode = effectivePipelineId === 'default' ? 'default' : 'custom';
 
   const selectedCustomInitialStage = useMemo(() => {
     if (!activeCustomLayout?.levels?.length) return null;

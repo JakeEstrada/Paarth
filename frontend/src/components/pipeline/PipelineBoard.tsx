@@ -390,10 +390,11 @@ function PipelineBoard({
           backgroundColor: isDraggedOver
             ? alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.07)
             : 'transparent',
-          borderRadius: '8px',
-          border: '2px dashed',
+          borderRadius: isMobile ? 0 : '8px',
+          // The drop outline is desktop-only (touch can't drag), so phones spend that space on text.
+          border: isMobile ? 'none' : '2px dashed',
           borderColor: isDraggedOver ? theme.palette.primary.main : 'transparent',
-          p: isMobile ? 0.25 : 1,
+          p: isMobile ? 0 : 1,
         }}
       >
         {/* Column Header */}
@@ -408,11 +409,14 @@ function PipelineBoard({
               : theme.palette.mode === 'dark'
                 ? 'linear-gradient(135deg, #2A2A2A 0%, #1E1E1E 100%)'
                 : 'linear-gradient(135deg, #F5F7FA 0%, #E8EAF6 100%)',
-            borderRadius: isMobile ? '6px' : '12px',
-            mb: isMobile ? 0.75 : 1.5,
-            boxShadow: theme.palette.mode === 'dark'
-              ? '0 1px 4px rgba(0, 0, 0, 0.3)'
-              : '0 1px 4px rgba(0, 0, 0, 0.04)',
+            // Square panes with tight spacing keep the narrow board looking like a grid.
+            borderRadius: isMobile ? 0 : '12px',
+            mb: isMobile ? 0.375 : 1.5,
+            boxShadow: isMobile
+              ? 'none'
+              : theme.palette.mode === 'dark'
+                ? '0 1px 4px rgba(0, 0, 0, 0.3)'
+                : '0 1px 4px rgba(0, 0, 0, 0.04)',
           }}
         >
           <CardContent sx={{ p: isMobile ? 0.75 : 1.5, '&:last-child': { pb: isMobile ? 0.75 : 1.5 } }}>
@@ -573,7 +577,7 @@ function PipelineBoard({
         </Card>
 
         {/* Job Cards */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 0.625 : 1 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 0.375 : 1 }}>
           {stageJobs.length > 0 ? (
             stageJobs.map((job) => (
               <JobCard
@@ -593,7 +597,7 @@ function PipelineBoard({
                 py: isMobile ? 1 : 3,
                 px: isMobile ? 0.25 : 1,
                 textAlign: 'center',
-                borderRadius: '8px',
+                borderRadius: isMobile ? 0 : '8px',
                 border: '1px dashed',
                 borderColor: isDraggedOver ? 'primary.main' : 'divider',
                 color: isDraggedOver ? 'primary.main' : 'text.disabled',
@@ -623,7 +627,7 @@ function PipelineBoard({
             fontSize: isMobile ? '0.8125rem' : '1rem',
             fontWeight: isMobile ? 800 : 600,
             color: theme.palette.text.primary,
-            mb: isMobile ? 0.75 : 1.5,
+            mb: isMobile ? 0.5 : 1.5,
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
           }}
@@ -633,7 +637,7 @@ function PipelineBoard({
         <Box
           sx={{
             display: 'flex',
-            gap: isMobile ? 0.5 : 2,
+            gap: isMobile ? 0.375 : 2,
             overflowX: 'auto',
             pb: 1,
             width: '100%',
@@ -723,10 +727,12 @@ function PipelineBoard({
       <Paper
         elevation={0}
         sx={{
-          borderRadius: { xs: '12px', sm: '20px' },
-          p: { xs: 1.25, sm: 3 },
+          borderRadius: { xs: 0, sm: '20px' },
+          p: { xs: 0.75, sm: 3 },
         }}
       >
+      {/* Phones are view-only on the default board, so the whole control row is desktop-only. */}
+      {!isMobile && (
       <Box
         sx={{
           mb: { xs: 2, sm: 3 },
@@ -739,8 +745,7 @@ function PipelineBoard({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifySelf: { xs: 'stretch', md: 'start' }, flexWrap: 'wrap' }}>
-          {/* Phones are view-only, so job creation stays on desktop. */}
-          {onNewJobClick && !isMobile && (
+          {onNewJobClick && (
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -766,23 +771,20 @@ function PipelineBoard({
             width: { xs: '100%', md: 'auto' },
           }}
         >
-          {/* Phones skip the search field — the board itself needs the vertical space. */}
-          {!isMobile && (
-            <TextField
-              size="small"
-              label="Search jobs in pipeline"
-              value={search}
-              onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
-              sx={{ width: { xs: '100%', sm: 280 }, minWidth: 0 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          )}
+          <TextField
+            size="small"
+            label="Search jobs in pipeline"
+            value={search}
+            onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
+            sx={{ width: { xs: '100%', sm: 280 }, minWidth: 0 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
           {showPipelinePicker && (
             <FormControl size="small" sx={{ minWidth: 200, maxWidth: 280 }}>
               <InputLabel id="pipeline-layout-select-label">Pipeline</InputLabel>
@@ -855,10 +857,11 @@ function PipelineBoard({
               >
                 <EditIcon fontSize="small" />
               </IconButton>
-            </Tooltip>
+              </Tooltip>
           )}
         </Box>
       </Box>
+      )}
 
       {/* Appointments Phase - Now handled separately, not shown here */}
 

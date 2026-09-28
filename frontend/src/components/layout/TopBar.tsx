@@ -218,18 +218,22 @@ function TopBar({ onMenuClick }) {
               {unlocked ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}
             </IconButton>
           )}
-          <IconButton
-            onClick={toggleColorMode}
-            size="small"
-            title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            sx={{
-              '&:hover': {
-                backgroundColor: 'action.hover',
-              },
-            }}
-          >
-            {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-          </IconButton>
+          {/* On phones this lived next to the avatar and was easy to hit by accident —
+              it moved into the user menu below. */}
+          {!isMobile && (
+            <IconButton
+              onClick={toggleColorMode}
+              size="small"
+              title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              sx={{
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                },
+              }}
+            >
+              {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+            </IconButton>
+          )}
           <Box
             component="button"
             type="button"
@@ -285,6 +289,21 @@ function TopBar({ onMenuClick }) {
             <PersonIcon sx={{ mr: 1, fontSize: 20 }} />
             Account settings
           </MenuItem>
+          {isMobile && (
+            <MenuItem
+              onClick={() => {
+                toggleColorMode();
+                handleClose();
+              }}
+            >
+              {mode === 'dark' ? (
+                <LightModeIcon sx={{ mr: 1, fontSize: 20 }} />
+              ) : (
+                <DarkModeIcon sx={{ mr: 1, fontSize: 20 }} />
+              )}
+              {mode === 'dark' ? 'Light mode' : 'Dark mode'}
+            </MenuItem>
+          )}
           <MenuItem onClick={handleLogout}>
             <LogoutIcon sx={{ mr: 1, fontSize: 20 }} />
             Logout

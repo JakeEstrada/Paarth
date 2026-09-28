@@ -109,16 +109,21 @@ function JobCard(props: Record<string, unknown>) {
       onClick={onClick}
       onContextMenu={handleContextMenu}
       sx={{
-        borderRadius: narrow ? '6px' : '8px',
+        // Narrow columns read cleaner as square tiles with a hairline edge than as
+        // rounded cards with a blurred shadow.
+        borderRadius: narrow ? 0 : '8px',
         minHeight: cardMinHeight,
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: theme.palette.mode === 'dark'
-          ? '0 1px 4px rgba(0, 0, 0, 0.3)'
-          : '0 1px 4px rgba(0, 0, 0, 0.06)',
+        boxShadow: narrow
+          ? 'none'
+          : theme.palette.mode === 'dark'
+            ? '0 1px 4px rgba(0, 0, 0, 0.3)'
+            : '0 1px 4px rgba(0, 0, 0, 0.06)',
+        border: narrow ? `1px solid ${theme.palette.divider}` : undefined,
         cursor: canModify ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
         transition: 'all 0.2s ease',
-        borderLeft: `${narrow ? 4 : 3}px solid ${statusColor}`,
+        borderLeft: `3px solid ${statusColor}`,
         opacity: isDragging ? 0.5 : 1,
         '&:hover': {
           boxShadow: theme.palette.mode === 'dark'
