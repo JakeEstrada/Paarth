@@ -54,6 +54,12 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const PIPELINE_SELECTION_KEY_PREFIX = 'pipelineSelectedLayoutV1';
 
+/** Read once for initial state; the `md` breakpoint matches useIsMobile(). */
+function isMobileViewport() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(max-width: 899.95px)').matches;
+}
+
 function getPipelineSelectionStorageKey(tenantId) {
   const raw =
     tenantId && typeof tenantId === 'object'
@@ -88,8 +94,9 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const [moveStageOpen, setMoveStageOpen] = useState(false);
   const [selectedJobForMove, setSelectedJobForMove] = useState(null);
   const [addJobOpen, setAddJobOpen] = useState(false);
-  const [tasksCollapsed, setTasksCollapsed] = useState(false);
-  const [appointmentsCollapsed, setAppointmentsCollapsed] = useState(false);
+  // Phones open with these collapsed so the board is the first thing on screen.
+  const [tasksCollapsed, setTasksCollapsed] = useState(() => isMobileViewport());
+  const [appointmentsCollapsed, setAppointmentsCollapsed] = useState(() => isMobileViewport());
   const [tasksCount, setTasksCount] = useState(0);
   const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
@@ -470,7 +477,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
         }}
       >
         {/* Page Header */}
-        <Box sx={{ mb: tvMode ? 2 : 4 }}>
+        <Box sx={{ mb: tvMode ? 2 : { xs: 2, sm: 4 } }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
             <Box>
               <Typography variant="h1" sx={{ mb: 1, fontSize: tvMode ? { xs: '1.35rem', sm: '1.6rem' } : undefined }}>
@@ -545,7 +552,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
 
         {/* Todos and Appointments — hidden in shop view or fullscreen pipeline view */}
         {showTasksAndAppointments && (
-        <Box sx={{ mb: 4 }}>
+        <Box sx={{ mb: { xs: 2, sm: 4 } }}>
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: { xs: 2, sm: 3 } }}>
             {/* Todos Section */}
             <Box sx={{ flex: 1 }}>
@@ -567,7 +574,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
                   onClick={() => setTasksCollapsed(false)}
                   sx={{
                     borderRadius: '16px',
-                    p: 3,
+                    p: { xs: 1.5, sm: 3 },
                     boxShadow: theme.palette.mode === 'dark'
                       ? '0 2px 12px rgba(0, 0, 0, 0.3)'
                       : '0 2px 12px rgba(0, 0, 0, 0.06)',
@@ -639,7 +646,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
                   onClick={() => setAppointmentsCollapsed(false)}
                   sx={{
                     borderRadius: '16px',
-                    p: 3,
+                    p: { xs: 1.5, sm: 3 },
                     boxShadow: theme.palette.mode === 'dark'
                       ? '0 2px 12px rgba(0, 0, 0, 0.3)'
                       : '0 2px 12px rgba(0, 0, 0, 0.06)',

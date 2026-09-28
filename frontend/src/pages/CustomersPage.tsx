@@ -1126,7 +1126,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                       fullWidth
                       sx={{ mb: 1 }}
                     />
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       <TextField
                         label="City"
                         value={editCustomerForm.address?.city || ''}
@@ -1134,7 +1134,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                           ...editCustomerForm,
                           address: { ...editCustomerForm.address, city: e.target.value }
                         })}
-                        sx={{ flex: 1 }}
+                        sx={{ flex: 1, minWidth: 140 }}
                       />
                       <TextField
                         label="State"
@@ -1193,13 +1193,13 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                           fullWidth
                           sx={{ mb: 1 }}
                         />
-                        <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                           <TextField
                             size="small"
                             label="City"
                             value={addr.city || ''}
                             onChange={(e) => handleUpdateAddress(idx, 'city', e.target.value)}
-                            sx={{ flex: 1 }}
+                            sx={{ flex: 1, minWidth: 140 }}
                           />
                           <TextField
                             size="small"

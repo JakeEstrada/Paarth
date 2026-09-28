@@ -572,7 +572,7 @@ function WebsiteAnalyticsPage() {
   );
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="lg" disableGutters sx={{ py: { xs: 1, sm: 4 }, px: { xs: 0, sm: 3 } }}>
       <Box sx={{ mb: 2 }}>
         <Typography variant="h1" sx={{ mb: 1 }}>
           Website Analytics
@@ -623,7 +623,7 @@ function WebsiteAnalyticsPage() {
               color={theme.palette.info.main}
             />
           </Box>
-          <Paper sx={{ p: 3, mb: 3 }}>
+          <Paper sx={{ p: { xs: 1.5, sm: 3 }, mb: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
               Campaign
             </Typography>
@@ -852,7 +852,7 @@ function WebsiteAnalyticsPage() {
             <StatCard label="Messages sent" value={report.totals.contactSubmits} icon={MailIcon} color={theme.palette.success.main} />
           </Box>
 
-          <Paper sx={{ p: 3, mb: 3 }}>
+          <Paper sx={{ p: { xs: 1.5, sm: 3 }, mb: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
               Traffic
             </Typography>
@@ -865,7 +865,7 @@ function WebsiteAnalyticsPage() {
             )}
           </Paper>
 
-          <Paper sx={{ p: 3, mb: 3 }}>
+          <Paper sx={{ p: { xs: 1.5, sm: 3 }, mb: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
               Top pages
             </Typography>
@@ -893,7 +893,7 @@ function WebsiteAnalyticsPage() {
             )}
           </Paper>
 
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: { xs: 1.5, sm: 3 } }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
                 Hit log
@@ -924,7 +924,7 @@ function WebsiteAnalyticsPage() {
                 </Button>
               </Box>
             </Box>
-            <TableContainer sx={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <TableContainer sx={{ maxHeight: 'calc(100vh - 280px)', overflowX: 'auto' }}>
               <Table stickyHeader size="small">
                 <TableHead>
                   <TableRow>

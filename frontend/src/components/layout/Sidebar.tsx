@@ -79,6 +79,15 @@ const archiveItems = [
   { text: 'Weekly Activity Log', icon: <TasksIcon />, path: '/completed-tasks' },
 ];
 
+/** Phones only get these pages — see utils/mobileNav.ts for the matching route guard. */
+const mobileItems = [
+  { text: 'Pipeline', icon: <PipelineIcon />, path: '/pipeline' },
+  { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
+  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
+  { text: 'Commission Logs', icon: <TableChartIcon />, path: '/commission-logs' },
+  { text: 'Website Analytics', icon: <AnalyticsIcon />, path: '/developer/analytics', superAdminOnly: true },
+];
+
 function Sidebar({ mobileOpen, onMobileClose }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -213,27 +222,38 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     </List>
   );
 
+  const brandHeader = (
+    <Box
+      sx={{
+        p: isMobile ? 1.5 : 3,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderBottom: `1px solid ${theme.palette.divider}`,
+      }}
+    >
+      <BrandLogo
+        alt="Liminnality"
+        sx={{
+          height: isMobile ? 56 : 96,
+          width: 'auto',
+          maxWidth: '100%',
+          objectFit: 'contain',
+        }}
+      />
+    </Box>
+  );
+
+  const mobileDrawerContent = (
+    <>
+      {brandHeader}
+      {renderNavList(mobileItems)}
+    </>
+  );
+
   const drawerContent = (
     <>
-      <Box
-        sx={{
-          p: 3,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderBottom: `1px solid ${theme.palette.divider}`,
-        }}
-      >
-        <BrandLogo
-          alt="Liminnality"
-          sx={{
-            height: 96,
-            width: 'auto',
-            maxWidth: '100%',
-            objectFit: 'contain',
-          }}
-        />
-      </Box>
+      {brandHeader}
 
       <Box sx={{ px: 2, pt: 2, pb: 1 }}>
         <Typography
@@ -524,7 +544,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
           },
         }}
       >
-        {drawerContent}
+        {mobileDrawerContent}
       </Drawer>
       
       {/* Desktop drawer */}

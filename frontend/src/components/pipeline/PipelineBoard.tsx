@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -33,15 +33,39 @@ import {
   Edit as EditIcon,
   Lock as LockIcon,
   InfoOutlined as InfoOutlinedIcon,
+  ZoomIn as ZoomInIcon,
+  ZoomOut as ZoomOutIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import JobCard from './JobCard';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { updatePipelineLayout, deletePipelineLayout } from '../../utils/pipelineLayoutsApi';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+/** Phone board scale — lets the whole kanban stay in view instead of one column at a time. */
+const MOBILE_ZOOM_KEY = 'pipelineMobileZoomV1';
+const MOBILE_ZOOM_MIN = 0.3;
+const MOBILE_ZOOM_MAX = 1;
+const MOBILE_ZOOM_STEP = 0.1;
+const MOBILE_COLUMN_WIDTH = 220;
+const MOBILE_COLUMN_GAP = 16;
+
+function clampMobileZoom(value, fallback = MOBILE_ZOOM_MIN) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(MOBILE_ZOOM_MAX, Math.max(MOBILE_ZOOM_MIN, Math.round(n * 100) / 100));
+}
+
+/** Scale that fits `columns` side by side in `availableWidth` physical pixels. */
+function fitZoomFor(availableWidth, columns) {
+  if (!availableWidth || !columns) return MOBILE_ZOOM_MAX;
+  const needed = columns * MOBILE_COLUMN_WIDTH + (columns - 1) * MOBILE_COLUMN_GAP;
+  return clampMobileZoom(Math.floor((availableWidth / needed) * 100) / 100);
+}
 
 const STAGE_LABELS = {
   APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
@@ -136,8 +160,21 @@ function PipelineBoard({
 }) {
   const theme = useTheme();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { user, canModifyPipeline } = useAuth();
   const [draggedOverStage, setDraggedOverStage] = useState(null);
+  // null = auto-fit the whole board; a number = the user picked a zoom with the +/- buttons.
+  const [mobileZoomOverride, setMobileZoomOverride] = useState(() => {
+    try {
+      const stored = localStorage.getItem(MOBILE_ZOOM_KEY);
+      if (stored) return clampMobileZoom(stored, null);
+    } catch {
+      /* ignore */
+    }
+    return null;
+  });
+  const [boardWidth, setBoardWidth] = useState(0);
+  const boardAreaRef = useRef(null);
   const [layoutEditorOpen, setLayoutEditorOpen] = useState(false);
   const [layoutDraft, setLayoutDraft] = useState(null);
   const [savingLayout, setSavingLayout] = useState(false);
@@ -146,6 +183,26 @@ function PipelineBoard({
     () => getPipelineStageConfigStorageKey(user?.tenantId),
     [user?.tenantId]
   );
+
+  useEffect(() => {
+    try {
+      if (mobileZoomOverride == null) localStorage.removeItem(MOBILE_ZOOM_KEY);
+      else localStorage.setItem(MOBILE_ZOOM_KEY, String(mobileZoomOverride));
+    } catch {
+      /* ignore */
+    }
+  }, [mobileZoomOverride]);
+
+  useEffect(() => {
+    const node = boardAreaRef.current;
+    if (!isMobile || !node) return undefined;
+    const measure = () => setBoardWidth(node.clientWidth);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isMobile]);
 
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [stageOverrides, setStageOverrides] = useState({});
@@ -373,7 +430,7 @@ function PipelineBoard({
         onDragLeave={canModifyPipeline() ? handleDragLeave : undefined}
         onDrop={canModifyPipeline() ? (e) => handleDrop(e, stageId) : undefined}
         sx={{
-          minWidth: 280,
+          minWidth: isMobile ? MOBILE_COLUMN_WIDTH : 280,
           flex: '1 1 0',
           maxWidth: '100%',
           // Border/padding stay constant so columns don't shift as a card is dragged across them.
@@ -624,6 +681,22 @@ function PipelineBoard({
     pipelineMode === 'custom' &&
     activeCustomLayout?.levels?.some((l) => Array.isArray(l?.stageKeys) && l.stageKeys.length > 0);
 
+  // The widest phase decides how far the phone board has to scale down to fit.
+  const widestPhaseColumns =
+    pipelineMode === 'custom' && activeCustomLayout
+      ? (activeCustomLayout.levels || []).reduce(
+          (max, lvl) =>
+            Math.max(max, (lvl.stageKeys || []).filter((s) => !isStageHidden(s)).length),
+          0
+        )
+      : [SALES_PHASE, JOB_READINESS_PHASE, EXECUTION_PHASE].reduce(
+          (max, phase) => Math.max(max, phase.filter((s) => !isStageHidden(s)).length),
+          0
+        );
+
+  const autoFitZoom = fitZoomFor(boardWidth, widestPhaseColumns);
+  const mobileZoom = mobileZoomOverride ?? autoFitZoom;
+
   const openLayoutEditor = () => {
     if (!activeCustomLayout) return;
     const raw = activeCustomLayout.levels || [];
@@ -688,13 +761,13 @@ function PipelineBoard({
       <Paper
         elevation={0}
         sx={{
-          borderRadius: '20px',
-          p: 3,
+          borderRadius: { xs: '12px', sm: '20px' },
+          p: { xs: 1.25, sm: 3 },
         }}
       >
       <Box
         sx={{
-          mb: 3,
+          mb: { xs: 2, sm: 3 },
           pb: 2,
           borderBottom: `1px solid ${theme.palette.divider}`,
           display: 'grid',
@@ -773,6 +846,52 @@ function PipelineBoard({
             flexWrap: 'wrap',
           }}
         >
+          {isMobile && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.25,
+                mr: 0.5,
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: '8px',
+                px: 0.25,
+              }}
+            >
+              <IconButton
+                size="small"
+                aria-label="Zoom out pipeline"
+                disabled={mobileZoom <= MOBILE_ZOOM_MIN}
+                onClick={() => setMobileZoomOverride(clampMobileZoom(mobileZoom - MOBILE_ZOOM_STEP))}
+              >
+                <ZoomOutIcon fontSize="small" />
+              </IconButton>
+              <Tooltip title="Tap to fit the whole board">
+                <Typography
+                  variant="caption"
+                  onClick={() => setMobileZoomOverride(null)}
+                  sx={{
+                    minWidth: 34,
+                    textAlign: 'center',
+                    fontVariantNumeric: 'tabular-nums',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    fontWeight: mobileZoomOverride == null ? 700 : 400,
+                  }}
+                >
+                  {Math.round(mobileZoom * 100)}%
+                </Typography>
+              </Tooltip>
+              <IconButton
+                size="small"
+                aria-label="Zoom in pipeline"
+                disabled={mobileZoom >= MOBILE_ZOOM_MAX}
+                onClick={() => setMobileZoomOverride(clampMobileZoom(mobileZoom + MOBILE_ZOOM_STEP))}
+              >
+                <ZoomInIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          )}
           {onCreateEmptyPipeline && canModifyPipeline() && (
             <Tooltip title="New empty pipeline">
               <IconButton
@@ -823,6 +942,9 @@ function PipelineBoard({
 
       {/* Appointments Phase - Now handled separately, not shown here */}
 
+      {/* Phones scale the board down so every column stays visible; zoom buttons live in the header. */}
+      <Box ref={boardAreaRef} sx={{ width: '100%' }}>
+      <Box sx={isMobile && mobileZoom < 1 ? { zoom: mobileZoom } : undefined}>
       {pipelineMode === 'default' && (
         <>
           {renderPhase('Sales Phase', SALES_PHASE)}
@@ -851,6 +973,8 @@ function PipelineBoard({
               .map((lvl) => renderPhase(lvl.title || 'Phase', lvl.stageKeys || []))}
         </>
       )}
+      </Box>
+      </Box>
       </Paper>
 
       <Dialog

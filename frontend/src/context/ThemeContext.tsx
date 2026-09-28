@@ -64,18 +64,28 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         },
         typography: {
           fontFamily: 'Roboto, -apple-system, BlinkMacSystemFont, sans-serif',
+          // Headings shrink on phones so page titles don't eat the screen.
           h1: {
             fontSize: '2.5rem',
             fontWeight: 300,
             letterSpacing: '-0.5px',
+            '@media (max-width:899.95px)': {
+              fontSize: '1.5rem',
+            },
           },
           h2: {
             fontSize: '1.5rem',
             fontWeight: 400,
+            '@media (max-width:899.95px)': {
+              fontSize: '1.25rem',
+            },
           },
           h3: {
             fontSize: '1.25rem',
             fontWeight: 500,
+            '@media (max-width:899.95px)': {
+              fontSize: '1.1rem',
+            },
           },
         },
         shape: {
@@ -117,6 +127,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
                 padding: '12px 32px',
                 fontSize: '0.9375rem',
                 fontWeight: 500,
+                '@media (max-width:899.95px)': {
+                  padding: '8px 16px',
+                },
               },
               contained: {
                 boxShadow: mode === 'dark' 
@@ -162,6 +175,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             styleOverrides: {
               root: {
                 backgroundImage: 'none',
+              },
+            },
+          },
+          // Phones: dialogs use nearly the full screen instead of MUI's 32px margin.
+          MuiDialog: {
+            styleOverrides: {
+              paper: {
+                '@media (max-width:899.95px)': {
+                  margin: 8,
+                  width: 'calc(100% - 16px)',
+                  maxWidth: 'calc(100% - 16px)',
+                  maxHeight: 'calc(100% - 16px)',
+                },
+              },
+            },
+          },
+          // Phones: trim cell gutters so wide tables need less sideways scrolling.
+          MuiTableCell: {
+            styleOverrides: {
+              root: {
+                '@media (max-width:899.95px)': {
+                  paddingLeft: 8,
+                  paddingRight: 8,
+                },
               },
             },
           },

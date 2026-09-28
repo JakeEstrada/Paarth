@@ -13,6 +13,9 @@ import UserAuditTracker from './components/common/UserAuditTracker';
 import MainLayout from './components/layout/MainLayout';
 import ViewModeFrame from './components/layout/ViewModeFrame';
 import ProtectedRoute from './components/ProtectedRoute';
+import MobileRouteGuard from './components/MobileRouteGuard';
+import { useIsMobile } from './hooks/useIsMobile';
+import { MOBILE_HOME_PATH } from './utils/mobileNav';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -50,6 +53,8 @@ import RfidPage from './pages/RfidPage';
 function App(): JSX.Element | null {
   const { user, loading } = useAuth();
   const theme = useTheme();
+  const isMobile = useIsMobile();
+  const homePath = isMobile ? MOBILE_HOME_PATH : '/dashboard';
 
   useEffect(() => {
     document.title = 'Liminnality';
@@ -136,8 +141,9 @@ function App(): JSX.Element | null {
           element={
             <ProtectedRoute>
               <MainLayout>
+                <MobileRouteGuard>
                 <Routes>
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/" element={<Navigate to={homePath} replace />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/pipeline" element={<PipelinePage />} />
                   <Route path="/outlook" element={<ProtectedRoute requireAdmin><OutlookInboxPage /></ProtectedRoute>} />
@@ -165,6 +171,7 @@ function App(): JSX.Element | null {
                   <Route path="/users" element={<ProtectedRoute requireSuperAdmin><UsersPage /></ProtectedRoute>} />
                   <Route path="/account-settings" element={<AccountSettingsPage />} />
                 </Routes>
+                </MobileRouteGuard>
               </MainLayout>
             </ProtectedRoute>
           }

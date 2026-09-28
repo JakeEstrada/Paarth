@@ -1680,6 +1680,8 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     return 'right';
   });
   const [benchWidth, setBenchWidth] = useState(tvMode ? 260 : 320);
+  // Phones can't spare 320px for a side bench, so it sits under the calendar instead.
+  const effectiveBenchPosition = isMobile && !tvMode ? 'bottom' : benchPosition;
   const canModifyCalendarWithPin = () => canModifyCalendar();
 
   useEffect(() => {
@@ -2614,8 +2616,9 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     );
   };
 
+  // On phones the height subtracts the top bar + layout padding so the bench isn't pushed below the fold.
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ height: { xs: 'calc(100dvh - 80px)', md: '100vh' }, display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <Box sx={{ 
         p: tvMode ? { xs: 0.5, sm: 1 } : { xs: 1, sm: 2 }, 
@@ -2754,7 +2757,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
       </Box>
 
       {/* Main area: layout depends on bench position */}
-      {benchPosition === 'top' && (
+      {effectiveBenchPosition === 'top' && (
         <>
           {/* Bench at top */}
           <Box
@@ -2779,7 +2782,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
         </>
       )}
 
-      {benchPosition === 'right' && (
+      {effectiveBenchPosition === 'right' && (
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
           <Box sx={{ flex: 1, overflow: 'auto', p: tvMode ? { xs: 0.2, sm: 0.4 } : { xs: 0.5, sm: 1 }, minWidth: 0 }}>
             {renderCalendarContent()}
@@ -2803,7 +2806,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
         </Box>
       )}
 
-      {benchPosition === 'bottom' && (
+      {effectiveBenchPosition === 'bottom' && (
         <>
           <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 0.5, sm: 1 }, minHeight: 0 }}>
             {renderCalendarContent()}
