@@ -777,7 +777,8 @@ function PipelineBoard({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifySelf: { xs: 'stretch', md: 'start' }, flexWrap: 'wrap' }}>
-          {onNewJobClick && (
+          {/* Phones are view-only, so job creation stays on desktop. */}
+          {onNewJobClick && !isMobile && (
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -803,20 +804,23 @@ function PipelineBoard({
             width: { xs: '100%', md: 'auto' },
           }}
         >
-          <TextField
-            size="small"
-            label="Search jobs in pipeline"
-            value={search}
-            onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
-            sx={{ width: { xs: '100%', sm: 280 }, minWidth: 0 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-            }}
-          />
+          {/* Phones skip the search field — the board itself needs the vertical space. */}
+          {!isMobile && (
+            <TextField
+              size="small"
+              label="Search jobs in pipeline"
+              value={search}
+              onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
+              sx={{ width: { xs: '100%', sm: 280 }, minWidth: 0 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          )}
           {showPipelinePicker && (
             <FormControl size="small" sx={{ minWidth: 200, maxWidth: 280 }}>
               <InputLabel id="pipeline-layout-select-label">Pipeline</InputLabel>

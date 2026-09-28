@@ -1096,25 +1096,127 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
   );
 }
 
+/** Scheduled events whose date range covers `date`. */
+function eventsOnDate(events, date) {
+  const dateStr = format(date, 'yyyy-MM-dd');
+  return (events || []).filter((e) => {
+    if (!e.schedule?.startDate) return false;
+    const startStr = format(new Date(e.schedule.startDate), 'yyyy-MM-dd');
+    const endStr = format(new Date(e.schedule.endDate || e.schedule.startDate), 'yyyy-MM-dd');
+    return dateStr >= startStr && dateStr <= endStr;
+  });
+}
+
+/** Flattens a calendar chip into the read-only facts a phone user needs. */
+function scheduledEventSummary(event) {
+  const job = event?.job || {};
+  const customer = job.customerId || {};
+  const jobAddress = job.jobAddress || {};
+  const hasJobAddress = jobAddress.street || jobAddress.city || jobAddress.state || jobAddress.zip;
+  const address = hasJobAddress ? jobAddress : customer.address;
+  const start = event?.schedule?.startDate ? new Date(event.schedule.startDate) : null;
+  const end = event?.schedule?.endDate ? new Date(event.schedule.endDate) : start;
+  const multiDay =
+    start && end && format(start, 'yyyy-MM-dd') !== format(end, 'yyyy-MM-dd');
+
+  return {
+    key: event?._id,
+    customerName: customer.name || job.title || 'Unknown customer',
+    jobTitle: job.title || '',
+    location: [address?.street, address?.city, address?.state, address?.zip].filter(Boolean).join(', '),
+    installer: event?.schedule?.installer || '',
+    phone: String(job.jobContact?.phone || customer.primaryPhone || '').trim(),
+    dateLabel: !start
+      ? ''
+      : multiDay
+        ? `${format(start, 'EEE MMM d')} \u2013 ${format(end, 'EEE MMM d')}`
+        : format(start, 'EEE MMM d, yyyy'),
+    color: event?.color || DEFAULT_BENCH_JOB_COLOR,
+    closedOut: isHistoricalClosedJob(job),
+  };
+}
+
+function ScheduleDetailRow({ label, value }) {
+  return (
+    <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ minWidth: 68, flexShrink: 0, pt: 0.15 }}>
+        {label}
+      </Typography>
+      <Typography variant="body2" sx={{ fontWeight: 500, wordBreak: 'break-word' }}>
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
+/** Phone-only, read-only breakdown of everything scheduled on one day. */
+function MobileDayScheduleDialog({ open, date, events, onClose }) {
+  const summaries = (events || []).map(scheduledEventSummary);
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, pb: 1 }}>
+        <Box>
+          <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+            {date ? format(date, 'EEEE, MMM d') : ''}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {summaries.length === 1 ? '1 job scheduled' : `${summaries.length} jobs scheduled`}
+          </Typography>
+        </Box>
+        <IconButton size="small" onClick={onClose} aria-label="Close schedule details">
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent sx={{ px: 2, pb: 2 }}>
+        {summaries.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            Nothing is scheduled on this day.
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {summaries.map((summary) => (
+              <Paper
+                key={summary.key}
+                variant="outlined"
+                sx={{ p: 1.5, borderLeft: `4px solid ${summary.color}`, opacity: summary.closedOut ? 0.75 : 1 }}
+              >
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+                  {summary.customerName}
+                </Typography>
+                {summary.jobTitle && summary.jobTitle !== summary.customerName && (
+                  <Typography variant="body2" color="text.secondary">
+                    {summary.jobTitle}
+                  </Typography>
+                )}
+                <ScheduleDetailRow label="Installer" value={summary.installer || 'Unassigned'} />
+                <ScheduleDetailRow label="Location" value={summary.location || 'No address on file'} />
+                <ScheduleDetailRow label="Scheduled" value={summary.dateLabel || 'No dates'} />
+                {summary.phone && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    href={`tel:${nanpDigitsOnly(summary.phone) || summary.phone}`}
+                    sx={{ mt: 1.25 }}
+                  >
+                    Call {formatPhoneForDisplay(summary.phone)}
+                  </Button>
+                )}
+              </Paper>
+            ))}
+          </Box>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Calendar Day Component
-function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete, onViewJob, onDayContextMenu, installerOrder, holidayLabel = '', tvMode = false }) {
+function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, onEventDelete, onViewJob, onDayContextMenu, installerOrder, holidayLabel = '', tvMode = false, viewOnly = false }) {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [contextMenu, setContextMenu] = useState(null);
   const [contextMenuEvent, setContextMenuEvent] = useState(null);
-  // First, get all events that fall on this calendar day
-  const eventsForDate = events.filter(e => {
-    if (!e.schedule?.startDate) return false;
-    const startDate = new Date(e.schedule.startDate);
-    const endDate = e.schedule.endDate ? new Date(e.schedule.endDate) : startDate;
-    
-    // Check if date falls within the event range
-    const dateStr = format(date, 'yyyy-MM-dd');
-    const startStr = format(startDate, 'yyyy-MM-dd');
-    const endStr = format(endDate, 'yyyy-MM-dd');
-    
-    return dateStr >= startStr && dateStr <= endStr;
-  })
+  const eventsForDate = eventsOnDate(events, date);
   // Keep rows visually aligned across days by installer “lane”
   // We support up to 5 horizontal “sections” per day:
   // 4 dedicated installer lanes + 1 “Other” lane.
@@ -1255,6 +1357,32 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
           )}
         </Box>
         
+        {/* Phones show colour bars instead of chips — text is unreadable in a ~50px cell. */}
+        {viewOnly ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.3, mt: 0.4, width: '100%' }}>
+            {eventsForDate.slice(0, 3).map((event) => (
+              <Box
+                key={event._id}
+                sx={{
+                  height: 5,
+                  borderRadius: '2px',
+                  width: '100%',
+                  backgroundColor: event.color || DEFAULT_BENCH_JOB_COLOR,
+                  opacity: isHistoricalClosedJob(event.job) ? 0.5 : 1,
+                }}
+              />
+            ))}
+            {eventsForDate.length > 3 && (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontSize: '0.55rem', lineHeight: 1, textAlign: 'right' }}
+              >
+                +{eventsForDate.length - 3}
+              </Typography>
+            )}
+          </Box>
+        ) : (
         <Box sx={{ 
           display: 'flex', 
           flexDirection: 'column', 
@@ -1336,6 +1464,7 @@ function CalendarDay({ date, isCurrentMonth, events, onDayClick, onEventClick, o
             </Box>
           ))}
         </Box>
+        )}
       </Paper>
       
       {/* Context Menu */}
@@ -1680,8 +1809,9 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     return 'right';
   });
   const [benchWidth, setBenchWidth] = useState(tvMode ? 260 : 320);
-  // Phones can't spare 320px for a side bench, so it sits under the calendar instead.
-  const effectiveBenchPosition = isMobile && !tvMode ? 'bottom' : benchPosition;
+  // Phones get a read-only month view: no bench, no scheduling, tap a day for details.
+  const mobileViewOnly = isMobile && !tvMode;
+  const [mobileDayDetails, setMobileDayDetails] = useState(null);
   const canModifyCalendarWithPin = () => canModifyCalendar();
 
   useEffect(() => {
@@ -1940,6 +2070,10 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
   }, [allJobs]);
 
   const handleDayClick = (date) => {
+    if (mobileViewOnly) {
+      setMobileDayDetails(date);
+      return;
+    }
     if (!canModifyCalendarWithPin()) {
       toast.error('You do not have permission to create or modify calendar events');
       return;
@@ -2215,6 +2349,9 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
 
   const handleCloseDayContextMenu = () => setDayContextMenu(null);
 
+  // Slightly taller than square on phones so the day number and job bars both breathe.
+  const dayCellAspectRatio = tvMode ? '1.6' : mobileViewOnly ? '0.9' : '1';
+
   const toggleWeekdayHidden = (weekday) => {
     setHiddenWeekdays((prev) =>
       prev.includes(weekday) ? prev.filter((d) => d !== weekday) : [...prev, weekday].sort((a, b) => a - b)
@@ -2280,7 +2417,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
           minHeight: 0,
           '& > *': {
             minWidth: 0,
-            aspectRatio: tvMode ? '1.6' : '1',
+            aspectRatio: dayCellAspectRatio,
           }
         }}>
           {visibleDays.map((date, index) => (
@@ -2289,7 +2426,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
               sx={{
                 width: '100%',
                 minWidth: 0,
-                aspectRatio: tvMode ? '1.6' : '1',
+                aspectRatio: dayCellAspectRatio,
                 display: 'block',
               }}
             >
@@ -2304,8 +2441,9 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
                 onEventClick={handleEventClick}
                 onEventDelete={handleEventDelete}
                 onViewJob={(id) => setJobIdForDetailModal(id)}
-                onDayContextMenu={handleDayContextMenu}
+                onDayContextMenu={mobileViewOnly ? undefined : handleDayContextMenu}
                 installerOrder={installerOrder}
+                viewOnly={mobileViewOnly}
               />
             </Box>
           ))}
@@ -2666,7 +2804,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
             onClick={handleToday}
             variant="outlined"
             size="small"
-            sx={{ display: { xs: 'none', sm: 'flex' } }}
+            sx={{ display: mobileViewOnly ? 'flex' : { xs: 'none', sm: 'flex' } }}
           >
             Today
           </Button>
@@ -2710,7 +2848,10 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
           ) : !tvMode ? (
             <>
               {/* Standalone event creation removed; calendar now only schedules existing jobs */}
-              <FormControl size="small" sx={{ minWidth: 120, display: { xs: 'none', sm: 'flex' } }}>
+              <FormControl
+                size="small"
+                sx={{ minWidth: 120, display: mobileViewOnly ? 'none' : { xs: 'none', sm: 'flex' } }}
+              >
                 <InputLabel>Bench position</InputLabel>
                 <Select
                   value={benchPosition}
@@ -2726,7 +2867,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
                 onClick={() => navigate('/calendar-view')}
                 variant="outlined"
                 size="small"
-                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                sx={{ display: mobileViewOnly ? 'none' : { xs: 'none', sm: 'inline-flex' } }}
               >
                 Calendar view
               </Button>
@@ -2756,8 +2897,15 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
         </Box>
       </Box>
 
+      {/* Phones: calendar only — the bench and scheduled lists are desktop tools. */}
+      {mobileViewOnly && (
+        <Box sx={{ flex: 1, overflow: 'auto', p: 0.5, minHeight: 0 }}>
+          {renderCalendarContent()}
+        </Box>
+      )}
+
       {/* Main area: layout depends on bench position */}
-      {effectiveBenchPosition === 'top' && (
+      {!mobileViewOnly && benchPosition === 'top' && (
         <>
           {/* Bench at top */}
           <Box
@@ -2782,7 +2930,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
         </>
       )}
 
-      {effectiveBenchPosition === 'right' && (
+      {!mobileViewOnly && benchPosition === 'right' && (
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
           <Box sx={{ flex: 1, overflow: 'auto', p: tvMode ? { xs: 0.2, sm: 0.4 } : { xs: 0.5, sm: 1 }, minWidth: 0 }}>
             {renderCalendarContent()}
@@ -2806,7 +2954,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
         </Box>
       )}
 
-      {effectiveBenchPosition === 'bottom' && (
+      {!mobileViewOnly && benchPosition === 'bottom' && (
         <>
           <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 0.5, sm: 1 }, minHeight: 0 }}>
             {renderCalendarContent()}
@@ -2831,9 +2979,16 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
         </>
       )}
 
+      <MobileDayScheduleDialog
+        open={Boolean(mobileDayDetails)}
+        date={mobileDayDetails}
+        events={mobileDayDetails ? eventsOnDate(calendarEvents, mobileDayDetails) : []}
+        onClose={() => setMobileDayDetails(null)}
+      />
+
       {/* Event Modal */}
       <EventModal
-        open={eventModalOpen}
+        open={eventModalOpen && !mobileViewOnly}
         onClose={() => {
           setEventModalOpen(false);
           setSelectedDate(null);
