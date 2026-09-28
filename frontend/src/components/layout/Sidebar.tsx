@@ -81,9 +81,9 @@ const archiveItems = [
 
 /** Phones only get these pages — see utils/mobileNav.ts for the matching route guard. */
 const mobileItems = [
+  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
   { text: 'Pipeline', icon: <PipelineIcon />, path: '/pipeline' },
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
-  { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
   { text: 'Commission Logs', icon: <TableChartIcon />, path: '/commission-logs' },
   { text: 'Website Analytics', icon: <AnalyticsIcon />, path: '/developer/analytics', superAdminOnly: true },
 ];

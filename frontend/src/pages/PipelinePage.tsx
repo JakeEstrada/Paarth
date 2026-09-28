@@ -45,6 +45,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchPipelineLayoutsList, createPipelineLayout } from '../utils/pipelineLayoutsApi';
 import { fetchPipelineSmsTemplates, findTemplateForStage } from '../utils/pipelineSmsTemplates';
 import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import { getConnectedSocketId, getTenantRoom } from '../services/socket';
@@ -53,12 +54,6 @@ import { applyJobRealtimeToList, isActivePipelineJob } from '../utils/realtimeJo
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const PIPELINE_SELECTION_KEY_PREFIX = 'pipelineSelectedLayoutV1';
-
-/** Read once for initial state; the `md` breakpoint matches useIsMobile(). */
-function isMobileViewport() {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  return window.matchMedia('(max-width: 899.95px)').matches;
-}
 
 function getPipelineSelectionStorageKey(tenantId) {
   const raw =
@@ -72,6 +67,7 @@ function getPipelineSelectionStorageKey(tenantId) {
 
 function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const theme = useTheme();
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { user, canModifyPipeline, tenantIdForBranding } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -94,9 +90,8 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const [moveStageOpen, setMoveStageOpen] = useState(false);
   const [selectedJobForMove, setSelectedJobForMove] = useState(null);
   const [addJobOpen, setAddJobOpen] = useState(false);
-  // Phones open with these collapsed so the board is the first thing on screen.
-  const [tasksCollapsed, setTasksCollapsed] = useState(() => isMobileViewport());
-  const [appointmentsCollapsed, setAppointmentsCollapsed] = useState(() => isMobileViewport());
+  const [tasksCollapsed, setTasksCollapsed] = useState(false);
+  const [appointmentsCollapsed, setAppointmentsCollapsed] = useState(false);
   const [tasksCount, setTasksCount] = useState(0);
   const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
@@ -111,7 +106,8 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const financialPin = useFinancialPinLockContext();
   const hideSensitive = shopHideSensitive || financialPin.hideFinancials;
 
-  const showTasksAndAppointments = !isShopViewRole && !tvMode;
+  // Phones show the board only — tasks and appointments live on the desktop pipeline.
+  const showTasksAndAppointments = !isShopViewRole && !tvMode && !isMobile;
 
 
   const autoMoveDeadEstimates = async () => {

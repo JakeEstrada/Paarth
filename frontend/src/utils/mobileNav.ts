@@ -1,13 +1,13 @@
 /**
  * Mobile navigation allowlist — phones only get the pages that are usable on a small
- * screen. Anything else (dashboard, finance, admin tooling) redirects to the pipeline.
+ * screen. Anything else (dashboard, finance, admin tooling) redirects to the calendar.
  */
-export const MOBILE_HOME_PATH = '/pipeline';
+export const MOBILE_HOME_PATH = '/calendar';
 
 export const MOBILE_NAV_PATHS = [
+  '/calendar',
   '/pipeline',
   '/customers',
-  '/calendar',
   '/commission-logs',
   '/developer/analytics',
 ];
