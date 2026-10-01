@@ -35,6 +35,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
+import type { Theme } from '@mui/material/styles';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
@@ -814,19 +815,23 @@ function CommissionChecksTable({
               <TableRow key={`${group.id}-details`}>
                 <TableCell colSpan={isMobile ? 4 : 5} sx={{ py: 0, borderBottom: isOpen ? undefined : 0 }}>
                   <Collapse in={isOpen} timeout="auto" unmountOnExit>
-                    <Box sx={{ py: 1, pl: 1, pr: 1 }}>
+                    <Box sx={{ py: 1, pl: isMobile ? 0 : 1, pr: isMobile ? 0 : 1 }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
-                            <TableCell sx={{ fontWeight: 600 }}>Paid date</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Customer paid date</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Customer</TableCell>
+                            {/* Phones show four columns: the group row above already gives the
+                                paid date, and the job name stands in for the customer. */}
+                            {!isMobile && <TableCell sx={{ fontWeight: 600 }}>Paid date</TableCell>}
+                            <TableCell sx={{ fontWeight: 600 }}>
+                              {isMobile ? 'Customer paid' : 'Customer paid date'}
+                            </TableCell>
+                            {!isMobile && <TableCell sx={{ fontWeight: 600 }}>Customer</TableCell>}
                             <TableCell sx={{ fontWeight: 600 }}>Job</TableCell>
                             <TableCell sx={{ fontWeight: 600 }}>Payment</TableCell>
                             <TableCell sx={{ fontWeight: 600 }} align="right">
                               Amount
                             </TableCell>
-                            <TableCell sx={{ width: 44 }} />
+                            {!isMobile && <TableCell sx={{ width: 44 }} />}
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -837,25 +842,35 @@ function CommissionChecksTable({
                               onClick={() => onOpenJob(entry.jobId)}
                               sx={{ cursor: 'pointer' }}
                             >
-                              <TableCell>{formatCheckDisplayDate(entry.date)}</TableCell>
-                              <TableCell>{formatCheckDisplayDate(entry.customerPaidDate)}</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>{entry.customerName}</TableCell>
-                              <TableCell>{entry.jobLabel || 'Untitled'}</TableCell>
+                              {!isMobile && (
+                                <TableCell>{formatCheckDisplayDate(entry.date)}</TableCell>
+                              )}
+                              <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                                {formatCheckDisplayDate(entry.customerPaidDate)}
+                              </TableCell>
+                              {!isMobile && (
+                                <TableCell sx={{ fontWeight: 600 }}>{entry.customerName}</TableCell>
+                              )}
+                              <TableCell sx={{ fontWeight: isMobile ? 600 : undefined }}>
+                                {entry.jobLabel || (isMobile && entry.customerName) || 'Untitled'}
+                              </TableCell>
                               <TableCell>{entry.paymentLabel}</TableCell>
-                              <TableCell align="right" sx={{ fontWeight: 600 }}>
+                              <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 {formatMoney(entry.amount)}
                               </TableCell>
-                              <TableCell sx={{ py: 0.5 }} onClick={(e) => e.stopPropagation()}>
-                                <Tooltip title="View job">
-                                  <IconButton
-                                    size="small"
-                                    aria-label={`View job for ${entry.customerName}`}
-                                    onClick={() => onOpenJobDetail(entry.jobId)}
-                                  >
-                                    <PersonIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              </TableCell>
+                              {!isMobile && (
+                                <TableCell sx={{ py: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                                  <Tooltip title="View job">
+                                    <IconButton
+                                      size="small"
+                                      aria-label={`View job for ${entry.customerName}`}
+                                      onClick={() => onOpenJobDetail(entry.jobId)}
+                                    >
+                                      <PersonIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </TableCell>
+                              )}
                             </TableRow>
                           ))}
                         </TableBody>
@@ -1733,7 +1748,7 @@ function applyOverviewJobOrder(
 }
 
 function tierChipStyles(
-  theme: ReturnType<typeof useTheme>,
+  theme: Theme,
   payment: CommissionPaymentDisplay,
 ) {
   if (payment.salesmanPaid) {
@@ -2083,7 +2098,7 @@ function orderPaymentsForDisplay(
 }
 
 function paymentCardStyles(
-  theme: ReturnType<typeof useTheme>,
+  theme: Theme,
   payment: CommissionPaymentDisplay,
 ) {
   if (payment.salesmanPaid) {

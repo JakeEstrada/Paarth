@@ -36,7 +36,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import { alpha } from '@mui/material/styles';
+import { alpha, type Theme } from '@mui/material/styles';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
@@ -44,6 +44,7 @@ import {
   MailOutline as MailIcon,
   Mouse as MouseIcon,
   PeopleOutline as PeopleIcon,
+  Today as TodayIcon,
   Visibility as ViewsIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
@@ -116,7 +117,7 @@ type Report = {
   series: SeriesPoint[];
   campaign: { adClicks: number; conversions: number };
   campaignSeries: Array<{ date: string; adClicks: number; conversions: number }>;
-  pages: Array<{ path: string; views: number }>;
+  pages: Array<{ path: string; views: number; viewsToday: number }>;
   mineIps: MineIp[];
 };
 
@@ -181,6 +182,13 @@ function formatDay(date: string) {
   return `${Number(month)}/${Number(day)}`;
 }
 
+/** "Mon 3/9" — the hover tooltip has room for the weekday, the axis does not. */
+function formatTooltipDay(date: string) {
+  const [year, month, day] = date.split('-').map(Number);
+  if (!year || !month || !day) return date;
+  return format(new Date(year, month - 1, day), 'EEE M/d');
+}
+
 function eventLabel(type: string) {
   if (type === 'page_view') return 'Page view';
   if (type === 'click') return 'Click';
@@ -215,11 +223,12 @@ function TrafficChart({
   convertLabel = 'Messages sent',
 }: {
   series: SeriesPoint[];
-  theme: ReturnType<typeof useTheme>;
+  theme: Theme;
   hideClicks?: boolean;
   viewLabel?: string;
   convertLabel?: string;
 }) {
+  const [hover, setHover] = useState<number | null>(null);
   const width = 720;
   const height = 240;
   const pad = { l: 36, r: 16, t: 16, b: 32 };
@@ -248,12 +257,38 @@ function TrafficChart({
     const step = Math.ceil(series.length / 7);
     return index % step === 0 || index === series.length - 1;
   });
+  // Each point owns a full-height band so the whole column is a hover target, not just the dot.
+  const bandW = series.length > 1 ? innerW / (series.length - 1) : innerW;
+  const active = hover == null ? null : points[hover];
+  const rows = active
+    ? [
+        { label: viewLabel, value: active.pageViews, color: viewColor, y: active.y },
+        ...(hideClicks ? [] : [{ label: 'Clicks', value: active.clicks, color: clickColor, y: active.clickY }]),
+        { label: convertLabel, value: active.contactSubmits, color: contactColor, y: active.cy },
+      ]
+    : [];
+  const boxW = 136;
+  const boxH = 24 + rows.length * 15;
+  // Flip to the left of the cursor near the right edge, and keep the card inside the plot.
+  const boxX = active
+    ? active.x + 12 + boxW > width - pad.r
+      ? Math.max(pad.l, active.x - 12 - boxW)
+      : active.x + 12
+    : 0;
+  const boxY = active ? Math.min(Math.max(pad.t, active.y - boxH / 2), pad.t + innerH - boxH) : 0;
 
   if (!series.length) return null;
 
   return (
     <Box sx={{ width: '100%', overflow: 'hidden' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="240" role="img" aria-label="Website traffic">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        height="240"
+        role="img"
+        aria-label="Website traffic"
+        onMouseLeave={() => setHover(null)}
+      >
         <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + innerH} stroke={theme.palette.divider} />
         <line x1={pad.l} y1={pad.t + innerH} x2={pad.l + innerW} y2={pad.t + innerH} stroke={theme.palette.divider} />
         {[0.25, 0.5, 0.75].map((frac) => (
@@ -271,6 +306,22 @@ function TrafficChart({
         <polyline points={line} fill="none" stroke={viewColor} strokeWidth="2.5" />
         {hideClicks ? null : <polyline points={clickLine} fill="none" stroke={clickColor} strokeWidth="2.5" />}
         <polyline points={contactLine} fill="none" stroke={contactColor} strokeWidth="2.5" />
+
+        {/* Dots are only legible on shorter ranges; 90 days would be a solid row of circles. */}
+        {series.length <= 31
+          ? points.map((point) => (
+              <circle
+                key={`dot-${point.date}`}
+                cx={point.x}
+                cy={point.y}
+                r={2.5}
+                fill={theme.palette.background.paper}
+                stroke={viewColor}
+                strokeWidth="1.5"
+              />
+            ))
+          : null}
+
         {ticks.map((row) => {
           const point = points.find((item) => item.date === row.date);
           if (!point) return null;
@@ -283,11 +334,88 @@ function TrafficChart({
         <text x={pad.l} y={12} fill={theme.palette.text.secondary} fontSize="11">
           {max}
         </text>
+
+        {active ? (
+          <g pointerEvents="none">
+            <line
+              x1={active.x}
+              x2={active.x}
+              y1={pad.t}
+              y2={pad.t + innerH}
+              stroke={theme.palette.text.secondary}
+              strokeWidth="1"
+              strokeDasharray="3 3"
+            />
+            {rows.map((row) => (
+              <circle
+                key={`active-${row.label}`}
+                cx={active.x}
+                cy={row.y}
+                r={4.5}
+                fill={row.color}
+                stroke={theme.palette.background.paper}
+                strokeWidth="2"
+              />
+            ))}
+            <rect
+              x={boxX}
+              y={boxY}
+              width={boxW}
+              height={boxH}
+              rx={6}
+              fill={theme.palette.background.paper}
+              stroke={theme.palette.divider}
+            />
+            <text x={boxX + 10} y={boxY + 16} fontSize="11" fontWeight="700" fill={theme.palette.text.primary}>
+              {formatTooltipDay(active.date)}
+            </text>
+            {rows.map((row, index) => {
+              const ty = boxY + 31 + index * 15;
+              return (
+                <g key={`tip-${row.label}`}>
+                  <rect x={boxX + 10} y={ty - 7} width={7} height={7} rx={1.5} fill={row.color} />
+                  <text x={boxX + 23} y={ty} fontSize="11" fill={theme.palette.text.secondary}>
+                    {row.label}
+                  </text>
+                  <text
+                    x={boxX + boxW - 10}
+                    y={ty}
+                    fontSize="11"
+                    fontWeight="700"
+                    textAnchor="end"
+                    fill={theme.palette.text.primary}
+                  >
+                    {row.value.toLocaleString()}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        ) : null}
+
+        {points.map((point, index) => (
+          <rect
+            key={`hit-${point.date}`}
+            x={point.x - bandW / 2}
+            y={pad.t}
+            width={bandW}
+            height={innerH}
+            fill="transparent"
+            style={{ cursor: 'pointer' }}
+            onMouseEnter={() => setHover(index)}
+            onTouchStart={() => setHover(index)}
+          />
+        ))}
       </svg>
-      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', mt: -1, flexWrap: 'wrap' }}>
-        <Typography variant="caption" sx={{ color: viewColor }}>{viewLabel}</Typography>
-        {hideClicks ? null : <Typography variant="caption" sx={{ color: clickColor }}>Clicks</Typography>}
-        <Typography variant="caption" sx={{ color: contactColor }}>{convertLabel}</Typography>
+      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'space-between', mt: -1, flexWrap: 'wrap' }}>
+        <Typography variant="caption" color="text.secondary">
+          Hover a day for its numbers
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Typography variant="caption" sx={{ color: viewColor }}>{viewLabel}</Typography>
+          {hideClicks ? null : <Typography variant="caption" sx={{ color: clickColor }}>Clicks</Typography>}
+          <Typography variant="caption" sx={{ color: contactColor }}>{convertLabel}</Typography>
+        </Box>
       </Box>
     </Box>
   );
@@ -298,23 +426,30 @@ function StatCard({
   value,
   icon: Icon,
   color,
+  hint,
 }: {
   label: string;
   value: number;
   icon: typeof ViewsIcon;
   color: string;
+  hint?: string;
 }) {
   const theme = useTheme();
   return (
     <Paper elevation={0} sx={{ p: 2, border: `1px solid ${theme.palette.divider}`, borderLeft: `4px solid ${color}` }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
-        <Box>
+        <Box sx={{ minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {label}
           </Typography>
           <Typography variant="h4" sx={{ fontWeight: 700, mt: 0.5, fontSize: { xs: '1.4rem', sm: '1.75rem' } }}>
             {value.toLocaleString()}
           </Typography>
+          {hint ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              {hint}
+            </Typography>
+          ) : null}
         </Box>
         <Box
           sx={{
@@ -404,7 +539,13 @@ function WebsiteAnalyticsPage() {
       series: Array.isArray(reportRes.data?.series) ? reportRes.data.series : [],
       campaign: reportRes.data?.campaign || EMPTY_REPORT.campaign,
       campaignSeries: Array.isArray(reportRes.data?.campaignSeries) ? reportRes.data.campaignSeries : [],
-      pages: Array.isArray(reportRes.data?.pages) ? reportRes.data.pages : [],
+      pages: Array.isArray(reportRes.data?.pages)
+        ? reportRes.data.pages.map((row: { path?: string; views?: number; viewsToday?: number }) => ({
+            path: row.path || '/',
+            views: row.views || 0,
+            viewsToday: row.viewsToday || 0,
+          }))
+        : [],
       mineIps: Array.isArray(reportRes.data?.mineIps) ? reportRes.data.mineIps : [],
     });
   }, [days, hideMine]);
@@ -498,10 +639,15 @@ function WebsiteAnalyticsPage() {
       });
       let pages = prev.pages;
       if (event.type === 'page_view') {
+        // A live event is by definition today, so both counters move together.
         const hit = pages.find((row) => row.path === event.path);
         pages = hit
-          ? pages.map((row) => (row.path === event.path ? { ...row, views: row.views + 1 } : row))
-          : [...pages, { path: event.path, views: 1 }];
+          ? pages.map((row) =>
+              row.path === event.path
+                ? { ...row, views: row.views + 1, viewsToday: (row.viewsToday || 0) + 1 }
+                : row,
+            )
+          : [...pages, { path: event.path, views: 1, viewsToday: 1 }];
         pages = [...pages].sort((a, b) => b.views - a.views).slice(0, 8);
       }
       return { ...prev, totals, series, pages };
@@ -570,6 +716,12 @@ function WebsiteAnalyticsPage() {
     () => report.totals.pageViews + report.totals.clicks + report.totals.contactOpens + report.totals.contactSubmits > 0,
     [report.totals],
   );
+
+  // Today's row of the series, so the live socket updates feed this card for free.
+  const todayStats = useMemo(() => {
+    const today = pacificToday();
+    return report.series.find((row) => row.date === today) || null;
+  }, [report.series]);
 
   return (
     <Container maxWidth="lg" disableGutters sx={{ py: { xs: 1, sm: 4 }, px: { xs: 0, sm: 3 } }}>
@@ -841,12 +993,25 @@ function WebsiteAnalyticsPage() {
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' },
+              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)', lg: 'repeat(5, 1fr)' },
               gap: 2,
               mb: 3,
             }}
           >
-            <StatCard label="Page views" value={report.totals.pageViews} icon={ViewsIcon} color={theme.palette.primary.main} />
+            <StatCard
+              label="Views today"
+              value={todayStats?.pageViews || 0}
+              icon={TodayIcon}
+              color={theme.palette.warning.main}
+              hint={todayStats ? `${(todayStats.visitors || 0).toLocaleString()} visitors today` : undefined}
+            />
+            <StatCard
+              label="Page views"
+              value={report.totals.pageViews}
+              icon={ViewsIcon}
+              color={theme.palette.primary.main}
+              hint={`last ${report.days} days`}
+            />
             <StatCard label="Visitors" value={report.totals.visitors} icon={PeopleIcon} color={theme.palette.info.main} />
             <StatCard label="Clicks" value={report.totals.clicks || 0} icon={MouseIcon} color={theme.palette.secondary.main} />
             <StatCard label="Messages sent" value={report.totals.contactSubmits} icon={MailIcon} color={theme.palette.success.main} />
@@ -866,22 +1031,44 @@ function WebsiteAnalyticsPage() {
           </Paper>
 
           <Paper sx={{ p: { xs: 1.5, sm: 3 }, mb: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-              Top pages
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Top pages
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Views over the last {report.days} days, and so far today
+              </Typography>
+            </Box>
             {report.pages.length ? (
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Page</TableCell>
-                    <TableCell align="right">Views</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Page</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      Views
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      Views today
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {report.pages.map((row) => (
-                    <TableRow key={row.path}>
+                    <TableRow key={row.path} hover>
                       <TableCell>{row.path === '/' ? 'Home' : row.path}</TableCell>
-                      <TableCell align="right">{row.views.toLocaleString()}</TableCell>
+                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {row.views.toLocaleString()}
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          fontVariantNumeric: 'tabular-nums',
+                          fontWeight: row.viewsToday ? 700 : 400,
+                          color: row.viewsToday ? 'text.primary' : 'text.disabled',
+                        }}
+                      >
+                        {(row.viewsToday || 0).toLocaleString()}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -680,7 +680,11 @@ async function getWebsiteAnalyticsReport(req, res) {
     const match = { tenantId: tenantObjectId, occurredAt: { $gte: start } };
     if (hideMine && mineIps.length) match.ip = { $nin: mineIps };
     const labels = pacificDayLabels(days);
+    const todayLabel = labels[labels.length - 1];
     const adsQuery = { $regex: 'gclid=|gbraid=|wbraid=', $options: 'i' };
+    const pacificDay = {
+      $dateToString: { format: '%Y-%m-%d', date: '$occurredAt', timezone: 'America/Los_Angeles' },
+    };
     const [pageViews, clicks, contactOpens, contactSubmits, visitorIds, byDay, pages, adClicks, adSessionIds, campaignByDay] = await Promise.all([
       WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'page_view' }),
       WebsiteAnalyticsEvent.countDocuments({ ...match, type: 'click' }),
@@ -702,7 +706,13 @@ async function getWebsiteAnalyticsReport(req, res) {
       ]),
       WebsiteAnalyticsEvent.aggregate([
         { $match: { ...match, type: 'page_view' } },
-        { $group: { _id: '$path', views: { $sum: 1 } } },
+        {
+          $group: {
+            _id: '$path',
+            views: { $sum: 1 },
+            viewsToday: { $sum: { $cond: [{ $eq: [pacificDay, todayLabel] }, 1, 0] } },
+          },
+        },
         { $sort: { views: -1 } },
         { $limit: 8 },
       ]),
@@ -779,7 +789,11 @@ async function getWebsiteAnalyticsReport(req, res) {
       },
       series: labels.map((date) => bucket.get(date)),
       campaignSeries: labels.map((date) => campaignBucket.get(date)),
-      pages: pages.map((row) => ({ path: row._id || '/', views: row.views || 0 })),
+      pages: pages.map((row) => ({
+        path: row._id || '/',
+        views: row.views || 0,
+        viewsToday: row.viewsToday || 0,
+      })),
     });
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to load website analytics' });
