@@ -14,6 +14,9 @@ import {
   Chip,
   CircularProgress,
   Container,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   FormControl,
   FormControlLabel,
   IconButton,
@@ -121,6 +124,13 @@ type Report = {
   mineIps: MineIp[];
 };
 
+type TodayIp = {
+  ip: string;
+  views: number;
+  lastAt: string;
+  mine: boolean;
+};
+
 type TrafficEvent = {
   id: string;
   type: string;
@@ -177,6 +187,15 @@ function looksLikeAdsCustomerId(value: string) {
   return ADS_CUSTOMER_ID.test(compact) || /^\d{8,12}$/.test(compact);
 }
 
+/** Drop quiet days before tracking started so the plot isn't a flat line across empty months. */
+function seriesFromFirstActivity(series: SeriesPoint[]) {
+  const first = series.findIndex(
+    (row) => row.pageViews > 0 || row.clicks > 0 || row.contactOpens > 0 || row.contactSubmits > 0,
+  );
+  if (first <= 0) return series;
+  return series.slice(first);
+}
+
 function formatDay(date: string) {
   const [, month, day] = date.split('-');
   return `${Number(month)}/${Number(day)}`;
@@ -229,14 +248,15 @@ function TrafficChart({
   convertLabel?: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const plotted = seriesFromFirstActivity(series);
   const width = 720;
   const height = 240;
   const pad = { l: 36, r: 16, t: 16, b: 32 };
   const innerW = width - pad.l - pad.r;
   const innerH = height - pad.t - pad.b;
-  const max = Math.max(1, ...series.map((row) => Math.max(row.pageViews, row.clicks, row.contactSubmits)));
-  const points = series.map((row, index) => {
-    const x = series.length <= 1 ? pad.l + innerW / 2 : pad.l + (index / (series.length - 1)) * innerW;
+  const max = Math.max(1, ...plotted.map((row) => Math.max(row.pageViews, row.clicks, row.contactSubmits)));
+  const points = plotted.map((row, index) => {
+    const x = plotted.length <= 1 ? pad.l + innerW / 2 : pad.l + (index / (plotted.length - 1)) * innerW;
     return {
       ...row,
       x,
@@ -252,13 +272,13 @@ function TrafficChart({
   const viewColor = theme.palette.primary.main;
   const clickColor = theme.palette.info.main;
   const contactColor = theme.palette.success.main;
-  const ticks = series.filter((_, index) => {
-    if (series.length <= 8) return true;
-    const step = Math.ceil(series.length / 7);
-    return index % step === 0 || index === series.length - 1;
+  const ticks = plotted.filter((_, index) => {
+    if (plotted.length <= 8) return true;
+    const step = Math.ceil(plotted.length / 7);
+    return index % step === 0 || index === plotted.length - 1;
   });
   // Each point owns a full-height band so the whole column is a hover target, not just the dot.
-  const bandW = series.length > 1 ? innerW / (series.length - 1) : innerW;
+  const bandW = plotted.length > 1 ? innerW / (plotted.length - 1) : innerW;
   const active = hover == null ? null : points[hover];
   const rows = active
     ? [
@@ -277,7 +297,7 @@ function TrafficChart({
     : 0;
   const boxY = active ? Math.min(Math.max(pad.t, active.y - boxH / 2), pad.t + innerH - boxH) : 0;
 
-  if (!series.length) return null;
+  if (!plotted.length) return null;
 
   return (
     <Box sx={{ width: '100%', overflow: 'hidden' }}>
@@ -308,7 +328,7 @@ function TrafficChart({
         <polyline points={contactLine} fill="none" stroke={contactColor} strokeWidth="2.5" />
 
         {/* Dots are only legible on shorter ranges; 90 days would be a solid row of circles. */}
-        {series.length <= 31
+        {plotted.length <= 31
           ? points.map((point) => (
               <circle
                 key={`dot-${point.date}`}
@@ -427,16 +447,27 @@ function StatCard({
   icon: Icon,
   color,
   hint,
+  onClick,
 }: {
   label: string;
   value: number;
   icon: typeof ViewsIcon;
   color: string;
   hint?: string;
+  onClick?: () => void;
 }) {
   const theme = useTheme();
   return (
-    <Paper elevation={0} sx={{ p: 2, border: `1px solid ${theme.palette.divider}`, borderLeft: `4px solid ${color}` }}>
+    <Paper
+      elevation={0}
+      onClick={onClick}
+      sx={{
+        p: 2,
+        border: `1px solid ${theme.palette.divider}`,
+        borderLeft: `4px solid ${color}`,
+        cursor: onClick ? 'pointer' : 'default',
+      }}
+    >
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -495,6 +526,10 @@ function WebsiteAnalyticsPage() {
   const [hasMore, setHasMore] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
   const [mineIps, setMineIps] = useState<MineIp[]>([]);
+  const [todayIpsOpen, setTodayIpsOpen] = useState(false);
+  const [todayIpsPath, setTodayIpsPath] = useState<string | null>(null);
+  const [todayIpsLoading, setTodayIpsLoading] = useState(false);
+  const [todayIps, setTodayIps] = useState<TodayIp[]>([]);
   const sessionsRef = useRef(new Set<string>());
   const filtersRef = useRef({ hideMine, eventType, query, mineIps });
   useEffect(() => {
@@ -700,12 +735,34 @@ function WebsiteAnalyticsPage() {
     }));
   };
 
+  const openTodayIps = useCallback(async (path: string | null) => {
+    setTodayIpsOpen(true);
+    setTodayIpsPath(path);
+    setTodayIpsLoading(true);
+    try {
+      const { data } = await axios.get(`${API_URL}/website/analytics/today-ips`, {
+        params: {
+          hideMine: hideMine ? '1' : '0',
+          path: path || undefined,
+        },
+      });
+      setTodayIps(Array.isArray(data?.ips) ? data.ips : []);
+    } catch (error) {
+      console.error('Error loading today IPs:', error);
+      toast.error('Could not load today’s IPs');
+      setTodayIps([]);
+    } finally {
+      setTodayIpsLoading(false);
+    }
+  }, [hideMine]);
+
   const setMine = async (ip: string, mine: boolean) => {
     try {
       const { data } = await axios.put(`${API_URL}/website/analytics/mine-ips`, { ip, mine, label: 'Me' });
       setMineIps(Array.isArray(data?.mineIps) ? data.mineIps : []);
       await loadReport(days, hideMine);
       if (tab === 0) await loadEvents({ append: false });
+      if (todayIpsOpen) await openTodayIps(todayIpsPath);
     } catch (error) {
       console.error('Error updating mine IP:', error);
       toast.error('Could not update that IP');
@@ -1003,7 +1060,8 @@ function WebsiteAnalyticsPage() {
               value={todayStats?.pageViews || 0}
               icon={TodayIcon}
               color={theme.palette.warning.main}
-              hint={todayStats ? `${(todayStats.visitors || 0).toLocaleString()} visitors today` : undefined}
+              hint={todayStats ? `${(todayStats.visitors || 0).toLocaleString()} visitors today` : 'IPs from today’s page views'}
+              onClick={() => void openTodayIps(null)}
             />
             <StatCard
               label="Page views"
@@ -1059,15 +1117,20 @@ function WebsiteAnalyticsPage() {
                       <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
                         {row.views.toLocaleString()}
                       </TableCell>
-                      <TableCell
-                        align="right"
-                        sx={{
-                          fontVariantNumeric: 'tabular-nums',
-                          fontWeight: row.viewsToday ? 700 : 400,
-                          color: row.viewsToday ? 'text.primary' : 'text.disabled',
-                        }}
-                      >
-                        {(row.viewsToday || 0).toLocaleString()}
+                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {row.viewsToday ? (
+                          <Button
+                            size="small"
+                            onClick={() => void openTodayIps(row.path)}
+                            sx={{ textTransform: 'none', fontWeight: 700, minWidth: 0 }}
+                          >
+                            {row.viewsToday.toLocaleString()}
+                          </Button>
+                        ) : (
+                          <Typography component="span" variant="body2" color="text.disabled">
+                            0
+                          </Typography>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1192,6 +1255,62 @@ function WebsiteAnalyticsPage() {
               </Box>
             ) : null}
           </Paper>
+
+          <Dialog open={todayIpsOpen} onClose={() => setTodayIpsOpen(false)} fullWidth maxWidth="sm">
+            <DialogTitle>
+              Views today
+              {todayIpsPath ? ` · ${todayIpsPath === '/' ? 'Home' : todayIpsPath}` : ''}
+            </DialogTitle>
+            <DialogContent>
+              {todayIpsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress size={28} />
+                </Box>
+              ) : todayIps.length === 0 ? (
+                <Typography color="text.secondary" sx={{ py: 2 }}>
+                  No page views yet today.
+                </Typography>
+              ) : (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>IP</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>Views</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Last seen</TableCell>
+                      <TableCell />
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {todayIps.map((row) => (
+                      <TableRow key={row.ip || 'unknown'} hover>
+                        <TableCell sx={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                          {row.ip || '—'}
+                          {row.mine ? <Chip size="small" label="Me" sx={{ ml: 0.5 }} /> : null}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                          {row.views.toLocaleString()}
+                        </TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                          {row.lastAt ? format(new Date(row.lastAt), 'h:mm:ss a') : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {row.ip ? (
+                            <Button
+                              size="small"
+                              onClick={() => void setMine(row.ip, !row.mine)}
+                              sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+                            >
+                              {row.mine ? 'Not me' : 'This is me'}
+                            </Button>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </Container>

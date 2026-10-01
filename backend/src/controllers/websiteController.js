@@ -800,6 +800,58 @@ async function getWebsiteAnalyticsReport(req, res) {
   }
 }
 
+async function getWebsiteAnalyticsTodayIps(req, res) {
+  try {
+    const tenantObjectId = tenantObjectIdFromReq(req);
+    if (!tenantObjectId) return res.status(400).json({ error: 'Tenant is required' });
+    const site = await WebsiteContent.findOne({ tenantId: tenantObjectId }).setOptions({ bypassTenant: true });
+    const mineRows = mineIpList(site?.analytics);
+    const mineSet = new Set(mineRows.map((row) => row.ip));
+    const hideMine = String(req.query.hideMine || '') === '1' || String(req.query.hideMine || '') === 'true';
+    const path = clip(req.query.path, 200);
+    const todayLabel = pacificDayLabels(1)[0];
+    const match = {
+      tenantId: tenantObjectId,
+      type: 'page_view',
+      occurredAt: { $gte: new Date(Date.now() - 2 * 86400000) },
+    };
+    if (path) match.path = path;
+    if (hideMine && mineSet.size) match.ip = { $nin: [...mineSet] };
+    const rows = await WebsiteAnalyticsEvent.aggregate([
+      { $match: match },
+      {
+        $addFields: {
+          day: {
+            $dateToString: { format: '%Y-%m-%d', date: '$occurredAt', timezone: 'America/Los_Angeles' },
+          },
+        },
+      },
+      { $match: { day: todayLabel } },
+      {
+        $group: {
+          _id: '$ip',
+          views: { $sum: 1 },
+          lastAt: { $max: '$occurredAt' },
+        },
+      },
+      { $sort: { views: -1, lastAt: -1 } },
+      { $limit: 200 },
+    ]);
+    res.json({
+      day: todayLabel,
+      path: path || '',
+      ips: rows.map((row) => ({
+        ip: row._id || '',
+        views: row.views || 0,
+        lastAt: row.lastAt,
+        mine: mineSet.has(String(row._id || '')),
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to load today\'s visitors' });
+  }
+}
+
 async function getWebsiteAnalyticsEvents(req, res) {
   try {
     const tenantObjectId = tenantObjectIdFromReq(req);
@@ -865,6 +917,7 @@ module.exports = {
   updateWebsite,
   updateWebsiteAnalytics,
   getWebsiteAnalyticsReport,
+  getWebsiteAnalyticsTodayIps,
   getWebsiteAnalyticsEvents,
   updateWebsiteMineIp,
   recordPublicAnalyticsEvent,

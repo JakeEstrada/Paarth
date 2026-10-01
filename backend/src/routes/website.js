@@ -7,6 +7,7 @@ const {
   updateWebsite,
   updateWebsiteAnalytics,
   getWebsiteAnalyticsReport,
+  getWebsiteAnalyticsTodayIps,
   getWebsiteAnalyticsEvents,
   updateWebsiteMineIp,
   recordPublicAnalyticsEvent,
@@ -33,6 +34,7 @@ router.use(requireAuth, requireSuperAdmin);
 router.get('/', getWebsite);
 router.put('/', updateWebsite);
 router.get('/analytics/report', getWebsiteAnalyticsReport);
+router.get('/analytics/today-ips', getWebsiteAnalyticsTodayIps);
 router.get('/analytics/events', getWebsiteAnalyticsEvents);
 router.put('/analytics/mine-ips', updateWebsiteMineIp);
 router.put('/analytics', updateWebsiteAnalytics);
