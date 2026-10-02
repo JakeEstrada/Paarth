@@ -20,6 +20,8 @@ const RFID_DEFAULT_SHIFT_OUT = '1430';
 const RFID_DEFAULT_BREAK_MINUTES = 30;
 const RFID_MIN_SHIFT_FOR_BREAK_MINUTES = 60;
 const AUTO_LOGOUT_NOTE = 'Auto log out';
+const AUTO_LOGIN_NOTE = 'Auto log in';
+const RFID_LATE_OUT_LOOKBACK_MINUTES = 60;
 
 /** Match RFID timesheet UI — shop local time, not UTC (Render default). */
 const SHOP_TIMEZONE = process.env.RFID_SHOP_TIMEZONE || 'America/Los_Angeles';
@@ -153,6 +155,23 @@ function timeToMinutes(timeStr) {
   return hours * 60 + minutes;
 }
 
+function minutesFromTimeToken(token) {
+  if (!token || token === '0') return -1;
+  const padded = String(token).replace(/\D/g, '').padStart(4, '0');
+  const hours = parseInt(padded.substring(0, 2), 10);
+  const minutes = parseInt(padded.substring(2, 4), 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return -1;
+  return hours * 60 + minutes;
+}
+
+function isLateClockOutPunch(punchToken, shiftProfile) {
+  const punchMin = minutesFromTimeToken(punchToken);
+  if (punchMin < 0) return false;
+  const shiftOutMin = minutesFromTimeToken(shiftProfile?.shiftOut || RFID_DEFAULT_SHIFT_OUT);
+  const scheduledOut = shiftOutMin < 0 ? 14 * 60 + 30 : shiftOutMin;
+  return punchMin >= Math.max(0, scheduledOut - RFID_LATE_OUT_LOOKBACK_MINUTES);
+}
+
 function calculateHours(inTime, outTime, breaks) {
   if (!inTime || !outTime || inTime === '0' || outTime === '0') return 0;
   const inMinutes = timeToMinutes(inTime);
@@ -272,18 +291,33 @@ function buildRfidDayClocks(scans, employee, period, shiftProfile, now = new Dat
     const raw = (scansByDateKey.get(key) || []).sort((a, b) => a.getTime() - b.getTime());
     const deduped = dedupeScanTimes(raw);
     const clock = clockFromScanTimes(deduped);
+    let inToken = clock.in;
     let outToken = clock.out;
     let note = '';
+    const expectedIn = shiftProfile.shiftIn || RFID_DEFAULT_SHIFT_IN;
+    const expectedOut = shiftProfile.shiftOut || RFID_DEFAULT_SHIFT_OUT;
 
-    if (clock.in !== '0' && outToken === '0' && shouldAutoLogoutForDay(dayDate, now)) {
-      outToken = shiftProfile.shiftOut || RFID_DEFAULT_SHIFT_OUT;
-      note = AUTO_LOGOUT_NOTE;
+    if (inToken !== '0' && outToken === '0') {
+      if (isLateClockOutPunch(inToken, shiftProfile)) {
+        outToken = inToken;
+        inToken = expectedIn;
+        note = AUTO_LOGIN_NOTE;
+      } else if (shouldAutoLogoutForDay(dayDate, now)) {
+        if (minutesFromTimeToken(expectedOut) > minutesFromTimeToken(inToken)) {
+          outToken = expectedOut;
+          note = AUTO_LOGOUT_NOTE;
+        } else {
+          outToken = inToken;
+          inToken = expectedIn;
+          note = AUTO_LOGIN_NOTE;
+        }
+      }
     }
 
     result[day] = {
-      in: clock.in,
+      in: inToken,
       out: outToken,
-      breaks: breakForShift(clock.in, outToken, shiftProfile),
+      breaks: breakForShift(inToken, outToken, shiftProfile),
       scanCount: deduped.length,
       note,
     };

@@ -17,6 +17,10 @@ export const RFID_DEFAULT_BREAK_MINUTES = 30;
 export const RFID_MIN_SHIFT_FOR_BREAK_MINUTES = 60;
 
 export const AUTO_LOGOUT_NOTE = 'Auto log out';
+export const AUTO_LOGIN_NOTE = 'Auto log in';
+
+/** A lone punch this close to (or after) shift end is a clock-out, not a clock-in. */
+export const RFID_LATE_OUT_LOOKBACK_MINUTES = 60;
 
 export type RfidScanRecord = {
   _id?: string;
@@ -48,6 +52,7 @@ export type RfidDayClock = {
   scanCount: number;
   note: string;
   autoLogout: boolean;
+  autoLogin: boolean;
 };
 
 export type RfidManualDayFlags = {
@@ -168,13 +173,20 @@ function clockFromScanTimes(times: Date[]): { in: string; out: string } {
   };
 }
 
+function minutesFromTimeToken(token: string): number {
+  if (!token || token === '0') return -1;
+  const padded = String(token).replace(/\D/g, '').padStart(4, '0');
+  const hours = Number.parseInt(padded.substring(0, 2), 10);
+  const minutes = Number.parseInt(padded.substring(2, 4), 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return -1;
+  return hours * 60 + minutes;
+}
+
 export function shiftDurationMinutes(inToken: string, outToken: string): number {
-  if (!inToken || !outToken || inToken === '0' || outToken === '0') return 0;
-  const parse = (token: string) => {
-    const padded = token.padStart(4, '0');
-    return parseInt(padded.substring(0, 2), 10) * 60 + parseInt(padded.substring(2, 4), 10);
-  };
-  const diff = parse(outToken) - parse(inToken);
+  const inMinutes = minutesFromTimeToken(inToken);
+  const outMinutes = minutesFromTimeToken(outToken);
+  if (inMinutes < 0 || outMinutes < 0) return 0;
+  const diff = outMinutes - inMinutes;
   return diff > 0 ? diff : 0;
 }
 
@@ -187,6 +199,21 @@ export function shouldAutoLogoutForDay(dayDate: Date, now: Date): boolean {
   const cutoff = new Date(dayDate);
   cutoff.setHours(23, 59, 0, 0);
   return now.getTime() >= cutoff.getTime();
+}
+
+/**
+ * A single punch at/after (shift out minus 60 min) is a clock-out.
+ * He forgot to clock in — fill IN from the expected shift start.
+ */
+export function isLateClockOutPunch(
+  punchToken: string,
+  shiftProfile: RfidEmployeeShiftProfile = defaultShiftProfile(),
+): boolean {
+  const punchMin = minutesFromTimeToken(punchToken);
+  if (punchMin < 0) return false;
+  const shiftOutMin = minutesFromTimeToken(shiftProfile.shiftOut || RFID_DEFAULT_SHIFT_OUT);
+  const scheduledOut = shiftOutMin < 0 ? 14 * 60 + 30 : shiftOutMin;
+  return punchMin >= Math.max(0, scheduledOut - RFID_LATE_OUT_LOOKBACK_MINUTES);
 }
 
 function breakForShift(
@@ -238,23 +265,44 @@ export function buildRfidDayClocks(
     const raw = (scansByDateKey.get(key) || []).sort((a, b) => a.getTime() - b.getTime());
     const deduped = dedupeScanTimes(raw);
     const clock = clockFromScanTimes(deduped);
+    let inToken = clock.in;
     let outToken = clock.out;
     let note = '';
     let autoLogout = false;
+    let autoLogin = false;
+    const expectedIn = shiftProfile.shiftIn || RFID_DEFAULT_SHIFT_IN;
+    const expectedOut = shiftProfile.shiftOut || RFID_DEFAULT_SHIFT_OUT;
 
-    if (clock.in !== '0' && outToken === '0' && shouldAutoLogoutForDay(dayDate, now)) {
-      outToken = shiftProfile.shiftOut || RFID_DEFAULT_SHIFT_OUT;
-      note = AUTO_LOGOUT_NOTE;
-      autoLogout = true;
+    if (inToken !== '0' && outToken === '0') {
+      if (isLateClockOutPunch(inToken, shiftProfile)) {
+        // Lone late punch = clock-out. He forgot to clock in.
+        outToken = inToken;
+        inToken = expectedIn;
+        note = AUTO_LOGIN_NOTE;
+        autoLogin = true;
+      } else if (shouldAutoLogoutForDay(dayDate, now)) {
+        if (minutesFromTimeToken(expectedOut) > minutesFromTimeToken(inToken)) {
+          outToken = expectedOut;
+          note = AUTO_LOGOUT_NOTE;
+          autoLogout = true;
+        } else {
+          // Auto-out would land before the punch (0.00 hrs). Treat punch as out instead.
+          outToken = inToken;
+          inToken = expectedIn;
+          note = AUTO_LOGIN_NOTE;
+          autoLogin = true;
+        }
+      }
     }
 
     result[day] = {
-      in: clock.in,
+      in: inToken,
       out: outToken,
-      breaks: breakForShift(clock.in, outToken, shiftProfile),
+      breaks: breakForShift(inToken, outToken, shiftProfile),
       scanCount: deduped.length,
       note,
       autoLogout,
+      autoLogin,
     };
   });
 
@@ -346,6 +394,8 @@ export function buildTimesheetRowsFromScans(
     breaks: '0',
     scanCount: 0,
     note: '',
+    autoLogout: false,
+    autoLogin: false,
   }));
   const rfidByDay = buildRfidDayClocks(scanList, employee, period, profile);
   const savedByDay = Object.fromEntries(savedWorkHours.map((r) => [r.day, r]));
@@ -374,7 +424,16 @@ export function buildTimesheetRowsFromScans(
 }
 
 export function mergeRfidIntoWorkHours<
-  T extends { day: string; in: string; out: string; breaks: string; scanCount: number; note?: string },
+  T extends {
+    day: string;
+    in: string;
+    out: string;
+    breaks: string;
+    scanCount: number;
+    note?: string;
+    autoLogout?: boolean;
+    autoLogin?: boolean;
+  },
 >(
   rows: T[],
   rfidByDay: Record<string, RfidDayClock>,
@@ -388,7 +447,11 @@ export function mergeRfidIntoWorkHours<
     if (!manual.in) next.in = rfid.in;
     if (!manual.out) next.out = rfid.out;
     if (!manual.breaks) next.breaks = rfid.breaks;
-    if (!manual.note) next.note = rfid.note;
+    if (!manual.note) {
+      next.note = rfid.note;
+      next.autoLogout = rfid.autoLogout;
+      next.autoLogin = rfid.autoLogin;
+    }
     next.scanCount = rfid.scanCount;
     return next;
   });

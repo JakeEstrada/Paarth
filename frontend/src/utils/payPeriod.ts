@@ -77,10 +77,15 @@ export function isCurrentPayPeriod(period: PayPeriod, anchor: Date = new Date())
   return period.id === getPayPeriodForDate(anchor).id;
 }
 
-/** True when the period ended before the current period started (locked / read-only). */
+/** True once payday Friday for this period has ended — then the sheet locks. */
 export function isPastPayPeriod(period: PayPeriod, anchor: Date = new Date()): boolean {
-  const current = getPayPeriodForDate(anchor);
-  return period.start.getTime() < current.start.getTime();
+  return startOfDay(anchor).getTime() > startOfDay(period.payDate).getTime();
+}
+
+/** Current work week, plus the week being paid (editable through payday Friday). */
+export function isEditablePayPeriod(period: PayPeriod, anchor: Date = new Date()): boolean {
+  if (isPastPayPeriod(period, anchor)) return false;
+  return startOfDay(period.start).getTime() <= startOfDay(anchor).getTime();
 }
 
 /**

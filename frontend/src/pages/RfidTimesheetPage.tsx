@@ -1,7 +1,7 @@
 /**
  * RfidTimesheetPage — RFID-derived timesheets by employee & pay period (Fri–Thu).
  * Route: /rfid-timesheets
- * Current week is editable; past weeks are read-only (greyed out).
+ * Current week and payday week are editable. Older weeks unlock with the financial PIN.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -13,6 +13,11 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   FormControl,
   IconButton,
@@ -36,12 +41,14 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   Edit as EditIcon,
+  LockOpen as LockOpenIcon,
   Receipt as ReceiptIcon,
 } from '@mui/icons-material';
 import { isAxiosError } from 'axios';
 import toast from 'react-hot-toast';
 import api from '../utils/axios';
 import { useAuth } from '../context/AuthContext';
+import { FINANCIAL_AMOUNTS_PIN } from '../hooks/useFinancialPinLock';
 import { useSocketConnectionStatus, useSocketSubscription } from '../hooks/useSocketSubscription';
 import { getTenantRoom } from '../services/socket';
 import {
@@ -67,6 +74,7 @@ import {
   getPayPeriodDayDates,
   getPayPeriodForDate,
   isCurrentPayPeriod,
+  isEditablePayPeriod,
   isPastPayPeriod,
   listRecentPayPeriods,
   shouldPreferRfidOverManual,
@@ -77,6 +85,7 @@ import {
 const STORAGE_PREFIX = 'rfidTimesheetWeek';
 const MIGRATED_PREFIX = 'rfidTimesheetMigrated';
 const LAST_EMPLOYEE_KEY = 'rfidTimesheetLastEmployee';
+const PAST_WEEK_UNLOCK_KEY = 'rfidTimesheetPastWeeksUnlocked';
 /** IRS-style mileage rate (matches Payroll page). */
 const PRICE_PER_MILE = 0.725;
 
@@ -188,6 +197,22 @@ function storageKey(employeeId: string, periodId: string) {
 
 function migrationKey(employeeId: string, periodId: string) {
   return `${MIGRATED_PREFIX}:${employeeId}:${periodId}`;
+}
+
+function loadPastWeeksUnlocked(): boolean {
+  try {
+    return sessionStorage.getItem(PAST_WEEK_UNLOCK_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function savePastWeeksUnlocked(unlocked: boolean) {
+  try {
+    sessionStorage.setItem(PAST_WEEK_UNLOCK_KEY, unlocked ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
 }
 
 function loadLastEmployeeId(): string | null {
@@ -376,6 +401,10 @@ function RfidTimesheetPage() {
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [loadingScans, setLoadingScans] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [pastWeeksUnlocked, setPastWeeksUnlocked] = useState(() => loadPastWeeksUnlocked());
+  const [pinDialogOpen, setPinDialogOpen] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
   const [scans, setScans] = useState<RfidScanRecord[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<RfidEmployeeOption | null>(null);
   const [payPeriod, setPayPeriod] = useState<PayPeriod>(() => getPayPeriodForDate(new Date()));
@@ -406,7 +435,8 @@ function RfidTimesheetPage() {
 
   const isCurrentWeek = isCurrentPayPeriod(payPeriod);
   const isPastWeek = isPastPayPeriod(payPeriod);
-  const canEdit = isCurrentWeek && isEditMode;
+  const canOpenEditor = isEditablePayPeriod(payPeriod) || (isPastWeek && pastWeeksUnlocked);
+  const canEdit = canOpenEditor && isEditMode;
   const currentPeriodId = getPayPeriodForDate(new Date()).id;
 
   const activeShiftProfile = useMemo((): RfidEmployeeShiftProfile => {
@@ -873,7 +903,7 @@ function RfidTimesheetPage() {
   }, [selectedEmployee, payPeriod, activeShiftProfile, recomputeFromScans]);
 
   useEffect(() => {
-    if (!selectedEmployee || !isCurrentWeek || !isEditMode || !sheetReadyRef.current) return undefined;
+    if (!selectedEmployee || !canOpenEditor || !isEditMode || !sheetReadyRef.current) return undefined;
     const cleanedManual = sanitizeManualByDay(manualByDay, workHours);
     const payload = sheetPayload(
       workHours,
@@ -897,7 +927,7 @@ function RfidTimesheetPage() {
   }, [
     selectedEmployee,
     payPeriod.id,
-    isCurrentWeek,
+    canOpenEditor,
     isEditMode,
     workHours,
     receipts,
@@ -1046,6 +1076,32 @@ function RfidTimesheetPage() {
       });
   };
 
+  const openPastWeekPinDialog = () => {
+    setPinInput('');
+    setPinError('');
+    setPinDialogOpen(true);
+  };
+
+  const closePastWeekPinDialog = () => {
+    setPinDialogOpen(false);
+    setPinInput('');
+    setPinError('');
+  };
+
+  const submitPastWeekPin = (event?: { preventDefault?: () => void }) => {
+    event?.preventDefault?.();
+    if (pinInput.trim() === FINANCIAL_AMOUNTS_PIN) {
+      savePastWeeksUnlocked(true);
+      setPastWeeksUnlocked(true);
+      setPinDialogOpen(false);
+      setPinInput('');
+      setPinError('');
+      setIsEditMode(true);
+      return;
+    }
+    setPinError('Incorrect PIN');
+  };
+
   const handleAdditionalHoursChange = (
     index: number,
     field: keyof AdditionalHoursRow,
@@ -1069,12 +1125,13 @@ function RfidTimesheetPage() {
     setAdditionalHours((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const readOnlyCardSx = isPastWeek
-    ? {
-        opacity: 0.72,
-        bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-      }
-    : {};
+  const readOnlyCardSx =
+    isPastWeek && !pastWeeksUnlocked
+      ? {
+          opacity: 0.72,
+          bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+        }
+      : {};
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
@@ -1084,17 +1141,24 @@ function RfidTimesheetPage() {
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Pay periods run <strong>Friday through Thursday</strong>; paychecks go out on the following Friday.
-          Hours auto-fill live from RFID/PIN scans. Click <strong>Edit</strong> on the current week to adjust times,
-          set each employee&apos;s expected shift, or add miles and receipts. Missing clock-outs after 11:59 PM use the
-          employee&apos;s shift end time with an &quot;Auto log out&quot; note. Past pay weeks are greyed out and locked after payday Friday.
+          Hours auto-fill live from RFID/PIN scans. Click <strong>Edit</strong> on the current week (or the week
+          being paid, through payday Friday) to adjust times, set each employee&apos;s expected shift, or add miles
+          and receipts. A lone late punch — at or after the expected clock-out — is treated as clock-out and
+          auto-fills clock-in from the expected shift start. Missing morning-style clock-outs after 11:59 PM use
+          the employee&apos;s shift end with an &quot;Auto log out&quot; note. Weeks lock the day after payday Friday;
+          unlock a previous week with the PIN to edit it.
         </Typography>
       </Box>
 
       {!isCurrentWeek && (
-        <Alert severity={isPastWeek ? 'warning' : 'info'} sx={{ mb: 3 }}>
-          {isPastWeek
-            ? 'This is a past pay period. Hours and receipts are read-only.'
-            : 'This pay period is in the future. Editing opens when this becomes the current week.'}
+        <Alert severity={isPastWeek && !pastWeeksUnlocked ? 'warning' : 'info'} sx={{ mb: 3 }}>
+          {isPastWeek && !pastWeeksUnlocked
+            ? 'This pay period is locked. Enter the PIN to edit hours, miles, or receipts.'
+            : isPastWeek
+              ? 'Previous week unlocked for this session. Click Edit to change hours.'
+              : canOpenEditor
+                ? 'This is the week being paid today. You can still Edit until the end of payday Friday — then it locks.'
+                : 'This pay period is in the future. Editing opens when this becomes the current week.'}
         </Alert>
       )}
 
@@ -1220,14 +1284,17 @@ function RfidTimesheetPage() {
                 label={`Pay date: ${formatPayDate(payPeriod.payDate)}`}
                 variant="outlined"
               />
-              {isCurrentWeek && !isEditMode && (
+              {canOpenEditor && !isEditMode && (
                 <Chip size="small" label="Viewing" color="info" variant="outlined" />
               )}
-              {isCurrentWeek && isEditMode && (
+              {canOpenEditor && isEditMode && (
                 <Chip size="small" label="Editing" color="warning" variant="outlined" />
               )}
-              {isPastWeek && (
+              {isPastWeek && !pastWeeksUnlocked && (
                 <Chip size="small" label="Locked" color="default" variant="filled" />
+              )}
+              {isPastWeek && pastWeeksUnlocked && (
+                <Chip size="small" label="PIN unlocked" color="success" variant="outlined" />
               )}
             </Box>
           )}
@@ -1261,7 +1328,7 @@ function RfidTimesheetPage() {
                     {selectedEmployee.name} — {payPeriod.label}
                   </Typography>
                 </Box>
-                {isCurrentWeek && (
+                {canOpenEditor && (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                     {!isEditMode ? (
                       <Button
@@ -1304,6 +1371,17 @@ function RfidTimesheetPage() {
                     )}
                   </Box>
                 )}
+                {isPastWeek && !pastWeeksUnlocked && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<LockOpenIcon />}
+                    onClick={openPastWeekPinDialog}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    Unlock to edit
+                  </Button>
+                )}
               </Box>
 
               {canEdit && (
@@ -1319,7 +1397,7 @@ function RfidTimesheetPage() {
                   }}
                 >
                   <Typography variant="subtitle2" sx={{ width: '100%', fontWeight: 600 }}>
-                    Employee shift (used for auto clock-out at 11:59 PM if no scan out)
+                    Employee shift (auto clock-in when the only punch is late; auto clock-out at 11:59 PM)
                   </Typography>
                   <TextField
                     label="Shift in"
@@ -1375,7 +1453,7 @@ function RfidTimesheetPage() {
                       <TableRow
                         key={row.day}
                         hover={canEdit}
-                        sx={isPastWeek ? { color: 'text.secondary' } : undefined}
+                        sx={isPastWeek && !pastWeeksUnlocked ? { color: 'text.secondary' } : undefined}
                       >
                         <TableCell sx={{ fontWeight: 600 }}>{row.day}</TableCell>
                         <TableCell>{row.dateLabel}</TableCell>
@@ -1748,6 +1826,39 @@ function RfidTimesheetPage() {
           </Box>
         </>
       )}
+
+      <Dialog open={pinDialogOpen} onClose={closePastWeekPinDialog} maxWidth="xs" fullWidth>
+        <form onSubmit={submitPastWeekPin} data-audit-ignore="true">
+          <DialogTitle>Unlock previous timesheet</DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              Enter the PIN to edit a locked pay week. This stays unlocked for the rest of this session.
+            </DialogContentText>
+            <TextField
+              autoFocus
+              fullWidth
+              label="PIN"
+              type="password"
+              inputMode="numeric"
+              value={pinInput}
+              onChange={(e) => {
+                setPinInput(e.target.value);
+                if (pinError) setPinError('');
+              }}
+              error={Boolean(pinError)}
+              helperText={pinError || ' '}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button type="button" onClick={closePastWeekPinDialog}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="contained">
+              Unlock
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
     </Box>
   );
 }
