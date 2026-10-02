@@ -234,6 +234,17 @@ function publishUserAuditCreated(io, tenantId, events, opts = {}) {
   });
 }
 
+/** A reply landed from Twilio — lets the sidebar badge update without waiting for its poll. */
+function publishSmsInboundCreated(io, tenantId, message) {
+  const roomId = tenantId ? String(tenantId) : '';
+  if (!roomId) return;
+  safeEmit(io, `tenant:${roomId}`, 'sms.inbound.created', {
+    type: 'sms.inbound.created',
+    tenantId: roomId,
+    message: message || null,
+  });
+}
+
 function publishWebsiteAnalyticsCreated(io, tenantId, event) {
   const roomId = tenantId ? String(tenantId) : '';
   if (!roomId || !event?.id) return;
@@ -260,5 +271,6 @@ module.exports = {
   publishRfidTimesheetUpdated,
   publishRfidEmployeeProfileUpdated,
   publishUserAuditCreated,
+  publishSmsInboundCreated,
   publishWebsiteAnalyticsCreated,
 };

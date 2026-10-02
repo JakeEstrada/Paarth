@@ -2,7 +2,7 @@
  * Sidebar — Primary navigation groups (workspace, finance, operations, archive).
  * Admin-only items filtered via useAuth().isAdmin(); super-admin items via isSuperAdmin().
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Drawer,
@@ -46,6 +46,8 @@ import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
 import api from '../../utils/axios';
 import { fetchUnreadSmsCount } from '../../utils/twilioApi';
+import { useSocketSubscription } from '../../hooks/useSocketSubscription';
+import { getTenantRoom } from '../../services/socket';
 
 const DRAWER_WIDTH = 260;
 
@@ -92,10 +94,11 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
-  const { isAdmin, isSuperAdmin, user } = useAuth();
+  const { isAdmin, isSuperAdmin, user, tenantIdForBranding } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [inboxCount, setInboxCount] = useState(0);
   const [unreadSmsCount, setUnreadSmsCount] = useState(0);
+  const reloadUnreadRef = useRef(() => {});
 
   useEffect(() => {
     if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) return undefined;
@@ -124,6 +127,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         });
     };
     load();
+    reloadUnreadRef.current = load;
     const timer = window.setInterval(load, 45_000);
     const onFocus = () => load();
     const onUnreadChanged = () => load();
@@ -131,11 +135,23 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     window.addEventListener('paarth:sms-unread-changed', onUnreadChanged);
     return () => {
       cancelled = true;
+      reloadUnreadRef.current = () => {};
       window.clearInterval(timer);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('paarth:sms-unread-changed', onUnreadChanged);
     };
   }, [location.pathname, user]);
+
+  // A reply pushed from Twilio updates the badge straight away instead of on the next poll.
+  const handleInboundSms = useCallback(() => {
+    reloadUnreadRef.current();
+  }, []);
+
+  useSocketSubscription(
+    user ? getTenantRoom(tenantIdForBranding) : null,
+    'sms.inbound.created',
+    handleInboundSms,
+  );
 
   const isActive = (path, { exact } = {}) => {
     const [pathnameOnly, queryOnly] = String(path || '').split('?');
@@ -211,9 +227,10 @@ function Sidebar({ mobileOpen, onMobileClose }) {
               {item.path === '/messages' && unreadSmsCount > 0 ? (
                 <Chip
                   size="small"
-                  color="info"
+                  color="error"
                   label={`+${unreadSmsCount}`}
-                  sx={{ ml: 1, height: 22, fontWeight: 600 }}
+                  aria-label={`${unreadSmsCount} unread message${unreadSmsCount === 1 ? '' : 's'}`}
+                  sx={{ ml: 1, height: 22, fontWeight: 700 }}
                 />
               ) : null}
             </ListItemButton>

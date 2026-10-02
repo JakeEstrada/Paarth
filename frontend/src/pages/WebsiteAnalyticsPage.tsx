@@ -3,7 +3,7 @@
  * Route: /developer/analytics
  * Tabs: campaign | traffic  (?tab=)
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Accordion,
@@ -13,6 +13,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Collapse,
   Container,
   Dialog,
   DialogContent,
@@ -43,6 +44,7 @@ import { alpha, type Theme } from '@mui/material/styles';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
+  ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
   MailOutline as MailIcon,
   Mouse as MouseIcon,
@@ -120,8 +122,23 @@ type Report = {
   series: SeriesPoint[];
   campaign: { adClicks: number; conversions: number };
   campaignSeries: Array<{ date: string; adClicks: number; conversions: number }>;
-  pages: Array<{ path: string; views: number; viewsToday: number }>;
+  pages: PageRow[];
   mineIps: MineIp[];
+};
+
+type PageVisitor = {
+  ip: string;
+  views: number;
+  viewsToday: number;
+  lastSeen: string | null;
+  mine: boolean;
+};
+
+type PageRow = {
+  path: string;
+  views: number;
+  viewsToday: number;
+  visitors: PageVisitor[];
 };
 
 type TodayIp = {
@@ -526,6 +543,7 @@ function WebsiteAnalyticsPage() {
   const [hasMore, setHasMore] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
   const [mineIps, setMineIps] = useState<MineIp[]>([]);
+  const [expandedPages, setExpandedPages] = useState<Record<string, boolean>>({});
   const [todayIpsOpen, setTodayIpsOpen] = useState(false);
   const [todayIpsPath, setTodayIpsPath] = useState<string | null>(null);
   const [todayIpsLoading, setTodayIpsLoading] = useState(false);
@@ -575,10 +593,11 @@ function WebsiteAnalyticsPage() {
       campaign: reportRes.data?.campaign || EMPTY_REPORT.campaign,
       campaignSeries: Array.isArray(reportRes.data?.campaignSeries) ? reportRes.data.campaignSeries : [],
       pages: Array.isArray(reportRes.data?.pages)
-        ? reportRes.data.pages.map((row: { path?: string; views?: number; viewsToday?: number }) => ({
+        ? reportRes.data.pages.map((row: Partial<PageRow>) => ({
             path: row.path || '/',
             views: row.views || 0,
             viewsToday: row.viewsToday || 0,
+            visitors: Array.isArray(row.visitors) ? row.visitors : [],
           }))
         : [],
       mineIps: Array.isArray(reportRes.data?.mineIps) ? reportRes.data.mineIps : [],
@@ -674,15 +693,34 @@ function WebsiteAnalyticsPage() {
       });
       let pages = prev.pages;
       if (event.type === 'page_view') {
+        const liveVisitor: PageVisitor = {
+          ip: event.ip || '',
+          views: 1,
+          viewsToday: 1,
+          lastSeen: event.occurredAt,
+          mine: Boolean(event.mine),
+        };
         // A live event is by definition today, so both counters move together.
         const hit = pages.find((row) => row.path === event.path);
         pages = hit
-          ? pages.map((row) =>
-              row.path === event.path
-                ? { ...row, views: row.views + 1, viewsToday: (row.viewsToday || 0) + 1 }
-                : row,
-            )
-          : [...pages, { path: event.path, views: 1, viewsToday: 1 }];
+          ? pages.map((row) => {
+              if (row.path !== event.path) return row;
+              const seen = (row.visitors || []).some((v) => v.ip === liveVisitor.ip);
+              const visitors = seen
+                ? (row.visitors || []).map((v) =>
+                    v.ip === liveVisitor.ip
+                      ? { ...v, views: v.views + 1, viewsToday: (v.viewsToday || 0) + 1, lastSeen: event.occurredAt }
+                      : v,
+                  )
+                : [...(row.visitors || []), liveVisitor];
+              return {
+                ...row,
+                views: row.views + 1,
+                viewsToday: (row.viewsToday || 0) + 1,
+                visitors: [...visitors].sort((a, b) => b.views - a.views).slice(0, 25),
+              };
+            })
+          : [...pages, { path: event.path, views: 1, viewsToday: 1, visitors: [liveVisitor] }];
         pages = [...pages].sort((a, b) => b.views - a.views).slice(0, 8);
       }
       return { ...prev, totals, series, pages };
@@ -734,6 +772,10 @@ function WebsiteAnalyticsPage() {
       conversions: prev.conversions.map((row, i) => (i === index ? { ...row, ...patch } : row)),
     }));
   };
+
+  const togglePage = useCallback((path: string) => {
+    setExpandedPages((prev) => ({ ...prev, [path]: !prev[path] }));
+  }, []);
 
   const openTodayIps = useCallback(async (path: string | null) => {
     setTodayIpsOpen(true);
@@ -1094,13 +1136,14 @@ function WebsiteAnalyticsPage() {
                 Top pages
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Views over the last {report.days} days, and so far today
+                Last {report.days} days. Tap a page to see who opened it.
               </Typography>
             </Box>
             {report.pages.length ? (
               <Table size="small">
                 <TableHead>
                   <TableRow>
+                    <TableCell sx={{ width: 44 }} />
                     <TableCell sx={{ fontWeight: 700 }}>Page</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                       Views
@@ -1108,32 +1151,109 @@ function WebsiteAnalyticsPage() {
                     <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                       Views today
                     </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      Visitors
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {report.pages.map((row) => (
-                    <TableRow key={row.path} hover>
-                      <TableCell>{row.path === '/' ? 'Home' : row.path}</TableCell>
-                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                        {row.views.toLocaleString()}
-                      </TableCell>
-                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                        {row.viewsToday ? (
-                          <Button
-                            size="small"
-                            onClick={() => void openTodayIps(row.path)}
-                            sx={{ textTransform: 'none', fontWeight: 700, minWidth: 0 }}
+                  {report.pages.map((row) => {
+                    const open = Boolean(expandedPages[row.path]);
+                    const visitors = row.visitors || [];
+                    return (
+                      <Fragment key={row.path}>
+                        <TableRow hover onClick={() => togglePage(row.path)} sx={{ cursor: 'pointer' }}>
+                          <TableCell sx={{ py: 0.25 }}>
+                            <IconButton size="small" aria-label={open ? 'Hide visitors' : 'Show visitors'}>
+                              {open ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                            </IconButton>
+                          </TableCell>
+                          <TableCell>{row.path === '/' ? 'Home' : row.path}</TableCell>
+                          <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {row.views.toLocaleString()}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{
+                              fontVariantNumeric: 'tabular-nums',
+                              fontWeight: row.viewsToday ? 700 : 400,
+                              color: row.viewsToday ? 'text.primary' : 'text.disabled',
+                            }}
                           >
-                            {row.viewsToday.toLocaleString()}
-                          </Button>
-                        ) : (
-                          <Typography component="span" variant="body2" color="text.disabled">
-                            0
-                          </Typography>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                            {(row.viewsToday || 0).toLocaleString()}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {visitors.length.toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell colSpan={5} sx={{ py: 0, border: open ? undefined : 0 }}>
+                            <Collapse in={open} timeout="auto" unmountOnExit>
+                              <Box sx={{ py: 1.5 }}>
+                                {visitors.length ? (
+                                  <Table size="small">
+                                    <TableHead>
+                                      <TableRow>
+                                        <TableCell sx={{ fontWeight: 600 }}>Who (IP address)</TableCell>
+                                        <TableCell align="right" sx={{ fontWeight: 600 }}>Views</TableCell>
+                                        <TableCell align="right" sx={{ fontWeight: 600 }}>Today</TableCell>
+                                        <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Last seen</TableCell>
+                                        <TableCell sx={{ width: 104 }} />
+                                      </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                      {visitors.map((visitor) => (
+                                        <TableRow key={`${row.path}:${visitor.ip}`}>
+                                          <TableCell>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                                              <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                                                {visitor.ip || 'unknown'}
+                                              </Typography>
+                                              {visitor.mine ? <Chip size="small" label="Me" /> : null}
+                                            </Box>
+                                          </TableCell>
+                                          <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                                            {visitor.views.toLocaleString()}
+                                          </TableCell>
+                                          <TableCell
+                                            align="right"
+                                            sx={{
+                                              fontVariantNumeric: 'tabular-nums',
+                                              color: visitor.viewsToday ? 'text.primary' : 'text.disabled',
+                                            }}
+                                          >
+                                            {(visitor.viewsToday || 0).toLocaleString()}
+                                          </TableCell>
+                                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>
+                                            {visitor.lastSeen ? format(new Date(visitor.lastSeen), 'MMM d, h:mm a') : '—'}
+                                          </TableCell>
+                                          <TableCell>
+                                            {visitor.ip ? (
+                                              <Button
+                                                size="small"
+                                                onClick={() => void setMine(visitor.ip, !visitor.mine)}
+                                                sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+                                              >
+                                                {visitor.mine ? 'Not me' : 'This is me'}
+                                              </Button>
+                                            ) : null}
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">
+                                    No IP addresses recorded for this page yet.
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Collapse>
+                          </TableCell>
+                        </TableRow>
+                      </Fragment>
+                    );
+                  })}
                 </TableBody>
               </Table>
             ) : (

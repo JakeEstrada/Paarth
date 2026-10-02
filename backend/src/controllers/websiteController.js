@@ -704,13 +704,30 @@ async function getWebsiteAnalyticsReport(req, res) {
           },
         },
       ]),
+      // Grouped by path *and* ip so each page can list who actually opened it.
       WebsiteAnalyticsEvent.aggregate([
         { $match: { ...match, type: 'page_view' } },
         {
           $group: {
-            _id: '$path',
+            _id: { path: '$path', ip: '$ip' },
             views: { $sum: 1 },
             viewsToday: { $sum: { $cond: [{ $eq: [pacificDay, todayLabel] }, 1, 0] } },
+            lastSeen: { $max: '$occurredAt' },
+          },
+        },
+        {
+          $group: {
+            _id: '$_id.path',
+            views: { $sum: '$views' },
+            viewsToday: { $sum: '$viewsToday' },
+            visitors: {
+              $push: {
+                ip: '$_id.ip',
+                views: '$views',
+                viewsToday: '$viewsToday',
+                lastSeen: '$lastSeen',
+              },
+            },
           },
         },
         { $sort: { views: -1 } },
@@ -793,6 +810,16 @@ async function getWebsiteAnalyticsReport(req, res) {
         path: row._id || '/',
         views: row.views || 0,
         viewsToday: row.viewsToday || 0,
+        visitors: (Array.isArray(row.visitors) ? row.visitors : [])
+          .map((visitor) => ({
+            ip: visitor.ip || '',
+            views: visitor.views || 0,
+            viewsToday: visitor.viewsToday || 0,
+            lastSeen: visitor.lastSeen || null,
+            mine: mineIps.includes(visitor.ip || ''),
+          }))
+          .sort((a, b) => b.views - a.views)
+          .slice(0, 25),
       })),
     });
   } catch (error) {

@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { getFileStream } = require('./fileController');
 const { ensureDefaultTenant, ensureTenantBySlug } = require('../utils/tenantService');
 const { runWithTenantContext } = require('../middleware/tenantContext');
+const { publishSmsInboundCreated } = require('../services/eventBus');
 
 /**
  * Basic Twilio webhook handlers.
@@ -167,8 +168,17 @@ async function upsertInboundSms({ from, to, body, twilioSid, preferredTenantId, 
   });
 }
 
-async function logInboundSms({ from, to, body, twilioSid }) {
-  await upsertInboundSms({ from, to, body, twilioSid });
+async function logInboundSms({ from, to, body, twilioSid, io }) {
+  const { doc, created } = await upsertInboundSms({ from, to, body, twilioSid });
+  if (io && created && doc?.tenantId) {
+    publishSmsInboundCreated(io, doc.tenantId, {
+      id: String(doc._id),
+      from: doc.from || '',
+      body: doc.body || '',
+      createdAt: doc.createdAt,
+    });
+  }
+  return { doc, created };
 }
 
 async function logOutboundSms({ from, to, body, twilioSid, source, createdBy, tenantId, deliveryStatus }) {
@@ -198,7 +208,7 @@ async function inboundSms(req, res) {
     console.log('[Twilio SMS] from=%s to=%s body=%s', from, to, body);
 
     try {
-      await logInboundSms({ from, to, body, twilioSid: messageSid });
+      await logInboundSms({ from, to, body, twilioSid: messageSid, io: req.app.get('io') });
     } catch (logError) {
       console.error('Failed to log inbound SMS:', logError?.message || logError);
     }
