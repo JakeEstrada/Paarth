@@ -42,11 +42,13 @@ import {
   ChevronRight as ChevronRightIcon,
   Edit as EditIcon,
   LockOpen as LockOpenIcon,
+  Print as PrintIcon,
   Receipt as ReceiptIcon,
 } from '@mui/icons-material';
 import { isAxiosError } from 'axios';
 import toast from 'react-hot-toast';
 import api from '../utils/axios';
+import BrandLogo from '../components/common/BrandLogo';
 import { useAuth } from '../context/AuthContext';
 import { FINANCIAL_AMOUNTS_PIN } from '../hooks/useFinancialPinLock';
 import { useSocketConnectionStatus, useSocketSubscription } from '../hooks/useSocketSubscription';
@@ -1125,6 +1127,13 @@ function RfidTimesheetPage() {
     setAdditionalHours((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const additionalHoursTotal = additionalHours.reduce((sum, row) => sum + (parseFloat(row.hours) || 0), 0);
+  const dayNotes = workHours.filter((row) => String(row.note || '').trim());
+
   const readOnlyCardSx =
     isPastWeek && !pastWeeksUnlocked
       ? {
@@ -1134,20 +1143,296 @@ function RfidTimesheetPage() {
       : {};
 
   return (
-    <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, color: theme.palette.primary.main, mb: 0.5 }}>
-          RFID Timesheets
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Pay periods run <strong>Friday through Thursday</strong>; paychecks go out on the following Friday.
-          Hours auto-fill live from RFID/PIN scans. Click <strong>Edit</strong> on the current week (or the week
-          being paid, through payday Friday) to adjust times, set each employee&apos;s expected shift, or add miles
-          and receipts. A lone late punch — at or after the expected clock-out — is treated as clock-out and
-          auto-fills clock-in from the expected shift start. Missing morning-style clock-outs after 11:59 PM use
-          the employee&apos;s shift end with an &quot;Auto log out&quot; note. Weeks lock the day after payday Friday;
-          unlock a previous week with the PIN to edit it.
-        </Typography>
+    <>
+      <style>{`
+        @media print {
+          @page {
+            margin: 0.5in;
+          }
+          body * {
+            visibility: hidden;
+          }
+          .print-summary, .print-summary * {
+            visibility: visible;
+          }
+          .print-summary {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            color: #000000 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .print-summary .MuiTypography-root,
+          .print-summary .MuiTableCell-root,
+          .print-summary strong {
+            color: #000000 !important;
+          }
+          .print-summary .MuiDivider-root {
+            border-color: #000000 !important;
+          }
+          nav, aside, header, footer,
+          [class*="Sidebar"], [class*="sidebar"],
+          [class*="Drawer"], [class*="drawer"] {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      <Box
+        className="print-summary"
+        sx={{
+          display: 'none',
+          color: '#000',
+          backgroundColor: '#fff',
+          '& .MuiTypography-root': { color: '#000' },
+          '& .MuiTableCell-root': { color: '#000' },
+          '& .MuiTableRow-root': { color: '#000' },
+          '& .MuiDivider-root': { borderColor: '#000', opacity: 1 },
+          '@media print': { display: 'block', p: 2 },
+        }}
+      >
+        <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+          <Box sx={{ flexShrink: 0 }}>
+            <BrandLogo
+              alt="Liminnality"
+              themeMode="light"
+              sx={{
+                height: 60,
+                width: 60,
+                objectFit: 'contain',
+              }}
+            />
+          </Box>
+          <Box sx={{ flex: 1, display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 2 }}>
+            <Typography variant="body1" sx={{ fontSize: '10pt' }}>
+              <strong>Employee:</strong> {selectedEmployee?.name || '—'}
+            </Typography>
+            <Typography variant="body1" sx={{ fontSize: '10pt' }}>
+              <strong>Rate Per Hour:</strong> ${ratePerHour || '0.00'}
+            </Typography>
+            <Typography variant="body1" sx={{ fontSize: '10pt' }}>
+              <strong>Date:</strong> {payPeriod.label}
+            </Typography>
+          </Box>
+        </Box>
+
+        <Box sx={{ mb: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'baseline',
+              justifyContent: 'space-between',
+              gap: 1,
+              borderBottom: '2px solid #000',
+              pb: 0.5,
+              mb: 1,
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '12pt', m: 0 }}>
+              Work Hours
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 1.5, columnGap: 2 }}>
+              <Typography component="span" variant="body2" sx={{ fontSize: '9pt', whiteSpace: 'nowrap' }}>
+                <strong>Total hours:</strong> {totalHours.toFixed(2)} hrs
+              </Typography>
+              <Typography component="span" variant="body2" sx={{ fontSize: '9pt', whiteSpace: 'nowrap' }}>
+                <strong>Weighted hours:</strong> {weightedHoursData.weighted.toFixed(2)} hrs
+              </Typography>
+              {weightedHoursData.overtime > 0 && (
+                <Typography component="span" variant="caption" sx={{ fontSize: '8pt', color: '#000' }}>
+                  ({weightedHoursData.regular.toFixed(2)} reg + {weightedHoursData.overtime.toFixed(2)} OT × 1.5)
+                </Typography>
+              )}
+            </Box>
+          </Box>
+          <Table size="small" sx={{ mb: 1, border: '1px solid #000', borderCollapse: 'collapse', '& td, & th': { borderCollapse: 'collapse' } }}>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700, borderRight: '1px solid #000', borderBottom: '1px solid #000', fontSize: '9pt', py: 0.5 }}>Day</TableCell>
+                <TableCell sx={{ fontWeight: 700, borderRight: '1px solid #000', borderBottom: '1px solid #000', fontSize: '9pt', py: 0.5 }}>In</TableCell>
+                <TableCell sx={{ fontWeight: 700, borderRight: '1px solid #000', borderBottom: '1px solid #000', fontSize: '9pt', py: 0.5 }}>Out</TableCell>
+                <TableCell sx={{ fontWeight: 700, borderRight: '1px solid #000', borderBottom: '1px solid #000', fontSize: '9pt', py: 0.5 }} align="center">Hours</TableCell>
+                <TableCell sx={{ fontWeight: 700, borderBottom: '1px solid #000', fontSize: '9pt', py: 0.5 }} align="center">Breaks (min)</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {workHours.map((day) => {
+                const hours = calculateHours(day.in, day.out, day.breaks);
+                return (
+                  <TableRow key={day.day}>
+                    <TableCell sx={{ fontWeight: 600, borderRight: '1px solid #000', fontSize: '8pt', py: 0.5 }}>{day.day}</TableCell>
+                    <TableCell sx={{ borderRight: '1px solid #000', fontSize: '8pt', py: 0.5 }}>{day.in || '0'}</TableCell>
+                    <TableCell sx={{ borderRight: '1px solid #000', fontSize: '8pt', py: 0.5 }}>{day.out || '0'}</TableCell>
+                    <TableCell sx={{ borderRight: '1px solid #000', fontSize: '8pt', py: 0.5 }} align="center">{hours.toFixed(2)} hrs</TableCell>
+                    <TableCell sx={{ fontSize: '8pt', py: 0.5 }} align="center">{day.breaks || '0'}</TableCell>
+                  </TableRow>
+                );
+              })}
+              <TableRow
+                sx={{
+                  backgroundColor: '#f0f0f0',
+                  '& td': {
+                    fontWeight: 700,
+                    borderTop: '2px solid #000',
+                    fontSize: '9pt',
+                    py: 0.5,
+                    color: '#000',
+                  },
+                }}
+              >
+                <TableCell sx={{ borderRight: '1px solid #000' }}>Total</TableCell>
+                <TableCell sx={{ borderRight: '1px solid #000' }}></TableCell>
+                <TableCell sx={{ borderRight: '1px solid #000' }}></TableCell>
+                <TableCell sx={{ borderRight: '1px solid #000' }} align="center">{scheduleHours.toFixed(2)} hrs</TableCell>
+                <TableCell></TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+          {additionalHoursTotal > 0 && (
+            <Box sx={{ mb: 1 }}>
+              {additionalHours
+                .filter((row) => parseFloat(row.hours) > 0)
+                .map((row) => (
+                  <Typography key={row.id} variant="body2" sx={{ fontSize: '8.5pt', mb: 0.25, lineHeight: 1.35 }}>
+                    {row.description || 'Additional hours'}: {Number(row.hours).toFixed(2)} hrs
+                  </Typography>
+                ))}
+              <Typography variant="body2" sx={{ fontSize: '9pt', mt: 0.5 }}>
+                <strong>Additional hours:</strong> {additionalHoursTotal.toFixed(2)} hrs
+              </Typography>
+            </Box>
+          )}
+          {dayNotes.length > 0 && (
+            <Box sx={{ mb: 1 }}>
+              {dayNotes.map((row) => (
+                <Typography key={row.day} variant="body2" sx={{ fontSize: '8pt', mb: 0.15, lineHeight: 1.3 }}>
+                  {row.day}: {row.note}
+                </Typography>
+              ))}
+            </Box>
+          )}
+        </Box>
+
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: 2,
+            mb: 2,
+            alignItems: 'flex-start',
+            '@media print': { gap: 1.5 },
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, fontSize: '11pt' }}>
+              Miles
+            </Typography>
+            <Box sx={{ borderBottom: '1px solid #000', mb: 1 }} />
+            {totalMiles > 0 ? (
+              <>
+                {travelMiles
+                  .filter((day) => parseFloat(day.miles) > 0)
+                  .map((day) => (
+                    <Typography key={day.day} variant="body2" sx={{ fontSize: '8.5pt', mb: 0.25, lineHeight: 1.35 }}>
+                      {day.day}: {day.miles} mi
+                    </Typography>
+                  ))}
+                <Typography variant="body2" sx={{ fontSize: '9pt', mt: 0.75 }}>
+                  <strong>Travel cost:</strong> ${travelCost.toFixed(2)}
+                </Typography>
+              </>
+            ) : (
+              <Typography variant="body2" sx={{ fontSize: '8.5pt' }}>
+                None (0 mi)
+              </Typography>
+            )}
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, fontSize: '11pt' }}>
+              Receipts
+            </Typography>
+            <Box sx={{ borderBottom: '1px solid #000', mb: 1 }} />
+            {receipts.length > 0 ? (
+              <>
+                {receipts.map((receipt, idx) => (
+                  <Typography
+                    key={idx}
+                    variant="body2"
+                    sx={{ fontSize: '8.5pt', mb: 0.25, lineHeight: 1.35 }}
+                  >
+                    {(receipt.description || 'Receipt').slice(0, 48)}
+                    {(receipt.description || '').length > 48 ? '…' : ''}: $
+                    {(parseFloat(receipt.amount) || 0).toFixed(2)}
+                  </Typography>
+                ))}
+                <Typography variant="body2" sx={{ fontSize: '9pt', mt: 0.75 }}>
+                  <strong>Total:</strong> ${totalReceipts.toFixed(2)}
+                </Typography>
+              </>
+            ) : (
+              <Typography variant="body2" sx={{ fontSize: '8.5pt' }}>
+                None — $0.00
+              </Typography>
+            )}
+          </Box>
+        </Box>
+
+        <Box
+          sx={{
+            mt: 1.5,
+            p: 1.25,
+            border: '2px solid #000',
+            backgroundColor: '#fff',
+            color: '#000',
+            '& .MuiTypography-root': { color: '#000' },
+          }}
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, textAlign: 'center', fontSize: '11pt', color: '#000' }}>
+            Paycheck Summary
+          </Typography>
+          <Box sx={{ mb: 1, display: 'flex', flexWrap: 'wrap', columnGap: 2, rowGap: 0.5, justifyContent: 'center' }}>
+            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt', color: '#000' }}><strong>Pay:</strong> ${grossPay.toFixed(2)}</Typography>
+            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt', color: '#000' }}><strong>Travel:</strong> ${travelCost.toFixed(2)}</Typography>
+            <Typography component="span" variant="body2" sx={{ fontSize: '8.5pt', color: '#000' }}><strong>Receipts:</strong> ${totalReceipts.toFixed(2)}</Typography>
+          </Box>
+          <Divider sx={{ my: 1, borderWidth: 1, borderColor: '#000' }} />
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '12pt', color: '#000' }}>
+              Overall Total: ${overallTotal.toFixed(2)}
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+
+      <Box sx={{ maxWidth: 1200, mx: 'auto', '@media print': { display: 'none' } }}>
+      <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+        <Box sx={{ minWidth: 0, flex: '1 1 280px' }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: theme.palette.primary.main, mb: 0.5 }}>
+            RFID Timesheets
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Pay periods run <strong>Friday through Thursday</strong>; paychecks go out on the following Friday.
+            Hours auto-fill live from RFID/PIN scans. Click <strong>Edit</strong> on the current week (or the week
+            being paid, through payday Friday) to adjust times, set each employee&apos;s expected shift, or add miles
+            and receipts. A lone late punch — at or after the expected clock-out — is treated as clock-out and
+            auto-fills clock-in from the expected shift start. Missing morning-style clock-outs after 11:59 PM use
+            the employee&apos;s shift end with an &quot;Auto log out&quot; note. Weeks lock the day after payday Friday;
+            unlock a previous week with the PIN to edit it.
+          </Typography>
+        </Box>
+        <Button
+          size="small"
+          variant="contained"
+          startIcon={<PrintIcon fontSize="small" />}
+          onClick={handlePrint}
+          disabled={!selectedEmployee}
+          sx={{ textTransform: 'none', flexShrink: 0 }}
+        >
+          Print
+        </Button>
       </Box>
 
       {!isCurrentWeek && (
@@ -1860,6 +2145,7 @@ function RfidTimesheetPage() {
         </form>
       </Dialog>
     </Box>
+    </>
   );
 }
 
