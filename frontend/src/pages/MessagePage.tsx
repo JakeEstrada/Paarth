@@ -1,7 +1,7 @@
 /**
- * MessagePage — SMS sent, scheduled, received (Twilio), and pipeline flag templates.
+ * MessagePage — SMS sent, scheduled, received (Twilio), pipeline flag templates, and job-card canned texts.
  * Route: /messages
- * APIs: /twilio/messages, /twilio/send-sms, /tenants/pipeline-sms-templates
+ * APIs: /twilio/messages, /twilio/send-sms, /tenants/pipeline-sms-templates, /tenants/canned-sms-templates
  * Docs: ../../../docs/PAGES.md#messagepagetsx
  */
 import { useCallback, useEffect, useState } from 'react';
@@ -30,11 +30,12 @@ import {
   Typography,
   Paper,
 } from '@mui/material';
-import { Flag as FlagIcon, Refresh as RefreshIcon, Schedule as ScheduleIcon, Sms as SmsIcon } from '@mui/icons-material';
+import { Chat as ChatIcon, Flag as FlagIcon, Refresh as RefreshIcon, Schedule as ScheduleIcon, Sms as SmsIcon } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import api from '../utils/axios';
+import CannedMessagesPanel from '../components/messages/CannedMessagesPanel';
 import FlagMessagesPanel from '../components/messages/FlagMessagesPanel';
 import { formatPhoneForDisplay } from '../utils/phoneFormat';
 import {
@@ -515,6 +516,8 @@ function MessagePage() {
 
   const tabKeys: Array<'scheduled' | 'sent' | 'received'> = ['scheduled', 'sent', 'received'];
   const isFlagTab = tab === 3;
+  const isCannedTab = tab === 4;
+  const isTemplateTab = isFlagTab || isCannedTab;
   const activeKey = tabKeys[tab] || 'scheduled';
   const activeRows = lists[activeKey];
 
@@ -527,7 +530,7 @@ function MessagePage() {
             Messages
           </Typography>
         </Box>
-        {!isFlagTab ? (
+        {!isTemplateTab ? (
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {isAdmin() ? (
             <Button
@@ -554,10 +557,12 @@ function MessagePage() {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {isFlagTab
           ? 'Save texts that appear when a job is dragged onto a pipeline column. Send still requires your approval, then an Are you sure confirm.'
-          : 'Send or schedule SMS from your Twilio number. Tap a message to open it and view delivery status. Older messages that were stuck on Queued are refreshed from Twilio and shown as Sent unless delivery failed.'}
+          : isCannedTab
+            ? 'Save texts you can send from a job card. Placeholders fill from the customer, emails, phone, address, and job already on that card.'
+            : 'Send or schedule SMS from your Twilio number. Incoming replies are pulled from Twilio automatically throughout the day. Tap a message to open it and view delivery status.'}
       </Typography>
 
-      {!isFlagTab ? (
+      {!isTemplateTab ? (
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <TextField
@@ -631,11 +636,14 @@ function MessagePage() {
           <Tab label={`Sent (${lists.sent.length})`} />
           <Tab label={`Received (${lists.received.length})`} />
           <Tab icon={<FlagIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Flag messages" />
+          <Tab icon={<ChatIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Canned messages" />
         </Tabs>
       </Box>
 
       {isFlagTab ? (
         <FlagMessagesPanel />
+      ) : isCannedTab ? (
+        <CannedMessagesPanel />
       ) : (
         <>
       <MessageTable

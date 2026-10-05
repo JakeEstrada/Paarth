@@ -610,6 +610,93 @@ async function updateTenantPipelineSmsTemplates(req, res) {
   }
 }
 
+const DEFAULT_CANNED_SMS_TEMPLATES = [
+  {
+    name: 'Contract sent',
+    body: 'Hello, reaching out from the {{company}} team. I wanted to let you know that we sent the contract to {{email}}.',
+    enabled: true,
+  },
+];
+
+function serializeCannedSmsTemplate(row) {
+  return {
+    id: String(row._id || row.id || ''),
+    name: String(row.name || '').trim(),
+    body: String(row.body || ''),
+    enabled: row.enabled !== false,
+  };
+}
+
+function sanitizeCannedSmsTemplates(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  const seen = new Set();
+  for (const row of list) {
+    const name = String(row?.name || '').trim().slice(0, 80);
+    const body = String(row?.body || '').trim().slice(0, 1500);
+    if (!name || !body) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      name,
+      body,
+      enabled: row?.enabled !== false,
+    });
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
+async function getTenantCannedSmsTemplates(req, res) {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    const tenant = await Tenant.findById(tenantId).select('cannedSmsTemplates');
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    if (!Array.isArray(tenant.cannedSmsTemplates) || tenant.cannedSmsTemplates.length === 0) {
+      tenant.cannedSmsTemplates = DEFAULT_CANNED_SMS_TEMPLATES;
+      tenant.markModified('cannedSmsTemplates');
+      await tenant.save();
+    }
+    res.json({
+      templates: (tenant.cannedSmsTemplates || []).map(serializeCannedSmsTemplate),
+    });
+  } catch (error) {
+    console.error('getTenantCannedSmsTemplates:', error);
+    res.status(500).json({ error: error.message || 'Failed to load canned messages' });
+  }
+}
+
+async function updateTenantCannedSmsTemplates(req, res) {
+  try {
+    if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to update canned messages.' });
+    }
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Your account is not linked to an organization.' });
+    }
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    tenant.cannedSmsTemplates = sanitizeCannedSmsTemplates(req.body?.templates);
+    tenant.markModified('cannedSmsTemplates');
+    await tenant.save();
+    res.json({
+      templates: (tenant.cannedSmsTemplates || []).map(serializeCannedSmsTemplate),
+    });
+  } catch (error) {
+    console.error('updateTenantCannedSmsTemplates:', error);
+    res.status(500).json({ error: error.message || 'Failed to save canned messages' });
+  }
+}
+
 module.exports = {
   uploadTenantLogo,
   uploadTenantLogoLight,
@@ -625,4 +712,6 @@ module.exports = {
   updateTenantPaymentNotificationSettings,
   getTenantPipelineSmsTemplates,
   updateTenantPipelineSmsTemplates,
+  getTenantCannedSmsTemplates,
+  updateTenantCannedSmsTemplates,
 };

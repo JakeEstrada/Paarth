@@ -21,7 +21,7 @@ const { applyReferralFields } = require('../utils/referralCompany');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
-const CUSTOMER_CONTACT_FIELDS = 'name primaryPhone primaryEmail address contactPhones gateCode';
+const CUSTOMER_CONTACT_FIELDS = 'name primaryPhone primaryEmail emails contactEmails address contactPhones gateCode';
 
 function parseTruthyQuery(value) {
   return value === true || value === 'true' || value === '1' || value === 1;

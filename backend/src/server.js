@@ -327,7 +327,7 @@ mongoose.connect(process.env.MONGODB_URI, {
   .then(() => {
     console.log('Yaas! MongoDB connected');
     startDailyPlaidRefreshJob();
-    startSmsScheduler();
+    startSmsScheduler({ io });
     startOutlookInboxSyncJob();
     ensureDefaultTenant()
       .then((tenant) => backfillTenantIds(tenant._id))

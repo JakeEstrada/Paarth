@@ -320,88 +320,115 @@ async function getTwilioConfigStatus(req, res) {
 }
 
 /**
- * Pull recent inbound messages from Twilio into Paarth (for replies that arrived
- * before the webhook was pointed here, or while tenant assignment was wrong).
+ * List recent inbound Twilio messages and upsert them. Used by the admin Pull
+ * button and the all-day background poll. REST list is not billed as SMS.
  */
+async function pullInboundFromTwilio({ preferredTenantId, limit = 100, io } = {}) {
+  const { accountSid, authToken, from: ourNumber } = getTwilioConfig();
+  if (!accountSid || !authToken) {
+    return { scanned: 0, imported: 0, updated: 0, skipped: 0, skippedReason: 'not_configured' };
+  }
+
+  const pageSize = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 200);
+  const params = new URLSearchParams({
+    PageSize: String(pageSize),
+  });
+  if (ourNumber) params.set('To', normalizeToE164(ourNumber) || ourNumber);
+
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?${params.toString()}`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const msg = data?.message || data?.error || `Twilio list failed (${response.status})`;
+    const error = new Error(String(msg));
+    error.status = 502;
+    throw error;
+  }
+
+  let messages = Array.isArray(data?.messages) ? data.messages : [];
+  if (messages.length === 0 && ourNumber) {
+    const fallbackUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?PageSize=${pageSize}`;
+    const fallbackRes = await fetch(fallbackUrl, {
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+      },
+    });
+    const fallbackData = await fallbackRes.json().catch(() => ({}));
+    if (fallbackRes.ok && Array.isArray(fallbackData?.messages)) {
+      messages = fallbackData.messages;
+    }
+  }
+
+  let imported = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const row of messages) {
+    const direction = String(row?.direction || '').toLowerCase();
+    if (!direction.includes('inbound')) {
+      skipped += 1;
+      continue;
+    }
+    const result = await upsertInboundSms({
+      from: row.from,
+      to: row.to,
+      body: row.body,
+      twilioSid: row.sid,
+      preferredTenantId,
+      createdAt: row.date_created || row.date_sent,
+    });
+    if (result.created) {
+      imported += 1;
+      if (io && result.doc?.tenantId) {
+        publishSmsInboundCreated(io, result.doc.tenantId, {
+          id: String(result.doc._id),
+          from: result.doc.from || '',
+          body: result.doc.body || '',
+          createdAt: result.doc.createdAt,
+        });
+      }
+    } else {
+      updated += 1;
+    }
+  }
+
+  return {
+    scanned: messages.length,
+    imported,
+    updated,
+    skipped,
+  };
+}
+
 async function syncInboundFromTwilio(req, res) {
   try {
     if (!req.user || !['super_admin', 'admin'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Admin only' });
     }
-    const { accountSid, authToken, from: ourNumber } = getTwilioConfig();
+    const { accountSid, authToken } = getTwilioConfig();
     if (!accountSid || !authToken) {
       return res.status(400).json({ error: 'Twilio credentials are not configured' });
     }
 
-    const pageSize = Math.min(Math.max(parseInt(req.body?.limit, 10) || 100, 1), 200);
-    const params = new URLSearchParams({
-      PageSize: String(pageSize),
-    });
-    // Prefer messages sent TO our Twilio number (customer → you).
-    if (ourNumber) params.set('To', normalizeToE164(ourNumber) || ourNumber);
-
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?${params.toString()}`;
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
-      },
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const msg = data?.message || data?.error || `Twilio list failed (${response.status})`;
-      return res.status(502).json({ error: String(msg) });
-    }
-
-    let messages = Array.isArray(data?.messages) ? data.messages : [];
-    // If the To= filter somehow returns nothing useful, fall back to a recent unfiltered page.
-    if (messages.length === 0 && ourNumber) {
-      const fallbackUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?PageSize=${pageSize}`;
-      const fallbackRes = await fetch(fallbackUrl, {
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
-        },
-      });
-      const fallbackData = await fallbackRes.json().catch(() => ({}));
-      if (fallbackRes.ok && Array.isArray(fallbackData?.messages)) {
-        messages = fallbackData.messages;
-      }
-    }
-    let imported = 0;
-    let updated = 0;
-    let skipped = 0;
     const preferredTenantId =
       req.user?.tenantId && typeof req.user.tenantId === 'object'
         ? req.user.tenantId._id || req.user.tenantId.id
         : req.user?.tenantId;
 
-    for (const row of messages) {
-      const direction = String(row?.direction || '').toLowerCase();
-      // Twilio: inbound-api / inbound — anything starting with inbound
-      if (!direction.includes('inbound')) {
-        skipped += 1;
-        continue;
-      }
-      const result = await upsertInboundSms({
-        from: row.from,
-        to: row.to,
-        body: row.body,
-        twilioSid: row.sid,
-        preferredTenantId,
-        createdAt: row.date_created || row.date_sent,
-      });
-      if (result.created) imported += 1;
-      else updated += 1;
-    }
-
-    return res.json({
-      scanned: messages.length,
-      imported,
-      updated,
-      skipped,
+    const result = await pullInboundFromTwilio({
+      preferredTenantId,
+      limit: req.body?.limit,
+      io: req.app?.get?.('io'),
     });
+    return res.json(result);
   } catch (error) {
     console.error('syncInboundFromTwilio error:', error?.message || error);
-    return res.status(500).json({ error: error?.message || 'Failed to sync inbound messages' });
+    const status = error?.status || 500;
+    return res.status(status).json({ error: error?.message || 'Failed to sync inbound messages' });
   }
 }
 
@@ -1212,10 +1239,13 @@ async function listSms(req, res) {
   }
 }
 
+const INBOUND_POLL_MS = 2 * 60 * 1000;
 let smsSchedulerStarted = false;
-function startSmsScheduler() {
+function startSmsScheduler(options = {}) {
   if (smsSchedulerStarted) return;
   smsSchedulerStarted = true;
+  const io = options.io || null;
+  let inboundPollBusy = false;
 
   const tick = async () => {
     try {
@@ -1274,6 +1304,25 @@ function startSmsScheduler() {
 
   setTimeout(tick, 5000);
   setInterval(tick, 60 * 1000);
+
+  const inboundTick = async () => {
+    if (inboundPollBusy) return;
+    inboundPollBusy = true;
+    try {
+      const result = await pullInboundFromTwilio({ limit: 50, io });
+      if (result?.skippedReason === 'not_configured') return;
+      if (result?.imported) {
+        console.log('[SMS inbound poll] imported', result.imported, 'updated', result.updated);
+      }
+    } catch (error) {
+      console.error('[SMS inbound poll]', error?.message || error);
+    } finally {
+      inboundPollBusy = false;
+    }
+  };
+
+  setTimeout(inboundTick, 15000);
+  setInterval(inboundTick, INBOUND_POLL_MS);
 }
 
 module.exports = {

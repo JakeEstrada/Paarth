@@ -50,11 +50,14 @@ export function firstNameFromCustomer(name: string) {
 
 export function resolveCustomerPhone(job: {
   jobContact?: { phone?: string };
-  customerId?: {
-    primaryPhone?: string;
-    phones?: string[];
-    contactPhones?: Array<{ value?: string }>;
-  };
+  customerId?:
+    | {
+        primaryPhone?: string;
+        phones?: string[];
+        contactPhones?: Array<{ value?: string }>;
+      }
+    | string
+    | null;
 } | null | undefined) {
   const customer = job?.customerId && typeof job.customerId === 'object' ? job.customerId : null;
   const candidates = [

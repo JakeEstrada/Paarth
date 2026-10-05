@@ -17,6 +17,8 @@ const {
   updateTenantPaymentNotificationSettings,
   getTenantPipelineSmsTemplates,
   updateTenantPipelineSmsTemplates,
+  getTenantCannedSmsTemplates,
+  updateTenantCannedSmsTemplates,
 } = require('../controllers/tenantController');
 
 // Public branding image (no auth — used on login page with tenant id)
@@ -36,6 +38,8 @@ router.get('/payment-notification-settings', requireAuth, getTenantPaymentNotifi
 router.patch('/payment-notification-settings', requireAuth, updateTenantPaymentNotificationSettings);
 router.get('/pipeline-sms-templates', requireAuth, getTenantPipelineSmsTemplates);
 router.put('/pipeline-sms-templates', requireAuth, updateTenantPipelineSmsTemplates);
+router.get('/canned-sms-templates', requireAuth, getTenantCannedSmsTemplates);
+router.put('/canned-sms-templates', requireAuth, updateTenantCannedSmsTemplates);
 router.post(
   '/estimate-document-logo',
   requireAuth,

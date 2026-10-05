@@ -108,6 +108,14 @@ const tenantSchema = new mongoose.Schema(
         enabled: { type: Boolean, default: true },
       },
     ],
+    /** Named SMS drafts sent from a job card (not tied to a pipeline stage). */
+    cannedSmsTemplates: [
+      {
+        name: { type: String, trim: true, maxlength: 80, default: '' },
+        body: { type: String, trim: true, maxlength: 1500, default: '' },
+        enabled: { type: Boolean, default: true },
+      },
+    ],
   },
   {
     timestamps: true,

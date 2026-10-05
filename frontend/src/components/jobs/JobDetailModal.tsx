@@ -47,6 +47,7 @@ import {
   InsertDriveFile as InsertDriveFileIcon,
   CloudUpload as CloudUploadIcon,
   Share as ShareIcon,
+  Sms as SmsIcon,
   VpnKey as GateIcon,
   AutoAwesome as AutoAwesomeIcon,
   ContentCopy as ContentCopyIcon,
@@ -61,6 +62,7 @@ import toast from 'react-hot-toast';
 import AddNoteModal from './AddNoteModal';
 import AddJobTaskModal from './AddJobTaskModal';
 import AddAppointmentModal from '../appointments/AddAppointmentModal';
+import JobCannedSmsDialog from './JobCannedSmsDialog';
 import JobPaymentScheduleEditor from './JobPaymentScheduleEditor';
 import JobChangeOrdersEditor from './JobChangeOrdersEditor';
 import JobPaymentsSummary from './JobPaymentsSummary';
@@ -305,7 +307,7 @@ function JobDetailModal({
 }) {
   const location = useLocation();
   const financialPin = useFinancialPinLockContext();
-  const { tenantIdForBranding, isSuperAdmin } = useAuth();
+  const { tenantIdForBranding, isSuperAdmin, user } = useAuth();
   const isShopDisplay = shopDisplayMode || isShopDisplayPath(location.pathname);
   const [activeTab, setActiveTab] = useState(() => resolveJobModalTab(initialTab));
   const [job, setJob] = useState(null);
@@ -328,6 +330,7 @@ function JobDetailModal({
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [changeOrdersSaving, setChangeOrdersSaving] = useState(false);
   const hideFinancials = hideSensitive;
+  const [cannedSmsOpen, setCannedSmsOpen] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareSmsRecipient, setShareSmsRecipient] = useState('');
   const [shareMessage, setShareMessage] = useState('');
@@ -820,7 +823,15 @@ function JobDetailModal({
         .filter(Boolean)
         .join(', ');
     }
-    const email = j.jobContact?.email || cust?.primaryEmail || '';
+    const emails = [
+      j.jobContact?.email,
+      cust?.primaryEmail,
+      ...(Array.isArray(cust?.emails) ? cust.emails : []),
+      ...(Array.isArray(cust?.contactEmails) ? cust.contactEmails.map((row) => row?.value) : []),
+    ]
+      .map((value) => String(value || '').trim())
+      .filter((value, index, list) => value && list.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index);
+    const email = emails.join(', ');
     const phone = j.jobContact?.phone || cust?.primaryPhone || '';
     const name = cust?.name || '';
     const gateCode = String(cust?.gateCode || '').trim();
@@ -869,7 +880,7 @@ function JobDetailModal({
           boxSizing: 'border-box',
         }}
       >
-        {name && (
+        {(name || email || phone) && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'space-between' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
               <PersonIcon sx={{ ...iconSm, color: 'primary.main', mt: '1px' }} />
@@ -877,19 +888,29 @@ function JobDetailModal({
                 variant="body2"
                 sx={{ fontWeight: 600, fontSize: '0.78rem', lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
               >
-                {name}
+                {name || 'Customer'}
               </Typography>
             </Box>
-            <Tooltip title="Share customer info by text">
-              <IconButton size="small" sx={{ p: 0.25 }} onClick={(e) => {
-                e.stopPropagation();
-                setShareSmsRecipient('');
-                setShareMessage(buildJobShareMessage(j));
-                setShareDialogOpen(true);
-              }}>
-                <ShareIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              <Tooltip title="Text customer">
+                <IconButton size="small" sx={{ p: 0.25 }} onClick={(e) => {
+                  e.stopPropagation();
+                  setCannedSmsOpen(true);
+                }}>
+                  <SmsIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Share customer info by text">
+                <IconButton size="small" sx={{ p: 0.25 }} onClick={(e) => {
+                  e.stopPropagation();
+                  setShareSmsRecipient('');
+                  setShareMessage(buildJobShareMessage(j));
+                  setShareDialogOpen(true);
+                }}>
+                  <ShareIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
           </Box>
         )}
         {addressLine && (
@@ -2244,6 +2265,18 @@ function JobDetailModal({
           onJobDataChanged({ type: 'appointment', jobId });
         }}
         job={job}
+      />
+
+      <JobCannedSmsDialog
+        open={cannedSmsOpen}
+        job={job}
+        senderName={typeof user?.name === 'string' ? user.name : ''}
+        companyName={
+          user?.tenantId && typeof user.tenantId === 'object' && 'name' in user.tenantId && user.tenantId.name
+            ? String(user.tenantId.name)
+            : 'San Clemente Woodworking'
+        }
+        onClose={() => setCannedSmsOpen(false)}
       />
 
       <Dialog open={shareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>
