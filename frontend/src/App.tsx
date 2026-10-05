@@ -5,7 +5,7 @@
 import type { JSX } from 'react';
 import { useEffect } from 'react';
 import { Box, useTheme } from '@mui/material';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { FinancialPinLockProvider } from './context/FinancialPinLockContext';
 import FinancialPinUnlockDialogHost from './components/common/FinancialPinUnlockDialogHost';
@@ -33,7 +33,6 @@ import TasksPage from './pages/TasksPage';
 import DeveloperTasksPage from './pages/DeveloperTasksPage';
 import WebsitePage from './pages/WebsitePage';
 import WebsiteAnalyticsPage from './pages/WebsiteAnalyticsPage';
-import OutlookInboxPage from './pages/OutlookInboxPage';
 import CustomersPage from './pages/CustomersPage';
 import PayrollPage from './pages/PayrollPage';
 import RfidTimesheetPage from './pages/RfidTimesheetPage';
@@ -49,6 +48,13 @@ import TakeoffSheetPage from './pages/TakeoffSheetPage';
 import VendorsPage from './pages/VendorsPage';
 import MessagePage from './pages/MessagePage';
 import RfidPage from './pages/RfidPage';
+
+function OutlookToMessagesRedirect() {
+  const [params] = useSearchParams();
+  const next = new URLSearchParams(params);
+  next.set('tab', 'inbox');
+  return <Navigate to={`/messages?${next.toString()}`} replace />;
+}
 
 function App(): JSX.Element | null {
   const { user, loading } = useAuth();
@@ -146,7 +152,7 @@ function App(): JSX.Element | null {
                   <Route path="/" element={<Navigate to={homePath} replace />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/pipeline" element={<PipelinePage />} />
-                  <Route path="/outlook" element={<ProtectedRoute requireAdmin><OutlookInboxPage /></ProtectedRoute>} />
+                  <Route path="/outlook" element={<OutlookToMessagesRedirect />} />
                   <Route path="/customers" element={<CustomersPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/tasks" element={<TasksPage />} />

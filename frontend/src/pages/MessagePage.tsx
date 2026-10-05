@@ -1,10 +1,10 @@
 /**
- * MessagePage — SMS sent, scheduled, received (Twilio), pipeline flag templates, and job-card canned texts.
- * Route: /messages
- * APIs: /twilio/messages, /twilio/send-sms, /tenants/pipeline-sms-templates, /tenants/canned-sms-templates
+ * MessagePage — SMS, team Outlook inbox, pipeline flag templates, and job-card canned texts.
+ * Route: /messages  Query: ?tab=inbox|flags|canned|sent|received
  * Docs: ../../../docs/PAGES.md#messagepagetsx
  */
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -30,13 +30,14 @@ import {
   Typography,
   Paper,
 } from '@mui/material';
-import { Chat as ChatIcon, Flag as FlagIcon, Refresh as RefreshIcon, Schedule as ScheduleIcon, Sms as SmsIcon } from '@mui/icons-material';
+import { Chat as ChatIcon, Flag as FlagIcon, MailOutline as MailIcon, Refresh as RefreshIcon, Schedule as ScheduleIcon, Sms as SmsIcon } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import api from '../utils/axios';
 import CannedMessagesPanel from '../components/messages/CannedMessagesPanel';
 import FlagMessagesPanel from '../components/messages/FlagMessagesPanel';
+import TeamInboxPanel from '../components/messages/TeamInboxPanel';
 import { formatPhoneForDisplay } from '../utils/phoneFormat';
 import {
   fetchSmsDetail,
@@ -54,6 +55,17 @@ import { useAuth } from '../context/AuthContext';
 const LIST_PAGE_SIZE = 500;
 const LIST_MAX = 2000;
 const EMPTY_LISTS: SmsLists = { scheduled: [], sent: [], received: [] };
+
+type SmsListTab = 'scheduled' | 'sent' | 'received';
+type MessageTab = SmsListTab | 'inbox' | 'flags' | 'canned';
+
+function parseMessageTab(raw: string | null, admin: boolean): MessageTab {
+  if (raw === 'inbox') return admin ? 'inbox' : 'scheduled';
+  if (raw === 'flags' || raw === 'canned' || raw === 'sent' || raw === 'received' || raw === 'scheduled') {
+    return raw;
+  }
+  return 'scheduled';
+}
 
 function toDatetimeLocalValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -309,6 +321,8 @@ function MessageTable({
 
 function MessagePage() {
   const { isAdmin } = useAuth();
+  const admin = isAdmin();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [toDisplay, setToDisplay] = useState('');
   const [body, setBody] = useState('');
   const [sendAtLocal, setSendAtLocal] = useState(defaultScheduleAtValue);
@@ -316,7 +330,15 @@ function MessagePage() {
   const [sending, setSending] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [syncingInbound, setSyncingInbound] = useState(false);
-  const [tab, setTab] = useState(0);
+  const tab = parseMessageTab(searchParams.get('tab'), admin);
+  const setTab = (next: MessageTab) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (next === 'scheduled') params.delete('tab');
+      else params.set('tab', next);
+      return params;
+    }, { replace: true });
+  };
   const [lists, setLists] = useState<SmsLists>(EMPTY_LISTS);
   const [listLimit, setListLimit] = useState(LIST_PAGE_SIZE);
   const [loadingLists, setLoadingLists] = useState(true);
@@ -402,7 +424,7 @@ function MessagePage() {
 
       toast.success('Message sent');
       setBody('');
-      setTab(1);
+      setTab('sent');
       await fetchMessages();
     } catch (error) {
       console.error(error);
@@ -449,7 +471,7 @@ function MessagePage() {
       setBody('');
       setSendAtLocal(defaultScheduleAtValue());
       setScheduleMode(false);
-      setTab(0);
+      setTab('scheduled');
       await fetchMessages();
     } catch (error) {
       console.error(error);
@@ -495,7 +517,7 @@ function MessagePage() {
           `Pulled from Twilio: ${result.imported} new, ${result.updated} updated`,
         );
       }
-      setTab(2);
+      setTab('received');
       await fetchMessages();
     } catch (error) {
       console.error(error);
@@ -514,15 +536,15 @@ function MessagePage() {
     }
   };
 
-  const tabKeys: Array<'scheduled' | 'sent' | 'received'> = ['scheduled', 'sent', 'received'];
-  const isFlagTab = tab === 3;
-  const isCannedTab = tab === 4;
-  const isTemplateTab = isFlagTab || isCannedTab;
-  const activeKey = tabKeys[tab] || 'scheduled';
+  const isFlagTab = tab === 'flags';
+  const isCannedTab = tab === 'canned';
+  const isInboxTab = tab === 'inbox';
+  const isSmsTab = tab === 'scheduled' || tab === 'sent' || tab === 'received';
+  const activeKey: SmsListTab = isSmsTab ? tab : 'scheduled';
   const activeRows = lists[activeKey];
 
   return (
-    <Container maxWidth="md" sx={{ py: 3 }}>
+    <Container maxWidth={isInboxTab ? 'lg' : 'md'} sx={{ py: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <SmsIcon color="primary" sx={{ fontSize: 32 }} />
@@ -530,7 +552,7 @@ function MessagePage() {
             Messages
           </Typography>
         </Box>
-        {!isTemplateTab ? (
+        {isSmsTab ? (
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {isAdmin() ? (
             <Button
@@ -559,10 +581,12 @@ function MessagePage() {
           ? 'Save texts that appear when a job is dragged onto a pipeline column. Send still requires your approval, then an Are you sure confirm.'
           : isCannedTab
             ? 'Save texts you can send from a job card. Placeholders fill from the customer, emails, phone, address, and job already on that card.'
-            : 'Send or schedule SMS from your Twilio number. Incoming replies are pulled from Twilio automatically throughout the day. Tap a message to open it and view delivery status.'}
+            : isInboxTab
+              ? 'Team Outlook worksheets and mail. Create a pipeline job from a worksheet, or dismiss it when it is handled.'
+              : 'Send or schedule SMS from your Twilio number. Incoming replies are pulled from Twilio automatically throughout the day. Tap a message to open it and view delivery status.'}
       </Typography>
 
-      {!isTemplateTab ? (
+      {isSmsTab ? (
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <TextField
@@ -632,11 +656,14 @@ function MessagePage() {
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" allowScrollButtonsMobile>
-          <Tab label={`Scheduled (${lists.scheduled.length})`} />
-          <Tab label={`Sent (${lists.sent.length})`} />
-          <Tab label={`Received (${lists.received.length})`} />
-          <Tab icon={<FlagIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Flag messages" />
-          <Tab icon={<ChatIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Canned messages" />
+          <Tab value="scheduled" label={`Scheduled (${lists.scheduled.length})`} />
+          <Tab value="sent" label={`Sent (${lists.sent.length})`} />
+          <Tab value="received" label={`Received (${lists.received.length})`} />
+          {admin ? (
+            <Tab value="inbox" icon={<MailIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Team Inbox" />
+          ) : null}
+          <Tab value="flags" icon={<FlagIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Flag messages" />
+          <Tab value="canned" icon={<ChatIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Canned messages" />
         </Tabs>
       </Box>
 
@@ -644,6 +671,8 @@ function MessagePage() {
         <FlagMessagesPanel />
       ) : isCannedTab ? (
         <CannedMessagesPanel />
+      ) : isInboxTab ? (
+        <TeamInboxPanel embedded />
       ) : (
         <>
       <MessageTable

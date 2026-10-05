@@ -258,7 +258,8 @@ async function getOutlookAuthUrl(req, res) {
 }
 
 function redirectFrontend(res, query) {
-  const url = new URL(`${FRONTEND_URL()}/outlook`);
+  const url = new URL(`${FRONTEND_URL()}/messages`);
+  url.searchParams.set('tab', 'inbox');
   Object.entries(query).forEach(([key, value]) => {
     if (value) url.searchParams.set(key, value);
   });

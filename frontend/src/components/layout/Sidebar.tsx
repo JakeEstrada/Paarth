@@ -2,7 +2,7 @@
  * Sidebar — Primary navigation groups (workspace, finance, operations, archive).
  * Admin-only items filtered via useAuth().isAdmin(); super-admin items via isSuperAdmin().
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Drawer,
@@ -54,11 +54,17 @@ const DRAWER_WIDTH = 260;
 const workspaceItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
   { text: 'Pipeline', icon: <PipelineIcon />, path: '/pipeline' },
-  { text: 'Team Inbox', icon: <MailIcon />, path: '/outlook', adminOnly: true },
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
   { text: 'Projects & Tasks', icon: <TasksIcon />, path: '/tasks' },
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
-  { text: 'Messages', icon: <SmsIcon />, path: '/messages' },
+  {
+    text: 'Messages',
+    icon: <SmsIcon />,
+    path: '/messages',
+    children: [
+      { text: 'Team Inbox', icon: <MailIcon />, path: '/messages?tab=inbox', adminOnly: true },
+    ],
+  },
 ];
 
 const financeItems = [
@@ -191,51 +197,58 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     },
   };
 
+  const canSeeItem = (item) => {
+    if (item.superAdminOnly) return isSuperAdmin();
+    if (item.adminOnly) return isAdmin();
+    return true;
+  };
+
+  const renderNavItem = (item, { nested = false } = {}) => (
+    <ListItem key={item.path} disablePadding>
+      <ListItemButton
+        onClick={() => handleNavigation(item.path)}
+        selected={isActive(item.path)}
+        sx={{ ...navButtonSx, ...(nested ? { pl: 5 } : {}) }}
+      >
+        <ListItemIcon
+          sx={{
+            minWidth: 40,
+            color: isActive(item.path) ? theme.palette.primary.main : 'inherit',
+          }}
+        >
+          {item.icon}
+        </ListItemIcon>
+        <ListItemText
+          primary={item.text}
+          primaryTypographyProps={{
+            fontSize: nested ? '0.875rem' : '0.9375rem',
+            fontWeight: isActive(item.path) ? 600 : 400,
+          }}
+        />
+        {item.path === '/messages?tab=inbox' && inboxCount > 0 ? (
+          <Chip size="small" color="warning" label={inboxCount} sx={{ ml: 1, height: 22 }} />
+        ) : null}
+        {item.path === '/messages' && unreadSmsCount > 0 ? (
+          <Chip
+            size="small"
+            color="error"
+            label={`+${unreadSmsCount}`}
+            aria-label={`${unreadSmsCount} unread message${unreadSmsCount === 1 ? '' : 's'}`}
+            sx={{ ml: 1, height: 22, fontWeight: 700 }}
+          />
+        ) : null}
+      </ListItemButton>
+    </ListItem>
+  );
+
   const renderNavList = (items) => (
     <List>
-      {items
-        .filter((item) => {
-          if (item.superAdminOnly) return isSuperAdmin();
-          if (item.adminOnly) return isAdmin();
-          return true;
-        })
-        .map((item) => (
-          <ListItem key={item.path} disablePadding>
-            <ListItemButton
-              onClick={() => handleNavigation(item.path)}
-              selected={isActive(item.path)}
-              sx={navButtonSx}
-            >
-              <ListItemIcon
-                sx={{
-                  minWidth: 40,
-                  color: isActive(item.path) ? theme.palette.primary.main : 'inherit',
-                }}
-              >
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText
-                primary={item.text}
-                primaryTypographyProps={{
-                  fontSize: '0.9375rem',
-                  fontWeight: isActive(item.path) ? 600 : 400,
-                }}
-              />
-              {item.path === '/outlook' && inboxCount > 0 ? (
-                <Chip size="small" color="warning" label={inboxCount} sx={{ ml: 1, height: 22 }} />
-              ) : null}
-              {item.path === '/messages' && unreadSmsCount > 0 ? (
-                <Chip
-                  size="small"
-                  color="error"
-                  label={`+${unreadSmsCount}`}
-                  aria-label={`${unreadSmsCount} unread message${unreadSmsCount === 1 ? '' : 's'}`}
-                  sx={{ ml: 1, height: 22, fontWeight: 700 }}
-                />
-              ) : null}
-            </ListItemButton>
-          </ListItem>
-        ))}
+      {items.filter(canSeeItem).map((item) => (
+        <Fragment key={item.path}>
+          {renderNavItem(item)}
+          {(item.children || []).filter(canSeeItem).map((child) => renderNavItem(child, { nested: true }))}
+        </Fragment>
+      ))}
     </List>
   );
 

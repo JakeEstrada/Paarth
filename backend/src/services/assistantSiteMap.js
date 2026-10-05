@@ -3,6 +3,7 @@ const ALLOWED_PATHNAMES = new Set([
   '/dashboard',
   '/pipeline',
   '/outlook',
+  '/messages',
   '/customers',
   '/calendar',
   '/tasks',
@@ -52,7 +53,8 @@ const ROUTES_MARKDOWN = `
 Main app routes (path → purpose):
 - /dashboard — overview and recent activity
 - /pipeline — job pipeline board
-- /outlook — team Outlook worksheets waiting to become jobs (admin)
+- /messages — SMS inbox; ?tab=inbox is the team Outlook worksheets (admin)
+- /outlook — redirects to /messages?tab=inbox
 - /customers — customer list and records
 - /calendar — calendar and scheduling
 - /tasks — projects and tasks
