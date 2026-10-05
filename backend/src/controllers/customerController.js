@@ -165,7 +165,7 @@ async function updateCustomer(req, res) {
     
     // Track changes
     const changes = {};
-    ['name', 'primaryPhone', 'primaryEmail'].forEach(field => {
+    ['name', 'primaryPhone', 'primaryEmail', 'gateCode'].forEach(field => {
       if (oldData[field] !== customer[field]) {
         changes[field] = { from: oldData[field], to: customer[field] };
       }

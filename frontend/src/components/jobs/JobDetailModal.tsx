@@ -47,6 +47,7 @@ import {
   InsertDriveFile as InsertDriveFileIcon,
   CloudUpload as CloudUploadIcon,
   Share as ShareIcon,
+  VpnKey as GateIcon,
   AutoAwesome as AutoAwesomeIcon,
   ContentCopy as ContentCopyIcon,
   Lock as LockIcon,
@@ -68,6 +69,7 @@ import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
 import { formatPhoneForDisplay, telHref } from '../../utils/phoneFormat';
+import { buildCustomerShareMessage } from '../../utils/customerShareMessage';
 import { useFinancialPinLockContext } from '../../context/FinancialPinLockContext';
 import { useAuth } from '../../context/AuthContext';
 import { useSocketSubscription } from '../../hooks/useSocketSubscription';
@@ -228,7 +230,10 @@ function mergeJobPreservingCustomer(prev, incoming) {
   const nextCustomer = incoming.customerId;
 
   const sameCustomer = idOf(prevCustomer) && idOf(prevCustomer) === idOf(nextCustomer);
-  const nextIsDetailed = nextCustomer && typeof nextCustomer === 'object' && nextCustomer.address;
+  const nextIsDetailed =
+    nextCustomer &&
+    typeof nextCustomer === 'object' &&
+    (nextCustomer.address || nextCustomer.gateCode);
   if (sameCustomer && prevCustomer && typeof prevCustomer === 'object' && !nextIsDetailed) {
     merged.customerId = prevCustomer;
   }
@@ -440,6 +445,27 @@ function JobDetailModal({
   );
   useSocketSubscription(tenantRoom, 'task.created', handleRealtimeJobTaskChange);
   useSocketSubscription(tenantRoom, 'task.updated', handleRealtimeJobTaskChange);
+
+  const handleRealtimeCustomer = useCallback(
+    (payload: unknown) => {
+      const data = payload as { customer?: { _id?: string; gateCode?: string }; entityId?: string; action?: string };
+      const incoming = data?.customer;
+      const entityId = String(data?.entityId || incoming?._id || '').trim();
+      if (!incoming || !entityId || data?.action === 'deleted') return;
+      const patchCustomer = (prev) => {
+        if (!prev) return prev;
+        const cust = prev.customerId;
+        const custId = cust && typeof cust === 'object' ? cust._id : cust;
+        if (String(custId || '') !== entityId) return prev;
+        const nextCustomer = typeof cust === 'object' && cust ? { ...cust, ...incoming } : incoming;
+        return { ...prev, customerId: nextCustomer };
+      };
+      setJob(patchCustomer);
+      setEditedJob(patchCustomer);
+    },
+    [],
+  );
+  useSocketSubscription(tenantRoom, 'customer.changed', handleRealtimeCustomer);
 
   useEffect(() => {
     if (open && jobId) {
@@ -783,7 +809,7 @@ function JobDetailModal({
 
   /** Job site / customer address + contact for header strip */
   const getCustomerContact = (j) => {
-    if (!j) return { name: '', addressLine: '', email: '', phone: '' };
+    if (!j) return { name: '', addressLine: '', email: '', phone: '', gateCode: '' };
     const cust = j.customerId && typeof j.customerId === 'object' ? j.customerId : null;
     const ja = j.jobAddress;
     let addressLine = '';
@@ -797,12 +823,30 @@ function JobDetailModal({
     const email = j.jobContact?.email || cust?.primaryEmail || '';
     const phone = j.jobContact?.phone || cust?.primaryPhone || '';
     const name = cust?.name || '';
-    return { name, addressLine, email, phone };
+    const gateCode = String(cust?.gateCode || '').trim();
+    return { name, addressLine, email, phone, gateCode };
   };
 
+  const buildJobShareMessage = (j) => {
+    const { name, addressLine, email, phone, gateCode } = getCustomerContact(j);
+    const cust = j?.customerId && typeof j.customerId === 'object' ? j.customerId : { name };
+    return buildCustomerShareMessage({
+      customer: { ...cust, name: name || cust.name, gateCode: gateCode || cust.gateCode },
+      jobTitle: j?.title,
+      address: addressLine,
+      extraPhones: phone ? [phone] : [],
+      extraEmail: email,
+    });
+  };
+
+  useEffect(() => {
+    if (!shareDialogOpen || !job) return;
+    setShareMessage(buildJobShareMessage(job));
+  }, [shareDialogOpen, job]);
+
   const renderCustomerHeaderStrip = (j) => {
-    const { name, addressLine, email, phone } = getCustomerContact(j);
-    if (!name && !addressLine && !email && !phone) return null;
+    const { name, addressLine, email, phone, gateCode } = getCustomerContact(j);
+    if (!name && !addressLine && !email && !phone && !gateCode) return null;
     const smallText = { fontSize: '0.7rem', lineHeight: 1.4 };
     const iconSm = { fontSize: 14, flexShrink: 0 };
     return (
@@ -839,15 +883,8 @@ function JobDetailModal({
             <Tooltip title="Share customer info by text">
               <IconButton size="small" sx={{ p: 0.25 }} onClick={(e) => {
                 e.stopPropagation();
-                const messageLines = [
-                  `Customer: ${name || 'Unknown'}`,
-                  j?.title ? `Job: ${j.title}` : null,
-                  addressLine ? `Address: ${addressLine}` : null,
-                  email ? `Email: ${email}` : null,
-                  phone ? `Phone: ${formatPhoneForDisplay(phone)}` : null,
-                ].filter(Boolean);
                 setShareSmsRecipient('');
-                setShareMessage(messageLines.join('\n'));
+                setShareMessage(buildJobShareMessage(j));
                 setShareDialogOpen(true);
               }}>
                 <ShareIcon fontSize="small" />
@@ -895,6 +932,14 @@ function JobDetailModal({
             )}
           </Box>
         )}
+        {gateCode ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <GateIcon sx={{ ...iconSm, color: 'text.secondary' }} />
+            <Typography variant="caption" color="text.secondary" sx={smallText}>
+              Gate code: {gateCode}
+            </Typography>
+          </Box>
+        ) : null}
       </Box>
     );
   };

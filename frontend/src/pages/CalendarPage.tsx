@@ -66,6 +66,7 @@ import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../components/common/EmployeeSmsRecipientField';
 import { formatPhoneForDisplay, nanpDigitsOnly } from '../utils/phoneFormat';
+import { buildCustomerShareMessage } from '../utils/customerShareMessage';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -282,45 +283,30 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
         ? resolvedJob.customerId.primaryPhone.trim()
         : '';
   const headerPhoneLine = headerPhoneRaw ? formatPhoneForDisplay(headerPhoneRaw) : '';
+  const headerGateCode = String(resolvedJob?.customerId?.gateCode || '').trim();
 
   const formatAddress = (address) => {
     if (!address) return '';
     return [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
   };
 
-  const buildCustomerShareMessage = () => {
+  const buildCustomerShareMessageText = () => {
     const customer = resolvedJob?.customerId || {};
-    const address = resolvedJob?.jobAddress ? formatAddress(resolvedJob.jobAddress) : formatAddress(customer.address);
-    const phones = [];
-    const seenDigits = new Set();
-    const addPhone = (raw) => {
-      const v = String(raw || '').trim();
-      if (!v) return;
-      const d = nanpDigitsOnly(v);
-      const dedupeKey = d.length === 10 ? d : v.toLowerCase();
-      if (seenDigits.has(dedupeKey)) return;
-      seenDigits.add(dedupeKey);
-      phones.push(formatPhoneForDisplay(v));
-    };
-    if (resolvedJob?.jobContact?.phone) addPhone(resolvedJob.jobContact.phone);
-    if (customer?.primaryPhone) addPhone(customer.primaryPhone);
-    if (Array.isArray(customer?.contactPhones)) {
-      customer.contactPhones.forEach((p) => addPhone(p?.value));
-    }
-    const email = customer?.primaryEmail || '';
-    const lines = [
-      `Customer: ${customer?.name || 'Unknown'}`,
-      resolvedJob?.title ? `Job: ${resolvedJob.title}` : null,
-      phones.length ? `Phone: ${phones.join(', ')}` : null,
-      email ? `Email: ${email}` : null,
-      address ? `Address: ${address}` : null,
-    ].filter(Boolean);
-    return lines.join('\n');
+    const address = resolvedJob?.jobAddress
+      ? formatAddress(resolvedJob.jobAddress)
+      : formatAddress(customer.address);
+    return buildCustomerShareMessage({
+      customer,
+      jobTitle: resolvedJob?.title,
+      address,
+      extraPhones: resolvedJob?.jobContact?.phone ? [resolvedJob.jobContact.phone] : [],
+      extraEmail: resolvedJob?.jobContact?.email || customer?.primaryEmail,
+    });
   };
 
   const handleOpenShareDialog = () => {
     setShareSmsRecipient('');
-    setShareMessage(buildCustomerShareMessage());
+    setShareMessage(buildCustomerShareMessageText());
     setShareDialogOpen(true);
   };
 
@@ -356,6 +342,11 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
       setSendingShare(false);
     }
   };
+
+  useEffect(() => {
+    if (!shareDialogOpen) return;
+    setShareMessage(buildCustomerShareMessageText());
+  }, [shareDialogOpen, resolvedJob]);
 
   useEffect(() => {
     if (open) {
@@ -699,8 +690,26 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
               {headerPhoneLine}
             </Typography>
           ) : null}
+          {headerGateCode ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: 'block',
+                maxWidth: { xs: '48vw', sm: '55vw', md: '34vw' },
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                mx: 'auto',
+                mt: 0.25,
+              }}
+              title={`Gate code: ${headerGateCode}`}
+            >
+              Gate code: {headerGateCode}
+            </Typography>
+          ) : null}
           </Box>
-          {(headerAddressLine || headerPhoneLine) && (
+          {(headerAddressLine || headerPhoneLine || headerGateCode) && (
             <Tooltip title="Text customer info">
               <IconButton size="small" onClick={handleOpenShareDialog}>
                 <ShareIcon fontSize="small" />

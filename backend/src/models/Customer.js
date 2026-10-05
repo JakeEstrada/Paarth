@@ -73,6 +73,12 @@ const customerSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  gateCode: {
+    type: String,
+    default: '',
+    trim: true,
+    maxlength: 80,
+  },
   source: {
     type: String,
     enum: ['referral', 'vehicle_advertisement', 'yelp', 'instagram', 'facebook', 'website', 'repeat', 'other'],

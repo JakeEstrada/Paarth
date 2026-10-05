@@ -38,7 +38,7 @@ async function syncJobToCalendar(req, res) {
   try {
     jobId = req.params.jobId;
     const job = await Job.findById(jobId)
-      .populate('customerId', 'name primaryPhone primaryEmail');
+      .populate('customerId', 'name primaryPhone primaryEmail address contactPhones gateCode');
 
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });

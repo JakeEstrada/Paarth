@@ -52,6 +52,7 @@ import {
   Work as WorkIcon,
   Description as DescriptionIcon,
   Share as ShareIcon,
+  VpnKey as GateIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -61,6 +62,7 @@ import EmployeeSmsRecipientField, {
 } from '../components/common/EmployeeSmsRecipientField';
 import PhoneTextField from '../components/common/PhoneTextField';
 import { formatNanpTyping, formatPhoneForDisplay, phoneSearchMatch } from '../utils/phoneFormat';
+import { buildCustomerShareMessage } from '../utils/customerShareMessage';
 import { formatMoney } from '../utils/paymentSchedule';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
@@ -302,14 +304,11 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     if (!customer) return '';
     const phones = getAllPhones(customer).map((p) => p.value).filter(Boolean);
     const emails = getAllEmails(customer).map((e) => e.value).filter(Boolean);
-    const addr = formatAddress(customer.address);
-    const lines = [
-      `Customer: ${customer.name || 'Unknown'}`,
-      phones.length ? `Phone: ${phones.map((p) => formatPhoneForDisplay(p)).join(', ')}` : null,
-      emails.length ? `Email: ${emails.join(', ')}` : null,
-      addr && addr !== '-' ? `Address: ${addr}` : null,
-    ].filter(Boolean);
-    return lines.join('\n');
+    return buildCustomerShareMessage({
+      customer,
+      extraPhones: phones,
+      extraEmails: emails,
+    });
   };
 
   const handleOpenShareDialog = () => {
@@ -318,6 +317,11 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
     setShareMessage(buildShareMessage(selectedCustomer));
     setShareDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (!shareDialogOpen || !selectedCustomer) return;
+    setShareMessage(buildShareMessage(selectedCustomer));
+  }, [shareDialogOpen, selectedCustomer]);
 
   const handleCloseShareDialog = () => {
     setShareDialogOpen(false);
@@ -402,6 +406,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
       },
       addresses: selectedCustomer.addresses ? [...selectedCustomer.addresses] : [],
       notes: selectedCustomer.notes || '',
+      gateCode: selectedCustomer.gateCode || '',
       source: selectedCustomer.source || 'other',
       referralCompany: selectedCustomer.referralCompany || '',
       tags: selectedCustomer.tags ? [...selectedCustomer.tags] : [],
@@ -438,6 +443,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
           : undefined,
         addresses: editCustomerForm.addresses || [],
         notes: editCustomerForm.notes || undefined,
+        gateCode: String(editCustomerForm.gateCode || '').trim(),
         source: editCustomerForm.source || 'other',
         referralCompany:
           editCustomerForm.source === 'referral'
@@ -823,6 +829,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     contactEmails: [],
                     address: { street: '', city: '', state: '', zip: '' },
                     notes: '',
+                    gateCode: '',
                     source: 'other',
                     skipInitialJob: true,
                   });
@@ -1275,6 +1282,16 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                     />
                   ) : null}
 
+                  {/* Gate code is shared with installers; notes stay internal. */}
+                  <TextField
+                    label="Gate code"
+                    value={editCustomerForm.gateCode || ''}
+                    onChange={(e) => setEditCustomerForm({ ...editCustomerForm, gateCode: e.target.value })}
+                    fullWidth
+                    placeholder="e.g. #1234 or call 555 for entry"
+                    helperText="Included when you text customer info from here or from a job card."
+                  />
+
                   {/* Notes */}
                   <TextField
                     label="Notes"
@@ -1470,6 +1487,18 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                       />
                     </Box>
                   )}
+
+                  <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                      <GateIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                        Gate code
+                      </Typography>
+                    </Box>
+                    <Typography variant="body2" color={selectedCustomer.gateCode ? 'text.primary' : 'text.secondary'} sx={{ pl: 3.5 }}>
+                      {selectedCustomer.gateCode || '—'}
+                    </Typography>
+                  </Box>
 
                   {/* Notes */}
                   {selectedCustomer.notes && (

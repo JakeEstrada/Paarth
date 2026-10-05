@@ -21,6 +21,7 @@ const { applyReferralFields } = require('../utils/referralCompany');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
+const CUSTOMER_CONTACT_FIELDS = 'name primaryPhone primaryEmail address contactPhones gateCode';
 
 function parseTruthyQuery(value) {
   return value === true || value === 'true' || value === '1' || value === 1;
@@ -189,7 +190,7 @@ async function createJob(req, res) {
       createdBy: createdBy
     });
     
-    await job.populate('customerId', 'name primaryPhone primaryEmail');
+    await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
 
     await emitJobCreated(req, job);
@@ -573,7 +574,7 @@ async function updateJob(req, res) {
       }
     }
     
-    await job.populate('customerId', 'name primaryPhone primaryEmail');
+    await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
 
     await emitJobUpdated(req, job);
@@ -663,7 +664,7 @@ async function addJobInvoice(req, res) {
     job.invoices.push(entry);
     job.markModified('invoices');
     await job.save();
-    await job.populate('customerId', 'name primaryPhone primaryEmail address');
+    await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
     const pushed = job.invoices[job.invoices.length - 1];
     return res.status(201).json({ job, invoice: pushed });
@@ -730,7 +731,7 @@ async function moveJobStage(req, res) {
     
     await job.save();
     
-    await job.populate('customerId', 'name primaryPhone primaryEmail phones contactPhones');
+    await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
 
     await emitJobUpdated(req, job);
@@ -820,7 +821,7 @@ async function getArchivedJobs(req, res) {
         { isArchived: true, stage: { $ne: 'FINAL_PAYMENT_CLOSED' } }
       ]
     })
-      .populate('customerId', 'name primaryPhone primaryEmail address')
+      .populate('customerId', CUSTOMER_CONTACT_FIELDS)
       .populate('assignedTo', 'name email')
       .populate('createdBy', 'name email')
       .sort({ archivedAt: -1, movedToDeadEstimateAt: -1, updatedAt: -1 });
@@ -889,7 +890,7 @@ async function getCompletedJobs(req, res) {
       isDeadEstimate: { $ne: true }
       // Note: We include archived jobs here to keep a permanent list
     })
-      .populate('customerId', 'name primaryPhone primaryEmail address')
+      .populate('customerId', CUSTOMER_CONTACT_FIELDS)
       .populate('assignedTo', 'name email')
       .populate('createdBy', 'name email')
       .sort({ updatedAt: -1, createdAt: -1 });
@@ -996,7 +997,7 @@ async function moveToDeadEstimates(req, res) {
       });
     }
     
-    await job.populate('customerId', 'name primaryPhone primaryEmail');
+    await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
 
     await emitJobUpdated(req, job);
@@ -1352,7 +1353,7 @@ async function archiveJob(req, res) {
       });
     }
     
-    await job.populate('customerId', 'name primaryPhone primaryEmail');
+    await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
 
     await emitJobUpdated(req, job);
@@ -1442,7 +1443,7 @@ async function unarchiveJob(req, res) {
       });
     }
     
-    await job.populate('customerId', 'name primaryPhone primaryEmail');
+    await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
 
     await emitJobUpdated(req, job);
@@ -1624,7 +1625,7 @@ async function reopenFromCompleted(req, res) {
       }
     }
 
-    await job.populate('customerId', 'name primaryPhone primaryEmail');
+    await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
 
     await emitJobUpdated(req, job);

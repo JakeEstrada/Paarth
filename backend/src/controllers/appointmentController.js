@@ -322,7 +322,7 @@ async function createAppointment(req, res) {
       // Don't fail the request if activity logging fails
     }
     
-    await appointment.populate('customerId', 'name primaryPhone primaryEmail');
+    await appointment.populate('customerId', 'name primaryPhone primaryEmail address contactPhones gateCode');
     await appointment.populate('jobId', 'title stage');
 
     emitAppointmentChanged(req, appointment, 'created');
@@ -346,7 +346,7 @@ async function updateAppointment(req, res) {
     await appointment.save();
     await syncAppointmentReminderSms(appointment, req.user?._id || appointment.createdBy);
     
-    await appointment.populate('customerId', 'name primaryPhone primaryEmail');
+    await appointment.populate('customerId', 'name primaryPhone primaryEmail address contactPhones gateCode');
     await appointment.populate('jobId', 'title stage');
 
     emitAppointmentChanged(req, appointment, 'updated');
@@ -425,7 +425,7 @@ async function completeAppointment(req, res) {
       // Don't fail the request if activity logging fails
     }
     
-    await appointment.populate('customerId', 'name primaryPhone primaryEmail');
+    await appointment.populate('customerId', 'name primaryPhone primaryEmail address contactPhones gateCode');
     await appointment.populate('jobId', 'title stage');
 
     emitAppointmentChanged(req, appointment, 'completed');
@@ -483,7 +483,7 @@ async function getCompletedAppointments(req, res) {
     }
     
     const appointments = await Appointment.find(query)
-      .populate('customerId', 'name primaryPhone primaryEmail')
+      .populate('customerId', 'name primaryPhone primaryEmail address contactPhones gateCode')
       .populate('jobId', 'title stage')
       .populate('createdBy', 'name email')
       .sort({ date: -1, completedAt: -1 })
