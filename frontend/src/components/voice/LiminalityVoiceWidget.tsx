@@ -1,18 +1,8 @@
 import { Button, Paper, Typography } from '@mui/material';
 import { Mic as MicIcon, MicOff as MicOffIcon } from '@mui/icons-material';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiminalityVoice, type LiminalityPhase } from '../../hooks/useLiminalityVoice';
-
-const STORAGE_KEY = 'paarth.liminality.enabled';
-
-function readEnabled() {
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
 
 function statusMark(phase: LiminalityPhase, enabled: boolean) {
   if (!enabled || phase === 'off') return '○';
@@ -30,21 +20,9 @@ export default function LiminalityVoiceWidget() {
     onNavigate: (path) => navigate(path),
   });
 
-  useEffect(() => {
-    setEnabled(readEnabled());
-  }, []);
-
   const toggle = () => {
     if (!voice.supported) return;
-    setEnabled((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(STORAGE_KEY, next ? '1' : '0');
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+    setEnabled((prev) => !prev);
   };
 
   const mark = statusMark(voice.phase, enabled);

@@ -32,8 +32,8 @@ export function useLiminalityVoice({
   onNavigate: (path: string) => void;
 }) {
   const supported = isSpeechRecognitionSupported();
-  const [phase, setPhase] = useState<LiminalityPhase>(enabled ? 'waiting' : 'off');
-  const [statusLabel, setStatusLabel] = useState(enabled ? 'Waiting' : 'Microphone off');
+  const [phase, setPhase] = useState<LiminalityPhase>('off');
+  const [statusLabel, setStatusLabel] = useState('Microphone off');
   const [heard, setHeard] = useState('');
 
   const recognitionRef = useRef<ReturnType<typeof createSpeechRecognition>>(null);
@@ -42,6 +42,7 @@ export function useLiminalityVoice({
   const enabledRef = useRef(enabled);
   const timeoutRef = useRef<number | null>(null);
   const resetRef = useRef<number | null>(null);
+  const networkFailsRef = useRef(0);
   const onNavigateRef = useRef(onNavigate);
   const handleWakeRef = useRef<(text: string) => void>(() => {});
   const handleCommandRef = useRef<(text: string) => void>(() => {});
@@ -56,14 +57,14 @@ export function useLiminalityVoice({
     resetRef.current = null;
   }, []);
 
-  const stopRecognition = useCallback(() => {
+  const destroyRecognition = useCallback(() => {
     const recognition = recognitionRef.current;
     if (!recognition) return;
     try {
       recognition.onresult = null;
       recognition.onerror = null;
       recognition.onend = null;
-      recognition.abort();
+      recognition.stop();
     } catch {
       /* already stopped */
     }
@@ -72,6 +73,7 @@ export function useLiminalityVoice({
 
   const startRecognition = useCallback(() => {
     if (!enabledRef.current || speakingRef.current) return;
+
     if (recognitionRef.current) {
       try {
         recognitionRef.current.start();
@@ -80,12 +82,14 @@ export function useLiminalityVoice({
       }
       return;
     }
+
     const recognition = createSpeechRecognition();
     if (!recognition) return;
     recognitionRef.current = recognition;
 
     recognition.onresult = (event) => {
       if (speakingRef.current || !enabledRef.current) return;
+      networkFailsRef.current = 0;
       const { finalText, interimText } = collectTranscript(event);
       const live = finalText || interimText;
       if (live) setHeard(live);
@@ -95,17 +99,27 @@ export function useLiminalityVoice({
     };
 
     recognition.onerror = (event) => {
-      if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
+      const error = String(event?.error || '');
+      if (error === 'aborted' || error === 'no-speech') return;
+      if (error === 'not-allowed' || error === 'service-not-allowed') {
         enabledRef.current = false;
         modeRef.current = 'off';
-        stopRecognition();
+        destroyRecognition();
         setPhase('off');
         setStatusLabel('Microphone blocked');
+        return;
+      }
+      if (error === 'network') {
+        networkFailsRef.current += 1;
+        if (networkFailsRef.current >= 3) {
+          setStatusLabel('Speech service busy — toggle the mic');
+        }
       }
     };
 
     recognition.onend = () => {
       if (!enabledRef.current || speakingRef.current || modeRef.current === 'off') return;
+      const delay = networkFailsRef.current > 0 ? Math.min(2000 * networkFailsRef.current, 6000) : 400;
       window.setTimeout(() => {
         if (!enabledRef.current || speakingRef.current || modeRef.current === 'off') return;
         try {
@@ -113,7 +127,7 @@ export function useLiminalityVoice({
         } catch {
           /* ignore */
         }
-      }, 120);
+      }, delay);
     };
 
     try {
@@ -121,7 +135,7 @@ export function useLiminalityVoice({
     } catch {
       /* ignore */
     }
-  }, [stopRecognition]);
+  }, [destroyRecognition]);
 
   const goWaiting = useCallback(() => {
     clearTimers();
@@ -142,13 +156,17 @@ export function useLiminalityVoice({
   const speakAndWait = useCallback(async (text: string) => {
     speakingRef.current = true;
     setPhase('speaking');
-    stopRecognition();
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
     try {
       await speakText(text);
     } finally {
       speakingRef.current = false;
     }
-  }, [stopRecognition]);
+  }, []);
 
   useEffect(() => {
     handleCommandRef.current = (raw: string) => {
@@ -217,15 +235,17 @@ export function useLiminalityVoice({
       enabledRef.current = false;
       speakingRef.current = false;
       modeRef.current = 'off';
+      networkFailsRef.current = 0;
       clearTimers();
       cancelSpeech();
-      stopRecognition();
+      destroyRecognition();
       setHeard('');
       setPhase('off');
       setStatusLabel('Microphone off');
       return undefined;
     }
     enabledRef.current = true;
+    networkFailsRef.current = 0;
     goWaiting();
     return () => {
       enabledRef.current = false;
@@ -233,7 +253,7 @@ export function useLiminalityVoice({
       modeRef.current = 'off';
       clearTimers();
       cancelSpeech();
-      stopRecognition();
+      destroyRecognition();
     };
     // Intentionally only bind to enabled/supported so a command session is not torn down mid-speech.
     // eslint-disable-next-line react-hooks/exhaustive-deps
