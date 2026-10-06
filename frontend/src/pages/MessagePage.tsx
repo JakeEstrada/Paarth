@@ -26,7 +26,7 @@ import {
   Typography,
   Paper,
 } from '@mui/material';
-import { Chat as ChatIcon, Flag as FlagIcon, MailOutline as MailIcon, Refresh as RefreshIcon, Sms as SmsIcon } from '@mui/icons-material';
+import { Refresh as RefreshIcon, Sms as SmsIcon } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
@@ -527,16 +527,33 @@ function MessagePage() {
   const showSmsTools = isChatTab || isScheduledTab;
 
   return (
-    <Container maxWidth={isInboxTab || isChatTab ? 'lg' : 'md'} sx={{ py: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+    <Container maxWidth="lg" sx={{ py: 3 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 2,
+          mb: 1.5,
+          minHeight: 40,
+        }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <SmsIcon color="primary" sx={{ fontSize: 32 }} />
           <Typography variant="h5" component="h1">
             Messages
           </Typography>
         </Box>
-        {showSmsTools ? (
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 1,
+            flexWrap: 'wrap',
+            justifyContent: 'flex-end',
+            visibility: showSmsTools ? 'visible' : 'hidden',
+            pointerEvents: showSmsTools ? 'auto' : 'none',
+          }}
+        >
           {isAdmin() ? (
             <Button
               size="small"
@@ -557,9 +574,33 @@ function MessagePage() {
             Refresh
           </Button>
         </Box>
-        ) : null}
       </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 1.5 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          variant="scrollable"
+          scrollButtons={false}
+          allowScrollButtonsMobile={false}
+          sx={{
+            minHeight: 44,
+            '& .MuiTab-root': {
+              minHeight: 44,
+              minWidth: 0,
+              px: 1.75,
+              textTransform: 'none',
+            },
+          }}
+        >
+          <Tab value="messages" label="Conversations" />
+          <Tab value="scheduled" label={`Scheduled (${lists.scheduled.length})`} />
+          {admin ? <Tab value="inbox" label="Team Inbox" /> : null}
+          <Tab value="flags" label="Flag messages" />
+          <Tab value="canned" label="Canned messages" />
+        </Tabs>
+      </Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, minHeight: 40 }}>
         {isFlagTab
           ? 'Save texts that appear when a job is dragged onto a pipeline column. Send still requires your approval, then an Are you sure confirm.'
           : isCannedTab
@@ -570,18 +611,6 @@ function MessagePage() {
                 ? 'Texts waiting to go out. Send and replies live in the Conversations tab.'
                 : 'Conversations look like a phone thread. Replies sit on the left, your texts on the right.'}
       </Typography>
-
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" allowScrollButtonsMobile>
-          <Tab value="messages" label="Conversations" />
-          <Tab value="scheduled" label={`Scheduled (${lists.scheduled.length})`} />
-          {admin ? (
-            <Tab value="inbox" icon={<MailIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Team Inbox" />
-          ) : null}
-          <Tab value="flags" icon={<FlagIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Flag messages" />
-          <Tab value="canned" icon={<ChatIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Canned messages" />
-        </Tabs>
-      </Box>
 
       {isFlagTab ? (
         <FlagMessagesPanel />

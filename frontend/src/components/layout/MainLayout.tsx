@@ -3,6 +3,7 @@ import { Box } from '@mui/material';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import SiteAssistantChat from '../assistant/SiteAssistantChat';
+import LiminalityVoiceWidget from '../voice/LiminalityVoiceWidget';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
 function MainLayout({ children }) {
@@ -41,7 +42,8 @@ function MainLayout({ children }) {
           {children}
         </Box>
       </Box>
-      {/* The assistant bubble is desktop-only. */}
+      {/* Voice + help stay off the phone layout. */}
+      {!isMobile && <LiminalityVoiceWidget />}
       {!isMobile && <SiteAssistantChat />}
     </Box>
   );
