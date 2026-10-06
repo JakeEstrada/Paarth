@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -22,6 +22,10 @@ import { useTheme } from '@mui/material/styles';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { formatPhoneForDisplay, nanpDigitsOnly } from '../../utils/phoneFormat';
 import type { SmsRow } from '../../utils/twilioApi';
+import api from '../../utils/axios';
+import { useSocketSubscription } from '../../hooks/useSocketSubscription';
+import { getTenantRoom } from '../../services/socket';
+import { useAuth } from '../../context/AuthContext';
 
 export type ChatDirection = 'inbound' | 'outbound';
 
@@ -31,6 +35,7 @@ type Conversation = {
   key: string;
   phone: string;
   displayPhone: string;
+  customerName: string;
   messages: ChatMessage[];
   lastAt: number;
   unreadCount: number;
@@ -45,6 +50,39 @@ function conversationKey(phone: string) {
   const digits = nanpDigitsOnly(phone);
   if (digits.length === 10) return digits;
   return String(phone || '').trim().toLowerCase() || 'unknown';
+}
+
+type CustomerContact = {
+  name?: string;
+  primaryPhone?: string;
+  phones?: string[];
+  contactPhones?: Array<{ value?: string }>;
+};
+
+function customerPhoneKeys(customer: CustomerContact): string[] {
+  const raw = [
+    customer.primaryPhone,
+    ...(Array.isArray(customer.phones) ? customer.phones : []),
+    ...(Array.isArray(customer.contactPhones) ? customer.contactPhones.map((row) => row?.value) : []),
+  ];
+  const keys = new Set<string>();
+  for (const value of raw) {
+    const key = conversationKey(String(value || ''));
+    if (key && key !== 'unknown') keys.add(key);
+  }
+  return Array.from(keys);
+}
+
+function buildCustomerNameByPhone(customers: CustomerContact[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const customer of customers) {
+    const name = String(customer.name || '').trim();
+    if (!name) continue;
+    for (const key of customerPhoneKeys(customer)) {
+      if (!map[key]) map[key] = name;
+    }
+  }
+  return map;
 }
 
 function messageTime(row: SmsRow) {
@@ -86,7 +124,12 @@ function deliveryLabel(row: ChatMessage) {
   return '';
 }
 
-export function buildConversations(sent: SmsRow[], received: SmsRow[], scheduled: SmsRow[] = []): Conversation[] {
+export function buildConversations(
+  sent: SmsRow[],
+  received: SmsRow[],
+  scheduled: SmsRow[] = [],
+  nameByPhone: Record<string, string> = {},
+): Conversation[] {
   const byKey = new Map<string, Conversation>();
 
   const add = (row: SmsRow, direction: ChatDirection) => {
@@ -102,6 +145,7 @@ export function buildConversations(sent: SmsRow[], received: SmsRow[], scheduled
       key,
       phone: phone || key,
       displayPhone: formatPhoneForDisplay(phone) || phone || 'Unknown',
+      customerName: nameByPhone[key] || '',
       messages: [message],
       lastAt: 0,
       unreadCount: 0,
@@ -121,6 +165,7 @@ export function buildConversations(sent: SmsRow[], received: SmsRow[], scheduled
       const last = messages[messages.length - 1];
       return {
         ...conv,
+        customerName: nameByPhone[conv.key] || conv.customerName || '',
         messages,
         lastAt: last ? messageTime(last) : 0,
         unreadCount: messages.filter((row) => row.direction === 'inbound' && row.status === 'unread').length,
@@ -156,9 +201,11 @@ export default function SmsConversationView({
   const theme = useTheme();
   const isMobile = useIsMobile();
   const isDark = theme.palette.mode === 'dark';
+  const { tenantIdForBranding } = useAuth();
+  const [nameByPhone, setNameByPhone] = useState<Record<string, string>>({});
   const conversations = useMemo(
-    () => buildConversations(sent, received, scheduled),
-    [sent, received, scheduled],
+    () => buildConversations(sent, received, scheduled, nameByPhone),
+    [sent, received, scheduled, nameByPhone],
   );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [composingNew, setComposingNew] = useState(false);
@@ -175,6 +222,26 @@ export default function SmsConversationView({
   const selected = conversations.find((row) => row.key === selectedKey) || null;
   const showList = !isMobile || (!selected && !composingNew);
   const showThread = !isMobile || Boolean(selected) || composingNew;
+
+  const loadCustomerNames = useCallback(async () => {
+    try {
+      const { data } = await api.get('/customers', { params: { limit: 1000 } });
+      const rows = Array.isArray(data?.customers) ? data.customers : [];
+      setNameByPhone(buildCustomerNameByPhone(rows));
+    } catch {
+      /* names stay as phone numbers */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCustomerNames();
+  }, [loadCustomerNames]);
+
+  useSocketSubscription(
+    tenantIdForBranding ? getTenantRoom(tenantIdForBranding) : null,
+    'customer.changed',
+    loadCustomerNames,
+  );
 
   useEffect(() => {
     if (composingNew) return;
@@ -296,8 +363,12 @@ export default function SmsConversationView({
                   sx={{ alignItems: 'flex-start', py: 1.25 }}
                 >
                   <ListItemText
-                    primary={conv.displayPhone}
-                    secondary={conv.lastPreview || ' '}
+                    primary={conv.customerName || conv.displayPhone}
+                    secondary={
+                      conv.customerName
+                        ? [conv.displayPhone, conv.lastPreview].filter(Boolean).join(' · ')
+                        : conv.lastPreview || ' '
+                    }
                     primaryTypographyProps={{ fontWeight: conv.unreadCount ? 700 : 600, noWrap: true }}
                     secondaryTypographyProps={{ noWrap: true }}
                   />
@@ -367,10 +438,10 @@ export default function SmsConversationView({
               ) : (
                 <>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
-                    {selected.displayPhone}
+                    {selected.customerName || selected.displayPhone}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Text messages
+                    {selected.customerName ? selected.displayPhone : 'Text messages'}
                   </Typography>
                 </>
               )}
