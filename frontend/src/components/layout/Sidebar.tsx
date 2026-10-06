@@ -40,7 +40,6 @@ import {
   Language as WebsiteIcon,
   Insights as AnalyticsIcon,
   Nfc as NfcIcon,
-  MailOutline as MailIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
@@ -57,14 +56,7 @@ const workspaceItems = [
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
   { text: 'Projects & Tasks', icon: <TasksIcon />, path: '/tasks' },
   { text: 'Calendar', icon: <CalendarIcon />, path: '/calendar' },
-  {
-    text: 'Messages',
-    icon: <SmsIcon />,
-    path: '/messages',
-    children: [
-      { text: 'Team Inbox', icon: <MailIcon />, path: '/messages?tab=inbox', adminOnly: true },
-    ],
-  },
+  { text: 'Messages', icon: <SmsIcon />, path: '/messages' },
 ];
 
 const financeItems = [
@@ -225,7 +217,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             fontWeight: isActive(item.path) ? 600 : 400,
           }}
         />
-        {item.path === '/messages?tab=inbox' && inboxCount > 0 ? (
+        {item.path === '/messages' && inboxCount > 0 ? (
           <Chip size="small" color="warning" label={inboxCount} sx={{ ml: 1, height: 22 }} />
         ) : null}
         {item.path === '/messages' && unreadSmsCount > 0 ? (

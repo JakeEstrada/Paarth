@@ -1,0 +1,521 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Box,
+  Button,
+  CircularProgress,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemText,
+  Paper,
+  TextField,
+  Typography,
+} from '@mui/material';
+import {
+  ArrowBack as ArrowBackIcon,
+  Edit as EditIcon,
+  Schedule as ScheduleIcon,
+  Send as SendIcon,
+} from '@mui/icons-material';
+import { format, isSameDay, isToday, isYesterday } from 'date-fns';
+import { useTheme } from '@mui/material/styles';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { formatPhoneForDisplay, nanpDigitsOnly } from '../../utils/phoneFormat';
+import type { SmsRow } from '../../utils/twilioApi';
+
+export type ChatDirection = 'inbound' | 'outbound';
+
+export type ChatMessage = SmsRow & { direction: ChatDirection };
+
+type Conversation = {
+  key: string;
+  phone: string;
+  displayPhone: string;
+  messages: ChatMessage[];
+  lastAt: number;
+  unreadCount: number;
+  lastPreview: string;
+};
+
+function partyPhone(row: SmsRow, direction: ChatDirection) {
+  return String(direction === 'inbound' ? row.from : row.to || '').trim();
+}
+
+function conversationKey(phone: string) {
+  const digits = nanpDigitsOnly(phone);
+  if (digits.length === 10) return digits;
+  return String(phone || '').trim().toLowerCase() || 'unknown';
+}
+
+function messageTime(row: SmsRow) {
+  return new Date(row.sentAt || row.sendAt || row.createdAt).getTime() || 0;
+}
+
+function formatThreadDay(value: string | null | undefined) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  if (isToday(d)) return 'Today';
+  if (isYesterday(d)) return 'Yesterday';
+  return format(d, 'EEE, MMM d');
+}
+
+function formatThreadTime(value: string | null | undefined) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return format(d, 'h:mm a');
+}
+
+function formatListTime(value: number) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isToday(d)) return format(d, 'h:mm a');
+  if (isYesterday(d)) return 'Yesterday';
+  return format(d, 'M/d/yy');
+}
+
+function deliveryLabel(row: ChatMessage) {
+  const status = String(row.deliveryStatus || row.status || '').toLowerCase();
+  if (row.direction === 'inbound') return row.status === 'unread' ? 'Unread' : '';
+  if (status === 'failed' || status === 'undelivered') return 'Not delivered';
+  if (status === 'scheduled') return row.sendAt ? `Scheduled ${formatThreadTime(row.sendAt)}` : 'Scheduled';
+  if (status === 'delivered' || row.deliveredAt) return 'Delivered';
+  if (status === 'sent' || status === 'read') return 'Sent';
+  if (status === 'queued' || status === 'sending') return 'Sending';
+  return '';
+}
+
+export function buildConversations(sent: SmsRow[], received: SmsRow[], scheduled: SmsRow[] = []): Conversation[] {
+  const byKey = new Map<string, Conversation>();
+
+  const add = (row: SmsRow, direction: ChatDirection) => {
+    const phone = partyPhone(row, direction);
+    const key = conversationKey(phone);
+    const existing = byKey.get(key);
+    const message: ChatMessage = { ...row, direction };
+    if (existing) {
+      existing.messages.push(message);
+      return;
+    }
+    byKey.set(key, {
+      key,
+      phone: phone || key,
+      displayPhone: formatPhoneForDisplay(phone) || phone || 'Unknown',
+      messages: [message],
+      lastAt: 0,
+      unreadCount: 0,
+      lastPreview: '',
+    });
+  };
+
+  sent.forEach((row) => add(row, 'outbound'));
+  received.forEach((row) => add(row, 'inbound'));
+  scheduled
+    .filter((row) => String(row.status || '').toLowerCase() === 'scheduled')
+    .forEach((row) => add(row, 'outbound'));
+
+  return Array.from(byKey.values())
+    .map((conv) => {
+      const messages = [...conv.messages].sort((a, b) => messageTime(a) - messageTime(b));
+      const last = messages[messages.length - 1];
+      return {
+        ...conv,
+        messages,
+        lastAt: last ? messageTime(last) : 0,
+        unreadCount: messages.filter((row) => row.direction === 'inbound' && row.status === 'unread').length,
+        lastPreview: last?.body || '',
+      };
+    })
+    .sort((a, b) => b.lastAt - a.lastAt);
+}
+
+export default function SmsConversationView({
+  sent,
+  received,
+  scheduled,
+  loading,
+  sending,
+  scheduling,
+  onSend,
+  onSchedule,
+  onOpenMessage,
+  onOpenConversation,
+}: {
+  sent: SmsRow[];
+  received: SmsRow[];
+  scheduled: SmsRow[];
+  loading: boolean;
+  sending: boolean;
+  scheduling: boolean;
+  onSend: (to: string, message: string) => Promise<void>;
+  onSchedule: (to: string, message: string, sendAtLocal: string) => Promise<void>;
+  onOpenMessage: (row: ChatMessage) => void;
+  onOpenConversation?: (unreadIds: string[]) => void;
+}) {
+  const theme = useTheme();
+  const isMobile = useIsMobile();
+  const isDark = theme.palette.mode === 'dark';
+  const conversations = useMemo(
+    () => buildConversations(sent, received, scheduled),
+    [sent, received, scheduled],
+  );
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [composingNew, setComposingNew] = useState(false);
+  const [toDisplay, setToDisplay] = useState('');
+  const [body, setBody] = useState('');
+  const [scheduleMode, setScheduleMode] = useState(false);
+  const [sendAtLocal, setSendAtLocal] = useState(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 60);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  const threadRef = useRef<HTMLDivElement | null>(null);
+  const selected = conversations.find((row) => row.key === selectedKey) || null;
+  const showList = !isMobile || (!selected && !composingNew);
+  const showThread = !isMobile || Boolean(selected) || composingNew;
+
+  useEffect(() => {
+    if (composingNew) return;
+    if (selectedKey && conversations.some((row) => row.key === selectedKey)) return;
+    if (!isMobile && conversations[0]) setSelectedKey(conversations[0].key);
+  }, [conversations, selectedKey, composingNew, isMobile]);
+
+  useEffect(() => {
+    const node = threadRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [selectedKey, selected?.messages.length, composingNew]);
+
+  const openConversation = (conv: Conversation) => {
+    setComposingNew(false);
+    setSelectedKey(conv.key);
+    setToDisplay(conv.displayPhone);
+    setBody('');
+    setScheduleMode(false);
+    const unreadIds = conv.messages
+      .filter((row) => row.direction === 'inbound' && row.status === 'unread')
+      .map((row) => row.id);
+    if (unreadIds.length) onOpenConversation?.(unreadIds);
+  };
+
+  const startNew = () => {
+    setComposingNew(true);
+    setSelectedKey(null);
+    setToDisplay('');
+    setBody('');
+    setScheduleMode(false);
+  };
+
+  const backToList = () => {
+    setComposingNew(false);
+    setSelectedKey(null);
+  };
+
+  const busy = sending || scheduling;
+  const canSend = toDisplay.trim() && body.trim() && !busy;
+
+  const handleSend = async () => {
+    if (!canSend) return;
+    const to = toDisplay.trim();
+    const message = body.trim();
+    try {
+      await onSend(to, message);
+      setBody('');
+      setComposingNew(false);
+      setSelectedKey(conversationKey(to));
+    } catch {
+      /* parent already showed the error */
+    }
+  };
+
+  const handleSchedule = async () => {
+    if (!canSend || !sendAtLocal) return;
+    try {
+      await onSchedule(toDisplay.trim(), body.trim(), sendAtLocal);
+      setBody('');
+      setScheduleMode(false);
+      setComposingNew(false);
+      setSelectedKey(conversationKey(toDisplay.trim()));
+    } catch {
+      /* parent already showed the error */
+    }
+  };
+
+  const outboundBg = theme.palette.primary.main;
+  const outboundColor = theme.palette.primary.contrastText;
+  const inboundBg = isDark ? 'rgba(255,255,255,0.12)' : '#E9E9EB';
+  const inboundColor = theme.palette.text.primary;
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        display: 'flex',
+        height: { xs: 'calc(100vh - 260px)', md: 620 },
+        minHeight: 420,
+        overflow: 'hidden',
+      }}
+    >
+      {showList ? (
+        <Box
+          sx={{
+            width: { xs: '100%', md: 300 },
+            flexShrink: 0,
+            borderRight: { md: 1 },
+            borderColor: 'divider',
+            display: 'flex',
+            flexDirection: 'column',
+            bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'grey.50',
+          }}
+        >
+          <Box sx={{ p: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              Conversations
+            </Typography>
+            <Button size="small" startIcon={<EditIcon />} onClick={startNew} sx={{ textTransform: 'none' }}>
+              New
+            </Button>
+          </Box>
+          {loading && conversations.length === 0 ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : conversations.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 3 }}>
+              No texts yet. Start a new conversation.
+            </Typography>
+          ) : (
+            <List dense disablePadding sx={{ overflow: 'auto', flex: 1 }}>
+              {conversations.map((conv) => (
+                <ListItemButton
+                  key={conv.key}
+                  selected={conv.key === selectedKey && !composingNew}
+                  onClick={() => openConversation(conv)}
+                  sx={{ alignItems: 'flex-start', py: 1.25 }}
+                >
+                  <ListItemText
+                    primary={conv.displayPhone}
+                    secondary={conv.lastPreview || ' '}
+                    primaryTypographyProps={{ fontWeight: conv.unreadCount ? 700 : 600, noWrap: true }}
+                    secondaryTypographyProps={{ noWrap: true }}
+                  />
+                  <Box sx={{ ml: 1, textAlign: 'right', flexShrink: 0 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      {formatListTime(conv.lastAt)}
+                    </Typography>
+                    {conv.unreadCount > 0 ? (
+                      <Box
+                        sx={{
+                          mt: 0.5,
+                          ml: 'auto',
+                          minWidth: 20,
+                          height: 20,
+                          px: 0.75,
+                          borderRadius: 10,
+                          bgcolor: 'error.main',
+                          color: 'error.contrastText',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {conv.unreadCount}
+                      </Box>
+                    ) : null}
+                  </Box>
+                </ListItemButton>
+              ))}
+            </List>
+          )}
+        </Box>
+      ) : null}
+
+      {showThread ? (
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <Box
+            sx={{
+              px: 2,
+              py: 1.25,
+              borderBottom: 1,
+              borderColor: 'divider',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              minHeight: 56,
+            }}
+          >
+            {isMobile ? (
+              <IconButton size="small" onClick={backToList} aria-label="Back to conversations">
+                <ArrowBackIcon />
+              </IconButton>
+            ) : null}
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              {composingNew || !selected ? (
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="To"
+                  value={toDisplay}
+                  onChange={(e) => setToDisplay(e.target.value)}
+                  placeholder="(949) 555-0100"
+                  autoComplete="tel"
+                />
+              ) : (
+                <>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
+                    {selected.displayPhone}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Text messages
+                  </Typography>
+                </>
+              )}
+            </Box>
+          </Box>
+
+          <Box
+            ref={threadRef}
+            sx={{
+              flex: 1,
+              overflow: 'auto',
+              px: 2,
+              py: 2,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1,
+              bgcolor: isDark ? 'background.default' : '#F2F2F7',
+            }}
+          >
+            {loading && !selected?.messages.length && !composingNew ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : selected?.messages.length ? (
+              selected.messages.map((row, index) => {
+                const when = row.sentAt || row.sendAt || row.createdAt;
+                const prev = selected.messages[index - 1];
+                const prevWhen = prev ? prev.sentAt || prev.sendAt || prev.createdAt : null;
+                const showDay =
+                  !prevWhen ||
+                  !when ||
+                  !isSameDay(new Date(when), new Date(prevWhen));
+                const outbound = row.direction === 'outbound';
+                const failed = /fail|undelivered/i.test(String(row.deliveryStatus || row.status || ''));
+                return (
+                  <Box key={`${row.recordType}-${row.id}`}>
+                    {showDay ? (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: 'block', textAlign: 'center', my: 1.5, fontWeight: 600 }}
+                      >
+                        {formatThreadDay(when)}
+                      </Typography>
+                    ) : null}
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        justifyContent: outbound ? 'flex-end' : 'flex-start',
+                      }}
+                    >
+                      <Box
+                        component="button"
+                        type="button"
+                        onClick={() => onOpenMessage(row)}
+                        sx={{
+                          all: 'unset',
+                          cursor: 'pointer',
+                          maxWidth: '78%',
+                          px: 1.5,
+                          py: 1,
+                          borderRadius: outbound ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                          bgcolor: failed ? 'error.main' : outbound ? outboundBg : inboundBg,
+                          color: failed ? 'error.contrastText' : outbound ? outboundColor : inboundColor,
+                          boxShadow: outbound ? 'none' : isDark ? 'none' : '0 1px 1px rgba(0,0,0,0.06)',
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {row.body || ' '}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Typography
+                      variant="caption"
+                      color={failed ? 'error' : 'text.secondary'}
+                      sx={{
+                        display: 'block',
+                        textAlign: outbound ? 'right' : 'left',
+                        px: 0.5,
+                        mt: 0.25,
+                      }}
+                    >
+                      {[formatThreadTime(when), deliveryLabel(row)].filter(Boolean).join(' · ')}
+                    </Typography>
+                  </Box>
+                );
+              })
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 8 }}>
+                {composingNew ? 'Type a number and message to start the thread.' : 'Select a conversation.'}
+              </Typography>
+            )}
+          </Box>
+
+          <Box sx={{ p: 1.5, borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
+            {scheduleMode ? (
+              <TextField
+                label="Send at"
+                type="datetime-local"
+                size="small"
+                fullWidth
+                value={sendAtLocal}
+                onChange={(e) => setSendAtLocal(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ mb: 1 }}
+              />
+            ) : null}
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+              <IconButton
+                color={scheduleMode ? 'primary' : 'default'}
+                onClick={() => setScheduleMode((prev) => !prev)}
+                aria-label="Schedule message"
+                disabled={busy}
+              >
+                <ScheduleIcon />
+              </IconButton>
+              <TextField
+                placeholder="Text message"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                fullWidth
+                multiline
+                maxRows={4}
+                disabled={busy}
+                inputProps={{ maxLength: 1500 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (scheduleMode) void handleSchedule();
+                    else void handleSend();
+                  }
+                }}
+              />
+              <IconButton
+                color="primary"
+                onClick={() => (scheduleMode ? void handleSchedule() : void handleSend())}
+                disabled={!canSend}
+                aria-label={scheduleMode ? 'Schedule message' : 'Send message'}
+              >
+                {busy ? <CircularProgress size={20} /> : <SendIcon />}
+              </IconButton>
+            </Box>
+          </Box>
+        </Box>
+      ) : null}
+    </Paper>
+  );
+}

@@ -1,15 +1,12 @@
 /**
- * MessagePage — SMS, team Outlook inbox, pipeline flag templates, and job-card canned texts.
- * Route: /messages  Query: ?tab=inbox|flags|canned|sent|received
- * Docs: ../../../docs/PAGES.md#messagepagetsx
+ * MessagePage — phone-style SMS conversations, scheduled texts, team inbox, flag and canned templates.
+ * Route: /messages  Query: ?tab=inbox|flags|canned|scheduled
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   CircularProgress,
   Container,
@@ -26,17 +23,17 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Typography,
   Paper,
 } from '@mui/material';
-import { Chat as ChatIcon, Flag as FlagIcon, MailOutline as MailIcon, Refresh as RefreshIcon, Schedule as ScheduleIcon, Sms as SmsIcon } from '@mui/icons-material';
+import { Chat as ChatIcon, Flag as FlagIcon, MailOutline as MailIcon, Refresh as RefreshIcon, Sms as SmsIcon } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import api from '../utils/axios';
 import CannedMessagesPanel from '../components/messages/CannedMessagesPanel';
 import FlagMessagesPanel from '../components/messages/FlagMessagesPanel';
+import SmsConversationView, { type ChatMessage } from '../components/messages/SmsConversationView';
 import TeamInboxPanel from '../components/messages/TeamInboxPanel';
 import { formatPhoneForDisplay } from '../utils/phoneFormat';
 import {
@@ -51,31 +48,19 @@ import {
   type SmsRow,
 } from '../utils/twilioApi';
 import { useAuth } from '../context/AuthContext';
+import { useSocketSubscription } from '../hooks/useSocketSubscription';
+import { getTenantRoom } from '../services/socket';
 
 const LIST_PAGE_SIZE = 500;
 const LIST_MAX = 2000;
 const EMPTY_LISTS: SmsLists = { scheduled: [], sent: [], received: [] };
 
-type SmsListTab = 'scheduled' | 'sent' | 'received';
-type MessageTab = SmsListTab | 'inbox' | 'flags' | 'canned';
+type MessageTab = 'messages' | 'scheduled' | 'inbox' | 'flags' | 'canned';
 
 function parseMessageTab(raw: string | null, admin: boolean): MessageTab {
-  if (raw === 'inbox') return admin ? 'inbox' : 'scheduled';
-  if (raw === 'flags' || raw === 'canned' || raw === 'sent' || raw === 'received' || raw === 'scheduled') {
-    return raw;
-  }
-  return 'scheduled';
-}
-
-function toDatetimeLocalValue(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function defaultScheduleAtValue() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() + 60);
-  return toDatetimeLocalValue(d);
+  if (raw === 'inbox') return admin ? 'inbox' : 'messages';
+  if (raw === 'flags' || raw === 'canned' || raw === 'scheduled') return raw;
+  return 'messages';
 }
 
 function formatWhen(value: string | null | undefined) {
@@ -320,25 +305,21 @@ function MessageTable({
 }
 
 function MessagePage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, tenantIdForBranding } = useAuth();
   const admin = isAdmin();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [toDisplay, setToDisplay] = useState('');
-  const [body, setBody] = useState('');
-  const [sendAtLocal, setSendAtLocal] = useState(defaultScheduleAtValue);
-  const [scheduleMode, setScheduleMode] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [scheduling, setScheduling] = useState(false);
   const [syncingInbound, setSyncingInbound] = useState(false);
   const tab = parseMessageTab(searchParams.get('tab'), admin);
   const setTab = (next: MessageTab) => {
     setSearchParams((prev) => {
       const params = new URLSearchParams(prev);
-      if (next === 'scheduled') params.delete('tab');
+      if (next === 'messages') params.delete('tab');
       else params.set('tab', next);
       return params;
     }, { replace: true });
   };
+  const [sending, setSending] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   const [lists, setLists] = useState<SmsLists>(EMPTY_LISTS);
   const [listLimit, setListLimit] = useState(LIST_PAGE_SIZE);
   const [loadingLists, setLoadingLists] = useState(true);
@@ -346,8 +327,8 @@ function MessagePage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<SmsDetail | null>(null);
 
-  const fetchMessages = useCallback(async (limit = listLimit) => {
-    setLoadingLists(true);
+  const fetchMessages = useCallback(async (limit = listLimit, { silent = false } = {}) => {
+    if (!silent) setLoadingLists(true);
     try {
       setLists(await fetchSmsLists(limit));
     } catch (error) {
@@ -363,13 +344,23 @@ function MessagePage() {
       }
       toast.error(msg);
     } finally {
-      setLoadingLists(false);
+      if (!silent) setLoadingLists(false);
     }
   }, [listLimit]);
 
   useEffect(() => {
     void fetchMessages();
   }, [fetchMessages]);
+
+  const handleInboundSms = useCallback(() => {
+    void fetchMessages(listLimit, { silent: true });
+  }, [fetchMessages, listLimit]);
+
+  useSocketSubscription(
+    tenantIdForBranding ? getTenantRoom(tenantIdForBranding) : null,
+    'sms.inbound.created',
+    handleInboundSms,
+  );
 
   const handleOpenMessage = async (row: SmsRow, tabKey: 'sent' | 'scheduled' | 'received') => {
     const recordType = rowRecordType(row, tabKey);
@@ -381,7 +372,7 @@ function MessagePage() {
       if (tabKey === 'received' && detail.canMarkRead) {
         const updated = await markSmsRead(row.id);
         setSelectedDetail(updated);
-        void fetchMessages();
+        void fetchMessages(listLimit, { silent: true });
       } else {
         setSelectedDetail(detail);
       }
@@ -399,33 +390,45 @@ function MessagePage() {
     }
   };
 
+  const handleOpenChatMessage = (row: ChatMessage) => {
+    const tabKey =
+      row.kind === 'received' || row.direction === 'inbound'
+        ? 'received'
+        : row.recordType === 'scheduled'
+          ? 'scheduled'
+          : 'sent';
+    void handleOpenMessage(row, tabKey);
+  };
+
+  const handleOpenConversation = async (unreadIds: string[]) => {
+    try {
+      await Promise.all(unreadIds.map((id) => markSmsRead(id)));
+      await fetchMessages(listLimit, { silent: true });
+    } catch {
+      /* unread badge updates on next refresh */
+    }
+  };
+
   const handleCloseDetail = () => {
     setDetailOpen(false);
     setSelectedDetail(null);
   };
 
-  const busy = sending || scheduling;
-  const minScheduleAt = toDatetimeLocalValue(new Date());
-
-  const handleSend = async () => {
-    const message = body.trim();
-    const to = toDisplay.trim();
-    if (!to) {
+  const handleSend = async (to: string, message: string) => {
+    if (!to.trim()) {
       toast.error('Enter a phone number');
       return;
     }
-    if (!message) {
+    if (!message.trim()) {
       toast.error('Enter a message');
       return;
     }
     setSending(true);
     try {
-      await api.post('/twilio/send-sms-adhoc', { to, message });
-
+      await api.post('/twilio/send-sms-adhoc', { to: to.trim(), message: message.trim() });
       toast.success('Message sent');
-      setBody('');
-      setTab('sent');
-      await fetchMessages();
+      setTab('messages');
+      await fetchMessages(listLimit, { silent: true });
     } catch (error) {
       console.error(error);
       const msg = isAxiosError(error)
@@ -434,19 +437,18 @@ function MessagePage() {
           ? error.message
           : 'Failed to send';
       toast.error(msg);
+      throw error;
     } finally {
       setSending(false);
     }
   };
 
-  const handleSchedule = async () => {
-    const message = body.trim();
-    const to = toDisplay.trim();
-    if (!to) {
+  const handleSchedule = async (to: string, message: string, sendAtLocal: string) => {
+    if (!to.trim()) {
       toast.error('Enter a phone number');
       return;
     }
-    if (!message) {
+    if (!message.trim()) {
       toast.error('Enter a message');
       return;
     }
@@ -466,13 +468,9 @@ function MessagePage() {
 
     setScheduling(true);
     try {
-      await scheduleSmsAdhoc({ to, message, sendAt: sendAt.toISOString() });
+      await scheduleSmsAdhoc({ to: to.trim(), message: message.trim(), sendAt: sendAt.toISOString() });
       toast.success(`SMS scheduled for ${format(sendAt, 'MMM d, yyyy h:mm a')}`);
-      setBody('');
-      setSendAtLocal(defaultScheduleAtValue());
-      setScheduleMode(false);
-      setTab('scheduled');
-      await fetchMessages();
+      await fetchMessages(listLimit, { silent: true });
     } catch (error) {
       console.error(error);
       const msg = isAxiosError(error)
@@ -481,25 +479,10 @@ function MessagePage() {
           ? error.message
           : 'Failed to schedule';
       toast.error(msg);
+      throw error;
     } finally {
       setScheduling(false);
     }
-  };
-
-  const canSend = toDisplay.trim() && body.trim() && !busy;
-  const canSchedule = scheduleMode ? canSend && Boolean(sendAtLocal) && !busy : canSend;
-
-  const handleScheduleClick = () => {
-    if (!scheduleMode) {
-      setScheduleMode(true);
-      return;
-    }
-    void handleSchedule();
-  };
-
-  const handleCancelSchedule = () => {
-    setScheduleMode(false);
-    setSendAtLocal(defaultScheduleAtValue());
   };
 
   const handleSyncInbound = async () => {
@@ -517,7 +500,7 @@ function MessagePage() {
           `Pulled from Twilio: ${result.imported} new, ${result.updated} updated`,
         );
       }
-      setTab('received');
+      setTab('messages');
       await fetchMessages();
     } catch (error) {
       console.error(error);
@@ -539,12 +522,12 @@ function MessagePage() {
   const isFlagTab = tab === 'flags';
   const isCannedTab = tab === 'canned';
   const isInboxTab = tab === 'inbox';
-  const isSmsTab = tab === 'scheduled' || tab === 'sent' || tab === 'received';
-  const activeKey: SmsListTab = isSmsTab ? tab : 'scheduled';
-  const activeRows = lists[activeKey];
+  const isChatTab = tab === 'messages';
+  const isScheduledTab = tab === 'scheduled';
+  const showSmsTools = isChatTab || isScheduledTab;
 
   return (
-    <Container maxWidth={isInboxTab ? 'lg' : 'md'} sx={{ py: 3 }}>
+    <Container maxWidth={isInboxTab || isChatTab ? 'lg' : 'md'} sx={{ py: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <SmsIcon color="primary" sx={{ fontSize: 32 }} />
@@ -552,7 +535,7 @@ function MessagePage() {
             Messages
           </Typography>
         </Box>
-        {isSmsTab ? (
+        {showSmsTools ? (
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {isAdmin() ? (
             <Button
@@ -583,82 +566,15 @@ function MessagePage() {
             ? 'Save texts you can send from a job card. Placeholders fill from the customer, emails, phone, address, and job already on that card.'
             : isInboxTab
               ? 'Team Outlook worksheets and mail. Create a pipeline job from a worksheet, or dismiss it when it is handled.'
-              : 'Send or schedule SMS from your Twilio number. Incoming replies are pulled from Twilio automatically throughout the day. Tap a message to open it and view delivery status.'}
+              : isScheduledTab
+                ? 'Texts waiting to go out. Send and replies live in the Conversations tab.'
+                : 'Conversations look like a phone thread. Replies sit on the left, your texts on the right.'}
       </Typography>
-
-      {isSmsTab ? (
-      <Card variant="outlined" sx={{ mb: 3 }}>
-        <CardContent>
-          <TextField
-            label="Phone number"
-            fullWidth
-            value={toDisplay}
-            onChange={(e) => setToDisplay(e.target.value)}
-            disabled={busy}
-            placeholder="(858) 999-5544 or +44 20 7946 0958"
-            sx={{ mb: 2 }}
-            autoComplete="tel"
-          />
-          <TextField
-            label="Message"
-            multiline
-            minRows={4}
-            fullWidth
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            disabled={busy}
-            inputProps={{ maxLength: 1500 }}
-            placeholder="Your message"
-            helperText={`${body.length} / 1500 characters`}
-            sx={{ mb: 2 }}
-          />
-          {scheduleMode && (
-            <TextField
-              label="Send at"
-              type="datetime-local"
-              fullWidth
-              value={sendAtLocal}
-              onChange={(e) => setSendAtLocal(e.target.value)}
-              disabled={busy}
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ min: minScheduleAt }}
-              helperText="Must be in the future"
-              sx={{ mb: 2 }}
-              autoFocus
-            />
-          )}
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
-            {scheduleMode && (
-              <Button variant="text" onClick={handleCancelSchedule} disabled={busy}>
-                Cancel
-              </Button>
-            )}
-            <Button
-              variant="outlined"
-              startIcon={scheduling ? <CircularProgress size={18} /> : <ScheduleIcon />}
-              onClick={handleScheduleClick}
-              disabled={!canSchedule}
-            >
-              {scheduleMode ? 'Confirm schedule' : 'Schedule SMS'}
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={sending ? <CircularProgress size={18} color="inherit" /> : <SmsIcon />}
-              onClick={() => void handleSend()}
-              disabled={!canSend}
-            >
-              Send now
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
-      ) : null}
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" allowScrollButtonsMobile>
+          <Tab value="messages" label="Conversations" />
           <Tab value="scheduled" label={`Scheduled (${lists.scheduled.length})`} />
-          <Tab value="sent" label={`Sent (${lists.sent.length})`} />
-          <Tab value="received" label={`Received (${lists.received.length})`} />
           {admin ? (
             <Tab value="inbox" icon={<MailIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Team Inbox" />
           ) : null}
@@ -673,31 +589,44 @@ function MessagePage() {
         <CannedMessagesPanel />
       ) : isInboxTab ? (
         <TeamInboxPanel embedded />
+      ) : isScheduledTab ? (
+        <MessageTable
+          rows={lists.scheduled}
+          tab="scheduled"
+          loading={loadingLists}
+          onOpenRow={(row) => void handleOpenMessage(row, 'scheduled')}
+        />
       ) : (
         <>
-      <MessageTable
-        rows={activeRows}
-        tab={activeKey}
-        loading={loadingLists}
-        onOpenRow={(row) => void handleOpenMessage(row, activeKey)}
-      />
-      {activeKey !== 'scheduled' && activeRows.length >= listLimit && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-          {listLimit >= LIST_MAX ? (
-            <Typography variant="body2" color="text.secondary">
-              Showing the {LIST_MAX.toLocaleString()} most recent messages.
-            </Typography>
-          ) : (
-            <Button
-              variant="outlined"
-              disabled={loadingLists}
-              onClick={() => setListLimit((prev) => Math.min(prev + LIST_PAGE_SIZE, LIST_MAX))}
-            >
-              Load more
-            </Button>
+          <SmsConversationView
+            sent={lists.sent}
+            received={lists.received}
+            scheduled={lists.scheduled}
+            loading={loadingLists}
+            sending={sending}
+            scheduling={scheduling}
+            onSend={handleSend}
+            onSchedule={handleSchedule}
+            onOpenMessage={handleOpenChatMessage}
+            onOpenConversation={(ids) => void handleOpenConversation(ids)}
+          />
+          {lists.sent.length + lists.received.length >= listLimit && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+              {listLimit >= LIST_MAX ? (
+                <Typography variant="body2" color="text.secondary">
+                  Showing the {LIST_MAX.toLocaleString()} most recent messages.
+                </Typography>
+              ) : (
+                <Button
+                  variant="outlined"
+                  disabled={loadingLists}
+                  onClick={() => setListLimit((prev) => Math.min(prev + LIST_PAGE_SIZE, LIST_MAX))}
+                >
+                  Load more
+                </Button>
+              )}
+            </Box>
           )}
-        </Box>
-      )}
         </>
       )}
 
