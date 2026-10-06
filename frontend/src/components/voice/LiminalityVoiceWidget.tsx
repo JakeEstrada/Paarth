@@ -1,8 +1,9 @@
 import { Button, Paper, Typography } from '@mui/material';
 import { Mic as MicIcon, MicOff as MicOffIcon } from '@mui/icons-material';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiminalityVoice, type LiminalityPhase } from '../../hooks/useLiminalityVoice';
+import { warmUpSpeechVoices } from '../../voice/browserSpeech';
 
 function statusMark(phase: LiminalityPhase, enabled: boolean) {
   if (!enabled || phase === 'off') return '○';
@@ -19,6 +20,10 @@ export default function LiminalityVoiceWidget() {
     enabled,
     onNavigate: (path) => navigate(path),
   });
+
+  useEffect(() => {
+    warmUpSpeechVoices();
+  }, []);
 
   const toggle = () => {
     if (!voice.supported) return;

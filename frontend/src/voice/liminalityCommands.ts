@@ -15,28 +15,28 @@ export const LIMINALITY_COMMANDS: LiminalityCommand[] = [
     id: 'contacts',
     keywords: ['contact', 'contacts', 'customer', 'customers'],
     route: '/customers',
-    response: 'Opening contacts.',
+    response: 'Opening contacts for you.',
     label: 'Contacts',
   },
   {
     id: 'calendar',
     keywords: ['calendar'],
     route: '/calendar',
-    response: 'Opening calendar.',
+    response: 'Opening the calendar.',
     label: 'Calendar',
   },
   {
     id: 'pipeline',
     keywords: ['pipeline'],
     route: '/pipeline',
-    response: 'Opening pipeline.',
+    response: 'Opening the pipeline.',
     label: 'Pipeline',
   },
   {
     id: 'dashboard',
     keywords: ['dashboard', 'home'],
     route: '/dashboard',
-    response: 'Opening dashboard.',
+    response: 'Opening the dashboard.',
     label: 'Dashboard',
   },
 ];
@@ -44,7 +44,7 @@ export const LIMINALITY_COMMANDS: LiminalityCommand[] = [
 export const LIMINALITY_WAKE_PHRASES = ['liminality', 'liminnality', 'liminal'];
 
 export const UNKNOWN_COMMAND_RESPONSE = "Sorry, I don't know how to open that yet.";
-export const WAKE_RESPONSE = 'Yes, how can I help you?';
+export const WAKE_RESPONSE = 'Yes? How can I help you?';
 export const COMMAND_TIMEOUT_MS = 10_000;
 export const RESET_TO_WAITING_MS = 2_000;
 
