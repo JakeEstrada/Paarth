@@ -45,6 +45,11 @@ export const LIMINALITY_WAKE_PHRASES = ['liminality', 'liminnality', 'liminal'];
 
 export const UNKNOWN_COMMAND_RESPONSE = "Sorry, I don't know how to open that yet.";
 export const WAKE_RESPONSE = 'Yes? How can I help you?';
+export const BACKUP_WAKE_RESPONSES = [
+  "Rude. But I'm listening. How can I help you?",
+  "Wow. Okay. What do you need?",
+  "That's one way to get my attention. How can I help?",
+];
 export const COMMAND_TIMEOUT_MS = 10_000;
 export const RESET_TO_WAITING_MS = 2_000;
 
@@ -56,13 +61,27 @@ export function normalizeSpeech(raw: string) {
     .trim();
 }
 
+const BACKUP_WAKE_PATTERN = /\b(mother\s*fuck+er|mutha\s*fucka+)\b/;
+
+export function isBackupWakeWord(raw: string) {
+  return BACKUP_WAKE_PATTERN.test(normalizeSpeech(raw));
+}
+
 export function hasWakeWord(raw: string) {
-  return /limin+al/.test(normalizeSpeech(raw));
+  const text = normalizeSpeech(raw);
+  return /limin+al/.test(text) || BACKUP_WAKE_PATTERN.test(text);
+}
+
+export function wakeResponseFor(raw: string) {
+  if (!isBackupWakeWord(raw)) return WAKE_RESPONSE;
+  const index = Math.floor(Math.random() * BACKUP_WAKE_RESPONSES.length);
+  return BACKUP_WAKE_RESPONSES[index] || BACKUP_WAKE_RESPONSES[0];
 }
 
 export function stripWakeWord(raw: string) {
   return normalizeSpeech(raw)
     .replace(/limin+al[a-z]*/g, ' ')
+    .replace(BACKUP_WAKE_PATTERN, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

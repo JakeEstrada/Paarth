@@ -10,10 +10,10 @@ import {
   COMMAND_TIMEOUT_MS,
   RESET_TO_WAITING_MS,
   UNKNOWN_COMMAND_RESPONSE,
-  WAKE_RESPONSE,
   hasWakeWord,
   matchLiminalityCommand,
   stripWakeWord,
+  wakeResponseFor,
 } from '../voice/liminalityCommands';
 
 export type LiminalityPhase =
@@ -204,7 +204,7 @@ export function useLiminalityVoice({
         setHeard(raw);
         setPhase('listening');
         setStatusLabel('Listening');
-        await speakAndWait(WAKE_RESPONSE);
+        await speakAndWait(wakeResponseFor(raw));
         if (!enabledRef.current) {
           goWaiting();
           return;
