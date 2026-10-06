@@ -320,8 +320,8 @@ export default function SmsConversationView({
       variant="outlined"
       sx={{
         display: 'flex',
-        height: { xs: 'calc(100vh - 260px)', md: 620 },
-        minHeight: 420,
+        height: { xs: 'calc(100vh - 220px)', md: 'calc(100vh - 240px)' },
+        minHeight: 520,
         overflow: 'hidden',
       }}
     >
@@ -564,7 +564,8 @@ export default function SmsConversationView({
                 onChange={(e) => setBody(e.target.value)}
                 fullWidth
                 multiline
-                maxRows={4}
+                minRows={3}
+                maxRows={8}
                 disabled={busy}
                 inputProps={{ maxLength: 1500 }}
                 onKeyDown={(e) => {
