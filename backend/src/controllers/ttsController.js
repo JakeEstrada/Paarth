@@ -50,6 +50,14 @@ function elevenKey() {
   return String(process.env.ELEVENLABS_API_KEY || process.env.ELEVEN_API_KEY || '').trim();
 }
 
+function elevenKeyProblem() {
+  const key = elevenKey();
+  if (!key) return 'ElevenLabs API key is missing from the backend .env.';
+  if (key.startsWith('sk_')) return '';
+  if (/^[a-f0-9]{32}$/i.test(key)) return '';
+  return 'ElevenLabs API key looks like a key ID, not the secret. Paste the sk_ secret into ELEVENLABS_API_KEY and restart the backend.';
+}
+
 function parseVoice(raw) {
   const requested = String(raw || '').trim();
   if (!requested) {
@@ -91,7 +99,7 @@ function catalog(req, res) {
   }));
   return res.json({
     provider: 'elevenlabs',
-    configured: Boolean(elevenKey()),
+    configured: Boolean(elevenKey()) && !elevenKeyProblem(),
     defaultVoice: `eleven:${DEFAULT_ELEVEN_VOICE}`,
     voices,
   });
@@ -104,30 +112,19 @@ async function synthesizeSpeech(req, res) {
   }
 
   const parsed = parseVoice(req.body?.voice);
-  const eleven = elevenKey();
-  const openai = openaiKey();
-  if (!eleven && !openai) {
-    return res.status(503).json({ error: 'Studio voices are not configured.' });
+  const keyProblem = elevenKeyProblem();
+  if (keyProblem) {
+    return res.status(503).json({ error: keyProblem });
   }
 
   try {
     const tone = String(req.body?.tone || '').toLowerCase() === 'candid' ? 'candid' : 'polite';
-
-    if (parsed.provider === 'eleven' && eleven) {
-      const audio = await requestElevenSpeech(eleven, parsed.elevenId, text, tone);
-      if (audio) return sendAudio(res, audio);
-    }
-
-    if (openai) {
-      const openaiVoice =
-        parsed.provider === 'openai' ? parsed.key : OPENAI_FALLBACK[parsed.key] || 'nova';
-      const audio = await requestOpenAiSpeech(openai, openaiVoice, text, tone);
-      if (audio) return sendAudio(res, audio);
-    }
-
-    return res.status(502).json({ error: 'Could not generate studio speech.' });
+    const elevenId = parsed.elevenId || ELEVEN_VOICES[DEFAULT_ELEVEN_VOICE].id;
+    const audio = await requestElevenSpeech(elevenKey(), elevenId, text, tone);
+    if (audio.ok) return sendAudio(res, audio.buffer);
+    return res.status(502).json({ error: audio.error });
   } catch {
-    return res.status(502).json({ error: 'Could not generate studio speech.' });
+    return res.status(502).json({ error: 'Could not generate ElevenLabs speech.' });
   }
 }
 
@@ -135,6 +132,17 @@ function sendAudio(res, audio) {
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Cache-Control', 'no-store');
   return res.send(audio);
+}
+
+function friendlyElevenError(raw) {
+  const message = String(raw || '').trim();
+  if (/api key id used as api key|invalid_api_key|api keys start with/i.test(message)) {
+    return 'ElevenLabs rejected the key. Paste the secret that starts with sk_ into ELEVENLABS_API_KEY, not the key ID, then restart the backend.';
+  }
+  if (/missing_permissions|forbidden|voices_read|tts/i.test(message)) {
+    return 'ElevenLabs key is missing permission to use text to speech or this voice.';
+  }
+  return message || 'ElevenLabs could not generate speech.';
 }
 
 async function requestElevenSpeech(key, voiceId, text, tone = 'polite') {
@@ -162,8 +170,20 @@ async function requestElevenSpeech(key, voiceId, text, tone = 'polite') {
     },
     body: JSON.stringify(body),
   });
-  if (!response.ok) return null;
-  return Buffer.from(await response.arrayBuffer());
+  if (response.ok) {
+    return { ok: true, buffer: Buffer.from(await response.arrayBuffer()) };
+  }
+  let detail = `ElevenLabs HTTP ${response.status}`;
+  try {
+    const data = await response.json();
+    const nested = data?.detail;
+    if (typeof nested === 'string') detail = nested;
+    else if (nested?.message) detail = String(nested.message);
+    else if (data?.message) detail = String(data.message);
+  } catch {
+    /* keep status text */
+  }
+  return { ok: false, error: friendlyElevenError(detail) };
 }
 
 async function requestOpenAiSpeech(key, voice, text, tone = 'polite') {

@@ -29,6 +29,7 @@ export default function LiminalitySettingsPanel() {
   const { enabled, setEnabled, voiceUri, setVoiceUri, supported } = useLiminalitySettings();
   const selectedUri = neuralVoiceIdFromUri(voiceUri || DEFAULT_NEURAL_VOICE_URI);
   const [previewing, setPreviewing] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState('');
   const [sampleIndex, setSampleIndex] = useState(0);
   const outline =
     theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
@@ -41,9 +42,14 @@ export default function LiminalitySettingsPanel() {
     const line = SAMPLE_LINES[sampleIndex % SAMPLE_LINES.length];
     setSampleIndex((index) => index + 1);
     setPreviewing(uri);
-    void speakText(line).finally(() => {
-      setPreviewing((current) => (current === uri ? null : current));
-    });
+    setPreviewError('');
+    void speakText(line)
+      .catch((error) => {
+        setPreviewError(error instanceof Error ? error.message : 'ElevenLabs speech failed.');
+      })
+      .finally(() => {
+        setPreviewing((current) => (current === uri ? null : current));
+      });
   };
 
   return (
@@ -158,9 +164,15 @@ export default function LiminalitySettingsPanel() {
           );
         })}
       </RadioGroup>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-        ElevenLabs voices. Pick one, then tap Hear to sample it.
-      </Typography>
+      {previewError ? (
+        <Typography variant="body2" color="error" sx={{ display: 'block', mt: 1.5 }}>
+          {previewError}
+        </Typography>
+      ) : (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+          ElevenLabs voices. Pick one, then tap Hear to sample it.
+        </Typography>
+      )}
     </Paper>
   );
 }

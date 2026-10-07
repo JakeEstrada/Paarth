@@ -60,6 +60,22 @@ function rememberClip(key: string, blob: Blob) {
   if (first) clipCache.delete(first);
 }
 
+async function errorFromSpeechResponse(error: unknown) {
+  const data = (error as { response?: { data?: unknown } })?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text()) as { error?: string };
+      if (parsed?.error) return parsed.error;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+    return data.error;
+  }
+  return 'ElevenLabs speech failed.';
+}
+
 async function fetchSpeechBlob(
   text: string,
   voice: string,
@@ -70,18 +86,23 @@ async function fetchSpeechBlob(
   const cached = clipCache.get(key);
   if (cached) return cached;
 
-  const response = await api.post(
-    '/tts/speech',
-    { text, voice, tone },
-    { responseType: 'blob', signal }
-  );
-  const blob = response.data as Blob;
-  const type = String(blob?.type || response.headers['content-type'] || '');
-  if (type.includes('json')) {
-    throw new Error('Studio speech unavailable');
+  try {
+    const response = await api.post(
+      '/tts/speech',
+      { text, voice, tone },
+      { responseType: 'blob', signal }
+    );
+    const blob = response.data as Blob;
+    const type = String(blob?.type || response.headers['content-type'] || '');
+    if (type.includes('json')) {
+      throw new Error(await errorFromSpeechResponse({ response: { data: blob } }));
+    }
+    rememberClip(key, blob);
+    return blob;
+  } catch (error) {
+    if (error instanceof Error && !('response' in error)) throw error;
+    throw new Error(await errorFromSpeechResponse(error));
   }
-  rememberClip(key, blob);
-  return blob;
 }
 
 function playBlob(blob: Blob, signal: AbortSignal) {

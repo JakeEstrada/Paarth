@@ -202,33 +202,7 @@ export async function speakText(
   if (!spoken) return;
 
   const selectedUri = neuralVoiceIdFromUri(readLiminalityVoiceUri());
-  try {
-    await speakNeural(spoken, selectedUri, options?.tone);
-    return;
-  } catch {
-    /* fall back to this computer's voices */
-  }
-
-  if (!window.speechSynthesis) return;
-
-  const voices = await loadVoices();
-  const voice = resolveSpeakVoice(voices);
-
-  await new Promise<void>((resolve) => {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(spoken);
-    utterance.lang = voice?.lang || 'en-US';
-    utterance.rate = 0.9;
-    utterance.pitch = 1.18;
-    utterance.volume = 1;
-    if (voice) utterance.voice = voice;
-    utterance.onend = () => resolve();
-    utterance.onerror = () => resolve();
-    // Chrome can drop the first utterance if speak() happens in the same tick as cancel().
-    window.setTimeout(() => {
-      window.speechSynthesis.speak(utterance);
-    }, 40);
-  });
+  await speakNeural(spoken, selectedUri, options?.tone);
 }
 
 export function warmUpSpeechVoices() {
