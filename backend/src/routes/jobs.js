@@ -23,13 +23,14 @@ const {
   getReferralCompanies,
 } = require('../controllers/jobController');
 const { generateJobSummary } = require('../controllers/activityController');
-const { getJobMapPins } = require('../controllers/jobMapController');
+const { getJobMapPins, getJobGeoIssues } = require('../controllers/jobMapController');
 
 router.use(requireAuth);
 
 router.get('/', getJobs);
 router.post('/', createJob);
 router.get('/map-pins', getJobMapPins);
+router.get('/geo-issues', getJobGeoIssues);
 router.get('/pipeline/summary', getPipelineSummary);
 router.get('/dead-estimates', getDeadEstimates); // Backward compatibility
 router.get('/archive', getArchivedJobs);

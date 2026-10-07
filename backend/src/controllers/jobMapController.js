@@ -182,4 +182,44 @@ async function getJobMapPins(req, res) {
   }
 }
 
-module.exports = { getJobMapPins };
+async function getJobGeoIssues(req, res) {
+  try {
+    const jobs = await Job.find({})
+      .select('title stage jobAddress geo customerId isArchived isDeadEstimate')
+      .populate({ path: 'customerId', select: 'name address addresses', strictPopulate: false })
+      .sort({ updatedAt: -1 });
+
+    const issues = jobs
+      .map((job) => {
+        const address = formatJobLocation(job);
+        const lat = Number(job.geo?.lat);
+        const lng = Number(job.geo?.lng);
+        const mapped = job.geo?.status === 'ok' && Number.isFinite(lat) && Number.isFinite(lng);
+        if (mapped) return null;
+        const customer =
+          job.customerId && typeof job.customerId === 'object' ? job.customerId : null;
+        let reason = 'Could not convert address';
+        if (!address) reason = 'No address on job or customer';
+        else if (!/\d/.test(address)) reason = 'Address has no street number';
+        else if (job.geo?.status === 'failed') reason = 'Geocoder could not match this address';
+        return {
+          id: String(job._id),
+          title: String(job.title || 'Untitled job'),
+          stage: String(job.stage || ''),
+          customerName: String(customer?.name || '').trim(),
+          address,
+          reason,
+          isArchived: Boolean(job.isArchived),
+          isDeadEstimate: Boolean(job.isDeadEstimate),
+        };
+      })
+      .filter(Boolean);
+
+    return res.json({ count: issues.length, jobs: issues });
+  } catch (error) {
+    console.error('Failed to load geocode issues:', error);
+    return res.status(500).json({ error: 'Failed to load jobs missing map points' });
+  }
+}
+
+module.exports = { getJobMapPins, getJobGeoIssues };
