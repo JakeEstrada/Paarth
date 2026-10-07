@@ -45,7 +45,10 @@ const OPENAI_FALLBACK = {
 };
 
 const LIMINALITY_INSTRUCTIONS =
-  'Speak as Liminality, a warm, natural-sounding American woman. Conversational, friendly, and clear. Relaxed pacing. A slight smile in the voice. Never robotic, never like a GPS.';
+  'Speak as Liminality, a playful, natural-sounding American woman. Warm, a little flirty, a little tired of everyone, like a friend on the shop floor. Conversational pacing. Smile in the voice. Never robotic, never like a GPS, never customer service.';
+
+const CANDID_INSTRUCTIONS =
+  'Speak as a sharp, funny friend on a shop floor. Dry, amused, unbothered by swearing. Natural pacing, like you are talking to one person, not reading a script. A little smirk is fine. Never shocked, never customer-service, never a GPS.';
 
 function openaiKey() {
   return String(process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || '').trim();
@@ -76,23 +79,16 @@ function parseVoice(raw) {
 }
 
 function catalog(req, res) {
-  const hasEleven = Boolean(elevenKey());
-  const hasOpenAi = Boolean(openaiKey());
-  const voices = [];
-  if (hasEleven) {
-    for (const [id, voice] of Object.entries(ELEVEN_VOICES)) {
-      voices.push({ uri: `eleven:${id}`, id, label: voice.label, group: 'Lifelike' });
-    }
-  }
-  if (hasOpenAi) {
-    for (const [id, voice] of Object.entries(OPENAI_VOICES)) {
-      voices.push({ uri: `openai:${id}`, id, label: `${voice.label} (OpenAI)`, group: 'OpenAI' });
-    }
-  }
-  const defaultVoice = hasEleven ? 'eleven:sarah' : hasOpenAi ? 'openai:marin' : '';
+  const voices = Object.entries(ELEVEN_VOICES).map(([id, voice]) => ({
+    uri: `eleven:${id}`,
+    id,
+    label: voice.label,
+    group: 'Lifelike',
+  }));
   return res.json({
-    provider: hasEleven ? 'elevenlabs' : hasOpenAi ? 'openai' : 'none',
-    defaultVoice,
+    provider: 'elevenlabs',
+    configured: Boolean(elevenKey()),
+    defaultVoice: 'eleven:sarah',
     voices,
   });
 }
@@ -111,15 +107,17 @@ async function synthesizeSpeech(req, res) {
   }
 
   try {
+    const tone = String(req.body?.tone || '').toLowerCase() === 'candid' ? 'candid' : 'polite';
+
     if (parsed.provider === 'eleven' && eleven) {
-      const audio = await requestElevenSpeech(eleven, parsed.elevenId, text);
+      const audio = await requestElevenSpeech(eleven, parsed.elevenId, text, tone);
       if (audio) return sendAudio(res, audio);
     }
 
     if (openai) {
       const openaiVoice =
         parsed.provider === 'openai' ? parsed.key : OPENAI_FALLBACK[parsed.key] || 'nova';
-      const audio = await requestOpenAiSpeech(openai, openaiVoice, text);
+      const audio = await requestOpenAiSpeech(openai, openaiVoice, text, tone);
       if (audio) return sendAudio(res, audio);
     }
 
@@ -135,15 +133,16 @@ function sendAudio(res, audio) {
   return res.send(audio);
 }
 
-async function requestElevenSpeech(key, voiceId, text) {
+async function requestElevenSpeech(key, voiceId, text, tone = 'polite') {
   const model = String(process.env.ELEVENLABS_TTS_MODEL || 'eleven_multilingual_v2').trim();
+  const candid = tone === 'candid';
   const body = {
     text,
     model_id: model,
     voice_settings: {
-      stability: 0.42,
+      stability: candid ? 0.3 : 0.42,
       similarity_boost: 0.85,
-      style: 0.28,
+      style: candid ? 0.58 : 0.28,
       use_speaker_boost: true,
     },
   };
@@ -163,7 +162,7 @@ async function requestElevenSpeech(key, voiceId, text) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function requestOpenAiSpeech(key, voice, text) {
+async function requestOpenAiSpeech(key, voice, text, tone = 'polite') {
   const model = String(process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts').trim();
   const hdFallbackVoices = new Set(['marin', 'cedar', 'verse', 'ballad']);
   let response = await fetch(OPENAI_SPEECH_URL, {
@@ -176,7 +175,7 @@ async function requestOpenAiSpeech(key, voice, text) {
       model,
       voice,
       input: text,
-      instructions: LIMINALITY_INSTRUCTIONS,
+      instructions: tone === 'candid' ? CANDID_INSTRUCTIONS : LIMINALITY_INSTRUCTIONS,
       response_format: 'mp3',
     }),
   });

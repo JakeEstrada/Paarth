@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import LiminalityRuntime from '../voice/LiminalityRuntime';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   Box,
   Button,
@@ -19,6 +21,7 @@ import {
 
 function ViewModeFrame({ currentView, children }) {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
   const [exitPin, setExitPin] = useState('');
 
@@ -147,6 +150,7 @@ function ViewModeFrame({ currentView, children }) {
         </DialogActions>
       </Dialog>
       {children}
+      {!isMobile ? <LiminalityRuntime /> : null}
     </Box>
   );
 }

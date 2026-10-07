@@ -194,14 +194,17 @@ function softenSpokenText(text: string) {
     .trim();
 }
 
-export async function speakText(text: string): Promise<void> {
+export async function speakText(
+  text: string,
+  options?: { tone?: 'polite' | 'candid' },
+): Promise<void> {
   const spoken = softenSpokenText(text);
   if (!spoken) return;
 
   const selectedUri = readLiminalityVoiceUri();
   if (isNeuralVoiceUri(selectedUri)) {
     try {
-      await speakNeural(spoken, selectedUri);
+      await speakNeural(spoken, selectedUri, options?.tone);
       return;
     } catch {
       /* fall back to this computer's voices */

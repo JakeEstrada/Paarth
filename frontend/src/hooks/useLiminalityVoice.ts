@@ -9,11 +9,14 @@ import {
 import {
   COMMAND_TIMEOUT_MS,
   RESET_TO_WAITING_MS,
-  UNKNOWN_COMMAND_RESPONSE,
   hasWakeWord,
   matchLiminalityCommand,
+  registerForWake,
+  spokenCommandResponse,
+  spokenUnknownResponse,
   stripWakeWord,
   wakeResponseFor,
+  type LiminalityRegister,
 } from '../voice/liminalityCommands';
 
 export type LiminalityPhase =
@@ -39,6 +42,7 @@ export function useLiminalityVoice({
   const recognitionRef = useRef<ReturnType<typeof createSpeechRecognition>>(null);
   const modeRef = useRef<'off' | 'wake' | 'command'>('off');
   const speakingRef = useRef(false);
+  const registerRef = useRef<LiminalityRegister>('polite');
   const enabledRef = useRef(enabled);
   const timeoutRef = useRef<number | null>(null);
   const resetRef = useRef<number | null>(null);
@@ -162,7 +166,7 @@ export function useLiminalityVoice({
       /* ignore */
     }
     try {
-      await speakText(text);
+      await speakText(text, { tone: registerRef.current });
     } finally {
       speakingRef.current = false;
     }
@@ -181,14 +185,14 @@ export function useLiminalityVoice({
         const command = matchLiminalityCommand(spoken);
         if (!command) {
           setStatusLabel("I don't know that yet");
-          await speakAndWait(UNKNOWN_COMMAND_RESPONSE);
+          await speakAndWait(spokenUnknownResponse(registerRef.current));
           goWaiting();
           return;
         }
         setPhase('executing');
         setStatusLabel(`Opening ${command.label}`);
         onNavigateRef.current(command.route);
-        await speakAndWait(command.response);
+        await speakAndWait(spokenCommandResponse(command, registerRef.current));
         resetRef.current = window.setTimeout(() => {
           goWaiting();
         }, RESET_TO_WAITING_MS);
@@ -204,6 +208,7 @@ export function useLiminalityVoice({
         setHeard(raw);
         setPhase('listening');
         setStatusLabel('Listening');
+        registerRef.current = registerForWake(raw);
         await speakAndWait(wakeResponseFor(raw));
         if (!enabledRef.current) {
           goWaiting();
@@ -234,6 +239,7 @@ export function useLiminalityVoice({
     if (!enabled) {
       enabledRef.current = false;
       speakingRef.current = false;
+      registerRef.current = 'polite';
       modeRef.current = 'off';
       networkFailsRef.current = 0;
       clearTimers();

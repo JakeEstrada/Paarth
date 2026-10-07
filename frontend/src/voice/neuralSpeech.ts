@@ -49,8 +49,8 @@ export function cancelNeuralSpeech() {
   stopCurrentAudio();
 }
 
-function cacheKey(voice: string, text: string) {
-  return `${voice}::${text}`;
+function cacheKey(voice: string, text: string, tone = 'polite') {
+  return `${voice}::${tone}::${text}`;
 }
 
 function rememberClip(key: string, blob: Blob) {
@@ -60,14 +60,19 @@ function rememberClip(key: string, blob: Blob) {
   if (first) clipCache.delete(first);
 }
 
-async function fetchSpeechBlob(text: string, voice: string, signal: AbortSignal) {
-  const key = cacheKey(voice, text);
+async function fetchSpeechBlob(
+  text: string,
+  voice: string,
+  signal: AbortSignal,
+  tone = 'polite',
+) {
+  const key = cacheKey(voice, text, tone);
   const cached = clipCache.get(key);
   if (cached) return cached;
 
   const response = await api.post(
     '/tts/speech',
-    { text, voice },
+    { text, voice, tone },
     { responseType: 'blob', signal }
   );
   const blob = response.data as Blob;
@@ -118,7 +123,11 @@ function playBlob(blob: Blob, signal: AbortSignal) {
   });
 }
 
-export async function speakNeural(text: string, voiceUri: string) {
+export async function speakNeural(
+  text: string,
+  voiceUri: string,
+  tone: 'polite' | 'candid' = 'polite',
+) {
   if (!isNeuralVoiceUri(voiceUri)) {
     throw new Error('Not a studio voice');
   }
@@ -126,7 +135,7 @@ export async function speakNeural(text: string, voiceUri: string) {
   const controller = new AbortController();
   speakAbort = controller;
   const voice = neuralVoiceIdFromUri(voiceUri);
-  const blob = await fetchSpeechBlob(text, voice, controller.signal);
+  const blob = await fetchSpeechBlob(text, voice, controller.signal, tone);
   if (controller.signal.aborted) return;
   await playBlob(blob, controller.signal);
 }

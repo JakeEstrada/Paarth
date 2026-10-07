@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -13,62 +12,16 @@ import {
 } from '@mui/material';
 import { RecordVoiceOver as RecordVoiceOverIcon } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
-import { useLiminalitySettings, voiceChoiceLabel } from '../../context/LiminalitySettingsContext';
+import { useLiminalitySettings } from '../../context/LiminalitySettingsContext';
 import { speakText } from '../../voice/browserSpeech';
 import { unlockNeuralAudio } from '../../voice/neuralSpeech';
-import { NEURAL_VOICES, neuralVoiceUri } from '../../voice/neuralVoices';
-import api from '../../utils/axios';
-
-type CatalogVoice = {
-  uri: string;
-  id: string;
-  label: string;
-  group: string;
-};
-
-type VoiceCatalog = {
-  provider: 'elevenlabs' | 'openai' | 'none';
-  defaultVoice: string;
-  voices: CatalogVoice[];
-};
+import { DEFAULT_NEURAL_VOICE_URI, ELEVEN_VOICES } from '../../voice/neuralVoices';
 
 export default function LiminalitySettingsPanel() {
   const theme = useTheme();
-  const { enabled, setEnabled, voiceUri, setVoiceUri, voices, supported } = useLiminalitySettings();
-  const [catalog, setCatalog] = useState<VoiceCatalog | null>(null);
-  const englishVoices = voices.filter((voice) => String(voice.lang || '').toLowerCase().startsWith('en'));
-  const otherVoices = voices.filter((voice) => !String(voice.lang || '').toLowerCase().startsWith('en'));
-  const studioVoices = catalog?.voices?.length
-    ? catalog.voices
-    : NEURAL_VOICES.map((voice) => ({
-        uri: neuralVoiceUri(voice.id, 'openai'),
-        id: voice.id,
-        label: voice.label,
-        group: 'OpenAI',
-      }));
-  const studioUris = useMemo(() => new Set(studioVoices.map((voice) => voice.uri)), [studioVoices]);
-  const voiceValue =
-    !voiceUri ||
-    studioUris.has(voiceUri) ||
-    voices.some((voice) => (voice.voiceURI || voice.name) === voiceUri)
-      ? voiceUri
-      : '';
-  const lifelike = studioVoices.filter((voice) => voice.group === 'Lifelike');
-  const openaiVoices = studioVoices.filter((voice) => voice.group !== 'Lifelike');
-  const recommended = catalog?.provider === 'elevenlabs' ? 'Sarah (lifelike woman)' : 'Marin (OpenAI woman)';
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .get('/tts/voices')
-      .then((response) => {
-        if (!cancelled && response.data?.voices) setCatalog(response.data);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { enabled, setEnabled, voiceUri, setVoiceUri, supported } = useLiminalitySettings();
+  const elevenUris = new Set(ELEVEN_VOICES.map((voice) => voice.uri));
+  const voiceValue = !voiceUri || elevenUris.has(voiceUri) ? voiceUri : DEFAULT_NEURAL_VOICE_URI;
 
   const preview = () => {
     unlockNeuralAudio();
@@ -96,8 +49,8 @@ export default function LiminalitySettingsPanel() {
         </Typography>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Voice navigation on desktop. When this is on, say “Liminality” and then a page name. Nothing
-        is recorded while it is off.
+        Voice navigation on desktop. Say “Liminality”, then pipeline, calendar, or customers — that
+        opens the shop views. Nothing is recorded while this is off.
       </Typography>
       <FormControlLabel
         control={
@@ -128,61 +81,19 @@ export default function LiminalitySettingsPanel() {
           MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
         >
           <MenuItem value="">
-            <em>Recommended — {recommended}</em>
+            <em>Recommended — Sarah</em>
           </MenuItem>
-          {lifelike.length ? (
-            <MenuItem disabled value="__lifelike">
-              Lifelike (ElevenLabs)
-            </MenuItem>
-          ) : null}
-          {lifelike.map((voice) => (
+          {ELEVEN_VOICES.map((voice) => (
             <MenuItem key={voice.uri} value={voice.uri}>
               {voice.label}
-            </MenuItem>
-          ))}
-          {openaiVoices.length ? (
-            <MenuItem disabled value="__openai">
-              OpenAI
-            </MenuItem>
-          ) : null}
-          {openaiVoices.map((voice) => (
-            <MenuItem key={voice.uri} value={voice.uri}>
-              {voice.label}
-            </MenuItem>
-          ))}
-          {englishVoices.length ? (
-            <MenuItem disabled value="__english">
-              This computer
-            </MenuItem>
-          ) : null}
-          {englishVoices.map((voice) => (
-            <MenuItem key={voice.voiceURI || voice.name} value={voice.voiceURI || voice.name}>
-              {voiceChoiceLabel(voice)}
-            </MenuItem>
-          ))}
-          {otherVoices.length ? (
-            <MenuItem disabled value="__other">
-              Other languages
-            </MenuItem>
-          ) : null}
-          {otherVoices.map((voice) => (
-            <MenuItem key={voice.voiceURI || voice.name} value={voice.voiceURI || voice.name}>
-              {voiceChoiceLabel(voice)}
             </MenuItem>
           ))}
         </Select>
       </FormControl>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-        {catalog?.provider === 'elevenlabs'
-          ? 'Lifelike voices use ElevenLabs — much closer to a real person than OpenAI or the browser.'
-          : 'Add ELEVENLABS_API_KEY on the backend for the most natural woman voices. Until then, OpenAI studio voices are used.'}
+        These are ElevenLabs voices only.
       </Typography>
-      <Button
-        variant="outlined"
-        size="small"
-        onClick={preview}
-        sx={{ mt: 2, textTransform: 'none' }}
-      >
+      <Button variant="outlined" size="small" onClick={preview} sx={{ mt: 2, textTransform: 'none' }}>
         Hear sample
       </Button>
     </Paper>
