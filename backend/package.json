@@ -16,7 +16,8 @@
     "test-task-activities": "node src/scripts/testTaskActivityLogging.js",
     "backfill-task-activities": "node src/scripts/testTaskActivityLogging.js --backfill",
     "create-test-tasks": "node src/scripts/testTaskActivityLogging.js --create-tests",
-    "test-activity-logging": "node src/scripts/testActivityLogging.js"
+    "test-activity-logging": "node src/scripts/testActivityLogging.js",
+    "geocode-jobs": "node src/scripts/geocodeJobAddresses.js"
   },
   "keywords": [],
   "author": "",

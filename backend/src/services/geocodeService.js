@@ -101,10 +101,43 @@ function shouldRetryGeo(job, address) {
   return Date.now() - stamped > 7 * 24 * 60 * 60 * 1000;
 }
 
+function geoPayload(address, hit) {
+  return {
+    lat: hit?.lat,
+    lng: hit?.lng,
+    sourceAddress: address,
+    geocodedAt: new Date(),
+    status: hit ? 'ok' : 'failed',
+  };
+}
+
+async function syncJobGeo(job) {
+  const Job = require('../models/Job');
+  if (!job) return { skipped: true, reason: 'missing-job' };
+  const customerId = job.customerId;
+  const customerLooksPlain =
+    customerId &&
+    typeof customerId === 'object' &&
+    (customerId.address || customerId.addresses || customerId.name);
+  if (customerId && !customerLooksPlain) {
+    await job.populate({ path: 'customerId', select: 'name address addresses', strictPopulate: false });
+  }
+  const address = formatJobLocation(job);
+  if (!address) return { skipped: true, reason: 'no-address' };
+  if (!shouldRetryGeo(job, address)) return { skipped: true, reason: 'cached' };
+  const hit = await geocodeAddress(address);
+  const geo = geoPayload(address, hit);
+  job.geo = geo;
+  await Job.updateOne({ _id: job._id }, { $set: { geo } });
+  return { ok: Boolean(hit), geo };
+}
+
 module.exports = {
   OC_BOUNDS,
   formatJobLocation,
   inOrangeCounty,
   geocodeAddress,
   shouldRetryGeo,
+  geoPayload,
+  syncJobGeo,
 };

@@ -18,6 +18,7 @@ const {
 const { notifyPaymentMarkedPaid } = require('../services/paymentNotificationService');
 const { upsertPaymentReceivedActivity, voidPaymentReceivedActivity, reconcilePaymentReceivedActivities } = require('../services/paymentActivitySync');
 const { applyReferralFields } = require('../utils/referralCompany');
+const { syncJobGeo } = require('../services/geocodeService');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
@@ -192,6 +193,7 @@ async function createJob(req, res) {
     
     await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
+    void syncJobGeo(job).catch(() => {});
 
     await emitJobCreated(req, job);
     
@@ -365,6 +367,7 @@ async function updateJob(req, res) {
       job.markModified('commissionLog');
     }
     await job.save();
+    void syncJobGeo(job).catch(() => {});
 
     const pendingPaymentNotifications = [];
     for (const activity of paymentScheduleActivities) {
