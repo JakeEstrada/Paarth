@@ -3,17 +3,14 @@ const ELEVEN_SPEECH_URL = 'https://api.elevenlabs.io/v1/text-to-speech';
 const MAX_TTS_CHARS = 400;
 
 const ELEVEN_VOICES = {
-  sarah: { id: 'EXAVITQu4vr4xnSDxMaL', label: 'Sarah — soft American woman' },
-  matilda: { id: 'XrExE9yKIg1WjnnlVkGX', label: 'Matilda — warm friendly woman' },
-  lily: { id: 'pFZP5JQG7iQjIQuC4Bku', label: 'Lily — warm British woman' },
-  alice: { id: 'Xb7hH8MSUJpSbSDYk0k2', label: 'Alice — confident British woman' },
-  nicole: { id: 'piTKgcLEGmPE4e6mEKli', label: 'Nicole — calm American woman' },
-  grace: { id: 'oWAxZDx7w5VEj9dCyTzz', label: 'Grace — gentle woman' },
-  elli: { id: 'MF3mGyEYCl7XYWbV9V6O', label: 'Elli — young woman' },
-  glinda: { id: 'z9fAnlkpzviPz146aGWa', label: 'Glinda — bright woman' },
-  george: { id: 'JBFqnCBsd6RMkjVDRZzb', label: 'George — British man' },
-  charlie: { id: 'IKne3meq5aSn9XLyUdCD', label: 'Charlie — casual man' },
+  carla: { id: 'ZP7ctTmcovXNUmOj695o', label: 'Carla — calm, a little mysterious' },
+  natasha: { id: 'j05EIz3iI3JmBTWC3CsA', label: 'Natasha — warm woman' },
+  kaori: { id: 'mDxkcO3nsRCNeB4si9qg', label: 'Kaori — Japanese woman' },
+  sakura: { id: 'gHBfNp2PWSyFgpPlzCOd', label: 'Sakura — gentle Japanese woman' },
+  cassius: { id: 'ktrGUw7rURIQyMrQZqCu', label: 'Cassius — man' },
 };
+
+const DEFAULT_ELEVEN_VOICE = 'carla';
 
 const OPENAI_VOICES = {
   marin: { label: 'Marin — clearest woman' },
@@ -32,16 +29,11 @@ const OPENAI_VOICES = {
 };
 
 const OPENAI_FALLBACK = {
-  sarah: 'nova',
-  matilda: 'coral',
-  lily: 'fable',
-  alice: 'sage',
-  nicole: 'shimmer',
-  grace: 'marin',
-  elli: 'nova',
-  glinda: 'verse',
-  george: 'cedar',
-  charlie: 'ash',
+  carla: 'marin',
+  natasha: 'coral',
+  kaori: 'nova',
+  sakura: 'shimmer',
+  cassius: 'cedar',
 };
 
 const LIMINALITY_INSTRUCTIONS =
@@ -61,20 +53,32 @@ function elevenKey() {
 function parseVoice(raw) {
   const requested = String(raw || '').trim();
   if (!requested) {
-    if (elevenKey()) return { provider: 'eleven', key: 'sarah', elevenId: ELEVEN_VOICES.sarah.id };
+    if (elevenKey()) {
+      return {
+        provider: 'eleven',
+        key: DEFAULT_ELEVEN_VOICE,
+        elevenId: ELEVEN_VOICES[DEFAULT_ELEVEN_VOICE].id,
+      };
+    }
     return { provider: 'openai', key: 'marin' };
   }
   const [prefix, rest] = requested.includes(':') ? requested.split(':', 2) : ['', requested];
   const name = String(rest || prefix || requested).trim().toLowerCase();
   if (prefix === 'eleven' || ELEVEN_VOICES[name]) {
-    const voice = ELEVEN_VOICES[name] || ELEVEN_VOICES.sarah;
-    const key = ELEVEN_VOICES[name] ? name : 'sarah';
+    const voice = ELEVEN_VOICES[name] || ELEVEN_VOICES[DEFAULT_ELEVEN_VOICE];
+    const key = ELEVEN_VOICES[name] ? name : DEFAULT_ELEVEN_VOICE;
     return { provider: 'eleven', key, elevenId: voice.id };
   }
   if (prefix === 'openai' || OPENAI_VOICES[name]) {
     return { provider: 'openai', key: OPENAI_VOICES[name] ? name : 'marin' };
   }
-  if (elevenKey()) return { provider: 'eleven', key: 'sarah', elevenId: ELEVEN_VOICES.sarah.id };
+  if (elevenKey()) {
+    return {
+      provider: 'eleven',
+      key: DEFAULT_ELEVEN_VOICE,
+      elevenId: ELEVEN_VOICES[DEFAULT_ELEVEN_VOICE].id,
+    };
+  }
   return { provider: 'openai', key: 'marin' };
 }
 
@@ -88,7 +92,7 @@ function catalog(req, res) {
   return res.json({
     provider: 'elevenlabs',
     configured: Boolean(elevenKey()),
-    defaultVoice: 'eleven:sarah',
+    defaultVoice: `eleven:${DEFAULT_ELEVEN_VOICE}`,
     voices,
   });
 }

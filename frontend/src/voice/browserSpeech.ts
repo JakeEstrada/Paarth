@@ -1,5 +1,5 @@
 import { readLiminalityVoiceUri } from './liminalitySettings';
-import { isNeuralVoiceUri } from './neuralVoices';
+import { neuralVoiceIdFromUri } from './neuralVoices';
 import { cancelNeuralSpeech, speakNeural } from './neuralSpeech';
 
 type SpeechRecognitionLike = {
@@ -201,28 +201,25 @@ export async function speakText(
   const spoken = softenSpokenText(text);
   if (!spoken) return;
 
-  const selectedUri = readLiminalityVoiceUri();
-  if (isNeuralVoiceUri(selectedUri)) {
-    try {
-      await speakNeural(spoken, selectedUri, options?.tone);
-      return;
-    } catch {
-      /* fall back to this computer's voices */
-    }
+  const selectedUri = neuralVoiceIdFromUri(readLiminalityVoiceUri());
+  try {
+    await speakNeural(spoken, selectedUri, options?.tone);
+    return;
+  } catch {
+    /* fall back to this computer's voices */
   }
 
   if (!window.speechSynthesis) return;
 
   const voices = await loadVoices();
   const voice = resolveSpeakVoice(voices);
-  const usingPickedVoice = Boolean(selectedUri) && !isNeuralVoiceUri(selectedUri);
 
   await new Promise<void>((resolve) => {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(spoken);
     utterance.lang = voice?.lang || 'en-US';
-    utterance.rate = usingPickedVoice ? 1 : 0.9;
-    utterance.pitch = usingPickedVoice ? 1 : 1.18;
+    utterance.rate = 0.9;
+    utterance.pitch = 1.18;
     utterance.volume = 1;
     if (voice) utterance.voice = voice;
     utterance.onend = () => resolve();

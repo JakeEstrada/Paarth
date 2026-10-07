@@ -2,37 +2,38 @@ export const ELEVEN_VOICE_PREFIX = 'eleven:';
 
 export type NeuralVoice = {
   id: string;
-  label: string;
+  name: string;
+  description: string;
   uri: string;
 };
 
 export const ELEVEN_VOICES: NeuralVoice[] = [
-  { id: 'sarah', label: 'Sarah — soft American woman', uri: 'eleven:sarah' },
-  { id: 'matilda', label: 'Matilda — warm friendly woman', uri: 'eleven:matilda' },
-  { id: 'lily', label: 'Lily — warm British woman', uri: 'eleven:lily' },
-  { id: 'alice', label: 'Alice — confident British woman', uri: 'eleven:alice' },
-  { id: 'nicole', label: 'Nicole — calm American woman', uri: 'eleven:nicole' },
-  { id: 'grace', label: 'Grace — gentle woman', uri: 'eleven:grace' },
-  { id: 'elli', label: 'Elli — young woman', uri: 'eleven:elli' },
-  { id: 'glinda', label: 'Glinda — bright woman', uri: 'eleven:glinda' },
-  { id: 'george', label: 'George — British man', uri: 'eleven:george' },
-  { id: 'charlie', label: 'Charlie — casual man', uri: 'eleven:charlie' },
+  { id: 'carla', name: 'Carla', description: 'calm, a little mysterious', uri: 'eleven:carla' },
+  { id: 'natasha', name: 'Natasha', description: 'warm woman', uri: 'eleven:natasha' },
+  { id: 'kaori', name: 'Kaori', description: 'Japanese woman', uri: 'eleven:kaori' },
+  { id: 'sakura', name: 'Sakura', description: 'gentle Japanese woman', uri: 'eleven:sakura' },
+  { id: 'cassius', name: 'Cassius', description: 'man', uri: 'eleven:cassius' },
 ];
 
-export const DEFAULT_NEURAL_VOICE_URI = 'eleven:sarah';
+export const DEFAULT_NEURAL_VOICE_URI = 'eleven:carla';
+
+const ELEVEN_URI_SET = new Set(ELEVEN_VOICES.map((voice) => voice.uri));
 
 export function neuralVoiceUri(id: string) {
   if (id.startsWith(ELEVEN_VOICE_PREFIX)) return id;
   return `${ELEVEN_VOICE_PREFIX}${id}`;
 }
 
+export function isElevenVoiceUri(uri: string) {
+  return ELEVEN_URI_SET.has(uri);
+}
+
 export function isNeuralVoiceUri(uri: string) {
   if (!uri) return true;
-  if (uri.startsWith(ELEVEN_VOICE_PREFIX)) return true;
-  return uri.startsWith('openai:');
+  return isElevenVoiceUri(uri);
 }
 
 export function neuralVoiceIdFromUri(uri: string) {
-  if (uri.startsWith(ELEVEN_VOICE_PREFIX)) return uri;
+  if (isElevenVoiceUri(uri)) return uri;
   return DEFAULT_NEURAL_VOICE_URI;
 }

@@ -48,20 +48,6 @@ export type DepositTransaction = {
   amount?: number;
 };
 
-export type DepositAllocation = {
-  _id: string;
-  plaidTransactionId: string;
-  jobId: string;
-  jobTitle?: string;
-  customerName?: string;
-  paymentSortOrder: number;
-  paymentLabel?: string;
-  depositAmount?: number;
-  transactionDate?: string;
-  transactionName?: string;
-  markPaidApplied?: boolean;
-};
-
 type DepositSuggestionRow = DepositSuggestion;
 
 type JobOption = {

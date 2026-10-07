@@ -21,6 +21,7 @@ import {
   writeLiminalityVoiceUri,
 } from '../voice/liminalitySettings';
 import { unlockNeuralAudio } from '../voice/neuralSpeech';
+import { neuralVoiceIdFromUri } from '../voice/neuralVoices';
 import type { LiminalityPhase } from '../hooks/useLiminalityVoice';
 
 export type LiminalityRuntimeStatus = {
@@ -52,10 +53,14 @@ const LiminalitySettingsContext = createContext<LiminalitySettingsContextValue |
 
 export function LiminalitySettingsProvider({ children }: { children: ReactNode }) {
   const [enabled, setEnabledState] = useState(readLiminalityEnabled);
-  const [voiceUri, setVoiceUriState] = useState(readLiminalityVoiceUri);
+  const [voiceUri, setVoiceUriState] = useState(() => neuralVoiceIdFromUri(readLiminalityVoiceUri()));
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [runtime, setRuntime] = useState<LiminalityRuntimeStatus>(defaultRuntime);
   const supported = isSpeechRecognitionSupported();
+
+  useEffect(() => {
+    writeLiminalityVoiceUri(voiceUri);
+  }, [voiceUri]);
 
   useEffect(() => {
     warmUpSpeechVoices();
@@ -72,8 +77,9 @@ export function LiminalitySettingsProvider({ children }: { children: ReactNode }
   }, []);
 
   const setVoiceUri = useCallback((uri: string) => {
-    writeLiminalityVoiceUri(uri);
-    setVoiceUriState(uri);
+    const next = neuralVoiceIdFromUri(uri);
+    writeLiminalityVoiceUri(next);
+    setVoiceUriState(next);
   }, []);
 
   const value = useMemo(

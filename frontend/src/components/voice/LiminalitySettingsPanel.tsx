@@ -1,12 +1,11 @@
+import { useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  FormControl,
   FormControlLabel,
-  InputLabel,
-  MenuItem,
   Paper,
-  Select,
+  Radio,
+  RadioGroup,
   Switch,
   Typography,
 } from '@mui/material';
@@ -15,17 +14,36 @@ import { useTheme } from '@mui/material/styles';
 import { useLiminalitySettings } from '../../context/LiminalitySettingsContext';
 import { speakText } from '../../voice/browserSpeech';
 import { unlockNeuralAudio } from '../../voice/neuralSpeech';
-import { DEFAULT_NEURAL_VOICE_URI, ELEVEN_VOICES } from '../../voice/neuralVoices';
+import { DEFAULT_NEURAL_VOICE_URI, ELEVEN_VOICES, neuralVoiceIdFromUri } from '../../voice/neuralVoices';
+
+const SAMPLE_LINES = [
+  "What's cookin, good lookin?",
+  'Ugh. What now?',
+  "Hey you. What's up?",
+  "I'm here. Spill it.",
+  'You rang?',
+];
 
 export default function LiminalitySettingsPanel() {
   const theme = useTheme();
   const { enabled, setEnabled, voiceUri, setVoiceUri, supported } = useLiminalitySettings();
-  const elevenUris = new Set(ELEVEN_VOICES.map((voice) => voice.uri));
-  const voiceValue = !voiceUri || elevenUris.has(voiceUri) ? voiceUri : DEFAULT_NEURAL_VOICE_URI;
+  const selectedUri = neuralVoiceIdFromUri(voiceUri || DEFAULT_NEURAL_VOICE_URI);
+  const [previewing, setPreviewing] = useState<string | null>(null);
+  const [sampleIndex, setSampleIndex] = useState(0);
+  const outline =
+    theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
 
-  const preview = () => {
+  const voices = useMemo(() => ELEVEN_VOICES, []);
+
+  const preview = (uri: string) => {
     unlockNeuralAudio();
-    void speakText('Yes? How can I help you?');
+    setVoiceUri(uri);
+    const line = SAMPLE_LINES[sampleIndex % SAMPLE_LINES.length];
+    setSampleIndex((index) => index + 1);
+    setPreviewing(uri);
+    void speakText(line).finally(() => {
+      setPreviewing((current) => (current === uri ? null : current));
+    });
   };
 
   return (
@@ -67,35 +85,82 @@ export default function LiminalitySettingsPanel() {
           Use Chrome or Edge on desktop to enable voice.
         </Typography>
       ) : null}
-      <FormControl fullWidth sx={{ mt: 2 }}>
-        <InputLabel id="liminality-voice-label">Voice</InputLabel>
-        <Select
-          labelId="liminality-voice-label"
-          label="Voice"
-          value={voiceValue}
-          displayEmpty
-          onChange={(event) => {
-            unlockNeuralAudio();
-            setVoiceUri(String(event.target.value));
-          }}
-          MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
-        >
-          <MenuItem value="">
-            <em>Recommended — Sarah</em>
-          </MenuItem>
-          {ELEVEN_VOICES.map((voice) => (
-            <MenuItem key={voice.uri} value={voice.uri}>
-              {voice.label}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-        These are ElevenLabs voices only.
+
+      <Typography variant="subtitle2" sx={{ mt: 3, mb: 1, fontWeight: 600 }}>
+        Voice
       </Typography>
-      <Button variant="outlined" size="small" onClick={preview} sx={{ mt: 2, textTransform: 'none' }}>
-        Hear sample
-      </Button>
+      <RadioGroup
+        name="liminality-voice"
+        value={selectedUri}
+        onChange={(event) => {
+          unlockNeuralAudio();
+          setVoiceUri(event.target.value);
+        }}
+        sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}
+      >
+        {voices.map((voice) => {
+          const selected = voice.uri === selectedUri;
+          return (
+            <Box
+              key={voice.uri}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1.5,
+                py: 1,
+                borderRadius: '12px',
+                border: '1px solid',
+                borderColor: selected ? 'primary.main' : outline,
+                backgroundColor: selected
+                  ? theme.palette.mode === 'dark'
+                    ? 'rgba(25, 118, 210, 0.16)'
+                    : 'rgba(25, 118, 210, 0.06)'
+                  : 'transparent',
+              }}
+            >
+              <Box
+                component="label"
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  minWidth: 0,
+                  flex: 1,
+                  cursor: 'pointer',
+                }}
+              >
+                <Radio value={voice.uri} size="small" sx={{ p: 0.5 }} />
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {voice.name}
+                    {voice.uri === DEFAULT_NEURAL_VOICE_URI ? ' (recommended)' : ''}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {voice.description}
+                  </Typography>
+                </Box>
+              </Box>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={previewing === voice.uri}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  preview(voice.uri);
+                }}
+                sx={{ textTransform: 'none', flexShrink: 0 }}
+              >
+                {previewing === voice.uri ? 'Playing…' : 'Hear'}
+              </Button>
+            </Box>
+          );
+        })}
+      </RadioGroup>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+        ElevenLabs voices. Pick one, then tap Hear to sample it.
+      </Typography>
     </Paper>
   );
 }
