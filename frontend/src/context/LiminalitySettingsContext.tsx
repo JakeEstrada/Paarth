@@ -1,0 +1,104 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  isSpeechRecognitionSupported,
+  listSelectableVoices,
+  loadVoices,
+  voiceChoiceLabel,
+  warmUpSpeechVoices,
+} from '../voice/browserSpeech';
+import {
+  readLiminalityEnabled,
+  readLiminalityVoiceUri,
+  writeLiminalityEnabled,
+  writeLiminalityVoiceUri,
+} from '../voice/liminalitySettings';
+import type { LiminalityPhase } from '../hooks/useLiminalityVoice';
+
+export type LiminalityRuntimeStatus = {
+  phase: LiminalityPhase;
+  statusLabel: string;
+  heard: string;
+};
+
+type LiminalitySettingsContextValue = {
+  enabled: boolean;
+  setEnabled: (next: boolean) => void;
+  voiceUri: string;
+  setVoiceUri: (uri: string) => void;
+  voices: SpeechSynthesisVoice[];
+  supported: boolean;
+  runtime: LiminalityRuntimeStatus;
+  setRuntime: (next: LiminalityRuntimeStatus) => void;
+};
+
+const defaultRuntime: LiminalityRuntimeStatus = {
+  phase: 'off',
+  statusLabel: 'Off',
+  heard: '',
+};
+
+const LiminalitySettingsContext = createContext<LiminalitySettingsContextValue | undefined>(
+  undefined
+);
+
+export function LiminalitySettingsProvider({ children }: { children: ReactNode }) {
+  const [enabled, setEnabledState] = useState(readLiminalityEnabled);
+  const [voiceUri, setVoiceUriState] = useState(readLiminalityVoiceUri);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [runtime, setRuntime] = useState<LiminalityRuntimeStatus>(defaultRuntime);
+  const supported = isSpeechRecognitionSupported();
+
+  useEffect(() => {
+    warmUpSpeechVoices();
+    void loadVoices().then((loaded) => setVoices(listSelectableVoices(loaded)));
+    const refresh = () => setVoices(listSelectableVoices(window.speechSynthesis?.getVoices() || []));
+    window.speechSynthesis?.addEventListener('voiceschanged', refresh);
+    return () => window.speechSynthesis?.removeEventListener('voiceschanged', refresh);
+  }, []);
+
+  const setEnabled = useCallback((next: boolean) => {
+    writeLiminalityEnabled(next);
+    setEnabledState(next);
+  }, []);
+
+  const setVoiceUri = useCallback((uri: string) => {
+    writeLiminalityVoiceUri(uri);
+    setVoiceUriState(uri);
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      enabled,
+      setEnabled,
+      voiceUri,
+      setVoiceUri,
+      voices,
+      supported,
+      runtime,
+      setRuntime,
+    }),
+    [enabled, setEnabled, voiceUri, setVoiceUri, voices, supported, runtime]
+  );
+
+  return (
+    <LiminalitySettingsContext.Provider value={value}>{children}</LiminalitySettingsContext.Provider>
+  );
+}
+
+export function useLiminalitySettings() {
+  const context = useContext(LiminalitySettingsContext);
+  if (!context) {
+    throw new Error('useLiminalitySettings must be used within a LiminalitySettingsProvider');
+  }
+  return context;
+}
+
+export { voiceChoiceLabel };

@@ -1,3 +1,5 @@
+import { readLiminalityVoiceUri } from './liminalitySettings';
+
 type SpeechRecognitionLike = {
   continuous: boolean;
   interimResults: boolean;
@@ -93,7 +95,7 @@ function listVoices() {
   return window.speechSynthesis?.getVoices() || [];
 }
 
-function loadVoices(): Promise<SpeechSynthesisVoice[]> {
+export function loadVoices(): Promise<SpeechSynthesisVoice[]> {
   if (!window.speechSynthesis) return Promise.resolve([]);
   const already = listVoices();
   if (already.length) return Promise.resolve(already);
@@ -101,12 +103,49 @@ function loadVoices(): Promise<SpeechSynthesisVoice[]> {
   voicesReady = new Promise((resolve) => {
     const finish = () => {
       window.speechSynthesis.removeEventListener('voiceschanged', finish);
-      resolve(listVoices());
+      const loaded = listVoices();
+      if (!loaded.length) voicesReady = null;
+      resolve(loaded);
     };
     window.speechSynthesis.addEventListener('voiceschanged', finish);
-    window.setTimeout(finish, 500);
+    window.setTimeout(finish, 800);
   });
   return voicesReady;
+}
+
+export function voiceChoiceLabel(voice: SpeechSynthesisVoice) {
+  const lang = String(voice.lang || '').trim();
+  const online = voice.localService ? '' : ' · online';
+  return lang ? `${voice.name} (${lang})${online}` : `${voice.name}${online}`;
+}
+
+export function listSelectableVoices(voices: SpeechSynthesisVoice[]) {
+  const seen = new Set<string>();
+  const unique = voices.filter((voice) => {
+    const key = voice.voiceURI || `${voice.name}:${voice.lang}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return Boolean(voice.name);
+  });
+  return unique.sort((a, b) => {
+    const aEn = String(a.lang || '').toLowerCase().startsWith('en') ? 0 : 1;
+    const bEn = String(b.lang || '').toLowerCase().startsWith('en') ? 0 : 1;
+    if (aEn !== bEn) return aEn - bEn;
+    const scoreDiff = scoreVoice(b) - scoreVoice(a);
+    if (scoreDiff !== 0) return scoreDiff;
+    return String(a.name).localeCompare(String(b.name));
+  });
+}
+
+function resolveSpeakVoice(voices: SpeechSynthesisVoice[]) {
+  const selectedUri = readLiminalityVoiceUri();
+  if (selectedUri) {
+    const match = voices.find(
+      (voice) => voice.voiceURI === selectedUri || voice.name === selectedUri
+    );
+    if (match) return match;
+  }
+  return pickCuteVoice(voices);
 }
 
 function scoreVoice(voice: SpeechSynthesisVoice) {
@@ -158,14 +197,15 @@ export async function speakText(text: string): Promise<void> {
   if (!window.speechSynthesis || !spoken) return;
 
   const voices = await loadVoices();
-  const voice = pickCuteVoice(voices);
+  const voice = resolveSpeakVoice(voices);
+  const usingPickedVoice = Boolean(readLiminalityVoiceUri());
 
   await new Promise<void>((resolve) => {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(spoken);
     utterance.lang = voice?.lang || 'en-US';
-    utterance.rate = 0.9;
-    utterance.pitch = 1.18;
+    utterance.rate = usingPickedVoice ? 1 : 0.9;
+    utterance.pitch = usingPickedVoice ? 1 : 1.18;
     utterance.volume = 1;
     if (voice) utterance.voice = voice;
     utterance.onend = () => resolve();

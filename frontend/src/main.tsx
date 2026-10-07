@@ -8,6 +8,7 @@ import { BrowserRouter } from 'react-router-dom';
 import toast, { Toaster, ToastBar } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { LiminalitySettingsProvider } from './context/LiminalitySettingsContext';
 import App from './App';
 
 /** Success toasts are silenced app-wide — keep errors/warnings. */
@@ -29,24 +30,26 @@ function AppWithTheme(): JSX.Element {
     <MUIThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <App />
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            style: {
-              background: theme.palette.mode === 'dark' ? '#1E1E1E' : '#FFFFFF',
-              color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#263238',
-            },
-          }}
-        >
-          {(t) => {
-            if (t.type === 'success') {
-              toast.dismiss(t.id);
-              return null;
-            }
-            return <ToastBar toast={t} />;
-          }}
-        </Toaster>
+        <LiminalitySettingsProvider>
+          <App />
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              style: {
+                background: theme.palette.mode === 'dark' ? '#1E1E1E' : '#FFFFFF',
+                color: theme.palette.mode === 'dark' ? '#FFFFFF' : '#263238',
+              },
+            }}
+          >
+            {(t) => {
+              if (t.type === 'success') {
+                toast.dismiss(t.id);
+                return null;
+              }
+              return <ToastBar toast={t} />;
+            }}
+          </Toaster>
+        </LiminalitySettingsProvider>
       </AuthProvider>
     </MUIThemeProvider>
   );
