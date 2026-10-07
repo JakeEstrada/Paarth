@@ -208,6 +208,7 @@ const vendorRoutes = require('./routes/vendors');
 const auditLogRoutes = require('./routes/auditLogs');
 const websiteRoutes = require('./routes/website');
 const outlookRoutes = require('./routes/outlook');
+const ttsRoutes = require('./routes/tts');
 
 // Use routes
 app.use('/auth', authRoutes);
@@ -236,6 +237,7 @@ app.use('/vendors', vendorRoutes);
 app.use('/audit-logs', auditLogRoutes);
 app.use('/website', websiteRoutes);
 app.use('/outlook', outlookRoutes);
+app.use('/tts', ttsRoutes);
 // Some deployments expose the API under `/api` without stripping the prefix from the path.
 app.use('/api/auth', authRoutes);
 app.use('/api/tenants', tenantRoutes);
@@ -263,6 +265,7 @@ app.use('/api/vendors', vendorRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/website', websiteRoutes);
 app.use('/api/outlook', outlookRoutes);
+app.use('/api/tts', ttsRoutes);
 
 // Test route
 app.get('/', (req, res) => {

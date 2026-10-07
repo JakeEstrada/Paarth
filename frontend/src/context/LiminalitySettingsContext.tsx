@@ -20,6 +20,7 @@ import {
   writeLiminalityEnabled,
   writeLiminalityVoiceUri,
 } from '../voice/liminalitySettings';
+import { unlockNeuralAudio } from '../voice/neuralSpeech';
 import type { LiminalityPhase } from '../hooks/useLiminalityVoice';
 
 export type LiminalityRuntimeStatus = {
@@ -65,6 +66,7 @@ export function LiminalitySettingsProvider({ children }: { children: ReactNode }
   }, []);
 
   const setEnabled = useCallback((next: boolean) => {
+    if (next) unlockNeuralAudio();
     writeLiminalityEnabled(next);
     setEnabledState(next);
   }, []);

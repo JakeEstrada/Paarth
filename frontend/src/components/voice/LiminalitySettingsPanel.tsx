@@ -14,18 +14,24 @@ import { RecordVoiceOver as RecordVoiceOverIcon } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import { useLiminalitySettings, voiceChoiceLabel } from '../../context/LiminalitySettingsContext';
 import { speakText } from '../../voice/browserSpeech';
+import { unlockNeuralAudio } from '../../voice/neuralSpeech';
+import { NEURAL_VOICES, neuralVoiceUri } from '../../voice/neuralVoices';
 
 export default function LiminalitySettingsPanel() {
   const theme = useTheme();
   const { enabled, setEnabled, voiceUri, setVoiceUri, voices, supported } = useLiminalitySettings();
   const englishVoices = voices.filter((voice) => String(voice.lang || '').toLowerCase().startsWith('en'));
   const otherVoices = voices.filter((voice) => !String(voice.lang || '').toLowerCase().startsWith('en'));
+  const neuralUris = new Set(NEURAL_VOICES.map((voice) => neuralVoiceUri(voice.id)));
   const voiceValue =
-    !voiceUri || voices.some((voice) => (voice.voiceURI || voice.name) === voiceUri)
+    !voiceUri ||
+    neuralUris.has(voiceUri) ||
+    voices.some((voice) => (voice.voiceURI || voice.name) === voiceUri)
       ? voiceUri
       : '';
 
   const preview = () => {
+    unlockNeuralAudio();
     void speakText('Yes? How can I help you?');
   };
 
@@ -68,22 +74,33 @@ export default function LiminalitySettingsPanel() {
           Use Chrome or Edge on desktop to enable voice.
         </Typography>
       ) : null}
-      <FormControl fullWidth sx={{ mt: 2 }} disabled={!supported}>
+      <FormControl fullWidth sx={{ mt: 2 }}>
         <InputLabel id="liminality-voice-label">Voice</InputLabel>
         <Select
           labelId="liminality-voice-label"
           label="Voice"
           value={voiceValue}
           displayEmpty
-          onChange={(event) => setVoiceUri(String(event.target.value))}
+          onChange={(event) => {
+            unlockNeuralAudio();
+            setVoiceUri(String(event.target.value));
+          }}
           MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
         >
           <MenuItem value="">
-            <em>Recommended (auto)</em>
+            <em>Recommended — Marin (studio woman)</em>
           </MenuItem>
+          <MenuItem disabled value="__studio">
+            Studio voices
+          </MenuItem>
+          {NEURAL_VOICES.map((voice) => (
+            <MenuItem key={voice.id} value={neuralVoiceUri(voice.id)}>
+              {voice.label}
+            </MenuItem>
+          ))}
           {englishVoices.length ? (
             <MenuItem disabled value="__english">
-              English
+              This computer
             </MenuItem>
           ) : null}
           {englishVoices.map((voice) => (
@@ -104,13 +121,13 @@ export default function LiminalitySettingsPanel() {
         </Select>
       </FormControl>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-        Voices come from this browser and computer. Pick one, then hear a sample.
+        Studio voices are neural and sound like a real person. “This computer” voices are the older
+        robotic ones from the browser — you do not need to download anything else.
       </Typography>
       <Button
         variant="outlined"
         size="small"
         onClick={preview}
-        disabled={!supported}
         sx={{ mt: 2, textTransform: 'none' }}
       >
         Hear sample

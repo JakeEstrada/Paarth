@@ -1,4 +1,6 @@
 import { readLiminalityVoiceUri } from './liminalitySettings';
+import { isNeuralVoiceUri } from './neuralVoices';
+import { cancelNeuralSpeech, speakNeural } from './neuralSpeech';
 
 type SpeechRecognitionLike = {
   continuous: boolean;
@@ -194,11 +196,23 @@ function softenSpokenText(text: string) {
 
 export async function speakText(text: string): Promise<void> {
   const spoken = softenSpokenText(text);
-  if (!window.speechSynthesis || !spoken) return;
+  if (!spoken) return;
+
+  const selectedUri = readLiminalityVoiceUri();
+  if (isNeuralVoiceUri(selectedUri)) {
+    try {
+      await speakNeural(spoken, selectedUri);
+      return;
+    } catch {
+      /* fall back to this computer's voices */
+    }
+  }
+
+  if (!window.speechSynthesis) return;
 
   const voices = await loadVoices();
   const voice = resolveSpeakVoice(voices);
-  const usingPickedVoice = Boolean(readLiminalityVoiceUri());
+  const usingPickedVoice = Boolean(selectedUri) && !isNeuralVoiceUri(selectedUri);
 
   await new Promise<void>((resolve) => {
     window.speechSynthesis.cancel();
@@ -222,6 +236,7 @@ export function warmUpSpeechVoices() {
 }
 
 export function cancelSpeech() {
+  cancelNeuralSpeech();
   try {
     window.speechSynthesis?.cancel();
   } catch {
