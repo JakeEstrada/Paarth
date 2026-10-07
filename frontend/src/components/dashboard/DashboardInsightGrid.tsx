@@ -1,9 +1,9 @@
-import { Box, Button, GridLegacy as Grid, Paper, Typography } from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
+import { Box, Button, Paper, Typography } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import { eachDayOfInterval, format, subDays } from 'date-fns';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AreaChart, DonutChart, StackedBarChart, chartPanelSx } from './dashboardChartPrimitives';
+import { AreaChart, DonutChart, chartPanelSx, compactMoney } from './dashboardChartPrimitives';
 import { formatMoney } from '../../utils/paymentSchedule';
 
 type PaymentRow = {
@@ -98,13 +98,18 @@ export default function DashboardInsightGrid({
 
   const activitySeries = useMemo(() => {
     const bucket = new Map(
-      days.map((date) => [date, { date, payments: 0, pipeline: 0, notes: 0, tasks: 0, other: 0 }]),
+      days.map((date) => [date, { date, pipeline: 0, notes: 0, tasks: 0, other: 0 }]),
     );
     for (const row of activities) {
       const date = ymd(row.createdAt);
       const current = bucket.get(date);
       if (!current) continue;
-      current[activityBucket(String(row.type || ''))] += 1;
+      const key = activityBucket(String(row.type || ''));
+      if (key === 'payments') {
+        current.other += 1;
+        continue;
+      }
+      current[key] += 1;
     }
     return days.map((date) => bucket.get(date)!);
   }, [activities, days]);
@@ -120,166 +125,147 @@ export default function DashboardInsightGrid({
     }));
   }, [days, traffic]);
 
+  const auditHasData = Boolean(
+    teamActivity?.some((row) => (Number(row.pageViews) || 0) + (Number(row.clicks) || 0) + (Number(row.logins) || 0) > 0),
+  );
+
   const teamSeries = useMemo(() => {
-    if (!teamActivity?.length) return days.map((date) => ({ date, logins: 0, pageViews: 0, clicks: 0 }));
-    const bucket = new Map(teamActivity.map((row) => [row.date, row]));
+    if (!auditHasData) return activitySeries;
+    const bucket = new Map((teamActivity || []).map((row) => [row.date, row]));
     return days.map((date) => ({
       date,
-      logins: Number(bucket.get(date)?.logins) || 0,
-      pageViews: Number(bucket.get(date)?.pageViews) || 0,
-      clicks: Number(bucket.get(date)?.clicks) || 0,
+      pipeline: Number(bucket.get(date)?.pageViews) || 0,
+      notes: Number(bucket.get(date)?.clicks) || 0,
+      tasks: Number(bucket.get(date)?.logins) || 0,
+      other: 0,
     }));
-  }, [days, teamActivity]);
+  }, [activitySeries, auditHasData, days, teamActivity]);
 
   const paymentTotal = paymentSeries.reduce((sum, row) => sum + row.amount, 0);
   const activityTotal = activitySeries.reduce(
-    (sum, row) => sum + row.payments + row.pipeline + row.notes + row.tasks + row.other,
+    (sum, row) => sum + row.pipeline + row.notes + row.tasks + row.other,
     0,
   );
   const trafficTotal = trafficSeries.reduce((sum, row) => sum + row.pageViews, 0);
-
   const money = (value: number) => (hideSensitive ? 'Locked' : formatMoney(value));
+  const axisMoney = (value: number) => (hideSensitive ? String(Math.round(value)) : compactMoney(value));
 
   return (
-    <Box sx={{ mb: 3 }}>
-      <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item xs={12} md={8} sx={{ display: 'flex' }}>
+    <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1.7fr) minmax(280px, 0.9fr)' },
+          gap: 2,
+          alignItems: 'stretch',
+        }}
+      >
+        <Paper elevation={0} sx={chartPanelSx(theme)}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+                Payments collected
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Last 30 days · {money(paymentTotal)}
+              </Typography>
+            </Box>
+            {canOpenFinance ? (
+              <Button size="small" onClick={() => navigate('/finance?tab=deposits')} sx={{ textTransform: 'none' }}>
+                Finance
+              </Button>
+            ) : null}
+          </Box>
+          <AreaChart
+            data={paymentSeries}
+            series={[
+              {
+                key: hideSensitive ? 'count' : 'amount',
+                label: hideSensitive ? 'Payments' : 'Amount collected',
+                color: '#34d399',
+              },
+            ]}
+            formatValue={hideSensitive ? undefined : axisMoney}
+            showDots
+          />
+        </Paper>
+        <Paper elevation={0} sx={chartPanelSx(theme)}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+            Pipeline mix
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            Active jobs by stage group
+          </Typography>
+          <DonutChart
+            slices={pipeline}
+            centerLabel="jobs"
+            centerValue={String(pipeline.reduce((sum, slice) => sum + slice.value, 0))}
+          />
+        </Paper>
+      </Box>
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: showTraffic ? '1fr 1fr' : '1fr' },
+          gap: 2,
+          alignItems: 'stretch',
+        }}
+      >
+        <Paper elevation={0} sx={chartPanelSx(theme)}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+            Team activity
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            {auditHasData
+              ? 'Pages, clicks, and sign-ins in Paarth'
+              : `Shop work logged in Paarth · ${activityTotal} events`}
+          </Typography>
+          <AreaChart
+            data={teamSeries}
+            series={
+              auditHasData
+                ? [
+                    { key: 'pipeline', label: 'Pages', color: '#818cf8' },
+                    { key: 'notes', label: 'Clicks', color: '#fbbf24' },
+                    { key: 'tasks', label: 'Sign-ins', color: '#f472b6' },
+                  ]
+                : [
+                    { key: 'pipeline', label: 'Pipeline', color: '#818cf8' },
+                    { key: 'notes', label: 'Notes', color: '#fbbf24' },
+                    { key: 'tasks', label: 'Tasks', color: '#f472b6' },
+                    { key: 'other', label: 'Other', color: '#38bdf8' },
+                  ]
+            }
+            showDots
+          />
+        </Paper>
+        {showTraffic ? (
           <Paper elevation={0} sx={chartPanelSx(theme)}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
               <Box>
                 <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-                  Payments received
+                  Website traffic
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Last 30 days · {money(paymentTotal)}
+                  Public site · {trafficTotal} page views
                 </Typography>
               </Box>
-              {canOpenFinance ? (
-                <Button size="small" onClick={() => navigate('/finance?tab=deposits')} sx={{ textTransform: 'none' }}>
-                  Finance
-                </Button>
-              ) : null}
+              <Button size="small" onClick={() => navigate('/developer/analytics')} sx={{ textTransform: 'none' }}>
+                Analytics
+              </Button>
             </Box>
             <AreaChart
-              data={paymentSeries}
+              data={trafficSeries}
               series={[
-                {
-                  key: hideSensitive ? 'count' : 'amount',
-                  label: hideSensitive ? 'Payments' : 'Amount',
-                  color: '#10b981',
-                },
+                { key: 'pageViews', label: 'Page views', color: '#60a5fa' },
+                { key: 'visitors', label: 'Visitors', color: '#c084fc' },
+                { key: 'contactSubmits', label: 'Messages', color: '#fb923c' },
               ]}
-              formatValue={hideSensitive ? undefined : (value) => formatMoney(value)}
             />
           </Paper>
-        </Grid>
-        <Grid item xs={12} md={4} sx={{ display: 'flex' }}>
-          <Paper elevation={0} sx={chartPanelSx(theme)}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5 }}>
-              Pipeline mix
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              Active jobs by stage group
-            </Typography>
-            <DonutChart
-              slices={pipeline}
-              centerLabel="jobs"
-              centerValue={String(pipeline.reduce((sum, slice) => sum + slice.value, 0))}
-            />
-          </Paper>
-        </Grid>
-      </Grid>
-
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={showTraffic ? 6 : 12} sx={{ display: 'flex' }}>
-          <Paper elevation={0} sx={chartPanelSx(theme)}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-              Team activity
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              {teamActivity
-                ? `In-app use · ${teamSeries.reduce((sum, row) => sum + row.pageViews + row.clicks + row.logins, 0)} events`
-                : `Job timeline · ${activityTotal} events in 30 days`}
-            </Typography>
-            {teamActivity ? (
-              <StackedBarChart
-                data={teamSeries}
-                series={[
-                  { key: 'pageViews', label: 'Pages', color: '#6366f1' },
-                  { key: 'clicks', label: 'Clicks', color: '#f59e0b' },
-                  { key: 'logins', label: 'Sign-ins', color: '#ec4899' },
-                ]}
-              />
-            ) : (
-              <StackedBarChart
-                data={activitySeries}
-                series={[
-                  { key: 'pipeline', label: 'Pipeline', color: '#6366f1' },
-                  { key: 'payments', label: 'Payments', color: '#10b981' },
-                  { key: 'notes', label: 'Notes', color: '#f59e0b' },
-                  { key: 'tasks', label: 'Tasks', color: '#ec4899' },
-                  { key: 'other', label: 'Other', color: '#38bdf8' },
-                ]}
-              />
-            )}
-          </Paper>
-        </Grid>
-        {showTraffic ? (
-          <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-            <Paper elevation={0} sx={chartPanelSx(theme)}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-                    Website traffic
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Public site · {trafficTotal} page views
-                  </Typography>
-                </Box>
-                <Button size="small" onClick={() => navigate('/developer/analytics')} sx={{ textTransform: 'none' }}>
-                  Analytics
-                </Button>
-              </Box>
-              <AreaChart
-                data={trafficSeries}
-                series={[
-                  { key: 'pageViews', label: 'Page views', color: '#3b82f6' },
-                  { key: 'visitors', label: 'Visitors', color: '#a855f7' },
-                  { key: 'contactSubmits', label: 'Messages', color: '#f97316' },
-                ]}
-              />
-            </Paper>
-          </Grid>
         ) : null}
-      </Grid>
-
-      {!teamActivity ? null : (
-        <Paper
-          elevation={0}
-          sx={{
-            ...chartPanelSx(theme),
-            mt: 2,
-            background: `linear-gradient(180deg, ${alpha('#6366f1', 0.06)} 0%, ${theme.palette.background.paper} 40%)`,
-          }}
-        >
-          <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-            Job timeline
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            What the shop logged in Paarth over the last 30 days
-          </Typography>
-          <StackedBarChart
-            data={activitySeries}
-            series={[
-              { key: 'pipeline', label: 'Pipeline', color: '#6366f1' },
-              { key: 'payments', label: 'Payments', color: '#10b981' },
-              { key: 'notes', label: 'Notes', color: '#f59e0b' },
-              { key: 'tasks', label: 'Tasks', color: '#ec4899' },
-              { key: 'other', label: 'Other', color: '#38bdf8' },
-            ]}
-          />
-        </Paper>
-      )}
+      </Box>
     </Box>
   );
 }
