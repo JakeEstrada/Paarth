@@ -209,8 +209,77 @@ async function listAuditLogs(req, res) {
   }
 }
 
+async function getAuditSummary(req, res) {
+  try {
+    if (req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Super admin access required' });
+    }
+
+    const days = [7, 14, 30].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+    const start = new Date(Date.now() - days * 86400000);
+    const labels = [];
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    }).formatToParts(new Date());
+    const year = Number(parts.find((part) => part.type === 'year')?.value);
+    const month = Number(parts.find((part) => part.type === 'month')?.value);
+    const day = Number(parts.find((part) => part.type === 'day')?.value);
+    const cursor = Date.UTC(year, month - 1, day);
+    for (let i = days - 1; i >= 0; i -= 1) {
+      labels.push(new Date(cursor - i * 86400000).toISOString().slice(0, 10));
+    }
+
+    const rows = await UserAuditLog.aggregate([
+      { $match: { occurredAt: { $gte: start } } },
+      {
+        $group: {
+          _id: {
+            day: { $dateToString: { format: '%Y-%m-%d', date: '$occurredAt', timezone: 'America/Los_Angeles' } },
+            type: '$type',
+          },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const bucket = new Map(
+      labels.map((date) => [date, { date, logins: 0, pageViews: 0, clicks: 0, logouts: 0 }]),
+    );
+    for (const row of rows) {
+      const current = bucket.get(row?._id?.day);
+      if (!current) continue;
+      const count = Number(row.count) || 0;
+      if (row._id.type === 'login') current.logins += count;
+      else if (row._id.type === 'page_view') current.pageViews += count;
+      else if (row._id.type === 'click') current.clicks += count;
+      else if (row._id.type === 'logout') current.logouts += count;
+    }
+
+    const series = labels.map((date) => bucket.get(date));
+    const totals = series.reduce(
+      (acc, row) => {
+        acc.logins += row.logins;
+        acc.pageViews += row.pageViews;
+        acc.clicks += row.clicks;
+        acc.logouts += row.logouts;
+        return acc;
+      },
+      { logins: 0, pageViews: 0, clicks: 0, logouts: 0 },
+    );
+
+    res.json({ days, totals, series });
+  } catch (error) {
+    console.error('Failed to summarize audit logs:', error);
+    res.status(500).json({ error: 'Failed to load activity summary' });
+  }
+}
+
 module.exports = {
   recordUserAudit,
   ingestAuditLogs,
   listAuditLogs,
+  getAuditSummary,
 };

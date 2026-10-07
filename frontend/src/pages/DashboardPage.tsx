@@ -61,7 +61,25 @@ import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { renderSummaryBlocks } from '../utils/summaryMarkdown';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
 import { getTenantRoom } from '../services/socket';
+import DashboardInsightGrid from '../components/dashboard/DashboardInsightGrid';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+const ESTIMATE_STAGES = [
+  'APPOINTMENT_SCHEDULED',
+  'ESTIMATE_IN_PROGRESS',
+  'ESTIMATE_SENT',
+  'ENGAGED_DESIGN_REVIEW',
+  'CONTRACT_OUT',
+];
+const PRODUCTION_STAGES = [
+  'DEPOSIT_PENDING',
+  'JOB_PREP',
+  'TAKEOFF_COMPLETE',
+  'READY_TO_SCHEDULE',
+  'SCHEDULED',
+  'IN_PRODUCTION',
+];
+const INSTALLED_STAGES = ['INSTALLED', 'FINAL_PAYMENT_CLOSED'];
 
 function parsePaymentReceivedLabel(activity) {
   const note = String(activity?.note || '').trim();
@@ -391,7 +409,7 @@ function DashboardEmptyState({ message }) {
 function DashboardPage() {
   const navigate = useNavigate();
   const theme = useTheme();
-  const { user, tenantIdForBranding } = useAuth();
+  const { user, tenantIdForBranding, isSuperAdmin } = useAuth();
   const { hideSensitive } = useShopViewSensitive(user?.role);
   const canEditPaymentAlerts = ['super_admin', 'admin'].includes(user?.role);
   const canOpenFinanceHub = user?.role === 'super_admin';
@@ -406,8 +424,16 @@ function DashboardPage() {
     pendingTasks: [],
     urgentTasks: [],
     totalCustomers: 0,
+    pipelineMix: [
+      { label: 'Estimate', value: 0, color: '#f59e0b' },
+      { label: 'In production', value: 0, color: '#6366f1' },
+      { label: 'Installed', value: 0, color: '#10b981' },
+    ],
   });
   const [activities, setActivities] = useState([]);
+  const [chartActivities, setChartActivities] = useState([]);
+  const [trafficSeries, setTrafficSeries] = useState(null);
+  const [teamActivity, setTeamActivity] = useState(null);
   const [markedPaidPayments, setMarkedPaidPayments] = useState([]);
   const [sendingUnsentPaymentAlerts, setSendingUnsentPaymentAlerts] = useState(false);
   const [paymentContextMenu, setPaymentContextMenu] = useState(null);
@@ -463,7 +489,9 @@ function DashboardPage() {
       // Fetch all data in parallel
       const paymentHistoryStart = format(subDays(new Date(), 365), 'yyyy-MM-dd');
       const paymentHistoryEnd = format(new Date(), 'yyyy-MM-dd');
-      const [jobsRes, appointmentsRes, tasksRes, customersRes, activitiesRes, markedPaidRes] = await Promise.all([
+      const chartStart = format(subDays(new Date(), 29), 'yyyy-MM-dd');
+      const superAdmin = user?.role === 'super_admin';
+      const [jobsRes, appointmentsRes, tasksRes, customersRes, activitiesRes, markedPaidRes, chartActivitiesRes, trafficRes, teamRes] = await Promise.all([
         axios.get(`${API_URL}/jobs`),
         axios.get(`${API_URL}/appointments?status=scheduled&limit=50`),
         axios.get(`${API_URL}/tasks`),
@@ -477,6 +505,15 @@ function DashboardPage() {
             console.error('Failed to load marked paid payments:', err);
             return { data: [] };
           }),
+        axios
+          .get(`${API_URL}/activities/date-range?startDate=${chartStart}&endDate=${paymentHistoryEnd}`)
+          .catch(() => ({ data: [] })),
+        superAdmin
+          ? axios.get(`${API_URL}/website/analytics/report?days=30&hideMine=1`).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null }),
+        superAdmin
+          ? axios.get(`${API_URL}/audit-logs/summary?days=30`).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null }),
       ]);
 
       const jobs = jobsRes.data.jobs || jobsRes.data || [];
@@ -542,8 +579,23 @@ function DashboardPage() {
         pendingTasks,
         urgentTasks,
         totalCustomers: customerTotal,
+        pipelineMix: (() => {
+          const estimate = activeJobs.filter((job) => ESTIMATE_STAGES.includes(job.stage)).length;
+          const production = activeJobs.filter((job) => PRODUCTION_STAGES.includes(job.stage)).length;
+          const installed = activeJobs.filter((job) => INSTALLED_STAGES.includes(job.stage)).length;
+          const other = Math.max(0, activeJobs.length - estimate - production - installed);
+          return [
+            { label: 'Estimate', value: estimate, color: '#f59e0b' },
+            { label: 'In production', value: production, color: '#6366f1' },
+            { label: 'Installed', value: installed, color: '#10b981' },
+            ...(other ? [{ label: 'Other', value: other, color: '#94a3b8' }] : []),
+          ];
+        })(),
       });
       setActivities(sortedActivities);
+      setChartActivities(Array.isArray(chartActivitiesRes.data) ? chartActivitiesRes.data : []);
+      setTrafficSeries(Array.isArray(trafficRes?.data?.series) ? trafficRes.data.series : null);
+      setTeamActivity(Array.isArray(teamRes?.data?.series) ? teamRes.data.series : null);
       setMarkedPaidPayments(mergeMarkedPaidPayments(paidActivities, jobs));
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -1396,8 +1448,8 @@ function DashboardPage() {
             <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: '-0.02em', mt: 0.5, fontSize: { xs: '1.6rem', sm: '2rem' } }}>
               Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {greetingName}
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 480 }}>
-              Pipeline snapshot, upcoming work, and today&apos;s activity in one place.
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 520 }}>
+              Payments, team activity, and website traffic for the last 30 days.
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -1414,41 +1466,18 @@ function DashboardPage() {
         </Box>
       </Box>
 
-      {/* KPI row */}
-      <Grid container spacing={2} sx={{ mb: 2, alignItems: 'stretch' }}>
-        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
-          <DashboardStatCard label="Active Jobs" value={stats.activeJobs} icon={JobsIcon} accentColor={theme.palette.primary.main} theme={theme} />
-        </Grid>
-        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
-          <DashboardStatCard
-            label="Pipeline Value"
-            value={hideSensitive ? 'Locked' : formatCurrency(stats.totalRevenue)}
-            icon={MoneyIcon}
-            accentColor={theme.palette.primary.main}
-            theme={theme}
-          />
-        </Grid>
-        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
-          <DashboardStatCard
-            label="Contracted"
-            value={hideSensitive ? 'Locked' : formatCurrency(stats.contractedRevenue)}
-            icon={CheckCircleIcon}
-            accentColor={theme.palette.success.main}
-            theme={theme}
-          />
-        </Grid>
-        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
-          <DashboardStatCard
-            label="Potential"
-            value={hideSensitive ? 'Locked' : formatCurrency(stats.potentialRevenue)}
-            icon={TrendingUpIcon}
-            accentColor={theme.palette.info.main}
-            theme={theme}
-          />
-        </Grid>
-      </Grid>
+      <DashboardInsightGrid
+        hideSensitive={hideSensitive}
+        showTraffic={Boolean(isSuperAdmin())}
+        payments={markedPaidPayments}
+        activities={chartActivities}
+        traffic={trafficSeries}
+        teamActivity={teamActivity}
+        pipeline={stats.pipelineMix}
+        canOpenFinance={canOpenFinanceHub}
+      />
 
-      {/* Quick stats strip — same 4-column rhythm as the KPI row above */}
+      {/* Quick stats strip */}
       <Grid container spacing={2} sx={{ mb: 3, alignItems: 'stretch' }}>
         <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
           <DashboardQuickTile

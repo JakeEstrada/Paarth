@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -16,19 +17,58 @@ import { useLiminalitySettings, voiceChoiceLabel } from '../../context/Liminalit
 import { speakText } from '../../voice/browserSpeech';
 import { unlockNeuralAudio } from '../../voice/neuralSpeech';
 import { NEURAL_VOICES, neuralVoiceUri } from '../../voice/neuralVoices';
+import api from '../../utils/axios';
+
+type CatalogVoice = {
+  uri: string;
+  id: string;
+  label: string;
+  group: string;
+};
+
+type VoiceCatalog = {
+  provider: 'elevenlabs' | 'openai' | 'none';
+  defaultVoice: string;
+  voices: CatalogVoice[];
+};
 
 export default function LiminalitySettingsPanel() {
   const theme = useTheme();
   const { enabled, setEnabled, voiceUri, setVoiceUri, voices, supported } = useLiminalitySettings();
+  const [catalog, setCatalog] = useState<VoiceCatalog | null>(null);
   const englishVoices = voices.filter((voice) => String(voice.lang || '').toLowerCase().startsWith('en'));
   const otherVoices = voices.filter((voice) => !String(voice.lang || '').toLowerCase().startsWith('en'));
-  const neuralUris = new Set(NEURAL_VOICES.map((voice) => neuralVoiceUri(voice.id)));
+  const studioVoices = catalog?.voices?.length
+    ? catalog.voices
+    : NEURAL_VOICES.map((voice) => ({
+        uri: neuralVoiceUri(voice.id, 'openai'),
+        id: voice.id,
+        label: voice.label,
+        group: 'OpenAI',
+      }));
+  const studioUris = useMemo(() => new Set(studioVoices.map((voice) => voice.uri)), [studioVoices]);
   const voiceValue =
     !voiceUri ||
-    neuralUris.has(voiceUri) ||
+    studioUris.has(voiceUri) ||
     voices.some((voice) => (voice.voiceURI || voice.name) === voiceUri)
       ? voiceUri
       : '';
+  const lifelike = studioVoices.filter((voice) => voice.group === 'Lifelike');
+  const openaiVoices = studioVoices.filter((voice) => voice.group !== 'Lifelike');
+  const recommended = catalog?.provider === 'elevenlabs' ? 'Sarah (lifelike woman)' : 'Marin (OpenAI woman)';
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get('/tts/voices')
+      .then((response) => {
+        if (!cancelled && response.data?.voices) setCatalog(response.data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const preview = () => {
     unlockNeuralAudio();
@@ -88,13 +128,25 @@ export default function LiminalitySettingsPanel() {
           MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
         >
           <MenuItem value="">
-            <em>Recommended — Marin (studio woman)</em>
+            <em>Recommended — {recommended}</em>
           </MenuItem>
-          <MenuItem disabled value="__studio">
-            Studio voices
-          </MenuItem>
-          {NEURAL_VOICES.map((voice) => (
-            <MenuItem key={voice.id} value={neuralVoiceUri(voice.id)}>
+          {lifelike.length ? (
+            <MenuItem disabled value="__lifelike">
+              Lifelike (ElevenLabs)
+            </MenuItem>
+          ) : null}
+          {lifelike.map((voice) => (
+            <MenuItem key={voice.uri} value={voice.uri}>
+              {voice.label}
+            </MenuItem>
+          ))}
+          {openaiVoices.length ? (
+            <MenuItem disabled value="__openai">
+              OpenAI
+            </MenuItem>
+          ) : null}
+          {openaiVoices.map((voice) => (
+            <MenuItem key={voice.uri} value={voice.uri}>
               {voice.label}
             </MenuItem>
           ))}
@@ -121,8 +173,9 @@ export default function LiminalitySettingsPanel() {
         </Select>
       </FormControl>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-        Studio voices are neural and sound like a real person. “This computer” voices are the older
-        robotic ones from the browser — you do not need to download anything else.
+        {catalog?.provider === 'elevenlabs'
+          ? 'Lifelike voices use ElevenLabs — much closer to a real person than OpenAI or the browser.'
+          : 'Add ELEVENLABS_API_KEY on the backend for the most natural woman voices. Until then, OpenAI studio voices are used.'}
       </Typography>
       <Button
         variant="outlined"
