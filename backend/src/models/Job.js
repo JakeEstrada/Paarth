@@ -228,6 +228,17 @@ const jobSchema = new mongoose.Schema({
     state: String,
     zip: String
   },
+
+  geo: {
+    lat: Number,
+    lng: Number,
+    sourceAddress: String,
+    geocodedAt: Date,
+    status: {
+      type: String,
+      enum: ['ok', 'failed'],
+    },
+  },
   
   // Job-specific contact info (if different from customer)
   jobContact: {

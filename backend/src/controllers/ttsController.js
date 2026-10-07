@@ -46,16 +46,28 @@ function openaiKey() {
   return String(process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || '').trim();
 }
 
+function cleanSecret(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .trim();
+}
+
 function elevenKey() {
-  return String(process.env.ELEVENLABS_API_KEY || process.env.ELEVEN_API_KEY || '').trim();
+  return cleanSecret(
+    process.env.ELEVENLABS_API_KEY ||
+      process.env.ELEVEN_API_KEY ||
+      process.env.XI_API_KEY ||
+      ''
+  );
 }
 
 function elevenKeyProblem() {
   const key = elevenKey();
-  if (!key) return 'ElevenLabs API key is missing from the backend .env.';
-  if (key.startsWith('sk_')) return '';
-  if (/^[a-f0-9]{32}$/i.test(key)) return '';
-  return 'ElevenLabs API key looks like a key ID, not the secret. Paste the sk_ secret into ELEVENLABS_API_KEY and restart the backend.';
+  if (!key) {
+    return 'ElevenLabs API key is missing on the API server. Set ELEVENLABS_API_KEY on Render (the backend), not Vercel, then restart that service.';
+  }
+  return '';
 }
 
 function parseVoice(raw) {

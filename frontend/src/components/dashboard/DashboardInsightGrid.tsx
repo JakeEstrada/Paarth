@@ -3,11 +3,14 @@ import { useTheme } from '@mui/material/styles';
 import { eachDayOfInterval, format, subDays } from 'date-fns';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AreaChart, DonutChart, chartPanelSx, compactMoney } from './dashboardChartPrimitives';
+import { AreaChart, DonutChart, ScatterChart, chartPanelSx, compactMoney } from './dashboardChartPrimitives';
+import OrangeCountyJobMap from './OrangeCountyJobMap';
 import { formatMoney } from '../../utils/paymentSchedule';
 
 type PaymentRow = {
   amount?: number;
+  note?: string;
+  paymentType?: string;
   resolvedPaymentPaidAt?: string;
   paymentPaidAt?: string;
   createdAt?: string;
@@ -84,17 +87,20 @@ export default function DashboardInsightGrid({
   const navigate = useNavigate();
   const days = useMemo(() => dayKeys(30), []);
 
-  const paymentSeries = useMemo(() => {
-    const bucket = new Map(days.map((date) => [date, { date, amount: 0, count: 0 }]));
-    for (const row of payments) {
-      const date = ymd(row.resolvedPaymentPaidAt || row.paymentPaidAt || row.createdAt);
-      const current = bucket.get(date);
-      if (!current) continue;
-      current.amount += Number(row.amount) || 0;
-      current.count += 1;
-    }
-    return days.map((date) => bucket.get(date)!);
-  }, [days, payments]);
+  const paymentPoints = useMemo(() => {
+    return payments
+      .map((row) => {
+        const stamp = row.resolvedPaymentPaidAt || row.paymentPaidAt || row.createdAt;
+        const time = stamp ? new Date(stamp).getTime() : NaN;
+        const note = String(row.note || '').replace(/^Payment received:\s*/i, '').trim();
+        return {
+          t: time,
+          y: Number(row.amount) || 0,
+          label: note || String(row.paymentType || 'Payment').replace(/_/g, ' '),
+        };
+      })
+      .filter((point) => Number.isFinite(point.t) && point.y > 0);
+  }, [payments]);
 
   const activitySeries = useMemo(() => {
     const bucket = new Map(
@@ -141,7 +147,7 @@ export default function DashboardInsightGrid({
     }));
   }, [activitySeries, auditHasData, days, teamActivity]);
 
-  const paymentTotal = paymentSeries.reduce((sum, row) => sum + row.amount, 0);
+  const paymentTotal = paymentPoints.reduce((sum, row) => sum + row.y, 0);
   const activityTotal = activitySeries.reduce(
     (sum, row) => sum + row.pipeline + row.notes + row.tasks + row.other,
     0,
@@ -167,7 +173,7 @@ export default function DashboardInsightGrid({
                 Payments collected
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Last 30 days · {money(paymentTotal)}
+                Last 30 days · {paymentPoints.length} payments · {money(paymentTotal)}
               </Typography>
             </Box>
             {canOpenFinance ? (
@@ -176,17 +182,10 @@ export default function DashboardInsightGrid({
               </Button>
             ) : null}
           </Box>
-          <AreaChart
-            data={paymentSeries}
-            series={[
-              {
-                key: hideSensitive ? 'count' : 'amount',
-                label: hideSensitive ? 'Payments' : 'Amount collected',
-                color: '#34d399',
-              },
-            ]}
+          <ScatterChart
+            points={paymentPoints}
             formatValue={hideSensitive ? undefined : axisMoney}
-            showDots
+            hideSensitive={hideSensitive}
           />
         </Paper>
         <Paper elevation={0} sx={chartPanelSx(theme)}>
@@ -203,6 +202,8 @@ export default function DashboardInsightGrid({
           />
         </Paper>
       </Box>
+
+      <OrangeCountyJobMap />
 
       <Box
         sx={{

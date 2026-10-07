@@ -1449,7 +1449,7 @@ function DashboardPage() {
               Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {greetingName}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 520 }}>
-              Payments, team activity, and website traffic for the last 30 days.
+              Payments, Orange County jobs, team activity, and website traffic.
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>

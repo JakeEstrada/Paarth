@@ -58,6 +58,142 @@ export function ChartLegend({ series }: { series: ChartSeries[] }) {
   );
 }
 
+export function ScatterChart({
+  points,
+  height = 240,
+  formatValue,
+  hideSensitive = false,
+}: {
+  points: { t: number; y: number; label: string }[];
+  height?: number;
+  formatValue?: (value: number) => string;
+  hideSensitive?: boolean;
+}) {
+  const theme = useTheme();
+  const [hover, setHover] = useState<number | null>(null);
+  const width = 720;
+  const pad = { l: 58, r: 16, t: 16, b: 30 };
+  const innerW = width - pad.l - pad.r;
+  const innerH = height - pad.t - pad.b;
+  const showValue = formatValue || ((value: number) => String(Math.round(value)));
+  const range = useMemo(() => {
+    const end = Date.now();
+    return { end, start: end - 29 * 24 * 60 * 60 * 1000 };
+  }, []);
+  const { start, end: now } = range;
+  const plotted = useMemo(() => {
+    const rows = points
+      .filter((point) => Number.isFinite(point.t) && point.t >= start && point.t <= now + 12 * 60 * 60 * 1000)
+      .sort((a, b) => a.t - b.t);
+    const used = new Map<string, number>();
+    return rows.map((point) => {
+      const key = `${Math.round(point.t / 3600000)}:${Math.round(point.y)}`;
+      const bump = used.get(key) || 0;
+      used.set(key, bump + 1);
+      return { ...point, bump };
+    });
+  }, [now, points, start]);
+  const max = useMemo(() => {
+    if (hideSensitive) return 1;
+    return niceMax(Math.max(0, ...plotted.map((point) => point.y)));
+  }, [hideSensitive, plotted]);
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  const xTicks = [0, 0.25, 0.5, 0.75, 1].map((frac) => start + (now - start) * frac);
+
+  const dots = plotted.map((point) => {
+    const x = pad.l + ((point.t - start) / (now - start)) * innerW + point.bump * 5;
+    const y = hideSensitive
+      ? pad.t + innerH * 0.45 - point.bump * 6
+      : pad.t + innerH - (point.y / max) * innerH;
+    return { ...point, x: Math.min(pad.l + innerW, Math.max(pad.l, x)), y };
+  });
+  const active = hover == null ? null : dots[hover];
+  const boxW = 160;
+  const boxH = 44;
+  const boxX = active
+    ? active.x + 12 + boxW > width - pad.r
+      ? Math.max(pad.l, active.x - 12 - boxW)
+      : active.x + 12
+    : 0;
+  const boxY = active ? Math.min(Math.max(pad.t, active.y - boxH - 8), pad.t + innerH - boxH) : 0;
+
+  return (
+    <Box sx={{ width: '100%', minWidth: 0 }}>
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img">
+        {yTicks.map((frac) => {
+          const y = pad.t + innerH * (1 - frac);
+          return (
+            <g key={frac}>
+              <line x1={pad.l} x2={pad.l + innerW} y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 6" />
+              {hideSensitive ? null : (
+                <text x={pad.l - 8} y={y + 4} textAnchor="end" fill={theme.palette.text.secondary} fontSize="11">
+                  {showValue(max * frac)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + innerH} stroke={theme.palette.divider} />
+        <line
+          x1={pad.l}
+          y1={pad.t + innerH}
+          x2={pad.l + innerW}
+          y2={pad.t + innerH}
+          stroke={theme.palette.divider}
+        />
+        {xTicks.map((time) => {
+          const x = pad.l + ((time - start) / (now - start)) * innerW;
+          return (
+            <text
+              key={time}
+              x={x}
+              y={height - 8}
+              textAnchor="middle"
+              fill={theme.palette.text.secondary}
+              fontSize="11"
+            >
+              {format(new Date(time), 'M/d')}
+            </text>
+          );
+        })}
+        {dots.map((point, index) => (
+          <circle
+            key={`${point.t}-${point.y}-${index}`}
+            cx={point.x}
+            cy={point.y}
+            r={hover === index ? 6 : 4.5}
+            fill="#34d399"
+            stroke={theme.palette.background.paper}
+            strokeWidth="1.5"
+            style={{ cursor: 'pointer' }}
+            onMouseEnter={() => setHover(index)}
+            onMouseLeave={() => setHover(null)}
+          />
+        ))}
+        {active ? (
+          <g pointerEvents="none">
+            <rect
+              x={boxX}
+              y={boxY}
+              width={boxW}
+              height={boxH}
+              rx={8}
+              fill={theme.palette.background.paper}
+              stroke={theme.palette.divider}
+            />
+            <text x={boxX + 10} y={boxY + 18} fill={theme.palette.text.primary} fontSize="12" fontWeight={700}>
+              {active.label}
+            </text>
+            <text x={boxX + 10} y={boxY + 34} fill={theme.palette.text.secondary} fontSize="11">
+              {hideSensitive ? 'Locked' : `${showValue(active.y)} · ${format(new Date(active.t), 'MMM d')}`}
+            </text>
+          </g>
+        ) : null}
+      </svg>
+    </Box>
+  );
+}
+
 export function AreaChart({
   data,
   series,
