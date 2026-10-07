@@ -156,55 +156,10 @@ export default function DashboardInsightGrid({
   const money = (value: number) => (hideSensitive ? 'Locked' : formatMoney(value));
   const axisMoney = (value: number) => (hideSensitive ? String(Math.round(value)) : compactMoney(value));
 
+  const compactPanel = { ...chartPanelSx(theme), minHeight: { md: 320 }, height: 'auto' };
+
   return (
     <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1.7fr) minmax(280px, 0.9fr)' },
-          gap: 2,
-          alignItems: 'stretch',
-        }}
-      >
-        <Paper elevation={0} sx={chartPanelSx(theme)}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-                Payments collected
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Last 30 days · {paymentPoints.length} payments · {money(paymentTotal)}
-              </Typography>
-            </Box>
-            {canOpenFinance ? (
-              <Button size="small" onClick={() => navigate('/finance?tab=deposits')} sx={{ textTransform: 'none' }}>
-                Finance
-              </Button>
-            ) : null}
-          </Box>
-          <ScatterChart
-            points={paymentPoints}
-            formatValue={hideSensitive ? undefined : axisMoney}
-            hideSensitive={hideSensitive}
-          />
-        </Paper>
-        <Paper elevation={0} sx={chartPanelSx(theme)}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-            Pipeline mix
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            Active jobs by stage group
-          </Typography>
-          <DonutChart
-            slices={pipeline}
-            centerLabel="jobs"
-            centerValue={String(pipeline.reduce((sum, slice) => sum + slice.value, 0))}
-          />
-        </Paper>
-      </Box>
-
-      <OrangeCountyJobMap />
-
       <Box
         sx={{
           display: 'grid',
@@ -213,7 +168,7 @@ export default function DashboardInsightGrid({
           alignItems: 'stretch',
         }}
       >
-        <Paper elevation={0} sx={chartPanelSx(theme)}>
+        <Paper elevation={0} sx={compactPanel}>
           <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
             Team activity
           </Typography>
@@ -224,6 +179,7 @@ export default function DashboardInsightGrid({
           </Typography>
           <AreaChart
             data={teamSeries}
+            height={200}
             series={
               auditHasData
                 ? [
@@ -242,7 +198,7 @@ export default function DashboardInsightGrid({
           />
         </Paper>
         {showTraffic ? (
-          <Paper elevation={0} sx={chartPanelSx(theme)}>
+          <Paper elevation={0} sx={compactPanel}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
               <Box>
                 <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
@@ -257,6 +213,7 @@ export default function DashboardInsightGrid({
               </Button>
             </Box>
             <AreaChart
+              height={200}
               data={trafficSeries}
               series={[
                 { key: 'pageViews', label: 'Page views', color: '#60a5fa' },
@@ -266,6 +223,54 @@ export default function DashboardInsightGrid({
             />
           </Paper>
         ) : null}
+      </Box>
+
+      <OrangeCountyJobMap />
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1.7fr) minmax(280px, 0.9fr)' },
+          gap: 2,
+          alignItems: 'stretch',
+        }}
+      >
+        <Paper elevation={0} sx={compactPanel}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+                Payments collected
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Last 30 days · {paymentPoints.length} payments · {money(paymentTotal)}
+              </Typography>
+            </Box>
+            {canOpenFinance ? (
+              <Button size="small" onClick={() => navigate('/finance?tab=deposits')} sx={{ textTransform: 'none' }}>
+                Finance
+              </Button>
+            ) : null}
+          </Box>
+          <ScatterChart
+            height={200}
+            points={paymentPoints}
+            formatValue={hideSensitive ? undefined : axisMoney}
+            hideSensitive={hideSensitive}
+          />
+        </Paper>
+        <Paper elevation={0} sx={compactPanel}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+            Pipeline mix
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            Active jobs by stage group
+          </Typography>
+          <DonutChart
+            slices={pipeline}
+            centerLabel="jobs"
+            centerValue={String(pipeline.reduce((sum, slice) => sum + slice.value, 0))}
+          />
+        </Paper>
       </Box>
     </Box>
   );

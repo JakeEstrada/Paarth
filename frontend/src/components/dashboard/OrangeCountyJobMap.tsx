@@ -14,26 +14,39 @@ type MapPin = {
   address: string;
   lat: number;
   lng: number;
+  group?: 'active' | 'completed' | 'archived';
 };
 
-type MapView = 'pipeline' | 'current' | 'week';
+type MapView = 'all' | 'pipeline' | 'current' | 'week' | 'completed' | 'archived';
 
 const VIEWS: { id: MapView; label: string }[] = [
+  { id: 'all', label: 'All jobs' },
   { id: 'pipeline', label: 'Pipeline' },
   { id: 'current', label: 'On site now' },
   { id: 'week', label: 'This week' },
+  { id: 'completed', label: 'Completed' },
+  { id: 'archived', label: 'Archived' },
 ];
+
+const PIN_COLORS: Record<string, string> = {
+  active: '#f43f5e',
+  completed: '#34d399',
+  archived: '#94a3b8',
+};
+
+function pinIcon(group = 'active') {
+  const color = PIN_COLORS[group] || PIN_COLORS.active;
+  return L.divIcon({
+    className: 'paarth-job-pin',
+    html: `<span class="paarth-job-pin-dot" style="background:${color}"></span>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+    popupAnchor: [0, -10],
+  });
+}
 
 const OC_CENTER: L.LatLngExpression = [33.67, -117.78];
 const OC_BOUNDS = L.latLngBounds([33.34, -118.18], [33.98, -117.4]);
-
-const pinIcon = L.divIcon({
-  className: 'paarth-job-pin',
-  html: '<span class="paarth-job-pin-dot"></span>',
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-  popupAnchor: [0, -10],
-});
 
 function addBasemap(map: L.Map) {
   const mapbox = String(import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '').trim();
@@ -64,12 +77,15 @@ export default function OrangeCountyJobMap() {
   const theme = useTheme();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<{ map: L.Map; markers: L.LayerGroup } | null>(null);
-  const [view, setView] = useState<MapView>('pipeline');
+  const [view, setView] = useState<MapView>('all');
   const [paused, setPaused] = useState(false);
   const [pins, setPins] = useState<Record<MapView, MapPin[]>>({
+    all: [],
     pipeline: [],
     current: [],
     week: [],
+    completed: [],
+    archived: [],
   });
 
   useEffect(() => {
@@ -79,13 +95,18 @@ export default function OrangeCountyJobMap() {
       .then((response) => {
         if (cancelled) return;
         setPins({
+          all: response.data?.all || [],
           pipeline: response.data?.pipeline || [],
           current: response.data?.current || [],
           week: response.data?.week || [],
+          completed: response.data?.completed || [],
+          archived: response.data?.archived || [],
         });
       })
       .catch(() => {
-        if (!cancelled) setPins({ pipeline: [], current: [], week: [] });
+        if (!cancelled) {
+          setPins({ all: [], pipeline: [], current: [], week: [], completed: [], archived: [] });
+        }
       });
     return () => {
       cancelled = true;
@@ -122,7 +143,7 @@ export default function OrangeCountyJobMap() {
     ctx.markers.clearLayers();
     const bounds = L.latLngBounds([]);
     pins[view].forEach((pin) => {
-      const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon });
+      const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin.group) });
       marker.bindPopup(
         `<strong>${pin.customerName || pin.title}</strong><br/>${pin.title}<br/>${pin.address}`,
       );
@@ -155,7 +176,12 @@ export default function OrangeCountyJobMap() {
       elevation={0}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      sx={{ ...chartPanelSx(theme), display: { xs: 'none', md: 'flex' }, minHeight: { md: 520 } }}
+      sx={{
+        ...chartPanelSx(theme),
+        display: { xs: 'none', md: 'flex' },
+        minHeight: { md: 720 },
+        height: 'auto',
+      }}
     >
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
         <Box>
@@ -163,10 +189,10 @@ export default function OrangeCountyJobMap() {
             Orange County jobs
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            {activePins.length} mapped · aerial view · cycles pipeline, on-site, and this week
+            {activePins.length} mapped · red pipeline · green completed · gray archived
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
+        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {VIEWS.map((item) => (
             <Button
               key={item.id}
@@ -184,7 +210,7 @@ export default function OrangeCountyJobMap() {
         sx={{
           position: 'relative',
           flex: 1,
-          minHeight: 420,
+          minHeight: 620,
           borderRadius: 2,
           overflow: 'hidden',
           '& .leaflet-container': {
@@ -199,7 +225,6 @@ export default function OrangeCountyJobMap() {
             width: 16,
             height: 16,
             borderRadius: '50%',
-            background: '#f43f5e',
             border: '2px solid #fff',
             boxShadow: '0 0 0 1px rgba(0,0,0,0.25)',
           },

@@ -82,6 +82,20 @@ function isThisWeekJob(job, weekStart, weekEnd, weekJobIds) {
   return jobWindows(job).some((window) => overlaps(window.start, window.end, weekStart, weekEnd));
 }
 
+function isCompletedJob(job) {
+  return (
+    Boolean(job.isCompletedClosedOut) ||
+    job.stage === 'INSTALLED' ||
+    job.stage === 'FINAL_PAYMENT_CLOSED'
+  );
+}
+
+function pinGroup(job) {
+  if (job.isArchived) return 'archived';
+  if (isCompletedJob(job)) return 'completed';
+  return 'active';
+}
+
 function pinPayload(job, address, lat, lng) {
   const customer =
     job.customerId && typeof job.customerId === 'object' ? job.customerId : null;
@@ -93,6 +107,9 @@ function pinPayload(job, address, lat, lng) {
     address,
     lat,
     lng,
+    group: pinGroup(job),
+    isArchived: Boolean(job.isArchived),
+    isDeadEstimate: Boolean(job.isDeadEstimate),
   };
 }
 
@@ -146,13 +163,10 @@ async function getJobMapPins(req, res) {
     const { today, weekStart, weekEnd } = weekWindow();
     const tomorrow = addDays(today, 1);
 
-    const jobs = await Job.find({
-      isArchived: { $ne: true },
-      isDeadEstimate: { $ne: true },
-      isCompletedClosedOut: { $ne: true },
-      stage: { $in: [...PIPELINE_STAGES, 'INSTALLED'] },
-    })
-      .select('title stage jobAddress geo schedule customerId')
+    const jobs = await Job.find({})
+      .select(
+        'title stage jobAddress geo schedule customerId isArchived isDeadEstimate isCompletedClosedOut',
+      )
       .populate({ path: 'customerId', select: 'name address addresses', strictPopulate: false });
 
     const weekAppointments = await Appointment.find({
@@ -166,15 +180,23 @@ async function getJobMapPins(req, res) {
 
     await fillMissingCoords(jobs);
 
-    const pipelineJobs = jobs.filter((job) => PIPELINE_STAGES.includes(job.stage));
-    const currentJobs = jobs.filter((job) => isCurrentJob(job, today, tomorrow));
-    const weekJobs = jobs.filter((job) => isThisWeekJob(job, weekStart, weekEnd, weekJobIds));
+    const liveJobs = jobs.filter((job) => !job.isArchived);
+    const pipelineJobs = liveJobs.filter(
+      (job) => PIPELINE_STAGES.includes(job.stage) && !isCompletedJob(job),
+    );
+    const currentJobs = liveJobs.filter((job) => isCurrentJob(job, today, tomorrow));
+    const weekJobs = liveJobs.filter((job) => isThisWeekJob(job, weekStart, weekEnd, weekJobIds));
+    const completedJobs = liveJobs.filter((job) => isCompletedJob(job));
+    const archivedJobs = jobs.filter((job) => job.isArchived);
 
     return res.json({
       county: 'Orange County, CA',
+      all: pinsInCounty(jobs),
       pipeline: pinsInCounty(pipelineJobs),
       current: pinsInCounty(currentJobs),
       week: pinsInCounty(weekJobs),
+      completed: pinsInCounty(completedJobs),
+      archived: pinsInCounty(archivedJobs),
     });
   } catch (error) {
     console.error('Failed to load job map pins:', error);
