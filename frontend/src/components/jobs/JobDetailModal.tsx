@@ -1327,19 +1327,15 @@ function JobDetailModal({
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, minWidth: 0 }}>
           {!isShopDisplay ? (
             <>
-              {!hideFinancials ? (
-                <>
-                  <Button
-                    size="small"
-                    variant="text"
-                    onClick={() => setCoverPagesOpen(true)}
-                    sx={HEADER_LINK_SX}
-                  >
-                    Cover page
-                  </Button>
-                  <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
-                </>
-              ) : null}
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => setCoverPagesOpen(true)}
+                sx={HEADER_LINK_SX}
+              >
+                Cover page
+              </Button>
+              <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
               <Button
                 size="small"
                 variant="text"
