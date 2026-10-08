@@ -65,6 +65,7 @@ import AddAppointmentModal from '../appointments/AddAppointmentModal';
 import JobCannedSmsDialog from './JobCannedSmsDialog';
 import JobPaymentScheduleEditor from './JobPaymentScheduleEditor';
 import JobChangeOrdersEditor from './JobChangeOrdersEditor';
+import JobCoverPagesDialog from './JobCoverPagesDialog';
 import JobPaymentsSummary from './JobPaymentsSummary';
 import JobSchedulePanel from './JobSchedulePanel';
 import EmployeeSmsRecipientField, {
@@ -97,21 +98,6 @@ import { JOB_SOURCE_OPTIONS, formatJobSourceWithCompany, sanitizeMoneyTypingInpu
 import ReferralCompanyField, { rememberReferralCompany } from '../common/ReferralCompanyField';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-
-function estimateNumberSortValue(estimateNumber) {
-  const raw = String(estimateNumber || '').trim();
-  const m = raw.match(/^(\d+)-(\d+)$/);
-  if (!m) return Number.MAX_SAFE_INTEGER;
-  const prefix = Number(m[1]) || 0;
-  const seq = Number(m[2]) || 0;
-  return prefix * 100000 + seq;
-}
-
-function sortJobEstimatesByNumber(list) {
-  return [...(list || [])].sort(
-    (a, b) => estimateNumberSortValue(a?.estimateNumber) - estimateNumberSortValue(b?.estimateNumber)
-  );
-}
 
 const openPdfViewer = (fileId) => {
   window.open(`/pdf/${fileId}`, '_blank');
@@ -326,10 +312,10 @@ function JobDetailModal({
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
   const [jobTasks, setJobTasks] = useState([]);
-  const [jobEstimates, setJobEstimates] = useState([]);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [changeOrdersSaving, setChangeOrdersSaving] = useState(false);
   const hideFinancials = hideSensitive;
+  const [coverPagesOpen, setCoverPagesOpen] = useState(false);
   const [cannedSmsOpen, setCannedSmsOpen] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareSmsRecipient, setShareSmsRecipient] = useState('');
@@ -388,16 +374,6 @@ function JobDetailModal({
       setEditedJob(response.data);
       setIsEditing(false);
       await fetchJobTasks();
-      try {
-        const estimatesResponse = await axios.get(`${API_URL}/estimates`, { params: { jobId } });
-        const list = Array.isArray(estimatesResponse.data)
-          ? estimatesResponse.data
-          : estimatesResponse.data?.estimates || [];
-        setJobEstimates(sortJobEstimatesByNumber(list));
-      } catch (estimateError) {
-        console.error('Error fetching job estimates:', estimateError);
-        setJobEstimates([]);
-      }
     } catch (error) {
       console.error('Error fetching job details:', error);
       toast.error('Failed to load job details');
@@ -1351,37 +1327,18 @@ function JobDetailModal({
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, minWidth: 0 }}>
           {!isShopDisplay ? (
             <>
-              {jobEstimates.length > 0 ? (
-                isSuperAdmin() ? (
+              {!hideFinancials ? (
+                <>
                   <Button
                     size="small"
                     variant="text"
-                    component={RouterLink}
-                    to={`/finance?tab=estimates&jobId=${job._id}&estimateId=${jobEstimates[0]._id}`}
-                    onClick={onClose}
+                    onClick={() => setCoverPagesOpen(true)}
                     sx={HEADER_LINK_SX}
                   >
-                    {jobEstimates[0].estimateNumber || 'Estimate'}
+                    Cover page
                   </Button>
-                ) : (
-                  <Typography component="span" sx={{ ...HEADER_LINK_SX, display: 'inline-flex', alignItems: 'center' }}>
-                    {jobEstimates[0].estimateNumber || 'Estimate'}
-                  </Typography>
-                )
-              ) : isSuperAdmin() ? (
-                <Button
-                  size="small"
-                  variant="text"
-                  component={RouterLink}
-                  to={`/finance?tab=estimates&jobId=${job._id}`}
-                  onClick={onClose}
-                  sx={HEADER_LINK_SX}
-                >
-                  Estimate
-                </Button>
-              ) : null}
-              {isSuperAdmin() || jobEstimates.length > 0 ? (
-                <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+                  <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+                </>
               ) : null}
               <Button
                 size="small"
@@ -2265,6 +2222,15 @@ function JobDetailModal({
           onJobDataChanged({ type: 'appointment', jobId });
         }}
         job={job}
+      />
+
+      <JobCoverPagesDialog
+        open={coverPagesOpen}
+        onClose={() => setCoverPagesOpen(false)}
+        job={job}
+        onSaved={() => {
+          fetchJobFiles({ force: true });
+        }}
       />
 
       <JobCannedSmsDialog
