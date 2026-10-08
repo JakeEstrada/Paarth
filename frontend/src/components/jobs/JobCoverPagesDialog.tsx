@@ -33,15 +33,13 @@ import { invalidateJobFilesCache } from '../../utils/fileListCache';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const COVER_LOGO = '/scww.png';
-const ZELLE_QR = '/contract-zelle-qr.png';
+const ZELLE_QR = '/contract-zelle-qr.png?v=3';
 
 const OWNER_NAME = 'Edward T. Estrada';
 const OWNER_PHONE = '949-498-4397';
 const LICENSE_NUMBER = '# C-6 753246';
 const CSLB_ADDRESS = '9835 Goethe Road';
 const STAINER_REFERRALS = '*Jesus (949)616-2038 | *Carlos Jimenez (714)678-7072';
-const ZELLE_PHONE = '949-838-5157';
-const ZELLE_DEPOSIT = 'Deposit to Checking ...5821';
 const SHOP_ADDRESS_1 = '1030 Calle Sombra, F';
 const SHOP_ADDRESS_2 = 'San Clemente, CA 92673';
 
@@ -514,11 +512,12 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
+                  justifyContent: 'space-between',
                   px: '48px',
                   py: '40px',
                 }}
               >
-                <Box>
+                <Box sx={{ width: '100%' }}>
                   <Typography sx={{ fontWeight: 800, fontSize: 34, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
                     Contract. Packet
                   </Typography>
@@ -540,64 +539,53 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
                   ) : null}
                 </Box>
 
-                <Box sx={{ flex: '0.45 1 auto' }} />
-
-                <Box
-                  component="img"
-                  src={COVER_LOGO}
-                  alt="San Clemente Woodworking"
-                  sx={{ width: 156, height: 156, objectFit: 'contain' }}
-                />
-
-                <Box
-                  sx={{
-                    mt: 2.5,
-                    border: '1.5px solid #000',
-                    px: 4,
-                    py: 1.25,
-                    minWidth: 300,
-                    textAlign: 'center',
-                  }}
-                >
-                  <Typography sx={{ fontWeight: 700, fontSize: 16, textDecoration: 'underline' }}>
-                    San Clemente Woodworking
-                  </Typography>
-                  <Typography sx={{ fontSize: 14.5, mt: 0.4 }}>{SHOP_ADDRESS_1}</Typography>
-                  <Typography sx={{ fontSize: 14.5 }}>{SHOP_ADDRESS_2}</Typography>
+                <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <Box
+                    component="img"
+                    src={COVER_LOGO}
+                    alt="San Clemente Woodworking"
+                    sx={{ width: 156, height: 156, objectFit: 'contain', display: 'block' }}
+                  />
+                  <Box
+                    sx={{
+                      mt: 2.5,
+                      border: '1.5px solid #000',
+                      px: 4,
+                      py: 1.25,
+                      minWidth: 300,
+                      textAlign: 'center',
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: 700, fontSize: 16, textDecoration: 'underline' }}>
+                      San Clemente Woodworking
+                    </Typography>
+                    <Typography sx={{ fontSize: 14.5, mt: 0.4 }}>{SHOP_ADDRESS_1}</Typography>
+                    <Typography sx={{ fontSize: 14.5 }}>{SHOP_ADDRESS_2}</Typography>
+                  </Box>
                 </Box>
 
-                <Box sx={{ flex: '0.45 1 auto' }} />
-
-                <Box>
-                  <Typography sx={{ fontStyle: 'italic', fontSize: 14, maxWidth: 460, lineHeight: 1.45, mx: 'auto' }}>
+                <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <Typography sx={{ fontStyle: 'italic', fontSize: 14, maxWidth: 460, lineHeight: 1.45 }}>
                     We appreciate the opportunity to work with you and look forward to completing your
                     project.
                   </Typography>
                   <Typography sx={{ fontStyle: 'italic', fontWeight: 600, fontSize: 13.5, mt: 2.25 }}>
                     Stainer Referrals:
                   </Typography>
-                  <Typography sx={{ fontSize: 13, mt: 0.3 }}>{STAINER_REFERRALS}</Typography>
-                  <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <Typography
-                      sx={{
-                        fontSize: 10.5,
-                        fontWeight: 700,
-                        letterSpacing: '0.08em',
-                        textTransform: 'uppercase',
-                        color: '#444',
-                      }}
-                    >
-                      San Clemente Woodworking
-                    </Typography>
-                    <Typography sx={{ fontSize: 11, color: '#555', mt: 0.15 }}>{ZELLE_PHONE}</Typography>
-                    <Typography sx={{ fontSize: 10, color: '#666', mt: 0.1 }}>{ZELLE_DEPOSIT}</Typography>
-                    <Box
-                      component="img"
-                      src={ZELLE_QR}
-                      alt="Zelle"
-                      sx={{ width: 140, height: 100, objectFit: 'contain', mt: 0.5 }}
-                    />
-                  </Box>
+                  <Typography sx={{ fontSize: 13, mt: 0.3, maxWidth: 480 }}>
+                    {STAINER_REFERRALS}
+                  </Typography>
+                  <Box
+                    component="img"
+                    src={ZELLE_QR}
+                    alt="Pay with Zelle"
+                    sx={{
+                      width: 240,
+                      height: 'auto',
+                      display: 'block',
+                      mt: 2,
+                    }}
+                  />
                 </Box>
               </Box>
             </Box>
@@ -690,9 +678,8 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
                   display: 'grid',
                   gridTemplateColumns: '1fr 1fr',
                   columnGap: 5,
-                  mt: 3,
-                  pt: 1.5,
-                  borderTop: '1px solid #000',
+                  mt: 7,
+                  pt: 2.5,
                 }}
               >
                 <Typography sx={{ fontSize: 14, display: 'flex', alignItems: 'flex-end', gap: 1 }}>
