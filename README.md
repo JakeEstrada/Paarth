@@ -6,6 +6,14 @@ Paarth is the system of record for San Clemente Woodworking. Every job that ente
 
 It is built for the way a real shop actually works. The owner opens it on a laptop. The salesman checks the pipeline from a phone in a customer's driveway. A TV on the shop wall shows the board and the install calendar all day without anyone touching it. A Raspberry Pi by the door reads RFID badges and turns them into timesheets. Nobody has to be at a desk for the business to keep running.
 
+### Recent (October 2026)
+
+The last stretch of work went into talking to the shop, printing the packet the customer actually signs, and giving the owner a dashboard that looks like the county instead of a spreadsheet.
+
+- **Liminality** — a wake-word voice on desktop (Chrome or Edge) plus the in-app help chat. Say the name, then open a shop view, ask a live question (“jobs in Dana Point”, “who’s coming up”, “most recent deposit”), or “send Hammer to Jake” to text that customer card to someone on the employee rolodex. Speech uses ElevenLabs; answers use the same live-data tools as Paarth Help.
+- **Cover pages** — from the job card, a two-page letter PDF that matches the paper contract packet: estimate number, payment terms from the job schedule, Zelle QR, California contract language, and a signature block. It saves onto the job’s files.
+- **Dashboard** — charts for pipeline mix, payments, site traffic, and team activity, plus an Orange County map of geocoded job sites.
+
 ---
 
 ## Contents
@@ -14,6 +22,7 @@ It is built for the way a real shop actually works. The owner opens it on a lapt
 - [The pipeline](#the-pipeline) — the heart of the app
 - [Scheduling and the install calendar](#scheduling-and-the-install-calendar)
 - [Mobile messaging](#mobile-messaging)
+- [Liminality](#liminality) — voice and in-app help
 - [Real-time updates](#real-time-updates)
 - [What it keeps track of](#what-it-keeps-track-of)
 - [Money](#money)
@@ -129,7 +138,7 @@ Paarth sends and receives real SMS through Twilio, in both directions, and keeps
 | Pipeline stage templates | Offered automatically when a job moves stage |
 | Appointment reminders | Queued when an appointment is booked, keyed to the appointment |
 | Payment notifications | Fired automatically when a payment is marked paid, to a configured recipient list |
-| Employee and customer texts | From the job modal, customer page, vendor page, and calendar — including sharing a job's schedule and address with an installer |
+| Employee and customer texts | From the job modal, customer page, vendor page, and calendar — including sharing a job's schedule and address with an installer. The same customer card can be sent by voice: “send [customer] to [employee]” texts only rolodex mobiles |
 
 Recipients can be resolved from the employee roster rather than retyped, and messages can be **scheduled for the future** rather than sent now. Images can be attached via a staged MMS upload.
 
@@ -146,6 +155,26 @@ A public `/sms-consent` page carries the A2P compliance copy required for campai
 ### Scheduled delivery
 
 A scheduler inside the API process wakes every minute, claims scheduled messages whose send time has passed, sends them in small batches, and refreshes stale delivery statuses from Twilio. No separate worker process to deploy or babysit.
+
+---
+
+## Liminality
+
+Hands-busy help for the shop floor and the office, not a generic chatbot bolted on the side.
+
+**Paarth Help** is the typed assistant (floating chat). It only answers about this app and this tenant. Tools pull live data the signed-in user is already allowed to see: global search, job notes, job details, recent payments, recent deposits, jobs by city or name, the upcoming calendar, and the employee rolodex. It can also jump the browser to a whitelisted path. It does not invent customer or financial numbers.
+
+**Voice** is the same brain, spoken. On desktop Chrome or Edge, Settings → Liminality turns the microphone on. Nothing is listened to while it is off. Flow:
+
+1. Say **Liminality** (or a short “Liminality pipeline” in one breath).
+2. Shop-view words — pipeline, calendar, customers, dashboard — open the TV/kiosk screens immediately.
+3. Anything else goes to the assistant and is read back in a short spoken answer.
+
+“Send Hammer to Jake” resolves a unique customer/job and a unique rolodex name with a mobile on file, then sends the same contact card the job-card share button uses (name, phones, email, address, gate code, job title). Ambiguous names are asked back; it never texts an arbitrary number.
+
+Speech is ElevenLabs (Flash by default, with slower models as fallback). Common lines are warmed when the mic turns on so replies are not waiting on a cold round-trip. Recognition commits after a short pause instead of waiting for Chrome’s slow “final” transcript.
+
+Liminality is a desktop feature. Phones stay on the five-page mobile product; the mic toggle is a no-op there.
 
 ---
 
@@ -210,7 +239,7 @@ A job is the richest document in the system, because in this business a job *is*
 - **Change orders** — each billed separately or rolled into the final payment, each with its own paid status
 - **Measurements** — the complete takeoff sheet, saved as structured data, with who completed it and when
 - **The install plan** — start and end dates, installers, multiple scheduled entries, crew notes, calendar colour, and a flag for jobs parked back on the bench
-- **Where it is** — job site address and on-site contact, which are often not the customer's billing details
+- **Where it is** — job site address (with lat/lng when geocoded) and on-site contact, which are often not the customer's billing details. Customers also carry a **gate code**, which prints on cover pages and in the installer text card
 - **How it closed** — final payment method, close-out state, archive state, and a "dead estimate" flag for jobs that never happened
 - **Its whole story** — a notes timeline where stage changes, appointments, and flagged important notes are interleaved with free text
 
@@ -238,6 +267,8 @@ A woodworking business lives or dies on deposits, progress payments, and final b
 ### Documents
 
 **Estimates, contracts, and invoices** are separate numbered document types, each with its own per-tenant sequence counter so numbers never collide or repeat. An estimate carries line items, tax, discounts, and a grand total, and moves through a real lifecycle — draft, sent, approved, rejected, superseded, converted, archived. Approved estimates convert into contracts and invoices, and the derived documents stay linked back to the estimate that produced them, so a disputed invoice can be traced to the quote it came from. Invoices know what kind they are (deposit, final, full, or change order) and track a running balance due. PDFs are generated in the browser.
+
+**Cover pages** are the packet that goes in the truck, not the numbered CRM contract. From the job card, Paarth asks for the QuickBooks estimate number and confirms customer details, then builds two US-letter pages from the job total and payment schedule: a bordered cover (shop letterhead, terms, Zelle QR) and a California contract page with mechanics’-lien notice and a signature block. Export is html2canvas + jsPDF and the file lands on the job. The action stays on the job header even when dollar amounts are hidden on a shared screen.
 
 ### Payment schedules
 
@@ -291,6 +322,10 @@ Each surviving page was then reshaped rather than shrunk:
 
 Smaller decisions throughout: dialogs go nearly full-bleed instead of floating in MUI's default margin, headings shrink, table gutters tighten, buttons lose their desktop padding, and the financial PIN gate is skipped entirely because a phone is already a personal device. The dark-mode toggle was moved out of the top bar — it sat beside the avatar where a thumb hits it by accident — and into the user menu with an explicit label.
 
+### The dashboard
+
+On a desktop, `/dashboard` is the owner’s morning page: pipeline mix, recent payments, site traffic, team activity, and an **Orange County job map** plotted from geocoded job sites. Sensitive money series hide behind the same financial gates as the rest of the app. It is not in the five-page mobile set.
+
 ### Design system
 
 A single theme provider defines light and dark palettes, responsive typography that steps down at the mobile breakpoint, and component-level overrides: buttons that are not shouty all-caps, cards that lift on hover, a gradient app bar, and mobile-specific rules for dialogs and table cells. Mode is remembered per browser and defaults to light.
@@ -322,7 +357,7 @@ A board on a shop wall should not display what every job is worth to anyone walk
 | Backend | Node.js, Express 5, Mongoose 9, JSON Web Tokens, Socket.IO |
 | Database | MongoDB, multi-tenant |
 | Files | AWS S3 in production, local disk in development, chosen automatically |
-| Integrations | Twilio (SMS), Plaid (banking), Microsoft Graph (email), Google Calendar, OpenAI (summaries and in-app assistant) |
+| Integrations | Twilio (SMS), Plaid (banking), Microsoft Graph (email), Google Calendar, OpenAI (summaries and Paarth Help / Liminality), ElevenLabs (spoken replies) |
 
 ### Multi-tenancy
 
@@ -386,9 +421,10 @@ Paarth/
 │       ├── pages/            33 route-level pages
 │       ├── components/       pipeline/, jobs/, finance/, layout/, common/, …
 │       ├── context/          auth, theme, financial PIN lock
-│       ├── hooks/            useIsMobile, useSocketSubscription, PIN gates
+│       ├── hooks/            useIsMobile, useSocketSubscription, PIN gates, Liminality voice
+│       ├── voice/            wake word, command table, ElevenLabs playback, assistant speech
 │       ├── services/         socket client
-│       └── utils/            axios, payment schedules, SMS templates, mobile nav
+│       └── utils/            axios, payment schedules, SMS templates, mobile nav, customer share texts
 ├── backend/                  Express API
 │   └── src/
 │       ├── models/           31 Mongoose models + tenant-scope plugin
@@ -455,7 +491,8 @@ Everything below is optional; each integration degrades gracefully when its vari
 | Plaid | `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV`, `PLAID_WEBHOOK_URL` |
 | Microsoft Graph | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI` |
 | Google Calendar | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_REFRESH_TOKEN` |
-| OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` |
+| OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` — Paarth Help, Liminality answers, job summaries |
+| ElevenLabs | `ELEVENLABS_API_KEY` on the **API** host (not the frontend). Optional `ELEVENLABS_TTS_MODEL` (default `eleven_flash_v2_5`) |
 | RFID devices | `RFID_DEVICE_API_KEY`, `RFID_SHOP_TIMEZONE` |
 | Email (EmailJS) | `EMAILJS_PUBLIC_KEY`, `EMAILJS_PRIVATE_KEY`, `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID` |
 
@@ -496,6 +533,7 @@ Documented honestly, because knowing where the edges are is part of running the 
 - **Dragging onto a calendar day.** Scheduling is done by clicking a day and filling the dialog; the day cells themselves are not drop targets.
 - **`read_only` role.** It is assignable and excluded from pipeline modification, but has no dedicated enforcement layer beyond that.
 - **Loading states** are spinners throughout; skeleton placeholders would make the heavier grids feel faster.
+- **Liminality voice** is Chrome/Edge on desktop only. Safari and phones have no wake listening. Spoken answers still depend on ElevenLabs being configured on the API.
 
 ---
 
