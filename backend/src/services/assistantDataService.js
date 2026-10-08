@@ -1,7 +1,13 @@
 const Activity = require('../models/Activity');
 const Job = require('../models/Job');
+const Customer = require('../models/Customer');
+const Appointment = require('../models/Appointment');
+const User = require('../models/User');
+const EmployeeContact = require('../models/EmployeeContact');
 const DepositAllocation = require('../models/DepositAllocation');
 const PlaidRegisterCache = require('../models/PlaidRegisterCache');
+
+const SHOP_TIMEZONE = 'America/Los_Angeles';
 
 function clampLimit(raw, defaultLimit = 5, max = 20) {
   const n = Number(raw);
@@ -260,9 +266,342 @@ async function fetchJobDetails({ jobId }) {
   };
 }
 
+function escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeName(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function nameMatches(name, query) {
+  const n = normalizeName(name);
+  const q = normalizeName(query);
+  if (!n || !q || q.length < 2) return false;
+  if (n === q) return true;
+  const nameParts = n.split(' ');
+  const queryParts = q.split(' ');
+  return queryParts.every((part) =>
+    nameParts.some((piece) => piece === part || (part.length >= 3 && piece.startsWith(part))),
+  );
+}
+
+function formatAddress(address) {
+  if (!address || typeof address !== 'object') return '';
+  return [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+}
+
+function formatShopDay(d) {
+  if (!d) return null;
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return null;
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: SHOP_TIMEZONE,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(dt);
+}
+
+function shopDayStart(daysFromToday = 0) {
+  const ymd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SHOP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(Date.now() + daysFromToday * 24 * 60 * 60 * 1000));
+  return new Date(`${ymd}T00:00:00-08:00`);
+}
+
+function collectPhones(customer, extraPhones = []) {
+  const phones = [];
+  const seen = new Set();
+  const add = (raw) => {
+    const value = String(raw || '').trim();
+    if (!value) return;
+    const digits = value.replace(/\D/g, '');
+    const key = digits.slice(-10) || value.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    phones.push(value);
+  };
+  extraPhones.forEach(add);
+  add(customer?.primaryPhone);
+  (customer?.contactPhones || []).forEach((row) => add(row?.value));
+  (customer?.phones || []).forEach(add);
+  return phones;
+}
+
+function buildCustomerShareMessage(customer, job) {
+  const phones = collectPhones(customer, [job?.jobContact?.phone]);
+  const emails = [
+    job?.jobContact?.email,
+    customer?.primaryEmail,
+    ...(customer?.contactEmails || []).map((row) => row?.value),
+    ...(customer?.emails || []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter((value, index, list) => value && list.indexOf(value) === index);
+  const address = formatAddress(job?.jobAddress) || formatAddress(customer?.address);
+  const gateCode = String(customer?.gateCode || '').trim();
+  return [
+    `Customer: ${customer?.name || 'Unknown'}`,
+    job?.title ? `Job: ${job.title}` : null,
+    phones.length ? `Phone: ${phones.join(', ')}` : null,
+    emails.length ? `Email: ${emails.join(', ')}` : null,
+    address ? `Address: ${address}` : null,
+    gateCode ? `Gate code: ${gateCode}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function summarizeEmployee(row) {
+  return {
+    id: String(row._id),
+    kind: row.kind,
+    name: row.name || 'Unnamed',
+  };
+}
+
+async function listRolodexEmployees() {
+  const [users, contacts] = await Promise.all([
+    User.find({ isPending: false, isActive: true }).select('name mobile').sort({ name: 1 }).lean(),
+    EmployeeContact.find({}).select('name mobile').sort({ name: 1 }).lean(),
+  ]);
+  const employees = [
+    ...users.map((u) => ({ ...u, kind: 'user' })),
+    ...contacts.map((c) => ({ ...c, kind: 'contact' })),
+  ]
+    .filter((row) => String(row.mobile || '').trim())
+    .map(summarizeEmployee);
+  return { employees, count: employees.length };
+}
+
+function matchEmployees(rows, query) {
+  return rows.filter((row) => nameMatches(row.name, query));
+}
+
+async function loadRolodexWithMobiles() {
+  const [users, contacts] = await Promise.all([
+    User.find({ isPending: false, isActive: true }).select('name mobile').lean(),
+    EmployeeContact.find({}).select('name mobile').lean(),
+  ]);
+  return [
+    ...users.map((u) => ({ ...u, kind: 'user' })),
+    ...contacts.map((c) => ({ ...c, kind: 'contact' })),
+  ].filter((row) => String(row.mobile || '').trim());
+}
+
+async function searchJobs({ query, limit: limitArg = 8 } = {}) {
+  const qTrim = String(query || '').trim();
+  const limit = clampLimit(limitArg, 8, 15);
+  if (!qTrim) return { jobs: [], hint: 'Need a place, customer, or job name.' };
+
+  const regex = new RegExp(escapeRegex(qTrim), 'i');
+  const customers = await Customer.find({
+    $or: [
+      { name: regex },
+      { 'address.city': regex },
+      { 'address.street': regex },
+      { 'address.zip': regex },
+      { 'addresses.city': regex },
+      { 'addresses.street': regex },
+    ],
+  })
+    .select('_id name address')
+    .limit(20)
+    .lean();
+
+  const jobs = await Job.find({
+    isArchived: { $ne: true },
+    isDeadEstimate: { $ne: true },
+    isCompletedClosedOut: { $ne: true },
+    stage: { $ne: 'FINAL_PAYMENT_CLOSED' },
+    $or: [
+      { title: regex },
+      { 'jobAddress.city': regex },
+      { 'jobAddress.street': regex },
+      { 'jobAddress.zip': regex },
+      { customerId: { $in: customers.map((c) => c._id) } },
+    ],
+  })
+    .populate('customerId', 'name address primaryPhone')
+    .select('title stage jobAddress schedule customerId updatedAt')
+    .sort({ updatedAt: -1 })
+    .limit(limit)
+    .lean();
+
+  return {
+    query: qTrim,
+    jobs: jobs.map((job) => ({
+      jobId: String(job._id),
+      title: job.title || 'Untitled',
+      stage: job.stage || null,
+      customerName: job.customerId?.name || null,
+      city: job.jobAddress?.city || job.customerId?.address?.city || null,
+      address: formatAddress(job.jobAddress) || formatAddress(job.customerId?.address) || null,
+      startDate: formatDate(job.schedule?.startDate),
+      path: `/pipeline?jobId=${job._id}`,
+    })),
+  };
+}
+
+async function fetchUpcomingSchedule({ days: daysArg = 14, limit: limitArg = 12 } = {}) {
+  const days = clampLimit(daysArg, 14, 30);
+  const limit = clampLimit(limitArg, 12, 20);
+  const start = shopDayStart(0);
+  const end = new Date(shopDayStart(days).getTime() + 24 * 60 * 60 * 1000 - 1);
+
+  const [appointments, datedJobs] = await Promise.all([
+    Appointment.find({
+      status: 'scheduled',
+      date: { $gte: start, $lte: end },
+    })
+      .populate('customerId', 'name')
+      .populate('jobId', 'title')
+      .sort({ date: 1, time: 1 })
+      .limit(limit)
+      .lean(),
+    Job.find({
+      isArchived: { $ne: true },
+      isDeadEstimate: { $ne: true },
+      $or: [
+        { 'schedule.startDate': { $gte: start, $lte: end } },
+        { 'schedule.endDate': { $gte: start, $lte: end } },
+        { 'schedule.entries.startDate': { $gte: start, $lte: end } },
+      ],
+    })
+      .populate('customerId', 'name')
+      .select('title stage schedule customerId')
+      .sort({ 'schedule.startDate': 1 })
+      .limit(limit)
+      .lean(),
+  ]);
+
+  return {
+    rangeDays: days,
+    appointments: appointments.map((row) => ({
+      title: row.title || 'Appointment',
+      date: formatShopDay(row.date),
+      time: row.time || null,
+      customerName: row.customerId?.name || row.customerName || null,
+      location: row.location || null,
+      jobTitle: row.jobId?.title || null,
+    })),
+    jobsOnCalendar: datedJobs.map((job) => ({
+      jobId: String(job._id),
+      title: job.title || 'Untitled',
+      customerName: job.customerId?.name || null,
+      startDate: formatShopDay(job.schedule?.startDate),
+      endDate: formatShopDay(job.schedule?.endDate),
+      installers: [
+        ...(Array.isArray(job.schedule?.installers) ? job.schedule.installers : []),
+        job.schedule?.installer,
+      ].filter(Boolean),
+      path: `/calendar-view`,
+    })),
+  };
+}
+
+async function sendCustomerInfoText({ customerQuery, employeeQuery, createdBy, tenantId }) {
+  const customerQ = String(customerQuery || '').trim();
+  const employeeQ = String(employeeQuery || '').trim();
+  if (!customerQ || !employeeQ) {
+    return { sent: false, error: 'Need both a customer/job name and an employee name.' };
+  }
+
+  const rolodex = await loadRolodexWithMobiles();
+  const employeeHits = matchEmployees(rolodex, employeeQ);
+  if (!employeeHits.length) {
+    return {
+      sent: false,
+      error: `No rolodex match with a mobile number for "${employeeQ}".`,
+      employees: (await listRolodexEmployees()).employees.slice(0, 20),
+    };
+  }
+  if (employeeHits.length > 1) {
+    return {
+      sent: false,
+      error: `Several people match "${employeeQ}". Ask which one.`,
+      matches: employeeHits.slice(0, 8).map(summarizeEmployee),
+    };
+  }
+
+  const regex = new RegExp(escapeRegex(customerQ), 'i');
+  const customers = await Customer.find({ name: regex })
+    .limit(8)
+    .lean();
+  const jobs = await Job.find({
+    isArchived: { $ne: true },
+    isDeadEstimate: { $ne: true },
+    $or: [{ title: regex }, { customerId: { $in: customers.map((c) => c._id) } }],
+  })
+    .populate('customerId')
+    .sort({ updatedAt: -1 })
+    .limit(8)
+    .lean();
+
+  const customerIds = new Set();
+  jobs.forEach((job) => {
+    const id = job.customerId?._id || job.customerId;
+    if (id) customerIds.add(String(id));
+  });
+  customers.forEach((c) => customerIds.add(String(c._id)));
+
+  if (!customerIds.size) {
+    return { sent: false, error: `I couldn't find a customer or job matching "${customerQ}".` };
+  }
+  if (customerIds.size > 1) {
+    const names = [
+      ...jobs.map((job) => job.customerId?.name || job.title),
+      ...customers.map((c) => c.name),
+    ].filter(Boolean);
+    return {
+      sent: false,
+      error: `Several customers match "${customerQ}". Ask which one.`,
+      matches: [...new Set(names)].slice(0, 8),
+    };
+  }
+
+  const job = jobs[0] || null;
+  const customer = job?.customerId && typeof job.customerId === 'object'
+    ? job.customerId
+    : customers[0];
+  if (!customer) {
+    return { sent: false, error: `I couldn't load customer details for "${customerQ}".` };
+  }
+
+  const employee = employeeHits[0];
+  const message = buildCustomerShareMessage(customer, job);
+  const { sendResolvedEmployeeSms } = require('../controllers/twilioController');
+  const payload =
+    employee.kind === 'contact'
+      ? { employeeContactId: String(employee._id), message, createdBy, tenantId }
+      : { employeeUserId: String(employee._id), message, createdBy, tenantId };
+
+  const result = await sendResolvedEmployeeSms(payload);
+  return {
+    sent: true,
+    toName: employee.name,
+    customerName: customer.name,
+    jobTitle: job?.title || null,
+    preview: message,
+    twilioStatus: result?.status || null,
+  };
+}
+
 module.exports = {
   fetchRecentPayments,
   fetchRecentDeposits,
   searchJobNotes,
   fetchJobDetails,
+  searchJobs,
+  fetchUpcomingSchedule,
+  listRolodexEmployees,
+  sendCustomerInfoText,
 };

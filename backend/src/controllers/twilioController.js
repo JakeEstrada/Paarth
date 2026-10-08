@@ -665,12 +665,12 @@ async function twilioMediaDownload(req, res) {
 /**
  * Resolves destination E.164 from employeeUserId, employeeContactId, or `to`.
  */
-async function resolveOutgoingSmsTo(req) {
+async function resolveSmsDestination(body = {}) {
   const User = require('../models/User');
   const EmployeeContact = require('../models/EmployeeContact');
-  const employeeUserId = String(req.body?.employeeUserId || '').trim();
-  const employeeContactId = String(req.body?.employeeContactId || '').trim();
-  const rawTo = req.body?.to;
+  const employeeUserId = String(body.employeeUserId || '').trim();
+  const employeeContactId = String(body.employeeContactId || '').trim();
+  const rawTo = body.to;
 
   if (employeeContactId) {
     if (!/^[a-fA-F0-9]{24}$/.test(employeeContactId)) {
@@ -713,6 +713,36 @@ async function resolveOutgoingSmsTo(req) {
   }
 
   throw new Error('Select an employee to send the message to');
+}
+
+async function resolveOutgoingSmsTo(req) {
+  return resolveSmsDestination(req.body || {});
+}
+
+async function sendResolvedEmployeeSms({
+  employeeUserId,
+  employeeContactId,
+  message,
+  createdBy,
+  tenantId,
+}) {
+  const to = await resolveSmsDestination({ employeeUserId, employeeContactId });
+  const data = await sendSmsViaTwilio({ to, message });
+  try {
+    await logOutboundSms({
+      from: data.from,
+      to: data.to,
+      body: message,
+      twilioSid: data.sid,
+      deliveryStatus: data.status,
+      source: 'employee',
+      createdBy,
+      tenantId,
+    });
+  } catch (logError) {
+    console.error('Failed to log outbound SMS:', logError?.message || logError);
+  }
+  return data;
 }
 
 async function sendSmsViaTwilio({ to, message, mediaUrl, statusCallbackUrl }) {
@@ -1337,6 +1367,7 @@ module.exports = {
   getUnreadSmsCount,
   startSmsScheduler,
   sendSmsViaTwilio,
+  sendResolvedEmployeeSms,
   twilioMediaDownload,
   sendSmsAdhoc,
   scheduleSmsAdhoc,

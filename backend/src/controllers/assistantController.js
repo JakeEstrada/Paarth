@@ -5,6 +5,10 @@ const {
   fetchRecentDeposits,
   searchJobNotes,
   fetchJobDetails,
+  searchJobs,
+  fetchUpcomingSchedule,
+  listRolodexEmployees,
+  sendCustomerInfoText,
 } = require('../services/assistantDataService');
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
@@ -117,9 +121,80 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'search_jobs',
+      description:
+        'Find active jobs by city, street, customer name, or job title. Use for "jobs in Dana Point", "jobs in San Clemente", or a customer last name.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'City, street, customer, or job name' },
+          limit: { type: 'integer', description: 'Max jobs (1–15)', default: 8 },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_upcoming_schedule',
+      description:
+        'Upcoming appointments and jobs on the shop calendar. Use for "who do we have coming up", "what\'s on the calendar", or this week\'s schedule.',
+      parameters: {
+        type: 'object',
+        properties: {
+          days: { type: 'integer', description: 'How many days ahead (1–30)', default: 14 },
+          limit: { type: 'integer', description: 'Max items (1–20)', default: 12 },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_sms_employees',
+      description:
+        'List employees on the rolodex who have a mobile number. Use before sending a text if the name is unclear.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'send_customer_info_text',
+      description:
+        'Text a customer contact card (name, phones, email, address, gate code, job title) to one employee on the rolodex. Use for "send Hammer to Jake" or "text the Skoczulek info to Maria". Only sends to rolodex mobiles, never an arbitrary number. Sends immediately when both names uniquely match.',
+      parameters: {
+        type: 'object',
+        properties: {
+          customerQuery: {
+            type: 'string',
+            description: 'Customer or job name to share',
+          },
+          employeeQuery: {
+            type: 'string',
+            description: 'Employee first or last name on the rolodex',
+          },
+        },
+        required: ['customerQuery', 'employeeQuery'],
+      },
+    },
+  },
 ];
 
-function buildSystemPrompt() {
+function buildSystemPrompt(voice = false) {
+  const voiceLines = voice
+    ? [
+        'You are also Liminality, speaking out loud on the shop floor.',
+        'Answer in 1–3 short spoken sentences. No markdown, bullets, URLs, or tables.',
+        'Name at most four jobs or people. Skip ids. Money as dollars.',
+        'If send_customer_info_text sent, confirm who received which customer. If it returned several matches, ask which one — do not guess.',
+        '',
+      ]
+    : [];
   return [
     'You are Paarth Help, an in-app assistant for the Paarth operations web app.',
     'You only help with using this application. Be concise and practical.',
@@ -127,15 +202,22 @@ function buildSystemPrompt() {
     'Use tools when the user needs live data from their organization or when they want to jump to a page.',
     'After navigate_user succeeds, briefly confirm where you sent them.',
     '',
+    ...voiceLines,
     'Data tools — use these for operational questions:',
     '- get_recent_payments: customer payments marked received (job payment schedule)',
     '- get_recent_deposits: CRM deposits, linked bank deposits, and bank register inflows',
     '- search_job_notes: job modal notes and crew notes (materials to order, supplies, reminders)',
     '- get_job_details: one job\'s notes, payment schedule, and timeline (use jobId from search)',
     '- global_search: find a customer or job by name before get_job_details',
+    '- search_jobs: jobs by city, street, customer, or title ("jobs in Dana Point")',
+    '- get_upcoming_schedule: appointments and jobs coming up on the calendar',
+    '- send_customer_info_text: text a customer card to an employee on the rolodex ("send Hammer to Jake")',
+    '- list_sms_employees: rolodex names that can receive texts',
     '',
+    'For "send [customer] to [employee]", call send_customer_info_text. Do not invent a phone number. Do not send custom message bodies — only the customer card.',
     'For "materials to order" or similar, call search_job_notes with keywords like order, material, supply, hardware, cabinet, laminate.',
     'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from the results only.',
+    'For "who is coming up" or calendar questions, call get_upcoming_schedule.',
     'When deposit sources differ (CRM vs bank), say which is most recent by date.',
     '',
     'Site map:',
@@ -195,7 +277,8 @@ async function runAssistantChat(req, res) {
     return res.status(400).json({ error: 'Last turn must include a user message.' });
   }
 
-  const messages = [{ role: 'system', content: buildSystemPrompt() }, ...clientMessages];
+  const voice = Boolean(req.body?.voice);
+  const messages = [{ role: 'system', content: buildSystemPrompt(voice) }, ...clientMessages];
   const clientActions = [];
   const tenantId = req.user?.tenantId;
 
@@ -207,7 +290,7 @@ async function runAssistantChat(req, res) {
         messages,
         tools: TOOLS,
         tool_choice: 'auto',
-        temperature: 0.4,
+        temperature: voice ? 0.25 : 0.4,
       });
 
       const choice = data.choices && data.choices[0];
@@ -277,6 +360,35 @@ async function runAssistantChat(req, res) {
                 toolContent = { ok: true, path: safe };
               } else {
                 toolContent = { ok: false, error: 'Path not allowed or invalid.' };
+              }
+            } else if (fn.name === 'search_jobs') {
+              if (!tenantId) {
+                toolContent = { error: 'No organization context for this account.' };
+              } else {
+                toolContent = await searchJobs({ query: args.query, limit: args.limit });
+              }
+            } else if (fn.name === 'get_upcoming_schedule') {
+              if (!tenantId) {
+                toolContent = { error: 'No organization context for this account.' };
+              } else {
+                toolContent = await fetchUpcomingSchedule({ days: args.days, limit: args.limit });
+              }
+            } else if (fn.name === 'list_sms_employees') {
+              if (!tenantId) {
+                toolContent = { error: 'No organization context for this account.' };
+              } else {
+                toolContent = await listRolodexEmployees();
+              }
+            } else if (fn.name === 'send_customer_info_text') {
+              if (!tenantId) {
+                toolContent = { error: 'No organization context for this account.' };
+              } else {
+                toolContent = await sendCustomerInfoText({
+                  customerQuery: args.customerQuery,
+                  employeeQuery: args.employeeQuery,
+                  createdBy: req.user?._id,
+                  tenantId,
+                });
               }
             } else {
               toolContent = { error: 'Unknown tool' };

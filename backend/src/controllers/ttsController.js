@@ -1,6 +1,6 @@
 const OPENAI_SPEECH_URL = 'https://api.openai.com/v1/audio/speech';
 const ELEVEN_SPEECH_URL = 'https://api.elevenlabs.io/v1/text-to-speech';
-const MAX_TTS_CHARS = 400;
+const MAX_TTS_CHARS = 800;
 
 const ELEVEN_VOICES = {
   carla: { id: 'ZP7ctTmcovXNUmOj695o', label: 'Carla — calm, a little mysterious' },
@@ -157,45 +157,76 @@ function friendlyElevenError(raw) {
   return message || 'ElevenLabs could not generate speech.';
 }
 
-async function requestElevenSpeech(key, voiceId, text, tone = 'polite') {
-  const model = String(process.env.ELEVENLABS_TTS_MODEL || 'eleven_multilingual_v2').trim();
+const FAST_ELEVEN_MODELS = ['eleven_flash_v2_5', 'eleven_turbo_v2_5', 'eleven_multilingual_v2'];
+
+function elevenModelChain() {
+  const preferred = String(process.env.ELEVENLABS_TTS_MODEL || FAST_ELEVEN_MODELS[0]).trim();
+  return [preferred, ...FAST_ELEVEN_MODELS.filter((model) => model !== preferred)];
+}
+
+function voiceSettingsFor(model, tone) {
   const candid = tone === 'candid';
-  const body = {
-    text,
-    model_id: model,
-    voice_settings: {
-      stability: candid ? 0.3 : 0.42,
-      similarity_boost: 0.85,
-      style: candid ? 0.58 : 0.28,
-      use_speaker_boost: true,
-    },
+  const settings = {
+    stability: candid ? 0.3 : 0.42,
+    similarity_boost: 0.85,
+    use_speaker_boost: true,
   };
-  if (model.startsWith('eleven_v3')) {
-    delete body.voice_settings.style;
+  if (model.includes('multilingual_v2') && !model.startsWith('eleven_v3')) {
+    settings.style = candid ? 0.58 : 0.28;
   }
-  const response = await fetch(`${ELEVEN_SPEECH_URL}/${voiceId}?output_format=mp3_44100_128`, {
-    method: 'POST',
-    headers: {
-      'xi-api-key': key,
-      'Content-Type': 'application/json',
-      Accept: 'audio/mpeg',
-    },
-    body: JSON.stringify(body),
-  });
-  if (response.ok) {
-    return { ok: true, buffer: Buffer.from(await response.arrayBuffer()) };
-  }
-  let detail = `ElevenLabs HTTP ${response.status}`;
+  return settings;
+}
+
+function canFallbackElevenModel(status, error) {
+  if (status === 400 || status === 404 || status === 422) return true;
+  return /model/i.test(String(error || ''));
+}
+
+function parseElevenError(raw, status) {
+  let detail = `ElevenLabs HTTP ${status}`;
   try {
-    const data = await response.json();
+    const data = JSON.parse(raw);
     const nested = data?.detail;
     if (typeof nested === 'string') detail = nested;
     else if (nested?.message) detail = String(nested.message);
     else if (data?.message) detail = String(data.message);
   } catch {
-    /* keep status text */
+    if (raw) detail = String(raw).slice(0, 280);
   }
-  return { ok: false, error: friendlyElevenError(detail) };
+  return friendlyElevenError(detail);
+}
+
+async function requestElevenSpeech(key, voiceId, text, tone = 'polite') {
+  const models = elevenModelChain();
+  let lastError = 'ElevenLabs could not generate speech.';
+
+  for (const model of models) {
+    const response = await fetch(
+      `${ELEVEN_SPEECH_URL}/${voiceId}?output_format=mp3_44100_64&optimize_streaming_latency=4`,
+      {
+        method: 'POST',
+        headers: {
+          'xi-api-key': key,
+          'Content-Type': 'application/json',
+          Accept: 'audio/mpeg',
+        },
+        body: JSON.stringify({
+          text,
+          model_id: model,
+          voice_settings: voiceSettingsFor(model, tone),
+        }),
+      }
+    );
+    if (response.ok) {
+      return { ok: true, buffer: Buffer.from(await response.arrayBuffer()) };
+    }
+    lastError = parseElevenError(await response.text().catch(() => ''), response.status);
+    if (!canFallbackElevenModel(response.status, lastError)) {
+      return { ok: false, error: lastError };
+    }
+  }
+
+  return { ok: false, error: lastError };
 }
 
 async function requestOpenAiSpeech(key, voice, text, tone = 'polite') {

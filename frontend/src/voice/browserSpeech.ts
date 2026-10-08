@@ -1,6 +1,7 @@
+import { liminalityPrefetchLines } from './liminalityCommands';
 import { readLiminalityVoiceUri } from './liminalitySettings';
 import { neuralVoiceIdFromUri } from './neuralVoices';
-import { cancelNeuralSpeech, speakNeural } from './neuralSpeech';
+import { cancelNeuralSpeech, prefetchNeuralSpeech, speakNeural } from './neuralSpeech';
 
 type SpeechRecognitionLike = {
   continuous: boolean;
@@ -207,6 +208,14 @@ export async function speakText(
 
 export function warmUpSpeechVoices() {
   void loadVoices();
+}
+
+export function prefetchLiminalitySpeech() {
+  const voice = neuralVoiceIdFromUri(readLiminalityVoiceUri());
+  const { polite, candid } = liminalityPrefetchLines();
+  void prefetchNeuralSpeech(polite, voice, 'polite').then(() =>
+    prefetchNeuralSpeech(candid, voice, 'candid'),
+  );
 }
 
 export function cancelSpeech() {

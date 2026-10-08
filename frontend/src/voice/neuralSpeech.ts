@@ -2,7 +2,8 @@ import api from '../utils/axios';
 import { neuralVoiceIdFromUri, isNeuralVoiceUri } from './neuralVoices';
 
 const clipCache = new Map<string, Blob>();
-const MAX_CACHE = 40;
+const MAX_CACHE = 80;
+const PREFETCH_BATCH = 3;
 const SILENT_WAV =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
 
@@ -142,6 +143,25 @@ function playBlob(blob: Blob, signal: AbortSignal) {
     audio.onerror = finish;
     void audio.play().catch(finish);
   });
+}
+
+export async function prefetchNeuralSpeech(
+  texts: string[],
+  voiceUri: string,
+  tone: 'polite' | 'candid' = 'polite',
+) {
+  if (!isNeuralVoiceUri(voiceUri)) return;
+  const voice = neuralVoiceIdFromUri(voiceUri);
+  const unique = [...new Set(texts.map((line) => String(line || '').trim()).filter(Boolean))];
+  const pending = unique.filter((text) => !clipCache.has(cacheKey(voice, text, tone)));
+  for (let i = 0; i < pending.length; i += PREFETCH_BATCH) {
+    const batch = pending.slice(i, i + PREFETCH_BATCH);
+    await Promise.all(
+      batch.map((text) =>
+        fetchSpeechBlob(text, voice, new AbortController().signal, tone).catch(() => null),
+      ),
+    );
+  }
 }
 
 export async function speakNeural(

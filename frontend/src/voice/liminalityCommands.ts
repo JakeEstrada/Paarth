@@ -31,7 +31,7 @@ export const LIMINALITY_COMMANDS: LiminalityCommand[] = [
   },
   {
     id: 'pipeline',
-    keywords: ['pipeline', 'pipeline view', 'jobs', 'job'],
+    keywords: ['pipeline', 'pipeline view'],
     route: '/pipeline-view',
     response: 'Pipeline. Here we go.',
     candidResponse: 'Pipeline. The jobs aren’t going to stare at themselves.',
@@ -161,6 +161,21 @@ export function registerForWake(raw: string): LiminalityRegister {
   return isBackupWakeWord(raw) ? 'candid' : 'polite';
 }
 
+export function liminalityPrefetchLines() {
+  return {
+    polite: [
+      ...WAKE_RESPONSES.slice(0, 12),
+      ...LIMINALITY_COMMANDS.map((command) => command.response),
+      ...UNKNOWN_COMMAND_RESPONSES,
+    ],
+    candid: [
+      ...BACKUP_WAKE_RESPONSES.slice(0, 8),
+      ...LIMINALITY_COMMANDS.map((command) => command.candidResponse || command.response),
+      ...UNKNOWN_CANDID_RESPONSES,
+    ],
+  };
+}
+
 export function wakeResponseFor(raw: string) {
   if (isBackupWakeWord(raw)) return pickUnused(BACKUP_WAKE_RESPONSES);
   return pickUnused(WAKE_RESPONSES);
@@ -189,13 +204,22 @@ function hasKeyword(text: string, tokens: Set<string>, keyword: string) {
   return tokens.has(keyword) || tokens.has(`${keyword}s`);
 }
 
+const QUESTION_START =
+  /^(what|whats|who|whos|when|wheres|where|how|which|why|is|are|do|does|did|can|could|would|will|should)\b/;
+const SEND_OR_ASK =
+  /\b(send|text|message)\b|\bcoming up\b|\bdeposit|\bpayment\b|\bschedule\b/;
+const NAV_PREFIX = /^(open|go to|take me to|switch to|bring up|show me the|show the)\s+/;
+
 /** Returns one command when exactly one destination matches. Never guesses. */
 export function matchLiminalityCommand(raw: string): LiminalityCommand | null {
   const text = normalizeSpeech(raw);
   if (!text) return null;
-  const tokens = new Set(text.split(' ').filter(Boolean));
+  if (QUESTION_START.test(text) || SEND_OR_ASK.test(text)) return null;
+  const tokens = text.split(' ').filter(Boolean);
+  if (tokens.length > 4 && !NAV_PREFIX.test(text)) return null;
+  const tokenSet = new Set(tokens);
   const hits = LIMINALITY_COMMANDS.filter((command) =>
-    command.keywords.some((keyword) => hasKeyword(text, tokens, keyword)),
+    command.keywords.some((keyword) => hasKeyword(text, tokenSet, keyword)),
   );
   const routes = new Set(hits.map((row) => row.route));
   if (routes.size !== 1) return null;

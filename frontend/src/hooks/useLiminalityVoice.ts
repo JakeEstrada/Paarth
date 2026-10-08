@@ -4,8 +4,10 @@ import {
   collectTranscript,
   createSpeechRecognition,
   isSpeechRecognitionSupported,
+  prefetchLiminalitySpeech,
   speakText,
 } from '../voice/browserSpeech';
+import { askLiminalityAssistant, spokenAssistantReply } from '../voice/assistantVoice';
 import {
   COMMAND_TIMEOUT_MS,
   RESET_TO_WAITING_MS,
@@ -46,10 +48,13 @@ export function useLiminalityVoice({
   const enabledRef = useRef(enabled);
   const timeoutRef = useRef<number | null>(null);
   const resetRef = useRef<number | null>(null);
+  const endpointRef = useRef<number | null>(null);
+  const lastHandledRef = useRef('');
   const networkFailsRef = useRef(0);
   const onNavigateRef = useRef(onNavigate);
   const handleWakeRef = useRef<(text: string) => void>(() => {});
   const handleCommandRef = useRef<(text: string) => void>(() => {});
+  const assistantHistoryRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
 
   enabledRef.current = enabled;
   onNavigateRef.current = onNavigate;
@@ -57,8 +62,24 @@ export function useLiminalityVoice({
   const clearTimers = useCallback(() => {
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     if (resetRef.current) window.clearTimeout(resetRef.current);
+    if (endpointRef.current) window.clearTimeout(endpointRef.current);
     timeoutRef.current = null;
     resetRef.current = null;
+    endpointRef.current = null;
+  }, []);
+
+  const commitHeard = useCallback((raw: string) => {
+    const spoken = String(raw || '').trim();
+    if (!spoken || speakingRef.current || !enabledRef.current) return;
+    const key = spoken.toLowerCase();
+    if (lastHandledRef.current === key) return;
+    lastHandledRef.current = key;
+    if (endpointRef.current) {
+      window.clearTimeout(endpointRef.current);
+      endpointRef.current = null;
+    }
+    if (modeRef.current === 'wake') handleWakeRef.current(spoken);
+    else if (modeRef.current === 'command') handleCommandRef.current(spoken);
   }, []);
 
   const destroyRecognition = useCallback(() => {
@@ -97,9 +118,22 @@ export function useLiminalityVoice({
       const { finalText, interimText } = collectTranscript(event);
       const live = finalText || interimText;
       if (live) setHeard(live);
-      if (!finalText) return;
-      if (modeRef.current === 'wake') handleWakeRef.current(finalText);
-      else if (modeRef.current === 'command') handleCommandRef.current(finalText);
+      if (finalText) {
+        commitHeard(finalText);
+        return;
+      }
+      if (!interimText) return;
+      if (endpointRef.current) window.clearTimeout(endpointRef.current);
+      const mode = modeRef.current;
+      const remainder = mode === 'wake' ? stripWakeWord(interimText) : '';
+      const canCommit =
+        mode === 'command' ||
+        (mode === 'wake' && hasWakeWord(interimText) && (!remainder || matchLiminalityCommand(remainder)));
+      if (!canCommit) return;
+      const delay = mode === 'command' ? 380 : remainder ? 480 : 780;
+      endpointRef.current = window.setTimeout(() => {
+        commitHeard(interimText);
+      }, delay);
     };
 
     recognition.onerror = (event) => {
@@ -123,7 +157,7 @@ export function useLiminalityVoice({
 
     recognition.onend = () => {
       if (!enabledRef.current || speakingRef.current || modeRef.current === 'off') return;
-      const delay = networkFailsRef.current > 0 ? Math.min(2000 * networkFailsRef.current, 6000) : 400;
+      const delay = networkFailsRef.current > 0 ? Math.min(2000 * networkFailsRef.current, 6000) : 80;
       window.setTimeout(() => {
         if (!enabledRef.current || speakingRef.current || modeRef.current === 'off') return;
         try {
@@ -139,7 +173,7 @@ export function useLiminalityVoice({
     } catch {
       /* ignore */
     }
-  }, [destroyRecognition]);
+  }, [commitHeard, destroyRecognition]);
 
   const goWaiting = useCallback(() => {
     clearTimers();
@@ -151,6 +185,7 @@ export function useLiminalityVoice({
       return;
     }
     modeRef.current = 'wake';
+    lastHandledRef.current = '';
     setHeard('');
     setPhase('waiting');
     setStatusLabel('Waiting');
@@ -182,10 +217,31 @@ export function useLiminalityVoice({
         setHeard(spoken);
         setPhase('processing');
         setStatusLabel('Processing');
-        const command = matchLiminalityCommand(spoken);
+        const command = matchLiminalityCommand(stripWakeWord(spoken) || spoken);
         if (!command) {
-          setStatusLabel("I don't know that yet");
-          await speakAndWait(spokenUnknownResponse(registerRef.current));
+          setStatusLabel('Looking it up');
+          try {
+            const result = await askLiminalityAssistant(assistantHistoryRef.current, spoken);
+            assistantHistoryRef.current = [
+              ...assistantHistoryRef.current,
+              { role: 'user', content: spoken },
+              { role: 'assistant', content: result.reply },
+            ].slice(-8);
+            if (result.path) {
+              setPhase('executing');
+              setStatusLabel('Opening page');
+              onNavigateRef.current(result.path);
+            }
+            if (result.reply) {
+              await speakAndWait(result.reply);
+            } else {
+              await speakAndWait(spokenUnknownResponse(registerRef.current));
+            }
+          } catch (error) {
+            const data = (error as { response?: { data?: { error?: string } } })?.response?.data;
+            const message = spokenAssistantReply(data?.error || '') || spokenUnknownResponse(registerRef.current);
+            await speakAndWait(message);
+          }
           goWaiting();
           return;
         }
@@ -209,13 +265,13 @@ export function useLiminalityVoice({
         setPhase('listening');
         setStatusLabel('Listening');
         registerRef.current = registerForWake(raw);
+        if (remainder) {
+          handleCommandRef.current(remainder);
+          return;
+        }
         await speakAndWait(wakeResponseFor(raw));
         if (!enabledRef.current) {
           goWaiting();
-          return;
-        }
-        if (remainder) {
-          handleCommandRef.current(remainder);
           return;
         }
         modeRef.current = 'command';
@@ -242,6 +298,7 @@ export function useLiminalityVoice({
       registerRef.current = 'polite';
       modeRef.current = 'off';
       networkFailsRef.current = 0;
+      assistantHistoryRef.current = [];
       clearTimers();
       cancelSpeech();
       destroyRecognition();
@@ -252,6 +309,7 @@ export function useLiminalityVoice({
     }
     enabledRef.current = true;
     networkFailsRef.current = 0;
+    prefetchLiminalitySpeech();
     goWaiting();
     return () => {
       enabledRef.current = false;

@@ -73,8 +73,9 @@ export default function LiminalitySettingsPanel() {
         </Typography>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Voice navigation on desktop. Say “Liminality”, then pipeline, calendar, or customers — that
-        opens the shop views. Nothing is recorded while this is off.
+        Voice on desktop. Say “Liminality”, then a shop view — pipeline, calendar, customers — or ask
+        a question. “Send Hammer to Jake” texts that customer card to someone on the employee rolodex.
+        Nothing is recorded while this is off.
       </Typography>
       <FormControlLabel
         control={
