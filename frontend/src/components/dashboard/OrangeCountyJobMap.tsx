@@ -106,8 +106,7 @@ export default function OrangeCountyJobMap({
   const theme = useTheme();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<{ map: L.Map; markers: L.LayerGroup } | null>(null);
-  const [view, setView] = useState<MapView>('all');
-  const [paused, setPaused] = useState(false);
+  const [view, setView] = useState<MapView>('pipeline');
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [pins, setPins] = useState<Record<MapView, MapPin[]>>({
     all: [],
@@ -192,7 +191,6 @@ export default function OrangeCountyJobMap({
       });
       marker.on('click', (event) => {
         L.DomEvent.stopPropagation(event);
-        setPaused(true);
         setOpenJobId(pin.id);
       });
       marker.addTo(ctx.markers);
@@ -206,17 +204,6 @@ export default function OrangeCountyJobMap({
     }
   }, [visiblePins]);
 
-  useEffect(() => {
-    if (paused || openJobId) return undefined;
-    const timer = window.setInterval(() => {
-      setView((current) => {
-        const index = VIEWS.findIndex((item) => item.id === current);
-        return VIEWS[(index + 1) % VIEWS.length].id;
-      });
-    }, 10000);
-    return () => window.clearInterval(timer);
-  }, [paused, openJobId]);
-
   const activePins = visiblePins;
 
   const handleJobUpdate = useCallback(async (jobId: string, updates: Record<string, unknown>) => {
@@ -225,16 +212,11 @@ export default function OrangeCountyJobMap({
 
   const closeJob = useCallback(() => {
     setOpenJobId(null);
-    setPaused(false);
   }, []);
 
   return (
     <Paper
       elevation={0}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => {
-        if (!openJobId) setPaused(false);
-      }}
       sx={{
         ...chartPanelSx(theme),
         display: { xs: kiosk ? 'flex' : 'none', md: 'flex' },

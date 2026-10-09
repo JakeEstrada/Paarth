@@ -57,7 +57,12 @@ function LoginPage() {
     setLoading(false);
 
     if (result.success) {
-      navigate(redirectTarget);
+      const requested = searchParams.get('redirect');
+      if (result.user?.role === 'shop_view' && !kioskLogin && !requested) {
+        navigate('/dashboard-view');
+      } else {
+        navigate(redirectTarget);
+      }
     }
   };
 

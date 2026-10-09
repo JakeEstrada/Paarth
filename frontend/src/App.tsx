@@ -57,6 +57,20 @@ function OutlookToMessagesRedirect() {
   return <Navigate to={`/messages?${next.toString()}`} replace />;
 }
 
+function ShopWindowOrPage({
+  view,
+  children,
+}: {
+  view: 'dashboard' | 'pipeline' | 'calendar' | 'customers';
+  children: JSX.Element;
+}) {
+  const { user } = useAuth();
+  if (user?.role === 'shop_view') {
+    return <Navigate to={`/${view}-view`} replace />;
+  }
+  return children;
+}
+
 function App(): JSX.Element | null {
   const { user, loading } = useAuth();
   const theme = useTheme();
@@ -160,12 +174,43 @@ function App(): JSX.Element | null {
               <MainLayout>
                 <MobileRouteGuard>
                 <Routes>
-                  <Route path="/" element={<Navigate to={homePath} replace />} />
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/pipeline" element={<PipelinePage />} />
+                  <Route
+                    path="/"
+                    element={<Navigate to={user?.role === 'shop_view' ? '/dashboard-view' : homePath} replace />}
+                  />
+                  <Route
+                    path="/dashboard"
+                    element={(
+                      <ShopWindowOrPage view="dashboard">
+                        <DashboardPage />
+                      </ShopWindowOrPage>
+                    )}
+                  />
+                  <Route
+                    path="/pipeline"
+                    element={(
+                      <ShopWindowOrPage view="pipeline">
+                        <PipelinePage />
+                      </ShopWindowOrPage>
+                    )}
+                  />
                   <Route path="/outlook" element={<OutlookToMessagesRedirect />} />
-                  <Route path="/customers" element={<CustomersPage />} />
-                  <Route path="/calendar" element={<CalendarPage />} />
+                  <Route
+                    path="/customers"
+                    element={(
+                      <ShopWindowOrPage view="customers">
+                        <CustomersPage />
+                      </ShopWindowOrPage>
+                    )}
+                  />
+                  <Route
+                    path="/calendar"
+                    element={(
+                      <ShopWindowOrPage view="calendar">
+                        <CalendarPage />
+                      </ShopWindowOrPage>
+                    )}
+                  />
                   <Route path="/tasks" element={<TasksPage />} />
                   <Route path="/documents" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/messages" element={<MessagePage />} />

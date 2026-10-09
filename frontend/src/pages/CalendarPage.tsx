@@ -2908,14 +2908,6 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
           {tvMode && !externalViewControls ? (
             <>
               <Button
-                onClick={() => navigate('/dashboard-view')}
-                variant="outlined"
-                size="small"
-                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-              >
-                Dashboard view
-              </Button>
-              <Button
                 onClick={() => navigate('/pipeline-view')}
                 variant="outlined"
                 size="small"

@@ -298,23 +298,23 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         {user?.role === 'shop_view' && (
           <ListItem disablePadding>
             <ListItemButton
-              onClick={() => handleNavigation('/pipeline-view')}
-              selected={isActive('/pipeline-view')}
+              onClick={() => handleNavigation('/dashboard-view')}
+              selected={isActive('/dashboard-view')}
               sx={navButtonSx}
             >
               <ListItemIcon
                 sx={{
                   minWidth: 40,
-                  color: isActive('/pipeline-view') ? theme.palette.primary.main : 'inherit',
+                  color: isActive('/dashboard-view') ? theme.palette.primary.main : 'inherit',
                 }}
               >
                 <PipelineViewKioskIcon />
               </ListItemIcon>
               <ListItemText
-                primary="Pipeline view"
+                primary="Shop View"
                 primaryTypographyProps={{
                   fontSize: '0.9375rem',
-                  fontWeight: isActive('/pipeline-view') ? 600 : 400,
+                  fontWeight: isActive('/dashboard-view') ? 600 : 400,
                 }}
               />
             </ListItemButton>
