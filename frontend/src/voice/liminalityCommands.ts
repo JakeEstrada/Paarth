@@ -39,10 +39,10 @@ export const LIMINALITY_COMMANDS: LiminalityCommand[] = [
   },
   {
     id: 'dashboard',
-    keywords: ['dashboard', 'home'],
+    keywords: ['dashboard', 'home', 'dashboard view'],
     route: '/dashboard',
-    response: 'Dashboard. The pretty charts.',
-    candidResponse: 'Dashboard. Charts, money, the whole bit.',
+    response: 'Dashboard. Charts and the map.',
+    candidResponse: 'Dashboard. Charts, the map, the whole bit.',
     label: 'Dashboard',
   },
 ];
@@ -50,13 +50,13 @@ export const LIMINALITY_COMMANDS: LiminalityCommand[] = [
 export const LIMINALITY_WAKE_PHRASES = ['liminality', 'liminnality', 'liminal'];
 
 export const UNKNOWN_COMMAND_RESPONSES = [
-  "I don't have that one. Pipeline, calendar, or customers?",
+  "I don't have that one. Dashboard, pipeline, calendar, or customers?",
   "Hmm. Not ringing a bell. Try a shop view.",
-  "Yeah no. I got pipeline, calendar, and customers.",
+  "Yeah no. I got dashboard, pipeline, calendar, and customers.",
 ];
 export const UNKNOWN_CANDID_RESPONSES = [
-  "Yeah I don't know that one. Pipeline, calendar, or customers.",
-  "Nope. I got pipeline, calendar, and customers. Pick a lane.",
+  "Yeah I don't know that one. Dashboard, pipeline, calendar, or customers.",
+  "Nope. I got dashboard, pipeline, calendar, and customers. Pick a lane.",
   "That’s not a page I have. Try the shop views.",
   "I heard you. I just don’t have a screen for that.",
 ];
@@ -184,6 +184,18 @@ export function wakeResponseFor(raw: string) {
 export function spokenCommandResponse(command: LiminalityCommand, register: LiminalityRegister) {
   if (register === 'candid') return command.candidResponse || command.response;
   return command.response;
+}
+
+export function liminalityCommandRoute(command: LiminalityCommand, spoken: string) {
+  if (command.id !== 'dashboard') return command.route;
+  const text = normalizeSpeech(stripWakeWord(spoken) || spoken);
+  if (typeof window === 'undefined') return command.route;
+  const path = window.location.pathname || '/';
+  const onKiosk = ['/dashboard-view', '/pipeline-view', '/calendar-view', '/customers-view'].some(
+    (root) => path === root || path.startsWith(`${root}/`),
+  );
+  if (onKiosk || text.includes('dashboard view')) return '/dashboard-view';
+  return '/dashboard';
 }
 
 export function spokenUnknownResponse(register: LiminalityRegister) {

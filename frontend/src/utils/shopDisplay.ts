@@ -1,4 +1,5 @@
 export const SHOP_DISPLAY_VIEW_PATHS = [
+  '/dashboard-view',
   '/pipeline-view',
   '/calendar-view',
   '/customers-view',

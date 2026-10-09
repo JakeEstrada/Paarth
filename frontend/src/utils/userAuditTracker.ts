@@ -26,6 +26,7 @@ const PATH_LABELS: Record<string, string> = {
   '/developer': 'Developer Tasks',
   '/account-settings': 'Account Settings',
   '/rfid': 'RFID scans',
+  '/dashboard-view': 'Dashboard (shop display)',
   '/pipeline-view': 'Pipeline (shop display)',
   '/calendar-view': 'Calendar (shop display)',
   '/customers-view': 'Customers (shop display)',

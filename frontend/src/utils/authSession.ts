@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 const LOGIN_PATH = '/login';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-const KIOSK_VIEW_PATHS = ['/pipeline-view', '/calendar-view', '/customers-view'];
+const KIOSK_VIEW_PATHS = ['/dashboard-view', '/pipeline-view', '/calendar-view', '/customers-view'];
 
 /** Paths where a 401 is expected (bad credentials) and must not trigger session logout redirect. */
 const AUTH_FLOW_PATH_PREFIXES = ['/login', '/register', '/forgot-password', '/forgot-username'];

@@ -26,11 +26,13 @@ function ViewModeFrame({ currentView, children }) {
   const [exitPin, setExitPin] = useState('');
 
   const viewButtons = [
+    { key: 'dashboard', label: 'Dashboard view', path: '/dashboard-view' },
     { key: 'pipeline', label: 'Pipeline view', path: '/pipeline-view' },
     { key: 'calendar', label: 'Calendar view', path: '/calendar-view' },
     { key: 'customers', label: 'Customers view', path: '/customers-view' },
   ];
   const exitPathByView = {
+    dashboard: '/dashboard',
     pipeline: '/pipeline',
     calendar: '/calendar',
     customers: '/customers',

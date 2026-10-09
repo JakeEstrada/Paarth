@@ -782,6 +782,14 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
               <Button
                 variant="outlined"
                 size="small"
+                onClick={() => navigate('/dashboard-view')}
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              >
+                Dashboard view
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
                 onClick={() => navigate('/pipeline-view')}
                 sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
               >

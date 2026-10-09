@@ -12,6 +12,7 @@ import {
   COMMAND_TIMEOUT_MS,
   RESET_TO_WAITING_MS,
   hasWakeWord,
+  liminalityCommandRoute,
   matchLiminalityCommand,
   registerForWake,
   spokenCommandResponse,
@@ -247,7 +248,7 @@ export function useLiminalityVoice({
         }
         setPhase('executing');
         setStatusLabel(`Opening ${command.label}`);
-        onNavigateRef.current(command.route);
+        onNavigateRef.current(liminalityCommandRoute(command, spoken));
         await speakAndWait(spokenCommandResponse(command, registerRef.current));
         resetRef.current = window.setTimeout(() => {
           goWaiting();

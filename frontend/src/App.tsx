@@ -41,6 +41,7 @@ import UsersPage from './pages/UsersPage';
 import BillsPage from './pages/BillsPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
 import DashboardPage from './pages/DashboardPage';
+import KioskDashboardPage from './pages/KioskDashboardPage';
 import PdfViewerPage from './pages/PdfViewerPage';
 import PictureViewerPage from './pages/PictureViewerPage';
 import FinanceHubPage from './pages/FinanceHubPage';
@@ -92,6 +93,16 @@ function App(): JSX.Element | null {
         <Route path="/sms-consent" element={<SmsConsentPage />} />
 
         {/* --- Kiosk / TV full-screen views --- */}
+        <Route
+          path="/dashboard-view"
+          element={
+            <ProtectedRoute>
+              <ViewModeFrame currentView="dashboard">
+                <KioskDashboardPage />
+              </ViewModeFrame>
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/calendar-view"
           element={
