@@ -90,8 +90,12 @@ function isCompletedJob(job) {
   );
 }
 
+function isArchivedLike(job) {
+  return Boolean(job.isArchived) || Boolean(job.isDeadEstimate);
+}
+
 function pinGroup(job) {
-  if (job.isArchived) return 'archived';
+  if (isArchivedLike(job)) return 'archived';
   if (isCompletedJob(job)) return 'completed';
   return 'active';
 }
@@ -180,14 +184,14 @@ async function getJobMapPins(req, res) {
 
     await fillMissingCoords(jobs);
 
-    const liveJobs = jobs.filter((job) => !job.isArchived);
+    const liveJobs = jobs.filter((job) => !isArchivedLike(job));
     const pipelineJobs = liveJobs.filter(
       (job) => PIPELINE_STAGES.includes(job.stage) && !isCompletedJob(job),
     );
     const currentJobs = liveJobs.filter((job) => isCurrentJob(job, today, tomorrow));
     const weekJobs = liveJobs.filter((job) => isThisWeekJob(job, weekStart, weekEnd, weekJobIds));
-    const completedJobs = liveJobs.filter((job) => isCompletedJob(job));
-    const archivedJobs = jobs.filter((job) => job.isArchived);
+    const completedJobs = jobs.filter((job) => !job.isDeadEstimate && isCompletedJob(job));
+    const archivedJobs = jobs.filter((job) => isArchivedLike(job) && !isCompletedJob(job));
 
     return res.json({
       county: 'Orange County, CA',

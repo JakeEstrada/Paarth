@@ -3,7 +3,7 @@ import { Close as CloseIcon } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../utils/axios';
 import JobDetailModal from '../jobs/JobDetailModal';
 import { chartPanelSx } from './dashboardChartPrimitives';
@@ -63,6 +63,14 @@ function prettyStage(stage: string) {
 
 function pinLabel(pin: MapPin) {
   return pin.customerName || pin.title || 'Job';
+}
+
+function pinsForView(pins: Record<MapView, MapPin[]>, view: MapView) {
+  const list = pins[view] || [];
+  if (view === 'pipeline' || view === 'current' || view === 'week') {
+    return list.filter((pin) => pin.group !== 'archived' && !pin.isArchived && !pin.isDeadEstimate);
+  }
+  return list;
 }
 
 const OC_CENTER: L.LatLngExpression = [33.67, -117.78];
@@ -164,12 +172,14 @@ export default function OrangeCountyJobMap({
     };
   }, []);
 
+  const visiblePins = useMemo(() => pinsForView(pins, view), [pins, view]);
+
   useEffect(() => {
     const ctx = mapRef.current;
     if (!ctx) return;
     ctx.markers.clearLayers();
     const bounds = L.latLngBounds([]);
-    pins[view].forEach((pin) => {
+    visiblePins.forEach((pin) => {
       const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin.group), keyboard: true });
       marker.bindTooltip(escapeHtml(pinLabel(pin)), {
         direction: 'top',
@@ -192,7 +202,7 @@ export default function OrangeCountyJobMap({
     } else {
       ctx.map.setView(OC_CENTER, 10);
     }
-  }, [pins, view]);
+  }, [visiblePins]);
 
   useEffect(() => {
     if (paused || selectedPin) return undefined;
@@ -209,7 +219,7 @@ export default function OrangeCountyJobMap({
     setSelectedPin(null);
   }, [view]);
 
-  const activePins = pins[view];
+  const activePins = visiblePins;
 
   const handleJobUpdate = useCallback(async (jobId: string, updates: Record<string, unknown>) => {
     await api.patch(`/jobs/${jobId}`, updates);
