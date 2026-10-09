@@ -961,15 +961,8 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                   <TableRow 
                     key={customer._id} 
                     hover
-                    onClick={() => {
-                      if (isReadonlyView) return;
-                      handleOpenContactModal(customer);
-                    }}
-                    onDoubleClick={() => {
-                      if (!isReadonlyView) return;
-                      handleOpenContactModal(customer);
-                    }}
-                    sx={{ cursor: isReadonlyView ? 'pointer' : 'pointer' }}
+                    onClick={() => handleOpenContactModal(customer)}
+                    sx={{ cursor: 'pointer' }}
                   >
                     <TableCell sx={{ fontWeight: isMobile ? 600 : 400 }}>{customer.name || '-'}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
@@ -1045,11 +1038,13 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
                   <ShareIcon />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Edit customer">
-                <IconButton onClick={handleStartEditCustomer} color="primary" size="small">
-                  <EditIcon />
-                </IconButton>
-              </Tooltip>
+              {!isReadonlyView ? (
+                <Tooltip title="Edit customer">
+                  <IconButton onClick={handleStartEditCustomer} color="primary" size="small">
+                    <EditIcon />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
             </Box>
           )}
         </DialogTitle>

@@ -35,6 +35,7 @@ import {
   AttachMoney as MoneyIcon,
   CalendarToday as CalendarIcon,
   Assignment as TasksIcon,
+  Dashboard as DashboardHomeIcon,
   TrendingUp as TrendingUpIcon,
   Warning as WarningIcon,
   CheckCircle as CheckCircleIcon,
@@ -1437,6 +1438,14 @@ function DashboardPage() {
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
           <Button
             variant="contained"
+            startIcon={<DashboardHomeIcon />}
+            onClick={() => navigate('/dashboard')}
+            sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
+          >
+            Dashboard
+          </Button>
+          <Button
+            variant="outlined"
             startIcon={<JobsIcon />}
             onClick={() => navigate('/pipeline')}
             sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
@@ -1453,11 +1462,11 @@ function DashboardPage() {
           </Button>
           <Button
             variant="outlined"
-            startIcon={<TasksIcon />}
-            onClick={() => navigate('/tasks')}
+            startIcon={<PeopleIcon />}
+            onClick={() => navigate('/customers')}
             sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
           >
-            Tasks
+            Customers
           </Button>
         </Box>
         <Typography variant="body2" color="text.secondary">

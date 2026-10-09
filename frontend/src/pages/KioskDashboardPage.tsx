@@ -2,9 +2,16 @@
  * KioskDashboardPage — TV / shop-floor dashboard: first two graphs + job map.
  * Route: /dashboard-view
  */
-import { Box, CircularProgress } from '@mui/material';
+import {
+  AccountTree as JobsIcon,
+  CalendarToday as CalendarIcon,
+  Dashboard as DashboardHomeIcon,
+  People as PeopleIcon,
+} from '@mui/icons-material';
+import { Box, Button, CircularProgress } from '@mui/material';
 import { format, subDays } from 'date-fns';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DashboardInsightGrid from '../components/dashboard/DashboardInsightGrid';
 import { useAuth } from '../context/AuthContext';
 import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
@@ -39,6 +46,7 @@ const EMPTY_MIX: PipelineSlice[] = [
 ];
 
 export default function KioskDashboardPage() {
+  const navigate = useNavigate();
   const { user, isSuperAdmin } = useAuth();
   const { hideSensitive } = useShopViewSensitive(user?.role);
   const [loading, setLoading] = useState(true);
@@ -111,6 +119,40 @@ export default function KioskDashboardPage() {
         minHeight: 0,
       }}
     >
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5, flexShrink: 0 }}>
+        <Button
+          variant="contained"
+          startIcon={<DashboardHomeIcon />}
+          onClick={() => navigate('/dashboard-view')}
+          sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
+        >
+          Dashboard
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<JobsIcon />}
+          onClick={() => navigate('/pipeline-view')}
+          sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
+        >
+          Pipeline
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<CalendarIcon />}
+          onClick={() => navigate('/calendar-view')}
+          sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
+        >
+          Calendar
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<PeopleIcon />}
+          onClick={() => navigate('/customers-view')}
+          sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
+        >
+          Customers
+        </Button>
+      </Box>
       <DashboardInsightGrid
         hideSensitive={hideSensitive}
         showTraffic={Boolean(isSuperAdmin())}
