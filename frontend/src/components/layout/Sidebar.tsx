@@ -296,54 +296,29 @@ function Sidebar({ mobileOpen, onMobileClose }) {
 
       <List>
         {user?.role === 'shop_view' && (
-          <>
-            <ListItem disablePadding>
-              <ListItemButton
-                onClick={() => handleNavigation('/dashboard-view')}
-                selected={isActive('/dashboard-view')}
-                sx={navButtonSx}
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => handleNavigation('/pipeline-view')}
+              selected={isActive('/pipeline-view')}
+              sx={navButtonSx}
+            >
+              <ListItemIcon
+                sx={{
+                  minWidth: 40,
+                  color: isActive('/pipeline-view') ? theme.palette.primary.main : 'inherit',
+                }}
               >
-                <ListItemIcon
-                  sx={{
-                    minWidth: 40,
-                    color: isActive('/dashboard-view') ? theme.palette.primary.main : 'inherit',
-                  }}
-                >
-                  <DashboardIcon />
-                </ListItemIcon>
-                <ListItemText
-                  primary="Dashboard view"
-                  primaryTypographyProps={{
-                    fontSize: '0.9375rem',
-                    fontWeight: isActive('/dashboard-view') ? 600 : 400,
-                  }}
-                />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding>
-              <ListItemButton
-                onClick={() => handleNavigation('/pipeline-view')}
-                selected={isActive('/pipeline-view')}
-                sx={navButtonSx}
-              >
-                <ListItemIcon
-                  sx={{
-                    minWidth: 40,
-                    color: isActive('/pipeline-view') ? theme.palette.primary.main : 'inherit',
-                  }}
-                >
-                  <PipelineViewKioskIcon />
-                </ListItemIcon>
-                <ListItemText
-                  primary="Pipeline view"
-                  primaryTypographyProps={{
-                    fontSize: '0.9375rem',
-                    fontWeight: isActive('/pipeline-view') ? 600 : 400,
-                  }}
-                />
-              </ListItemButton>
-            </ListItem>
-          </>
+                <PipelineViewKioskIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary="Pipeline view"
+                primaryTypographyProps={{
+                  fontSize: '0.9375rem',
+                  fontWeight: isActive('/pipeline-view') ? 600 : 400,
+                }}
+              />
+            </ListItemButton>
+          </ListItem>
         )}
       </List>
 

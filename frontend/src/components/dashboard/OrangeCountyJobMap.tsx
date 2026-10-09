@@ -56,27 +56,8 @@ function escapeHtml(value: string) {
     .replace(/"/g, '&quot;');
 }
 
-function prettyStage(stage: string) {
-  const label = String(stage || '').replace(/_/g, ' ').trim();
-  if (!label) return 'No stage';
-  return label.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
 function pinLabel(pin: MapPin) {
   return pin.customerName || pin.title || 'Job';
-}
-
-function pinTooltipHtml(pin: MapPin) {
-  const title = pinLabel(pin);
-  const jobTitle =
-    pin.customerName && pin.title && pin.title !== pin.customerName ? pin.title : '';
-  const stage = prettyStage(pin.stage);
-  const address = String(pin.address || '').trim();
-  const lines = [`<strong>${escapeHtml(title)}</strong>`];
-  if (jobTitle) lines.push(escapeHtml(jobTitle));
-  if (stage) lines.push(escapeHtml(stage));
-  if (address) lines.push(escapeHtml(address));
-  return lines.join('<br/>');
 }
 
 function pinsForView(pins: Record<MapView, MapPin[]>, view: MapView) {
@@ -202,7 +183,7 @@ export default function OrangeCountyJobMap({
     const bounds = L.latLngBounds([]);
     visiblePins.forEach((pin) => {
       const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin.group), keyboard: true });
-      marker.bindTooltip(pinTooltipHtml(pin), {
+      marker.bindTooltip(escapeHtml(pinLabel(pin)), {
         direction: 'top',
         offset: [0, -12],
         opacity: 1,
@@ -315,11 +296,9 @@ export default function OrangeCountyJobMap({
               theme.palette.mode === 'dark'
                 ? '0 8px 24px rgba(0,0,0,0.45)'
                 : '0 8px 24px rgba(15, 23, 42, 0.18)',
-            fontWeight: 600,
+            fontWeight: 700,
             fontSize: 13,
-            lineHeight: 1.35,
-            padding: '8px 12px',
-            whiteSpace: 'normal',
+            padding: '6px 10px',
           },
           '& .paarth-job-tooltip.leaflet-tooltip-top::before': {
             borderTopColor: theme.palette.background.paper,

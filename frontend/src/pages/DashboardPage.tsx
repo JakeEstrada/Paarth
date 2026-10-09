@@ -1460,18 +1460,9 @@ function DashboardPage() {
             Tasks
           </Button>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Typography variant="body2" color="text.secondary">
-            {todayLabel}
-          </Typography>
-          <Button
-            variant="outlined"
-            onClick={() => navigate('/dashboard-view')}
-            sx={{ textTransform: 'none', borderRadius: 2, px: 2, display: { xs: 'none', sm: 'inline-flex' } }}
-          >
-            Dashboard view
-          </Button>
-        </Box>
+        <Typography variant="body2" color="text.secondary">
+          {todayLabel}
+        </Typography>
       </Box>
 
       <DashboardInsightGrid
