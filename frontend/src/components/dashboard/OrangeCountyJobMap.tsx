@@ -3,9 +3,9 @@ import { Close as CloseIcon } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../../utils/axios';
+import JobDetailModal from '../jobs/JobDetailModal';
 import { chartPanelSx } from './dashboardChartPrimitives';
 
 type MapPin = {
@@ -65,13 +65,6 @@ function pinLabel(pin: MapPin) {
   return pin.customerName || pin.title || 'Job';
 }
 
-function jobPath(pin: MapPin) {
-  if (pin.group === 'completed' || pin.group === 'archived') {
-    return `/completed-jobs?jobId=${pin.id}`;
-  }
-  return `/pipeline?jobId=${pin.id}`;
-}
-
 const OC_CENTER: L.LatLngExpression = [33.67, -117.78];
 const OC_BOUNDS = L.latLngBounds([33.34, -118.18], [33.98, -117.4]);
 
@@ -100,14 +93,18 @@ function addBasemap(map: L.Map) {
   ).addTo(map);
 }
 
-export default function OrangeCountyJobMap() {
+export default function OrangeCountyJobMap({
+  hideSensitive = false,
+}: {
+  hideSensitive?: boolean;
+} = {}) {
   const theme = useTheme();
-  const navigate = useNavigate();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<{ map: L.Map; markers: L.LayerGroup } | null>(null);
   const [view, setView] = useState<MapView>('all');
   const [paused, setPaused] = useState(false);
   const [selectedPin, setSelectedPin] = useState<MapPin | null>(null);
+  const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [pins, setPins] = useState<Record<MapView, MapPin[]>>({
     all: [],
     pipeline: [],
@@ -213,6 +210,10 @@ export default function OrangeCountyJobMap() {
   }, [view]);
 
   const activePins = pins[view];
+
+  const handleJobUpdate = useCallback(async (jobId: string, updates: Record<string, unknown>) => {
+    await api.patch(`/jobs/${jobId}`, updates);
+  }, []);
 
   return (
     <Paper
@@ -336,7 +337,7 @@ export default function OrangeCountyJobMap() {
             <Button
               size="small"
               variant="contained"
-              onClick={() => navigate(jobPath(selectedPin))}
+              onClick={() => setOpenJobId(selectedPin.id)}
               sx={{ mt: 1.5, textTransform: 'none' }}
             >
               Open job
@@ -360,6 +361,15 @@ export default function OrangeCountyJobMap() {
           </Typography>
         ) : null}
       </Box>
+      <JobDetailModal
+        jobId={openJobId}
+        open={Boolean(openJobId)}
+        onClose={() => setOpenJobId(null)}
+        onJobUpdate={handleJobUpdate}
+        onJobDelete={() => setOpenJobId(null)}
+        onJobArchive={() => setOpenJobId(null)}
+        hideSensitive={hideSensitive}
+      />
     </Paper>
   );
 }

@@ -211,19 +211,12 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   // Check for jobId in URL query params and open that job's modal
   useEffect(() => {
     const jobIdFromUrl = searchParams.get('jobId');
-    if (jobIdFromUrl && jobs.length > 0) {
-      // Verify the job exists in the current jobs list (normalize ids — API may return string or object)
-      const jobExists = jobs.some(
-        (job) => String(job._id) === String(jobIdFromUrl)
-      );
-      if (jobExists) {
-        setSelectedJobId(jobIdFromUrl);
-        // Remove the query parameter from URL after opening
-        searchParams.delete('jobId');
-        setSearchParams(searchParams, { replace: true });
-      }
-    }
-  }, [jobs, searchParams, setSearchParams]);
+    if (!jobIdFromUrl) return;
+    setSelectedJobId(jobIdFromUrl);
+    const next = new URLSearchParams(searchParams);
+    next.delete('jobId');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   /** Paginate through GET /jobs until all active pipeline cards are loaded. */
   const fetchJobs = useCallback(async ({ background = false } = {}) => {

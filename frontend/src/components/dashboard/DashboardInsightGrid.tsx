@@ -225,7 +225,7 @@ export default function DashboardInsightGrid({
         ) : null}
       </Box>
 
-      <OrangeCountyJobMap />
+      <OrangeCountyJobMap hideSensitive={hideSensitive} />
 
       <Box
         sx={{
