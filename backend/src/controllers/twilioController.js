@@ -8,6 +8,7 @@ const { getFileStream } = require('./fileController');
 const { ensureDefaultTenant, ensureTenantBySlug } = require('../utils/tenantService');
 const { runWithTenantContext } = require('../middleware/tenantContext');
 const { publishSmsInboundCreated } = require('../services/eventBus');
+const { tryRecordSmsPunch, findActivePhoneByFrom } = require('./rfidController');
 
 /**
  * Basic Twilio webhook handlers.
@@ -69,6 +70,8 @@ async function resolveInboundTenantId({ from, to, preferredTenantId } = {}) {
 
   const fromVariants = phoneMatchVariants(from);
   if (fromVariants.length) {
+    const clockPhone = await findActivePhoneByFrom(from);
+    if (clockPhone?.tenantId) return String(clockPhone.tenantId);
     const customer = await Customer.findOne({
       $or: [
         { primaryPhone: { $in: fromVariants } },
@@ -211,6 +214,22 @@ async function inboundSms(req, res) {
       await logInboundSms({ from, to, body, twilioSid: messageSid, io: req.app.get('io') });
     } catch (logError) {
       console.error('Failed to log inbound SMS:', logError?.message || logError);
+    }
+
+    let punched = false;
+    try {
+      const punch = await tryRecordSmsPunch({ from, body, io: req.app.get('io') });
+      punched = Boolean(punch?.scan);
+    } catch (punchError) {
+      console.error('Failed to record SMS punch:', punchError?.message || punchError);
+    }
+
+    if (punched) {
+      return xmlResponse(
+        res,
+        `<?xml version="1.0" encoding="UTF-8"?>
+<Response><Message>Logged.</Message></Response>`
+      );
     }
 
     // Empty TwiML acknowledges receipt without auto-replying.

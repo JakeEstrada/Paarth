@@ -6,10 +6,13 @@ const {
   listScans,
   listTags,
   listPins,
+  listPhones,
   upsertTag,
   upsertPin,
+  upsertPhone,
   deleteTag,
   deletePin,
+  deletePhone,
   listEmployeeProfiles,
   upsertEmployeeProfile,
   getKioskWeekSummary,
@@ -27,12 +30,16 @@ router.use(requireAuth);
 router.get('/scans', listScans);
 router.get('/tags', listTags);
 router.get('/pins', listPins);
+router.get('/phones', listPhones);
 router.post('/tags', upsertTag);
 router.put('/tags', upsertTag);
 router.post('/pins', upsertPin);
 router.put('/pins', upsertPin);
+router.post('/phones', upsertPhone);
+router.put('/phones', upsertPhone);
 router.delete('/tags/:id', deleteTag);
 router.delete('/pins/:id', deletePin);
+router.delete('/phones/:id', deletePhone);
 router.get('/employee-profiles', listEmployeeProfiles);
 router.put('/employee-profiles/:employeeKey', upsertEmployeeProfile);
 router.get('/timesheets/:employeeKey/:periodId', getTimesheetWeek);

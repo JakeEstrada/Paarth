@@ -102,8 +102,10 @@ function publishRfidScanCreated(io, scan, opts = {}) {
       source: scan.source,
       deviceLabel: scan.deviceLabel,
       pin: scan.pin || '',
+      phone: scan.phone || '',
       knownTag: opts.knownTag === true,
       knownPin: opts.knownPin === true,
+      knownPhone: opts.knownPhone === true,
     },
     sourceSocketId: opts.sourceSocketId || null,
   };
@@ -142,6 +144,40 @@ function publishRfidPinDeleted(io, pinEntry, opts = {}) {
   };
   if (tenantId) {
     safeEmit(io, `tenant:${tenantId}`, 'rfid.pin.deleted', data);
+  }
+}
+
+function publishRfidPhoneUpserted(io, phoneEntry, opts = {}) {
+  if (!phoneEntry?._id) return;
+  const tenantId = phoneEntry.tenantId ? String(phoneEntry.tenantId) : null;
+  const data = {
+    type: 'rfid.phone.upserted',
+    tenantId,
+    phoneEntry: {
+      _id: String(phoneEntry._id),
+      phone: phoneEntry.phone,
+      phoneDigits: phoneEntry.phoneDigits,
+      displayName: phoneEntry.displayName,
+      notes: phoneEntry.notes,
+    },
+    sourceSocketId: opts.sourceSocketId || null,
+  };
+  if (tenantId) {
+    safeEmit(io, `tenant:${tenantId}`, 'rfid.phone.upserted', data);
+  }
+}
+
+function publishRfidPhoneDeleted(io, phoneEntry, opts = {}) {
+  if (!phoneEntry?._id) return;
+  const tenantId = phoneEntry.tenantId ? String(phoneEntry.tenantId) : null;
+  const data = {
+    type: 'rfid.phone.deleted',
+    tenantId,
+    phoneId: String(phoneEntry._id),
+    sourceSocketId: opts.sourceSocketId || null,
+  };
+  if (tenantId) {
+    safeEmit(io, `tenant:${tenantId}`, 'rfid.phone.deleted', data);
   }
 }
 
@@ -268,6 +304,8 @@ module.exports = {
   publishRfidTagDeleted,
   publishRfidPinUpserted,
   publishRfidPinDeleted,
+  publishRfidPhoneUpserted,
+  publishRfidPhoneDeleted,
   publishRfidTimesheetUpdated,
   publishRfidEmployeeProfileUpdated,
   publishUserAuditCreated,

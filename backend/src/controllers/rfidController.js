@@ -1,5 +1,6 @@
 const RfidTag = require('../models/RfidTag');
 const RfidPin = require('../models/RfidPin');
+const RfidPhone = require('../models/RfidPhone');
 const RfidScan = require('../models/RfidScan');
 const RfidEmployeeProfile = require('../models/RfidEmployeeProfile');
 const RfidTimesheetWeek = require('../models/RfidTimesheetWeek');
@@ -9,10 +10,12 @@ const {
   publishRfidTagDeleted,
   publishRfidPinUpserted,
   publishRfidPinDeleted,
+  publishRfidPhoneUpserted,
+  publishRfidPhoneDeleted,
   publishRfidTimesheetUpdated,
   publishRfidEmployeeProfileUpdated,
 } = require('../services/eventBus');
-const { getTenantContext } = require('../middleware/tenantContext');
+const { getTenantContext, runWithTenantContext } = require('../middleware/tenantContext');
 const { computeWeekTotalHours, sanitizeManualByDay } = require('../services/rfidWeekHours');
 
 function normalizeUid(raw) {
@@ -25,6 +28,36 @@ function normalizePin(raw) {
   const s = String(raw || '').trim().replace(/\D/g, '');
   if (s.length !== 4) return '';
   return s;
+}
+
+function last10Digits(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+  if (digits.length >= 10) return digits.slice(-10);
+  return '';
+}
+
+function normalizePhone(raw) {
+  const digits = last10Digits(raw);
+  if (!digits) return null;
+  return { phone: `+1${digits}`, phoneDigits: digits };
+}
+
+function phoneMatchValues(raw) {
+  const parsed = normalizePhone(raw);
+  const digits = last10Digits(raw);
+  const values = new Set();
+  if (parsed) {
+    values.add(parsed.phone);
+    values.add(parsed.phoneDigits);
+  }
+  if (digits) {
+    values.add(digits);
+    values.add(`+${digits}`);
+    values.add(`1${digits}`);
+    values.add(`+1${digits}`);
+  }
+  return [...values].filter(Boolean);
 }
 
 function normalizeEmployeeKey(name) {
@@ -235,6 +268,15 @@ async function listPins(req, res) {
   }
 }
 
+async function listPhones(req, res) {
+  try {
+    const phones = await RfidPhone.find({}).sort({ displayName: 1 }).lean();
+    return res.json({ phones });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
 async function upsertTag(req, res) {
   try {
     const uid = normalizeUid(req.body?.uid);
@@ -326,6 +368,127 @@ async function deleteTag(req, res) {
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
+}
+
+async function upsertPhone(req, res) {
+  try {
+    const parsed = normalizePhone(req.body?.phone || req.body?.number);
+    const displayName = String(req.body?.displayName || req.body?.name || '').trim();
+    if (!parsed) return res.status(400).json({ error: 'phone must be a 10-digit number' });
+    if (!displayName) return res.status(400).json({ error: 'displayName is required' });
+
+    const notes = String(req.body?.notes || '').trim();
+    const employeeUserId = req.body?.employeeUserId || null;
+    const isActive = req.body?.isActive !== false;
+
+    const phoneEntry = await RfidPhone.findOneAndUpdate(
+      { phoneDigits: parsed.phoneDigits },
+      {
+        phone: parsed.phone,
+        phoneDigits: parsed.phoneDigits,
+        displayName,
+        notes,
+        employeeUserId: employeeUserId || undefined,
+        isActive,
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+
+    const io = req.app.get('io');
+    const phoneDoc = phoneEntry.toObject ? phoneEntry.toObject() : phoneEntry;
+    publishRfidPhoneUpserted(io, phoneDoc, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
+    return res.status(200).json({ phone: phoneEntry });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ error: 'This number is already registered for your organization' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+async function deletePhone(req, res) {
+  try {
+    const phoneEntry = await RfidPhone.findByIdAndDelete(req.params.id);
+    if (!phoneEntry) return res.status(404).json({ error: 'Number not found' });
+
+    const io = req.app.get('io');
+    const phoneDoc = phoneEntry.toObject ? phoneEntry.toObject() : phoneEntry;
+    publishRfidPhoneDeleted(io, phoneDoc, {
+      sourceSocketId: req.headers['x-socket-id'] || null,
+    });
+
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+async function findActivePhoneByFrom(from) {
+  const values = phoneMatchValues(from);
+  const digits = last10Digits(from);
+  if (!values.length && !digits) return null;
+  const query = { isActive: { $ne: false } };
+  if (digits) {
+    query.$or = [{ phone: { $in: values } }, { phoneDigits: digits }];
+  } else {
+    query.phone = { $in: values };
+  }
+  return RfidPhone.findOne(query).setOptions({ bypassTenant: true });
+}
+
+async function recordSmsPunch({ phoneEntry, body, scannedAt, io }) {
+  const digits = String(phoneEntry.phoneDigits || last10Digits(phoneEntry.phone) || '').trim();
+  const displayName = String(phoneEntry.displayName || '').trim() || `Unknown number (${digits || 'sms'})`;
+  const note = String(body || '').trim().slice(0, 80);
+  const when = scannedAt instanceof Date ? scannedAt : new Date();
+  if (Number.isNaN(when.getTime())) {
+    throw new Error('Invalid scannedAt');
+  }
+
+  const scan = await RfidScan.create({
+    uid: `SMS-${digits || 'unknown'}`,
+    phone: phoneEntry.phone || '',
+    rfidPhoneId: phoneEntry._id || undefined,
+    displayName,
+    scannedAt: when,
+    source: 'sms',
+    deviceLabel: note || 'sms',
+  });
+
+  const scanDoc = scan.toObject ? scan.toObject() : scan;
+  if (!scanDoc.tenantId) {
+    const { tenantId } = getTenantContext();
+    if (tenantId) scanDoc.tenantId = tenantId;
+  }
+  publishRfidScanCreated(io, scanDoc, { knownPhone: true });
+
+  let weekHours = null;
+  try {
+    weekHours = await computeWeekTotalHours(displayName);
+  } catch (weekErr) {
+    console.error('computeWeekTotalHours error:', weekErr?.message || weekErr);
+  }
+
+  return { scan: scanDoc, weekHours };
+}
+
+function isSmsClockPunchBody(raw) {
+  const text = String(raw ?? '');
+  if (/^\s*$/.test(text)) return true;
+  const token = text.trim().toLowerCase();
+  return token === 'in' || token === 'out' || token === '.';
+}
+
+async function tryRecordSmsPunch({ from, body, io }) {
+  if (!isSmsClockPunchBody(body)) return null;
+  const phoneEntry = await findActivePhoneByFrom(from);
+  if (!phoneEntry?.tenantId) return null;
+  return runWithTenantContext({ tenantId: String(phoneEntry.tenantId) }, async () => {
+    return recordSmsPunch({ phoneEntry, body, io });
+  });
 }
 
 async function deletePin(req, res) {
@@ -482,10 +645,15 @@ module.exports = {
   listScans,
   listTags,
   listPins,
+  listPhones,
   upsertTag,
   upsertPin,
+  upsertPhone,
   deleteTag,
   deletePin,
+  deletePhone,
+  tryRecordSmsPunch,
+  findActivePhoneByFrom,
   listEmployeeProfiles,
   upsertEmployeeProfile,
   getKioskWeekSummary,

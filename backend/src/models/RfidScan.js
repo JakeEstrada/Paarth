@@ -20,6 +20,17 @@ const rfidScanSchema = new mongoose.Schema(
       ref: 'RfidPin',
       default: null,
     },
+    /** Set when check-in came from an inbound text */
+    phone: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    rfidPhoneId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'RfidPhone',
+      default: null,
+    },
     displayName: {
       type: String,
       required: true,

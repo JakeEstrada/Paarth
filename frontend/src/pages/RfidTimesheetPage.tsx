@@ -470,9 +470,10 @@ function RfidTimesheetPage() {
   const loadEmployees = useCallback(async () => {
     try {
       setLoadingEmployees(true);
-      const [tagsRes, pinsRes, profilesRes] = await Promise.all([
+      const [tagsRes, pinsRes, phonesRes, profilesRes] = await Promise.all([
         api.get<{ tags: { _id: string; uid: string; displayName: string }[] }>('/rfid/tags'),
         api.get<{ pins: { _id: string; pin: string; displayName: string }[] }>('/rfid/pins'),
+        api.get<{ phones: { _id: string; phone?: string; phoneDigits?: string; displayName: string }[] }>('/rfid/phones'),
         api.get<{
           profiles: Array<{
             employeeKey: string;
@@ -484,7 +485,7 @@ function RfidTimesheetPage() {
         }>('/rfid/employee-profiles'),
       ]);
       const options = sortEmployeesForTimesheet(
-        mergeRfidRegistries(tagsRes.data?.tags || [], pinsRes.data?.pins || []),
+        mergeRfidRegistries(tagsRes.data?.tags || [], pinsRes.data?.pins || [], phonesRes.data?.phones || []),
       );
       setEmployees(options);
       setEmployeeProfiles(profileMapFromApi(profilesRes.data?.profiles || []));

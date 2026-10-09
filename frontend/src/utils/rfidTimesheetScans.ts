@@ -81,31 +81,37 @@ export function normalizeEmployeeKey(name: string): string {
 export function mergeRfidRegistries(
   tags: Array<{ _id: string; uid: string; displayName: string }>,
   pins: Array<{ _id: string; pin: string; displayName: string }>,
+  phones: Array<{ _id: string; phone?: string; phoneDigits?: string; displayName: string }> = [],
 ): RfidEmployeeIdentity[] {
   const byKey = new Map<string, RfidEmployeeIdentity>();
 
-  for (const tag of tags) {
-    const name = String(tag.displayName || '').trim();
-    if (!name) continue;
+  const take = (nameRaw: string) => {
+    const name = String(nameRaw || '').trim();
+    if (!name) return null;
     const key = normalizeEmployeeKey(name);
     let row = byKey.get(key);
     if (!row) {
       row = { id: key, name, uids: [], pins: [] };
       byKey.set(key, row);
     }
-    if (tag.uid && !row.uids.includes(tag.uid)) row.uids.push(tag.uid);
+    return row;
+  };
+
+  for (const tag of tags) {
+    const row = take(tag.displayName);
+    if (row && tag.uid && !row.uids.includes(tag.uid)) row.uids.push(tag.uid);
   }
 
   for (const pinEntry of pins) {
-    const name = String(pinEntry.displayName || '').trim();
-    if (!name) continue;
-    const key = normalizeEmployeeKey(name);
-    let row = byKey.get(key);
-    if (!row) {
-      row = { id: key, name, uids: [], pins: [] };
-      byKey.set(key, row);
-    }
-    if (pinEntry.pin && !row.pins.includes(pinEntry.pin)) row.pins.push(pinEntry.pin);
+    const row = take(pinEntry.displayName);
+    if (row && pinEntry.pin && !row.pins.includes(pinEntry.pin)) row.pins.push(pinEntry.pin);
+  }
+
+  for (const phoneEntry of phones) {
+    const row = take(phoneEntry.displayName);
+    const digits = String(phoneEntry.phoneDigits || '').replace(/\D/g, '').slice(-10);
+    const uid = digits ? `SMS-${digits}` : '';
+    if (row && uid && !row.uids.includes(uid)) row.uids.push(uid);
   }
 
   return Array.from(byKey.values()).sort((a, b) => a.name.localeCompare(b.name));

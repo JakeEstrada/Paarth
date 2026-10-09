@@ -45,14 +45,29 @@ interface RfidPinRow {
   notes?: string;
 }
 
+interface RfidPhoneRow {
+  _id: string;
+  phone: string;
+  phoneDigits?: string;
+  displayName: string;
+  notes?: string;
+}
+
 interface RfidScanRow {
   _id: string;
   uid: string;
   pin?: string;
+  phone?: string;
   displayName: string;
   scannedAt: string;
   source?: string;
   deviceLabel?: string;
+}
+
+function formatClockPhone(value: string) {
+  const digits = String(value || '').replace(/\D/g, '').slice(-10);
+  if (digits.length !== 10) return value || '';
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
 const SCAN_LIST_LIMIT = 200;
@@ -62,13 +77,17 @@ function RfidPage() {
   const [loading, setLoading] = useState(true);
   const [tags, setTags] = useState<RfidTagRow[]>([]);
   const [pins, setPins] = useState<RfidPinRow[]>([]);
+  const [phones, setPhones] = useState<RfidPhoneRow[]>([]);
   const [scans, setScans] = useState<RfidScanRow[]>([]);
   const [tagUid, setTagUid] = useState('');
   const [tagName, setTagName] = useState('');
   const [pinCode, setPinCode] = useState('');
   const [pinName, setPinName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneName, setPhoneName] = useState('');
   const [savingTag, setSavingTag] = useState(false);
   const [savingPin, setSavingPin] = useState(false);
+  const [savingPhone, setSavingPhone] = useState(false);
   const [recentScanIds, setRecentScanIds] = useState<Set<string>>(() => new Set());
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -78,13 +97,15 @@ function RfidPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tagsRes, pinsRes, scansRes] = await Promise.all([
+      const [tagsRes, pinsRes, phonesRes, scansRes] = await Promise.all([
         api.get<{ tags: RfidTagRow[] }>('/rfid/tags'),
         api.get<{ pins: RfidPinRow[] }>('/rfid/pins'),
+        api.get<{ phones: RfidPhoneRow[] }>('/rfid/phones'),
         api.get<{ scans: RfidScanRow[] }>('/rfid/scans', { params: { limit: SCAN_LIST_LIMIT } }),
       ]);
       setTags(tagsRes.data.tags || []);
       setPins(pinsRes.data.pins || []);
+      setPhones(phonesRes.data.phones || []);
       setScans(scansRes.data.scans || []);
     } catch (error) {
       console.error(error);
@@ -180,11 +201,35 @@ function RfidPage() {
     setPins((prev) => prev.filter((p) => String(p._id) !== pinId));
   }, []);
 
+  const handleRealtimePhoneUpsert = useCallback((payload: { phoneEntry?: RfidPhoneRow }) => {
+    const incoming = payload?.phoneEntry;
+    if (!incoming?._id || !incoming.phone) return;
+
+    setPhones((prev) => {
+      const id = String(incoming._id);
+      const idx = prev.findIndex((p) => String(p._id) === id);
+      if (idx === -1) {
+        return [...prev, incoming].sort((a, b) => a.displayName.localeCompare(b.displayName));
+      }
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...incoming };
+      return next.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    });
+  }, []);
+
+  const handleRealtimePhoneDeleted = useCallback((payload: { phoneId?: string }) => {
+    const phoneId = String(payload?.phoneId || '').trim();
+    if (!phoneId) return;
+    setPhones((prev) => prev.filter((p) => String(p._id) !== phoneId));
+  }, []);
+
   useSocketSubscription(tenantRoom, 'rfid.scan.created', handleRealtimeScan);
   useSocketSubscription(tenantRoom, 'rfid.tag.upserted', handleRealtimeTagUpsert);
   useSocketSubscription(tenantRoom, 'rfid.tag.deleted', handleRealtimeTagDeleted);
   useSocketSubscription(tenantRoom, 'rfid.pin.upserted', handleRealtimePinUpsert);
   useSocketSubscription(tenantRoom, 'rfid.pin.deleted', handleRealtimePinDeleted);
+  useSocketSubscription(tenantRoom, 'rfid.phone.upserted', handleRealtimePhoneUpsert);
+  useSocketSubscription(tenantRoom, 'rfid.phone.deleted', handleRealtimePhoneDeleted);
 
   const liveLabel = useMemo(() => {
     if (!tenantRoom) return 'Offline';
@@ -246,6 +291,38 @@ function RfidPage() {
     }
   };
 
+  const handleSavePhone = async () => {
+    const digits = phoneNumber.replace(/\D/g, '').slice(-10);
+    const displayName = phoneName.trim();
+    if (digits.length !== 10 || !displayName) {
+      toast.error('10-digit number and name are required');
+      return;
+    }
+    setSavingPhone(true);
+    try {
+      await api.post('/rfid/phones', { phone: digits, displayName });
+      toast.success('Number saved');
+      setPhoneNumber('');
+      setPhoneName('');
+      await load();
+    } catch (error) {
+      toast.error(isAxiosError(error) ? error.response?.data?.error || 'Failed to save number' : 'Failed to save');
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
+  const handleDeletePhone = async (id: string) => {
+    if (!window.confirm('Remove this text-in number?')) return;
+    try {
+      await api.delete(`/rfid/phones/${id}`);
+      toast.success('Number removed');
+      await load();
+    } catch (error) {
+      toast.error(isAxiosError(error) ? error.response?.data?.error || 'Failed to delete' : 'Failed to delete');
+    }
+  };
+
   const handleDeletePin = async (id: string) => {
     if (!window.confirm('Remove this PIN mapping?')) return;
     try {
@@ -287,8 +364,9 @@ function RfidPage() {
       </Box>
 
       <Alert severity="info" sx={{ mb: 3 }}>
-        Map each physical tag UID or kiosk PIN to an employee name here. The shop kiosk posts RFID scans or PIN
-        check-ins to <code>POST /rfid/scans</code> with <code>x-rfid-api-key</code> and <code>x-tenant-id</code>.
+        Map a tag, kiosk PIN, or phone number to an employee name. A registered number clocks in by texting
+        the shop line <strong>in</strong>, <strong>out</strong>, a period, or a blank/space. Anything else
+        stays a normal text and is not a punch.
       </Alert>
 
       <Card variant="outlined" sx={{ mb: 3 }}>
@@ -353,6 +431,41 @@ function RfidPage() {
           </Box>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
             Used when RFID is unavailable. Employees tap the kiosk logo and enter this PIN.
+          </Typography>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined" sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+            Register text-in number
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
+            <TextField
+              label="Phone number"
+              size="small"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value.replace(/[^\d+()\-\s]/g, '').slice(0, 16))}
+              placeholder="(714) 555-1234"
+              inputProps={{ inputMode: 'tel' }}
+              sx={{ minWidth: 180 }}
+            />
+            <TextField
+              label="Name"
+              size="small"
+              value={phoneName}
+              onChange={(e) => setPhoneName(e.target.value)}
+              placeholder="Jake"
+              sx={{ minWidth: 180 }}
+            />
+            <Button variant="contained" onClick={() => void handleSavePhone()} disabled={savingPhone}>
+              {savingPhone ? <CircularProgress size={22} /> : 'Save number'}
+            </Button>
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Use the same name as their tag or PIN so timesheets stay on one person. They text the shop
+            number <strong>in</strong>, <strong>out</strong>, <strong>.</strong>, or a space. Notes like
+            mileage stay in the inbox and do not clock them.
           </Typography>
         </CardContent>
       </Card>
@@ -440,6 +553,46 @@ function RfidPage() {
           </Card>
 
           <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+            Text-in numbers ({phones.length})
+          </Typography>
+          <Card variant="outlined" sx={{ mb: 3, overflow: 'auto' }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Number</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell width={56} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {phones.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3}>
+                      <Typography variant="body2" color="text.secondary">
+                        No text-in numbers registered yet.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  phones.map((p) => (
+                    <TableRow key={p._id}>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                        {formatClockPhone(p.phone || p.phoneDigits || '')}
+                      </TableCell>
+                      <TableCell>{p.displayName}</TableCell>
+                      <TableCell>
+                        <IconButton size="small" onClick={() => void handleDeletePhone(p._id)} aria-label="Delete number">
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
             Recent scans ({scans.length})
           </Typography>
           <Card variant="outlined" sx={{ overflow: 'auto' }}>
@@ -448,7 +601,7 @@ function RfidPage() {
                 <TableRow>
                   <TableCell>When</TableCell>
                   <TableCell>Name</TableCell>
-                  <TableCell>UID / PIN</TableCell>
+                  <TableCell>UID / PIN / Phone</TableCell>
                   <TableCell>Source</TableCell>
                 </TableRow>
               </TableHead>
@@ -479,7 +632,7 @@ function RfidPage() {
                       </TableCell>
                       <TableCell>{s.displayName}</TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                        {s.pin ? `PIN ${s.pin}` : s.uid}
+                        {s.phone ? formatClockPhone(s.phone) : s.pin ? `PIN ${s.pin}` : s.uid}
                       </TableCell>
                       <TableCell>
                         {[s.deviceLabel, s.source].filter(Boolean).join(' · ') || '—'}
