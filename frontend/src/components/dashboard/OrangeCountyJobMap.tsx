@@ -1,8 +1,10 @@
-import { Box, Button, Paper, Typography } from '@mui/material';
+import { Box, Button, IconButton, Paper, Typography } from '@mui/material';
+import { Close as CloseIcon } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../utils/axios';
 import { chartPanelSx } from './dashboardChartPrimitives';
 
@@ -39,10 +41,35 @@ function pinIcon(group = 'active') {
   return L.divIcon({
     className: 'paarth-job-pin',
     html: `<span class="paarth-job-pin-dot" style="background:${color}"></span>`,
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-    popupAnchor: [0, -10],
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -12],
   });
+}
+
+function escapeHtml(value: string) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function prettyStage(stage: string) {
+  const label = String(stage || '').replace(/_/g, ' ').trim();
+  if (!label) return 'No stage';
+  return label.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function pinLabel(pin: MapPin) {
+  return pin.customerName || pin.title || 'Job';
+}
+
+function jobPath(pin: MapPin) {
+  if (pin.group === 'completed' || pin.group === 'archived') {
+    return `/completed-jobs?jobId=${pin.id}`;
+  }
+  return `/pipeline?jobId=${pin.id}`;
 }
 
 const OC_CENTER: L.LatLngExpression = [33.67, -117.78];
@@ -75,10 +102,12 @@ function addBasemap(map: L.Map) {
 
 export default function OrangeCountyJobMap() {
   const theme = useTheme();
+  const navigate = useNavigate();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<{ map: L.Map; markers: L.LayerGroup } | null>(null);
   const [view, setView] = useState<MapView>('all');
   const [paused, setPaused] = useState(false);
+  const [selectedPin, setSelectedPin] = useState<MapPin | null>(null);
   const [pins, setPins] = useState<Record<MapView, MapPin[]>>({
     all: [],
     pipeline: [],
@@ -129,6 +158,7 @@ export default function OrangeCountyJobMap() {
     addBasemap(map);
     const markers = L.layerGroup().addTo(map);
     mapRef.current = { map, markers };
+    map.on('click', () => setSelectedPin(null));
     window.setTimeout(() => map.invalidateSize(), 80);
 
     return () => {
@@ -143,10 +173,19 @@ export default function OrangeCountyJobMap() {
     ctx.markers.clearLayers();
     const bounds = L.latLngBounds([]);
     pins[view].forEach((pin) => {
-      const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin.group) });
-      marker.bindPopup(
-        `<strong>${pin.customerName || pin.title}</strong><br/>${pin.title}<br/>${pin.address}`,
-      );
+      const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin.group), keyboard: true });
+      marker.bindTooltip(escapeHtml(pinLabel(pin)), {
+        direction: 'top',
+        offset: [0, -12],
+        opacity: 1,
+        sticky: true,
+        className: 'paarth-job-tooltip',
+      });
+      marker.on('click', (event) => {
+        L.DomEvent.stopPropagation(event);
+        setPaused(true);
+        setSelectedPin(pin);
+      });
       marker.addTo(ctx.markers);
       bounds.extend([pin.lat, pin.lng]);
     });
@@ -159,7 +198,7 @@ export default function OrangeCountyJobMap() {
   }, [pins, view]);
 
   useEffect(() => {
-    if (paused) return undefined;
+    if (paused || selectedPin) return undefined;
     const timer = window.setInterval(() => {
       setView((current) => {
         const index = VIEWS.findIndex((item) => item.id === current);
@@ -167,7 +206,11 @@ export default function OrangeCountyJobMap() {
       });
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [paused]);
+  }, [paused, selectedPin]);
+
+  useEffect(() => {
+    setSelectedPin(null);
+  }, [view]);
 
   const activePins = pins[view];
 
@@ -175,7 +218,9 @@ export default function OrangeCountyJobMap() {
     <Paper
       elevation={0}
       onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
+      onMouseLeave={() => {
+        if (!selectedPin) setPaused(false);
+      }}
       sx={{
         ...chartPanelSx(theme),
         display: { xs: 'none', md: 'flex' },
@@ -183,28 +228,27 @@ export default function OrangeCountyJobMap() {
         height: 'auto',
       }}
     >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
-        <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-            Orange County jobs
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {activePins.length} mapped · red pipeline · green completed · gray archived
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {VIEWS.map((item) => (
-            <Button
-              key={item.id}
-              size="small"
-              variant={view === item.id ? 'contained' : 'outlined'}
-              onClick={() => setView(item.id)}
-              sx={{ textTransform: 'none', minWidth: 0 }}
-            >
-              {item.label}
-            </Button>
-          ))}
-        </Box>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
+        {VIEWS.map((item) => (
+          <Button
+            key={item.id}
+            size="small"
+            variant={view === item.id ? 'contained' : 'outlined'}
+            onClick={() => setView(item.id)}
+            sx={{ textTransform: 'none', minWidth: 0 }}
+          >
+            {item.label}
+          </Button>
+        ))}
+      </Box>
+      <Box sx={{ mb: 1 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+          Orange County jobs
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {activePins.length} mapped · hover a pin for the job · click for details · red pipeline · green
+          completed · gray archived
+        </Typography>
       </Box>
       <Box
         sx={{
@@ -219,18 +263,86 @@ export default function OrangeCountyJobMap() {
             background: '#0b1c24',
             fontFamily: 'inherit',
           },
-          '& .paarth-job-pin': { background: 'none', border: 0 },
+          '& .paarth-job-pin': { background: 'none', border: 0, cursor: 'pointer' },
           '& .paarth-job-pin-dot': {
             display: 'block',
-            width: 16,
-            height: 16,
+            width: 18,
+            height: 18,
             borderRadius: '50%',
             border: '2px solid #fff',
             boxShadow: '0 0 0 1px rgba(0,0,0,0.25)',
           },
+          '& .paarth-job-tooltip': {
+            background: theme.palette.background.paper,
+            color: theme.palette.text.primary,
+            border: 'none',
+            borderRadius: 8,
+            boxShadow:
+              theme.palette.mode === 'dark'
+                ? '0 8px 24px rgba(0,0,0,0.45)'
+                : '0 8px 24px rgba(15, 23, 42, 0.18)',
+            fontWeight: 700,
+            fontSize: 13,
+            padding: '6px 10px',
+          },
+          '& .paarth-job-tooltip.leaflet-tooltip-top::before': {
+            borderTopColor: theme.palette.background.paper,
+          },
         }}
       >
         <Box ref={hostRef} sx={{ position: 'absolute', inset: 0 }} />
+        {selectedPin ? (
+          <Paper
+            elevation={8}
+            sx={{
+              position: 'absolute',
+              top: 12,
+              left: 12,
+              zIndex: 500,
+              width: 300,
+              maxWidth: 'calc(100% - 24px)',
+              p: 1.5,
+              borderRadius: 2,
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                  {selectedPin.customerName || selectedPin.title}
+                </Typography>
+                {selectedPin.customerName && selectedPin.title !== selectedPin.customerName ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedPin.title}
+                  </Typography>
+                ) : null}
+              </Box>
+              <IconButton
+                size="small"
+                aria-label="Close job details"
+                onClick={() => setSelectedPin(null)}
+                sx={{ mt: -0.5, mr: -0.5 }}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              {prettyStage(selectedPin.stage)}
+            </Typography>
+            {selectedPin.address ? (
+              <Typography variant="body2" sx={{ mt: 0.5 }}>
+                {selectedPin.address}
+              </Typography>
+            ) : null}
+            <Button
+              size="small"
+              variant="contained"
+              onClick={() => navigate(jobPath(selectedPin))}
+              sx={{ mt: 1.5, textTransform: 'none' }}
+            >
+              Open job
+            </Button>
+          </Paper>
+        ) : null}
         {!activePins.length ? (
           <Typography
             variant="body2"

@@ -1412,7 +1412,6 @@ function DashboardPage() {
     }, 100);
   };
 
-  const greetingName = user?.name?.split(' ')[0] || 'there';
   const todayLabel = format(new Date(), 'EEEE, MMMM d');
 
   if (loading) {
@@ -1425,45 +1424,45 @@ function DashboardPage() {
 
   return (
     <Box sx={{ width: '100%', maxWidth: '100%', minWidth: 0, py: { xs: 2, sm: 3 } }}>
-      {/* Hero header */}
       <Box
         sx={{
           mb: 3,
-          p: { xs: 2.5, sm: 3 },
-          borderRadius: 3,
-          border: '1px solid',
-          borderColor: 'divider',
-          boxShadow:
-            theme.palette.mode === 'dark'
-              ? '0 1px 0 rgba(255,255,255,0.04)'
-              : '0 1px 3px rgba(15, 23, 42, 0.06)',
-          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.14 : 0.08)} 0%, ${alpha(theme.palette.background.paper, 0.95)} 55%)`,
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1.5,
         }}
       >
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
-          <Box>
-            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: '0.08em', fontWeight: 600 }}>
-              {todayLabel}
-            </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: '-0.02em', mt: 0.5, fontSize: { xs: '1.6rem', sm: '2rem' } }}>
-              Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {greetingName}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 520 }}>
-              Payments, Orange County jobs, team activity, and website traffic.
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            <Button variant="contained" size="small" startIcon={<JobsIcon />} onClick={() => navigate('/pipeline')} sx={{ textTransform: 'none', borderRadius: 2 }}>
-              Pipeline
-            </Button>
-            <Button variant="outlined" size="small" startIcon={<CalendarIcon />} onClick={() => navigate('/calendar')} sx={{ textTransform: 'none', borderRadius: 2 }}>
-              Calendar
-            </Button>
-            <Button variant="outlined" size="small" startIcon={<TasksIcon />} onClick={() => navigate('/tasks')} sx={{ textTransform: 'none', borderRadius: 2 }}>
-              Tasks
-            </Button>
-          </Box>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+          <Button
+            variant="contained"
+            startIcon={<JobsIcon />}
+            onClick={() => navigate('/pipeline')}
+            sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
+          >
+            Pipeline
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<CalendarIcon />}
+            onClick={() => navigate('/calendar')}
+            sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
+          >
+            Calendar
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<TasksIcon />}
+            onClick={() => navigate('/tasks')}
+            sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
+          >
+            Tasks
+          </Button>
         </Box>
+        <Typography variant="body2" color="text.secondary">
+          {todayLabel}
+        </Typography>
       </Box>
 
       <DashboardInsightGrid
