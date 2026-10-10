@@ -216,19 +216,23 @@ async function inboundSms(req, res) {
       console.error('Failed to log inbound SMS:', logError?.message || logError);
     }
 
-    let punched = false;
+    let confirmation = '';
     try {
       const punch = await tryRecordSmsPunch({ from, body, io: req.app.get('io') });
-      punched = Boolean(punch?.scan);
+      confirmation = String(punch?.confirmation || '').trim();
     } catch (punchError) {
       console.error('Failed to record SMS punch:', punchError?.message || punchError);
     }
 
-    if (punched) {
+    if (confirmation) {
+      const safe = confirmation
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
       return xmlResponse(
         res,
         `<?xml version="1.0" encoding="UTF-8"?>
-<Response><Message>Logged.</Message></Response>`
+<Response><Message>${safe}</Message></Response>`
       );
     }
 

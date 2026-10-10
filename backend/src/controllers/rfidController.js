@@ -482,12 +482,39 @@ function isSmsClockPunchBody(raw) {
   return token === 'in' || token === 'out' || token === '.';
 }
 
+function punchKindFromBody(raw) {
+  const token = String(raw ?? '').trim().toLowerCase();
+  if (token === 'in') return 'in';
+  if (token === 'out') return 'out';
+  return 'punch';
+}
+
+function formatShopPunchTime(date) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: process.env.RFID_SHOP_TIMEZONE || 'America/Los_Angeles',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date instanceof Date ? date : new Date(date));
+}
+
+function smsPunchConfirmation(kind, when) {
+  const time = formatShopPunchTime(when);
+  if (kind === 'in') return `Received. Clocked in at ${time}.`;
+  if (kind === 'out') return `Received. Clocked out at ${time}.`;
+  return `Received. Punch logged at ${time}.`;
+}
+
 async function tryRecordSmsPunch({ from, body, io }) {
   if (!isSmsClockPunchBody(body)) return null;
   const phoneEntry = await findActivePhoneByFrom(from);
   if (!phoneEntry?.tenantId) return null;
   return runWithTenantContext({ tenantId: String(phoneEntry.tenantId) }, async () => {
-    return recordSmsPunch({ phoneEntry, body, io });
+    const result = await recordSmsPunch({ phoneEntry, body, io });
+    return {
+      ...result,
+      confirmation: smsPunchConfirmation(punchKindFromBody(body), result?.scan?.scannedAt || new Date()),
+    };
   });
 }
 
