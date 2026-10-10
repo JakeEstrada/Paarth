@@ -377,6 +377,7 @@ async function upsertPhone(req, res) {
     if (!parsed) return res.status(400).json({ error: 'phone must be a 10-digit number' });
     if (!displayName) return res.status(400).json({ error: 'displayName is required' });
 
+    const { tenantId } = getTenantContext();
     const notes = String(req.body?.notes || '').trim();
     const employeeUserId = req.body?.employeeUserId || null;
     const isActive = req.body?.isActive !== false;
@@ -390,6 +391,7 @@ async function upsertPhone(req, res) {
         notes,
         employeeUserId: employeeUserId || undefined,
         isActive,
+        ...(tenantId ? { tenantId } : {}),
       },
       { upsert: true, new: true, runValidators: true }
     );
@@ -476,10 +478,10 @@ async function recordSmsPunch({ phoneEntry, body, scannedAt, io }) {
 }
 
 function isSmsClockPunchBody(raw) {
-  const text = String(raw ?? '');
+  const text = String(raw ?? '').replace(/[\u200B-\u200D\uFEFF]/g, '');
   if (/^\s*$/.test(text)) return true;
-  const token = text.trim().toLowerCase();
-  return token === 'in' || token === 'out' || token === '.';
+  const token = text.trim().toLowerCase().replace(/[!?.,]+$/g, '');
+  return token === '' || token === '.' || token === 'in' || token === 'out';
 }
 
 function punchKindFromBody(raw) {
@@ -505,15 +507,48 @@ function smsPunchConfirmation(kind, when) {
   return `Received. Punch logged at ${time}.`;
 }
 
-async function tryRecordSmsPunch({ from, body, io }) {
+async function hasRecentSmsPunch(phoneEntry, when) {
+  const digits = String(phoneEntry.phoneDigits || last10Digits(phoneEntry.phone) || '').trim();
+  if (!digits) return false;
+  const at = when instanceof Date ? when : new Date(when || Date.now());
+  if (Number.isNaN(at.getTime())) return false;
+  const existing = await RfidScan.findOne({
+    uid: `SMS-${digits}`,
+    scannedAt: {
+      $gte: new Date(at.getTime() - 2 * 60 * 1000),
+      $lte: new Date(at.getTime() + 2 * 60 * 1000),
+    },
+  }).setOptions({ bypassTenant: true });
+  return Boolean(existing);
+}
+
+async function tryRecordSmsPunch({ from, body, io, tenantId, scannedAt } = {}) {
   if (!isSmsClockPunchBody(body)) return null;
   const phoneEntry = await findActivePhoneByFrom(from);
-  if (!phoneEntry?.tenantId) return null;
-  return runWithTenantContext({ tenantId: String(phoneEntry.tenantId) }, async () => {
-    const result = await recordSmsPunch({ phoneEntry, body, io });
+  if (!phoneEntry) {
+    console.log('[SMS punch] no registered number for', last10Digits(from) || from);
+    return null;
+  }
+  const tid = String(phoneEntry.tenantId || tenantId || '');
+  if (!tid) {
+    console.log('[SMS punch] registered number missing tenant', phoneEntry.displayName);
+    return null;
+  }
+  const when = scannedAt ? new Date(scannedAt) : new Date();
+  return runWithTenantContext({ tenantId: tid }, async () => {
+    if (await hasRecentSmsPunch(phoneEntry, when)) {
+      return { scan: null, confirmation: '' };
+    }
+    const result = await recordSmsPunch({
+      phoneEntry,
+      body,
+      scannedAt: Number.isNaN(when.getTime()) ? new Date() : when,
+      io,
+    });
+    console.log('[SMS punch] saved', result?.scan?.displayName, punchKindFromBody(body));
     return {
       ...result,
-      confirmation: smsPunchConfirmation(punchKindFromBody(body), result?.scan?.scannedAt || new Date()),
+      confirmation: smsPunchConfirmation(punchKindFromBody(body), result?.scan?.scannedAt || when),
     };
   });
 }

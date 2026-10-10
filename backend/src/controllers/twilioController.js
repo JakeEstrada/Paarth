@@ -417,6 +417,37 @@ async function pullInboundFromTwilio({ preferredTenantId, limit = 100, io } = {}
     } else {
       updated += 1;
     }
+    const scannedAt = result.doc?.createdAt || row.date_created || row.date_sent;
+    const ageMs = Date.now() - new Date(scannedAt || Date.now()).getTime();
+    const recentEnough = result.created || (Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= 2 * 60 * 60 * 1000);
+    if (!recentEnough) continue;
+    try {
+      const punch = await tryRecordSmsPunch({
+        from: row.from,
+        body: row.body,
+        io,
+        tenantId: result.doc?.tenantId,
+        scannedAt,
+      });
+      if (!punch?.scan || !punch?.confirmation) continue;
+      console.log('[SMS punch] recorded', punch.scan.displayName, row.body || '(blank)');
+      try {
+        const sent = await sendSmsViaTwilio({ to: row.from, message: punch.confirmation });
+        await logOutboundSms({
+          from: sent.from,
+          to: sent.to,
+          body: punch.confirmation,
+          twilioSid: sent.sid,
+          source: 'rfid-sms-punch',
+          tenantId: result.doc?.tenantId || punch.scan.tenantId,
+          deliveryStatus: sent.status,
+        });
+      } catch (sendError) {
+        console.error('[SMS punch] confirmation send failed:', sendError?.message || sendError);
+      }
+    } catch (punchError) {
+      console.error('Failed to record polled SMS punch:', punchError?.message || punchError);
+    }
   }
 
   return {
@@ -1292,7 +1323,7 @@ async function listSms(req, res) {
   }
 }
 
-const INBOUND_POLL_MS = 2 * 60 * 1000;
+const INBOUND_POLL_MS = 10 * 1000;
 let smsSchedulerStarted = false;
 function startSmsScheduler(options = {}) {
   if (smsSchedulerStarted) return;
@@ -1374,7 +1405,7 @@ function startSmsScheduler(options = {}) {
     }
   };
 
-  setTimeout(inboundTick, 15000);
+  setTimeout(inboundTick, 3000);
   setInterval(inboundTick, INBOUND_POLL_MS);
 }
 
