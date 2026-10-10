@@ -4,7 +4,6 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   Box,
   Button,
-  Paper,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -18,6 +17,7 @@ import {
   enableKioskDisplayMode,
   refreshAccessToken,
 } from '../../utils/authSession';
+import KioskViewNav from './KioskViewNav';
 
 function ViewModeFrame({ currentView, children }) {
   const navigate = useNavigate();
@@ -25,12 +25,6 @@ function ViewModeFrame({ currentView, children }) {
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
   const [exitPin, setExitPin] = useState('');
 
-  const viewButtons = [
-    { key: 'dashboard', label: 'Dashboard', path: '/dashboard-view' },
-    { key: 'pipeline', label: 'Pipeline', path: '/pipeline-view' },
-    { key: 'calendar', label: 'Calendar', path: '/calendar-view' },
-    { key: 'customers', label: 'Customers', path: '/customers-view' },
-  ];
   const exitPathByView = {
     dashboard: '/dashboard',
     pipeline: '/pipeline',
@@ -52,61 +46,27 @@ function ViewModeFrame({ currentView, children }) {
 
   return (
     <Box sx={{ position: 'relative', minHeight: '100vh' }}>
-      <Paper
-        elevation={3}
+      <Box
         sx={{
-          position: 'fixed',
-          top: { xs: 8, sm: 12 },
-          right: { xs: 8, sm: 16 },
-          zIndex: (theme) => theme.zIndex.appBar + 2,
-          p: 1,
           display: { xs: 'none', sm: 'flex' },
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: 1,
-          borderRadius: 2,
+          px: 2,
+          pt: 2,
+          pb: 0,
         }}
       >
-        {viewButtons.map((btn) => (
-          <Button
-            key={btn.key}
-            size="small"
-            variant={currentView === btn.key ? 'contained' : 'outlined'}
-            onClick={() => navigate(btn.path)}
-            sx={{
-              fontWeight: 700,
-              borderWidth: 2,
-              borderColor: '#90CAF9',
-              color: '#1565C0',
-              backgroundColor: currentView === btn.key ? '#BBDEFB' : 'transparent',
-              '&:hover': {
-                borderWidth: 2,
-                borderColor: '#64B5F6',
-                backgroundColor: currentView === btn.key ? '#90CAF9' : 'rgba(144, 202, 249, 0.16)',
-              },
-            }}
-          >
-            {btn.label}
-          </Button>
-        ))}
+        <KioskViewNav currentView={currentView} />
         <Button
           size="small"
           variant="outlined"
           onClick={() => setExitDialogOpen(true)}
-          sx={{
-            fontWeight: 700,
-            borderWidth: 2,
-            borderColor: '#90CAF9',
-            color: '#1565C0',
-            '&:hover': {
-              borderWidth: 2,
-              borderColor: '#64B5F6',
-              backgroundColor: 'rgba(144, 202, 249, 0.16)',
-            },
-          }}
+          sx={{ textTransform: 'none', borderRadius: 2, px: 2, flexShrink: 0 }}
         >
           Exit view
         </Button>
-      </Paper>
+      </Box>
       <Dialog
         open={exitDialogOpen}
         onClose={() => {

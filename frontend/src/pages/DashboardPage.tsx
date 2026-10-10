@@ -63,6 +63,7 @@ import { renderSummaryBlocks } from '../utils/summaryMarkdown';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
 import { getTenantRoom } from '../services/socket';
 import DashboardInsightGrid from '../components/dashboard/DashboardInsightGrid';
+import KioskViewNav from '../components/layout/KioskViewNav';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const ESTIMATE_STAGES = [
@@ -1435,40 +1436,7 @@ function DashboardPage() {
           gap: 1.5,
         }}
       >
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-          <Button
-            variant="contained"
-            startIcon={<DashboardHomeIcon />}
-            onClick={() => navigate('/dashboard')}
-            sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
-          >
-            Dashboard
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<JobsIcon />}
-            onClick={() => navigate('/pipeline')}
-            sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
-          >
-            Pipeline
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<CalendarIcon />}
-            onClick={() => navigate('/calendar')}
-            sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
-          >
-            Calendar
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<PeopleIcon />}
-            onClick={() => navigate('/customers')}
-            sx={{ textTransform: 'none', borderRadius: 2, px: 2 }}
-          >
-            Customers
-          </Button>
-        </Box>
+        <KioskViewNav currentView="dashboard" />
         <Typography variant="body2" color="text.secondary">
           {todayLabel}
         </Typography>
